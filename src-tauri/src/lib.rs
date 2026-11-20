@@ -5390,14 +5390,21 @@ async fn free_up_space(st: State<'_, App>, id: String) -> Res<u64> {
 /// launcher before, or the developer's own), so the game is set up with no copy and no build.
 #[tauri::command]
 fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Res<()> {
+    use_build(&st, id, folder)
+}
+
+fn use_build(st: &App, id: String, folder: Option<String>) -> Res<()> {
     let mut g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
     // A build the player has somewhere else (theirs, from the game's own launcher, or an older
     // install): that folder stands in for the one the setup builds into.
+    let picked = folder.is_some();
     let mine = match folder.map(PathBuf::from) {
         Some(f) => own_build_folder(&st, &id, &g, &f)?,
         None => None,
     };
-    if mine.is_some() {
+    // Picking the setup's own folder clears an earlier external choice. With no new pick, keep
+    // the current build. Validate the candidate before changing the saved selection.
+    if picked {
         g.build_dir = mine.clone();
     }
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
@@ -5416,7 +5423,7 @@ fn setup_use_build(st: State<'_, App>, id: String, folder: Option<String>) -> Re
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
         x.prebuilt = true;
         x.setup_before = None;
-        if mine.is_some() {
+        if picked {
             x.build_dir = mine;
         }
     }
@@ -11363,6 +11370,84 @@ mod beta54_tests {
 #[cfg(test)]
 mod own_build_pick_tests {
     use super::*;
+
+    fn selected_build(name: &str) -> (PathBuf, App, PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!("rl-own-selection-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let install = root.join("library/hopper");
+        let home = install.join("Built");
+        let external = root.join("external");
+        for dir in [&home, &external] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join("complete.bin"), b"synthetic build").unwrap();
+        }
+        let manifest = json!({
+            "format": 1,
+            "prepare": { "program": ["builder"], "done": ["{install}/Built/complete.bin"] },
+            "start": { "program": ["builder"], "args": ["--play", "{install}/Built"] },
+            "folders": { "game": [{ "path": "{install}/Built" }] }
+        });
+        std::fs::write(install.join("recomplauncher.json"), manifest.to_string()).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("hopper".into(), Installed {
+            id: "hopper".into(), path: install, build_dir: Some(external.clone()), prebuilt: true, ..Default::default()
+        });
+        let app = tests::app_in(&root, lib);
+        app.save();
+        (root, app, home, external)
+    }
+
+    #[test]
+    fn changing_to_the_setups_build_forgets_the_previous_external_build() {
+        let (root, app, home, external) = selected_build("home");
+
+        use_build(&app, "hopper".into(), Some(home.to_string_lossy().into_owned())).unwrap();
+
+        let lib = Library::load(&root);
+        let g = &lib.installed["hopper"];
+        assert_eq!(g.build_dir, None);
+        assert!(g.prebuilt);
+        let p = profile_of(&app, "hopper", g).unwrap();
+        assert_eq!(p.args_for(&g.path, None, &BTreeMap::new()), vec!["--play".to_string(), home.to_string_lossy().into_owned()]);
+        assert_eq!(std::fs::read(external.join("complete.bin")).unwrap(), b"synthetic build");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn choosing_an_unfinished_build_keeps_the_previous_selection() {
+        let (root, app, home, external) = selected_build("unfinished");
+        std::fs::remove_file(home.join("complete.bin")).unwrap();
+        std::fs::write(home.join("partial.bin"), b"incomplete").unwrap();
+
+        assert!(use_build(&app, "hopper".into(), Some(home.to_string_lossy().into_owned())).is_err());
+
+        assert_eq!(app.lib.lock().unwrap().installed["hopper"].build_dir, Some(external.clone()));
+        assert_eq!(Library::load(&root).installed["hopper"].build_dir, Some(external));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn using_the_current_build_keeps_its_external_folder() {
+        let (root, app, _home, external) = selected_build("current");
+
+        use_build(&app, "hopper".into(), None).unwrap();
+
+        assert_eq!(Library::load(&root).installed["hopper"].build_dir, Some(external));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changing_to_another_external_build_keeps_the_new_folder() {
+        let (root, app, _home, _external) = selected_build("other");
+        let other = root.join("another-build");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("complete.bin"), b"another build").unwrap();
+
+        use_build(&app, "hopper".into(), Some(other.to_string_lossy().into_owned())).unwrap();
+
+        assert_eq!(Library::load(&root).installed["hopper"].build_dir, Some(other));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     /// A game folder with a build in `inside` (a program in its bin folder), and the setup's own
     /// folder at `home`, both under a fresh temporary folder.
