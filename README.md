@@ -20,7 +20,7 @@ the launcher sets it up.
 
 ## What's in it
 
-- **Discover:** every recomp on recomplauncher.com, with screenshots, what it needs and how it
+- **Catalog:** every recomp on recomplauncher.com, with screenshots, what it needs and how it
   runs for other players.
 - **Coming Soon:** the recomps on the way, with Notify Me for an email when each comes out, and
   Request a Recomp to ask for a project on GitHub or GitLab.
@@ -43,7 +43,7 @@ the launcher sets it up.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/discover.jpg" alt="Discover"><p align="center"><b>Discover</b></p></td>
+    <td width="50%"><img src="docs/images/discover.jpg" alt="Catalog"><p align="center"><b>Catalog</b></p></td>
     <td width="50%"><img src="docs/images/game.jpg" alt="A game's page"><p align="center"><b>A game's page</b></p></td>
   </tr>
   <tr>
