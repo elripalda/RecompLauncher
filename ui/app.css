@@ -1410,7 +1410,9 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .scan-pill.warn i{background:#FFC861;color:#1d1300}
 .scan-pill.bad{color:var(--bad)!important;border-color:rgba(255,94,122,.35);background:rgba(255,94,122,.08)}
 .scan-pill.bad i{background:var(--bad);color:#1d0006}
-.dl-notes{flex:none;min-width:112px;justify-content:center;white-space:nowrap}
+.dl-notes{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--dim);opacity:.45;transition:opacity .15s,background-color .15s,color .15s}
+.dl-row:hover .dl-notes,.dl-notes:focus-visible,.dl-notes.pad-focus{opacity:1}
+button.dl-notes:hover{background:var(--fill2);color:var(--ink)}
 .dl-n{font:600 15px Figtree,sans-serif;color:var(--dim);margin-left:9px;letter-spacing:0}
 /* The download that's moving: its art, its progress and its speed, side by side */
 .dl-hero{display:grid;grid-template-columns:240px minmax(0,1fr) 300px;gap:22px;align-items:stretch;padding:16px;border-radius:22px;background:var(--noise),linear-gradient(160deg,var(--card2),var(--card) 70%);border:1px solid rgba(52,242,232,.22)}
@@ -1656,8 +1658,10 @@ body.sliding main{overflow-x:hidden}
 .upd-list{display:flex;flex-direction:column;border-radius:20px;background:var(--card);border:1px solid var(--line);overflow:hidden}
 .upd{border-top:1px solid var(--line)}
 .upd:first-child{border-top:0}
-.upd-h{width:100%;display:flex;align-items:center;gap:16px;padding:11px 16px 11px 12px;text-align:left;transition:background-color .15s}
-.upd-h:hover{background:var(--fill)}
+.upd-top{display:flex;align-items:center;gap:4px;padding-right:12px;transition:background-color .15s}
+.upd-top:hover{background:var(--fill)}
+.upd-top:hover .dl-notes{opacity:1}
+.upd-h{flex:1;min-width:0;display:flex;align-items:center;gap:16px;padding:11px 16px 11px 12px;text-align:left}
 .upd-h img,.upd-h .ph{width:38px;height:38px;border-radius:9px;object-fit:cover;flex:none;background:var(--card3)}
 .upd-self{width:38px;height:38px;border-radius:9px;flex:none;display:grid;place-items:center;background:var(--bg2)}
 .upd-self img{width:24px;height:24px;border-radius:0;background:none}
@@ -1671,7 +1675,7 @@ body.sliding main{overflow-x:hidden}
 .upd-h .mid span{color:var(--dim);font-size:12.5px}
 .upd-chev{flex:none;color:var(--muted);transition:transform .25s var(--ease)}
 .upd.open .upd-chev{transform:rotate(180deg)}
-.upd.open .upd-h{background:var(--fill)}
+.upd.open .upd-top{background:var(--fill)}
 .upd-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s var(--ease)}
 .upd.open .upd-body{grid-template-rows:1fr}
 .upd-in{overflow:hidden;min-height:0;padding:0 22px 0 66px}

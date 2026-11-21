@@ -4295,6 +4295,8 @@ function scanPill(h) {
   }
   return `<span class="scan-pill ${info.cls}" data-scan="${esc(key)}" title="${esc(t(SCAN_TIP))}"><i>${info.ic}</i>${esc(info.text)}</span>`;
 }
+// A Completed row's way to its patch notes: a quiet "i", so the list stays calm.
+const INFO_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg>';
 // Each game's newest download only (the history is newest first), like Steam: installing the same
 // game three times is one row. The totals and the History tab still count every one.
 function latestPerGame(hist) {
@@ -4366,7 +4368,7 @@ function pageDownloads() {
     const hasNotes = !!(byId(h.id) || {}).repo && !(inst && inst.local);
     return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}</span>${scanPill(h)}</span></div>
       <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(tf('Completed: {when}', { when: doneAt(h.when) }))}</span>
-      ${hasNotes ? `<button type="button" class="btn sm dl-notes" data-act="upd-game" data-id="${esc(h.id)}">${esc(t('Patch Notes'))}</button>` : '<span class="dl-notes" aria-hidden="true"></span>'}</div>`; }).join('');
+      ${hasNotes ? `<button type="button" class="dl-notes" data-act="upd-game" data-id="${esc(h.id)}" aria-label="${esc(t('Patch Notes'))}" title="${esc(t('Patch Notes'))}">${INFO_I}</button>` : '<span class="dl-notes" aria-hidden="true"></span>'}</div>`; }).join('');
   const nothing = !act.length && !ups.length && !fails.length && !shown.length;
   const updLog = updateLog(hist).filter((u) => (u.when || 0) > (ui.upd_cleared || 0));
   const tab = S.dlTab === 'updates' ? 'updates' : 'downloads';
@@ -4405,7 +4407,7 @@ function updNotes(u) {
   if (u.self) {
     const n = S.selfNotes;
     if (n === undefined) { loadSelfNotes(); return `<p class="muted">${esc(t('Loading the notes…'))}</p>`; }
-    return n && relKey(n.version) === relKey(u.tag) && n.notes ? updClamp(`<div class="md">${md(n.notes, true, { foldTables: true })}</div>`, u) : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
+    return n && relKey(n.version) === relKey(u.tag) && n.notes ? updClamp(`<div class="md">${md(n.notes, true, { foldTables: true })}</div>`) : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
   }
   if (!u.repo) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
   const r = S.rels[u.repo];
@@ -4415,12 +4417,12 @@ function updNotes(u) {
   const got = relsBetween(r.list, u.from, u.tag);
   if (!got.length) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
   const notes = got.map((x) => `<div class="upd-rel">${got.length > 1 ? `<div class="upd-rel-h"><b>${esc(x.name || x.tag_name)}</b><span>${esc(date(x.published_at))}</span></div>` : ''}<div class="md">${x.body ? md(x.body, false, { foldTables: true }) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('');
-  return updClamp(notes, u);
+  return updClamp(notes);
 }
-// Long notes start as a preview with Show All; Open in Updates goes to the game's own Updates tab.
-function updClamp(html, u) {
-  const open = byId(u.id) && !u.self ? `<button type="button" class="btn sm" data-act="upd-game" data-id="${esc(u.id)}">${esc(t('Open in Updates'))}</button>` : '';
-  return `<div class="upd-notes"><div class="upd-clip">${html}</div><div class="upd-acts"><button type="button" class="btn sm upd-all" data-act="upd-all" hidden>${esc(t('Show All'))}</button>${open}</div></div>`;
+// Long notes start as a preview with Show All. The way to the game's own Updates tab is the row's
+// quiet "i".
+function updClamp(html) {
+  return `<div class="upd-notes"><div class="upd-clip">${html}</div><div class="upd-acts"><button type="button" class="btn sm upd-all" data-act="upd-all" hidden>${esc(t('Show All'))}</button></div></div>`;
 }
 // After the notes are in: the preview's button shows only when there's more than fits.
 function updMeasure(box) {
@@ -4491,8 +4493,11 @@ function updatesTab(log) {
     const a = u.self ? null : byId(u.id) || { id: u.id, name: u.name };
     const img = u.self ? '<span class="upd-self cap" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.hero ? pic(thumbOf(a.hero, 320), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>';
     const open = S.updOpen.has(u.key);
+    // The same quiet "i" as Completed, beside the row (a button can't sit inside the row's button).
+    const toGame = !u.self && !!(byId(u.id) || {}).repo;
+    const notes = toGame ? `<button type="button" class="dl-notes" data-act="upd-game" data-id="${esc(u.id)}" aria-label="${esc(t('Patch Notes'))}" title="${esc(t('Patch Notes'))}">${INFO_I}</button>` : '<span class="dl-notes" aria-hidden="true"></span>';
     return `<div class="upd${open ? ' open' : ''}" data-key="${esc(u.key)}"${u.self ? ' data-self="1"' : ''}>
-      <button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(agoCap(u.when))}</span>${CHEV_D}</button>
+      <div class="upd-top"><button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(tf('Updated: {when}', { when: doneAt(u.when) }))}</span>${CHEV_D}</button>${notes}</div>
       <div class="upd-body"><div class="upd-in">${open ? updNotes(u) : ''}</div></div></div>`;
   }).join('')}</div>`;
 }

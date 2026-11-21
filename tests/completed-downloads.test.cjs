@@ -77,13 +77,14 @@ function desktopPage(hist, library, catalog) {
     byId: (id) => catalog[id], libInstalls: () => [], libApp: (g) => g, gameCount: () => 0,
     scanPill: () => '', updateLog: () => [], updatesTab: () => '', pic: () => '', thumbOf: String,
   });
-  vm.runInContext(topFn('latestPerGame') + topFn('doneAt') + topFn('pageDownloads'), c);
+  const icon = app.match(/^const INFO_I = .*$/m)[0];
+  vm.runInContext(icon + topFn('latestPerGame') + topFn('doneAt') + topFn('pageDownloads'), c);
   return c.pageDownloads();
 }
 
-test('a finished download offers Patch Notes, which opens the game on its Updates tab', () => {
+test('a finished download offers a quiet Patch Notes button, which opens the game on its Updates tab', () => {
   const html = desktopPage([{ id: 'lostodyssey', tag: 'v1.1.0', when: at(0, 10, 1) }], { lostodyssey: { tag: 'v1.1.0' } }, { lostodyssey: { name: 'Lost Odyssey', repo: 'freefrank/LostOdysseyRecomp' } });
-  assert.match(html, /<button type="button" class="btn sm dl-notes" data-act="upd-game" data-id="lostodyssey">Patch Notes<\/button>/);
+  assert.match(html, /<button type="button" class="dl-notes" data-act="upd-game" data-id="lostodyssey" aria-label="Patch Notes" title="Patch Notes"><svg /);
   assert.match(html, /<span class="dl-when">Completed: Today 10:01<\/span>/);
   assert.doesNotMatch(html, /data-act="play"/);
 });
@@ -92,4 +93,31 @@ test('a local build has no releases, so its row has no Patch Notes', () => {
   const html = desktopPage([{ id: 'mine', tag: 'own', when: at(0, 9, 0) }], { mine: { tag: 'own', local: true } }, { mine: { name: 'Mine', repo: 'me/mine' } });
   assert.doesNotMatch(html, /data-act="upd-game"/);
   assert.match(html, /<span class="dl-notes" aria-hidden="true"><\/span>/);
+});
+
+// Downloads > History, drawn for real: each update row, with the same time and quiet "i".
+function historyRows(log) {
+  const c = vm.createContext({
+    S: {},
+    curLocale: () => 'en-US',
+    timeOpts: (o) => Object.assign({}, o, { hourCycle: 'h23' }),
+    t: (s) => s, esc: String,
+    tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
+    byId: (id) => ({ lostodyssey: { name: 'Lost Odyssey', repo: 'freefrank/LostOdysseyRecomp' } })[id],
+    verName: String, pic: () => '', thumbOf: String, CHEV_D: '',
+  });
+  const icon = app.match(/^const INFO_I = .*$/m)[0];
+  vm.runInContext(icon + topFn('doneAt') + topFn('updatesTab'), c);
+  return c.updatesTab(log);
+}
+
+test('a History update row reads Updated and its time, with the quiet Patch Notes button beside it', () => {
+  const html = historyRows([{ key: 'k', id: 'lostodyssey', tag: 'v1.1.0', from: 'v1.0.0', when: at(0, 10, 1) }]);
+  assert.match(html, /<span class="dl-when">Updated: Today 10:01<\/span><\/button><button type="button" class="dl-notes" data-act="upd-game" data-id="lostodyssey"/);
+});
+
+test("the launcher's own update in History has no Patch Notes button, only the space for it", () => {
+  const html = historyRows([{ key: 'k', self: true, name: 'RecompLauncher', tag: '0.90.0-beta.67', from: '0.90.0-beta.66', when: at(0, 9, 0) }]);
+  assert.doesNotMatch(html, /data-act="upd-game"/);
+  assert.match(html, /<span class="dl-notes" aria-hidden="true"><\/span><\/div>/);
 });
