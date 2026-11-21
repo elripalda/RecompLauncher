@@ -151,8 +151,9 @@ in the game's folder, list it in `prepare.done`; if an update takes it away, Pla
 again instead of starting without it.
 
 Once your setup step has built the game, the player's own files can be moved or deleted, as a
-copy can: Play starts the build without them, and the game's page offers Free Up Space when one
-file or folder was picked. That holds while:
+copy can: Play starts the build without them, and the game's page offers Free Up Space for the
+files and folders the player picked (all of them, or none while another game still uses one).
+That holds while:
 
 - `start` has no `{input:...}`, and none of the player's inputs has a `destination`;
 - the build is still there: every file of `prepare.done`, and the folder `start` plays from;
