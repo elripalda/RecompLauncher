@@ -6376,13 +6376,20 @@ function afterCatalog() {
 }
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
+  // A release chosen while this check waits takes priority, even before its library refresh arrives.
+  const checked = Object.fromEntries(Object.entries(S.library).map(([id, g]) => [id, { ...g, download: (S.dlArgs || {})[id] }]));
   try {
     const updates = await invoke('check_updates', { force: !!loud });
     if (revision !== updateCheckRevision) return false;
     // A version the player chose to skip (its download kept failing) stays out until a newer one.
     const skip = (S.settings.ui || {}).skip_ver || {};
     // A game whose downloaded installer waits for Set Up has its update already: Set Up runs it.
-    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => S.library[id] && !S.library[id].local && !S.library[id].installer_setup && skip[id] !== tag));
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => {
+      const g = S.library[id], was = checked[id];
+      if (!g || !was || g.local || g.pinned || g.installer_setup || skip[id] === tag) return false;
+      if (was.download !== (S.dlArgs || {})[id]) return false;
+      return ['repo', 'path', 'tag', 'installed_at', 'updated_at'].every((key) => g[key] === was[key]);
+    }));
     holdUpdates();
     S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }
