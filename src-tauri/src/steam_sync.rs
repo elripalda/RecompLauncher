@@ -683,6 +683,41 @@ pub async fn add_game(steam: &Path, data: &Path, want: &Want, art: Vec<(&'static
     Ok(accts.len())
 }
 
+/// The pictures of the launcher's games already in Steam, written again: Show Game Names changed
+/// which set recomps show. Only the grid folder is written, never shortcuts.vdf, so Steam can stay
+/// open (it shows them once it reads its pictures again). How many entries got them.
+pub async fn refresh_art(st: &App) -> usize {
+    let Some(steam) = shortcuts::steam_dir() else { return 0 };
+    // The sync's timer may be writing pictures right now: wait for it rather than write over each other.
+    let mut busy = Busy::take();
+    for _ in 0..60 {
+        if busy.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        busy = Busy::take();
+    }
+    let Some(_busy) = busy else { return 0 };
+    let mut arts = Arts::new();
+    let mut n = 0;
+    for user in shortcuts::steam_users(&steam) {
+        let cfg = user.join("config");
+        let Some(list) = entries(fs::read(cfg.join("shortcuts.vdf")).ok().as_deref()) else { continue };
+        for o in owned(&list, &|exe| shortcuts::script_game(&st.dir, exe)) {
+            let Ok(g) = crate::installed_or_game(st, &o.id) else { continue };
+            if !arts.contains_key(&o.id) {
+                let art = crate::steam_art(st, &o.id, &g).await;
+                arts.insert(o.id.clone(), art);
+            }
+            let (art, _) = &arts[&o.id];
+            if shortcuts::save_art(&cfg, o.app_id, art).is_ok() {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
 /// Settings → Keep Steam in Sync → Sync Now (and turning it on).
 #[tauri::command]
 pub async fn steam_sync_now(st: State<'_, App>, restart: bool) -> Res<String> {

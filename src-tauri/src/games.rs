@@ -38,6 +38,58 @@ pub struct Game {
     pub hero: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub logo: String,
+    /// The project's own pictures for this game (set on the developer's website page, only ever
+    /// from the catalog): shown before the game's, see catalog::art_url.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_icon: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_cover: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_hero: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_logo: String,
+}
+
+impl Game {
+    /// This game's (game, project) picture of a kind: cover, hero, logo or icon.
+    pub fn art(&self, kind: &str) -> (&str, &str) {
+        match kind {
+            "cover" => (&self.cover, &self.project_cover),
+            "hero" => (&self.hero, &self.project_hero),
+            "logo" => (&self.logo, &self.project_logo),
+            "icon" => (&self.icon, &self.project_icon),
+            _ => ("", ""),
+        }
+    }
+}
+
+/// A game's picture as a full address: the catalog can give one on its own site as a path (/media/...).
+fn full_url(pic: &str) -> String {
+    if pic.starts_with('/') {
+        format!("{}{}", crate::catalog::base(), pic)
+    } else {
+        pic.to_string()
+    }
+}
+
+/// A recomp's catalog entry as one of its games shows: the game's own pictures over the recomp's.
+/// Its project picture only when the game has no picture of that kind of its own, or the recomp's
+/// one project cover would make every game of a series look the same (as ui/games.js childArt).
+pub fn with_game_art(entry: &Value, game: &Game) -> Value {
+    let mut a = if entry.is_object() { entry.clone() } else { serde_json::json!({}) };
+    for kind in ["cover", "hero", "logo", "icon"] {
+        let (pic, project) = game.art(kind);
+        let pk = format!("project_{kind}");
+        if !project.is_empty() {
+            a[&pk] = Value::from(full_url(project));
+        } else if !pic.is_empty() {
+            a[&pk] = Value::from("");
+        }
+        if !pic.is_empty() {
+            a[kind] = Value::from(full_url(pic));
+        }
+    }
+    a
 }
 
 /// A game's id: 1 to 16 of a-z and 0-9.
@@ -110,6 +162,12 @@ pub fn of(own: Option<&Value>, entry: &Value) -> Vec<Game> {
                     }
                 }
             }
+            // Project pictures are set on the website only: the catalog's, never the developer's file.
+            let theirs = art.get(g.id.as_str());
+            g.project_icon = theirs.map(|c| c.project_icon.clone()).unwrap_or_default();
+            g.project_cover = theirs.map(|c| c.project_cover.clone()).unwrap_or_default();
+            g.project_hero = theirs.map(|c| c.project_hero.clone()).unwrap_or_default();
+            g.project_logo = theirs.map(|c| c.project_logo.clone()).unwrap_or_default();
             g
         })
         .collect()
@@ -246,6 +304,48 @@ mod tests {
         assert_eq!(mine[0].args, ["--game=gow2"]);
         // A developer list that doesn't hold up: the catalog's is used.
         assert_eq!(of(Some(&json!([{ "id": "x", "name": "Only one" }])), &entry).len(), 3);
+    }
+
+    #[test]
+    fn project_art_comes_from_the_catalog_never_the_developers_file() {
+        let entry = json!({ "games": [
+            { "id": "gow2", "name": "Catalog 2", "project_cover": "/p2.jpg" },
+            { "id": "gow3", "name": "Catalog 3" }
+        ]});
+        let mine = json!([
+            { "id": "gow2", "name": "Gears of War 2", "project_cover": "/mine2.jpg" },
+            { "id": "gow3", "name": "Gears of War 3", "project_cover": "/mine3.jpg" }
+        ]);
+        let list = of(Some(&mine), &entry);
+        assert_eq!(list[0].project_cover, "/p2.jpg");
+        assert_eq!(list[1].project_cover, "");
+    }
+
+    #[test]
+    fn a_games_own_picture_wins_over_the_recomps_project_one() {
+        let recomp = json!({ "cover": "/series.jpg", "project_cover": "/series-p.jpg", "project_hero": "/series-ph.jpg" });
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "https://cdn.example/g2.jpg".into(), ..Default::default() };
+        let a = with_game_art(&recomp, &game);
+        assert_eq!(a["cover"], "https://cdn.example/g2.jpg");
+        assert_eq!(a["project_cover"], "", "the recomp's project cover would make every game look the same");
+        assert_eq!(a["project_hero"], "/series-ph.jpg", "no hero of its own: the recomp's look");
+    }
+
+    #[test]
+    fn a_games_pictures_on_the_catalogs_site_become_full_addresses() {
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "/media/x.png".into(), project_hero: "/media/p.png".into(), ..Default::default() };
+        let a = with_game_art(&json!({}), &game);
+        assert_eq!(a["cover"], format!("{}/media/x.png", crate::catalog::base()));
+        assert_eq!(a["project_hero"], format!("{}/media/p.png", crate::catalog::base()));
+    }
+
+    #[test]
+    fn a_games_own_project_picture_comes_first() {
+        let recomp = json!({ "cover": "/series.jpg", "project_cover": "/series-p.jpg" });
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "https://cdn.example/g2.jpg".into(), project_cover: "https://cdn.example/g2-p.jpg".into(), ..Default::default() };
+        let a = with_game_art(&recomp, &game);
+        assert_eq!(a["project_cover"], "https://cdn.example/g2-p.jpg");
+        assert_eq!(a["cover"], "https://cdn.example/g2.jpg");
     }
 
     #[test]

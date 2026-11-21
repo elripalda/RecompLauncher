@@ -694,11 +694,29 @@ const ART_KINDS = [['cover', '_cov'], ['hero', '_hero'], ['logo', '_logo'], ['ic
 // version (Customize's "every version" box) are kept under this key, so versions the catalog adds
 // later look the same too.
 const gameKey = (a) => (a && a.title ? 'game--' + a.title : '');
-// A version's own picture of a kind, as the catalog has it, whatever shows in its place.
-function catalogArt(a, k) {
+// The game's own picture of a kind (cover, hero, logo, icon: always the game itself), as the
+// catalog has it, whatever shows in its place.
+function gameArt(a, k) {
   const stash = ART_KINDS.find((x) => x[0] === k)[1];
   return a[stash] !== undefined ? a[stash] : a[k] || '';
 }
+// The catalog has two sets of pictures for a recomp: the game's, and the project's
+// (project_cover...: the look its developer gave it on their website page). A recomp shows the
+// project's first and the game's for any it lacks. `gameOnly` (Show Game Names): the game's only,
+// to match the names. A picture at the same address as developer_avatar is left out: a safety
+// net only, the catalog itself takes old avatar icons out.
+function pickArt(a, k, gameOnly) {
+  const avatar = a.developer_avatar || '';
+  const notAvatar = (u) => (u && u !== avatar ? u : '');
+  const game = notAvatar(gameArt(a, k));
+  if (gameOnly) return game;
+  return notAvatar(a['project_' + k]) || game;
+}
+// A version's own picture of a kind, as the catalog has it for how recomps show now.
+const catalogArt = (a, k) => pickArt(a, k, !!(S.settings.ui || {}).game_names);
+// Desktop and Steam shortcuts show the same set as the launcher, so Show Game Names changes
+// theirs too. Quietly: a shortcut keeps its old pictures when they can't be fetched.
+const refreshShortcutArt = () => invoke('refresh_shortcut_art').catch(() => {});
 // What shows for a kind when this version has no picture of its own: the one the player set for
 // every version, else (Show Game Media) the recommended version's, else the catalog's.
 function usualArt(a, k) {
@@ -722,7 +740,8 @@ function applyCover(a, id) {
   const own = S.library[id] || (S.arts || {})[id] || {};
   for (const [k, stash] of ART_KINDS) {
     const f = own[k + '_file'];
-    const native = catalogArt(a, k);
+    // The field itself holds the game's picture: anything else shown is stashed over it.
+    const native = gameArt(a, k);
     const want = f ? 'local:' + f : usualArt(a, k);
     if (want === native) { if (a[stash] !== undefined) { a[k] = a[stash]; delete a[stash]; } continue; }
     if (a[stash] === undefined) a[stash] = a[k] || '';
@@ -754,12 +773,17 @@ const TICK = (s = 16) => `<svg class="vtick" width="${s}" height="${s}" viewBox=
 // Who made it, under a game's name: their picture, their name, and the Verified badge.
 // Who owns a project, from its address: owner/repo, gitlab:owner/..., forgejo:host/owner/repo.
 const repoOwner = (a) => ((a && a.repo) || '').replace(/^[a-z]+:/, '').split('/')[/^forgejo:/.test((a && a.repo) || '') ? 1 : 0] || '';
+// The developer's picture, for their line on a recomp's page only (never a game's icon): the one
+// the catalog gives with the recomp, else their developer page's.
+const devPic = (a) => (a && a.developer_avatar) || (devOf(a) || {}).avatar || '';
 function devLine(a) {
   const d = devOf(a);
+  const face = devPic(a);
+  const img = face ? `<img src="${esc(face)}" alt="" width="24" height="24" loading="lazy">` : '';
   // No developer page: the project's owner, as words.
-  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
+  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line">${img}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
   const name = d.name || a.author || '';
-  const pic = d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+  const pic = img || `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
   const by = `<span class="dev-line">${pic}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span></span>`;
   // The byline is plain words for everyone; only the Verified badge is a pill, and it's the link to their page.
   const devPage = esc(SITE + '/dev/' + encodeURIComponent(d.slug));
@@ -4696,7 +4720,7 @@ function pageSettings() {
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
         + row(t('Show Versions Under Names'), t('The newest version of each recomp in the Catalog, and the version you have installed in the Library.'), sw('show_versions', ui.show_versions, t('Show Versions Under Names'), 'ui-toggle'))
         + row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cover_labels', ui.cover_labels, t('Console Labels on Covers'), 'ui-toggle'))
-        + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'ui-toggle'))
+        + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'game-names'))
         + row(t('Show Game Media'), t('Every version of a game shows the same cover, background, logo and icon: the recommended version\'s. The versions list keeps each one\'s own icon, and pictures you picked yourself stay.'), sw('game_media', ui.game_media, t('Show Game Media'), 'ui-toggle'))
         // Linux: how the window is drawn, read when the launcher starts.
         + (S.os === 'linux' ? `<div class="set-row"><div class="k"><b>${esc(t('Graphics Mode'))}</b><span>${esc(t('How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Graphics Mode'))}">${[['', t('Auto')], ['fast', t('Faster')], ['safe', t('Safer')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.linux_graphics || '') === k}" data-act="gfx-mode" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>` : ''))
@@ -5400,7 +5424,7 @@ async function loadCatalog(force, asked) {
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
     // Kept for offline use, but not while the window is opening: a while later, at the sizes shown.
-    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [thumbOf(a.cover, tileThumb()), a.hero ? thumbOf(a.hero, 960) : '', a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => { const hero = catalogArt(a, 'hero'); return [thumbOf(catalogArt(a, 'cover'), tileThumb()), hero ? thumbOf(hero, 960) : '', catalogArt(a, 'logo')]; }).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     if (urls.length) setTimeout(() => invoke('prefetch_images', { urls }).catch(() => {}), 15000);
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
@@ -6580,7 +6604,7 @@ async function confirmPack(id, pack) {
     return (await window.tvAsk(title, [{ label: t('Install'), icon: 'down' }, { label: t('Cancel'), icon: 'chevL' }], head)) === 0;
   }
   // Only a game's own cover: the recomp's, repeated beside every name, would read as a mistake.
-  const items = pack.map((g) => `<li>${g.cover ? pic(thumbOf(g.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`).join('');
+  const items = pack.map((g) => { const c = catalogArt(g, 'cover'); return `<li>${c ? pic(thumbOf(c, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`; }).join('');
   const text = `<p>${esc(line)}</p><ul class="pack-list">${items}</ul>`;
   const v = await ask(title, text, [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Install'), icon: 'down', v: 'go', main: true, focus: true }]);
   return v === 'go';
@@ -8920,6 +8944,8 @@ async function act(el, e) {
       // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
       // leaves every game as it was, a game whose program the player picked included.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
+    // Show Game Names: the desktop shortcuts and Steam entries already made change pictures too.
+    case 'game-names': return saveUi({ game_names: !(S.settings.ui || {}).game_names }).then(refreshShortcutArt);
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }
     case 'side-move': {
