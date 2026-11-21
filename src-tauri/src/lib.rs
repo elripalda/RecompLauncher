@@ -2410,6 +2410,34 @@ async fn steam_art(st: &App, id: &str, g: &Installed) -> (Vec<(&'static str, Vec
     (art, icon)
 }
 
+/// Settings → Show Game Names changed which set of pictures recomps show: the desktop shortcuts and
+/// Steam entries already made get the new set too. A desktop shortcut points at the game's icon
+/// file, which list_icon writes over in place; Steam's pictures are written again in its grid
+/// folders. How many Steam entries changed.
+#[tauri::command]
+async fn refresh_shortcut_art(st: State<'_, App>) -> Res<usize> {
+    let game_only = game_names_on(&st);
+    let installed: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, g)| (k.clone(), g.clone())).collect();
+    let mut ids = vec![];
+    for (rid, g) in &installed {
+        ids.push(rid.clone());
+        ids.extend(games_of(&st, rid, g).iter().map(|x| games::full(rid, &x.id)));
+    }
+    for id in &ids {
+        // Only the games with a kept icon: the ones a shortcut or Steam entry was made for.
+        let kept = st.dir.join("covers").join(format!("{}-icon-list.png", folder_name(id)));
+        if !kept.is_file() {
+            continue;
+        }
+        let a = art_entry(&st, id, game_of(&st, id).as_ref()).await;
+        let url = catalog::art_url(&a, "icon", game_only);
+        if !url.is_empty() {
+            list_icon(&st, id, url).await;
+        }
+    }
+    Ok(steam_sync::refresh_art(&st).await)
+}
+
 /// Add the game to Steam. If Steam is open and `restart` is false, nothing changes and the answer
 /// is "steam_running", so the window can ask first; with `restart`, Steam is closed, the game
 /// added, and Steam started again.
@@ -10406,7 +10434,7 @@ pub fn run() {
             take_options_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
-            desktop_shortcut, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
+            desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, move_build, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, setup_use_build, easy_setup, set_game_options,

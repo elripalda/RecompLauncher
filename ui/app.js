@@ -713,7 +713,10 @@ function pickArt(a, k, gameOnly) {
   return notAvatar(a['project_' + k]) || game;
 }
 // A version's own picture of a kind, as the catalog has it for how recomps show now.
-const catalogArt = (a, k) => pickArt(a, k, !!(S.settings.ui || {}).game_names);// What shows for a kind when this version has no picture of its own: the one the player set for
+const catalogArt = (a, k) => pickArt(a, k, !!(S.settings.ui || {}).game_names);
+// Desktop and Steam shortcuts show the same set as the launcher, so Show Game Names changes
+// theirs too. Quietly: a shortcut keeps its old pictures when they can't be fetched.
+const refreshShortcutArt = () => invoke('refresh_shortcut_art').catch(() => {});// What shows for a kind when this version has no picture of its own: the one the player set for
 // every version, else (Show Game Media) the recommended version's, else the catalog's.
 function usualArt(a, k) {
   const shared = (S.arts || {})[gameKey(a)] || {};
@@ -4711,7 +4714,7 @@ function pageSettings() {
         + row(t('Covers Only'), t('Hide the names under game covers in the Library and on Home.'), sw('hide_names', ui.hide_names, t('Covers Only'), 'ui-toggle'))
         + row(t('Show Versions Under Names'), t('The newest version of each recomp in the Catalog, and the version you have installed in the Library.'), sw('show_versions', ui.show_versions, t('Show Versions Under Names'), 'ui-toggle'))
         + row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cover_labels', ui.cover_labels, t('Console Labels on Covers'), 'ui-toggle'))
-        + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'ui-toggle'))
+        + row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('game_names', ui.game_names, t('Show Game Names'), 'game-names'))
         + row(t('Show Game Media'), t('Every version of a game shows the same cover, background, logo and icon: the recommended version\'s. The versions list keeps each one\'s own icon, and pictures you picked yourself stay.'), sw('game_media', ui.game_media, t('Show Game Media'), 'ui-toggle'))
         // Linux: how the window is drawn, read when the launcher starts.
         + (S.os === 'linux' ? `<div class="set-row"><div class="k"><b>${esc(t('Graphics Mode'))}</b><span>${esc(t('How the launcher draws its window. Faster is smoother; Safer fixes a blank or flickering window. Takes effect the next time the launcher opens.'))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Graphics Mode'))}">${[['', t('Auto')], ['fast', t('Faster')], ['safe', t('Safer')]].map(([k, n]) => `<button type="button" role="radio" aria-checked="${(st.linux_graphics || '') === k}" data-act="gfx-mode" data-k="${k}">${esc(n)}</button>`).join('')}</div></div>` : ''))
@@ -8935,6 +8938,8 @@ async function act(el, e) {
       // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
       // leaves every game as it was, a game whose program the player picked included.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
+    // Show Game Names: the desktop shortcuts and Steam entries already made change pictures too.
+    case 'game-names': return saveUi({ game_names: !(S.settings.ui || {}).game_names }).then(refreshShortcutArt);
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
     case 'side-show': { const h = new Set((S.settings.ui || {}).side_hide || []); h.has(el.dataset.k) ? h.delete(el.dataset.k) : h.add(el.dataset.k); return saveUi({ side_hide: [...h] }); }
     case 'side-move': {

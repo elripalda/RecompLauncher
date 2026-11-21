@@ -119,6 +119,12 @@ test('the versions list icon is the project\'s too', () => {
   assert.equal(x.catalogArt(x.zel, 'icon'), 'proj-icon');
 });
 
+test('Show Game Names refreshes the pictures of shortcuts already made', () => {
+  assert.match(app, /sw\('game_names', ui\.game_names, t\('Show Game Names'\), 'game-names'\)/);
+  assert.match(app, /case 'game-names': return saveUi\(\{ game_names: !\(S\.settings\.ui \|\| \{\}\)\.game_names \}\)\.then\(refreshShortcutArt\);/);
+  assert.match(app, /invoke\('refresh_shortcut_art'\)/);
+});
+
 test('the versions menu and card draw each version\'s own icon', () => {
   assert.match(app, /const verIcon = \(v\) => catalogArt\(v, 'icon'\) \|\| catalogArt\(v, 'cover'\);/);
   assert.match(app, /const ic = verIcon\(v\);/);
