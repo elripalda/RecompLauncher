@@ -5669,9 +5669,7 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String, copy: Option
                     Some(sub) => x.games.entry(sub.clone()).or_default().inputs_ready = signature,
                     None => x.inputs_ready = signature,
                 }
-                if picked.is_some() {
-                    x.game_copy = picked.clone();
-                }
+                keep_inputs_build(x, &p, picked.as_ref());
                 if p.game.is_none() && (sub.is_none() || x.game_copy.as_ref().map_or(true, |c| !c.exists())) { x.game_copy = p.inputs.iter().filter(|i| i.shared.is_empty() && !i.optional).find_map(|i| p.input_paths.get(&i.id).cloned()); }
                 x.setup_before = None;
                 x.mode = library::SetupMode::Easy;
@@ -5783,6 +5781,16 @@ fn inputs_copy(need: &profile::GameCopy, picked: Option<&str>, g: &Installed) ->
     }
     copy_ok(need, &copy, &g.path, true)?;
     Ok(copy)
+}
+
+/// What a setup with named inputs keeps once it has worked, as setup_copy keeps it: the copy it
+/// built from, and the version of the setup step that built it. Without that version, a game with
+/// a copy too reads as needing a new build straight after its setup.
+fn keep_inputs_build(x: &mut Installed, p: &profile::Profile, copy: Option<&PathBuf>) {
+    if let Some(c) = copy {
+        x.game_copy = Some(c.clone());
+    }
+    x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
 }
 
 /// The player picked their copy of the game.
@@ -10751,6 +10759,28 @@ mod tests {
         let g = Installed { path: game, ..Default::default() };
         let gone = d.join("My Games/gone.nsp");
         assert_eq!(super::inputs_copy(&need, gone.to_str(), &g).unwrap_err(), "That file isn't there anymore.");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_game_with_a_copy_and_named_inputs_is_ready_after_its_setup() {
+        let (d, game) = inputs_copy_dir("kept");
+        let copy = d.join("My Games/Combo");
+        std::fs::create_dir_all(&copy).unwrap();
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "game": { "kind": "iso_or_folder", "label": "Your Combo dump" },
+            "inputs": [{ "id": "dlc", "label": "DLC", "role": "dlc", "optional": true }],
+            "prepare": { "program": ["builder.sh"], "args": ["--game={game}"], "version": "1" },
+            "start": { "program": ["play.sh"] }
+        }))
+        .unwrap();
+        let mut g = Installed { id: "combo".into(), path: game, ..Default::default() };
+        super::keep_inputs_build(&mut g, &p, Some(&copy));
+        let facts = crate::setup_state::Facts { profile: &p, game: &g, inputs_ready: true, copy: g.game_copy.clone(), copy_wrong: None, own_program: false, skipped: false };
+        let status = crate::setup_state::of(&facts);
+        assert!(status.ready, "{status:?}");
+        assert_eq!(g.game_copy, Some(copy));
         let _ = std::fs::remove_dir_all(&d);
     }
 
