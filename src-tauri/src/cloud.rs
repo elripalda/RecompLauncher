@@ -100,12 +100,17 @@ fn store_locked(dir: &Path, a: Option<&Account>) {
             if let Err(e) = saved {
                 let _ = std::fs::remove_file(&temp);
                 crate::trail::note(format!("Account: couldn't save sign-in ({e})"));
+            } else {
+                peek_account_changed(dir, Some(a));
             }
         }
         None => {
-            let _ = std::fs::remove_file(file(dir));
+            let removed = std::fs::remove_file(file(dir));
             let _ = std::fs::remove_file(dir.join("account.json.tmp"));
             crate::secret::forget();
+            if removed.is_ok() || removed.is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound) {
+                peek_account_changed(dir, None);
+            }
         }
     }
 }
@@ -1263,17 +1268,16 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let mut space = Value::Null;
     let mut offline = false;
     let mut next = Value::Null;
-    if g.cloud == Some(true) && signed_in(&st.dir) {
+    if let Some(ticket) = (g.cloud == Some(true)).then(|| peek_account(&st.dir)).flatten() {
+        // The badge above Play reads the same list, only while this sign-in still owns it.
         match cloud_list(&app, &id).await {
-            Ok((l, sp)) => {
+            Ok((l, sp)) if keep_peek(&ticket, &id, &state.synced_hash, &l) => {
                 next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
-                // The badge above Play reads the same list, so it says the same thing.
-                keep_peek(&id, &state.synced_hash, &l);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
             Err(Error::Net(_)) => offline = true,
-            Err(_) => {}
+            _ => {}
         }
     }
     let waiting = waiting_copies(&local, &state);
@@ -1337,19 +1341,79 @@ struct Peek {
     synced: String,
     list: Vec<CloudCopy>,
 }
-static PEEKED: Mutex<Option<std::collections::HashMap<String, Peek>>> = Mutex::new(None);
-const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
-
-fn peeked(id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
-    let kept = PEEKED.lock().unwrap();
-    let p = kept.as_ref()?.get(id)?;
-    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
-    fresh.then(|| p.list.clone())
+#[derive(Default)]
+struct PeekCache {
+    account: Option<(String, String)>,
+    generation: u64,
+    games: std::collections::HashMap<String, Peek>,
 }
 
-fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
+impl PeekCache {
+    fn account_changed(&mut self, account: Option<&Account>) {
+        let identity = account.map(|a| (a.user.uid.clone(), a.token.clone()));
+        if self.account == identity {
+            return;
+        }
+        self.account = identity;
+        self.generation = self.generation.wrapping_add(1);
+        self.games.clear();
+    }
+
+    fn peeked(&self, id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+        let p = self.games.get(id)?;
+        let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
+        fresh.then(|| p.list.clone())
+    }
+}
+
+/// A list requested by one sign-in must not fill the next sign-in's badge cache.
+struct PeekTicket {
+    dir: PathBuf,
+    generation: u64,
+}
+
+static PEEKED: Mutex<Option<std::collections::HashMap<PathBuf, PeekCache>>> = Mutex::new(None);
+const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn peek_account_changed(dir: &Path, account: Option<&Account>) {
+    let mut all = PEEKED.lock().unwrap();
+    all.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default().account_changed(account);
+}
+
+fn peek_account(dir: &Path) -> Option<PeekTicket> {
+    let generation = {
+        let mut all = PEEKED.lock().unwrap();
+        all.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default().generation
+    };
+    let account = load(dir)?;
+    // Never hold PEEKED while reading the account: writes take ACCOUNT_FILE first.
+    let mut all = PEEKED.lock().unwrap();
+    let cache = all.as_mut()?.get_mut(dir)?;
+    if cache.generation != generation {
+        return None;
+    }
+    cache.account_changed(Some(&account));
+    Some(PeekTicket { dir: dir.to_path_buf(), generation: cache.generation })
+}
+
+fn peeked(ticket: &PeekTicket, id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+    let all = PEEKED.lock().unwrap();
+    let cache = all.as_ref()?.get(&ticket.dir)?;
+    if cache.generation != ticket.generation {
+        return None;
+    }
+    cache.peeked(id, synced)
+}
+
+fn keep_peek(ticket: &PeekTicket, id: &str, synced: &str, list: &[CloudCopy]) -> bool {
+    let mut all = PEEKED.lock().unwrap();
+    let Some(cache) = all.as_mut().and_then(|all| all.get_mut(&ticket.dir)) else { return false };
+    if cache.generation != ticket.generation {
+        return false;
+    }
     let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), list: list.to_vec() };
-    PEEKED.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), peek);
+    cache.games.insert(id.to_string(), peek);
+    true
 }
 
 /// For the badge above Play: a newer save from another PC that Play brings in by itself, or null.
@@ -1359,16 +1423,19 @@ fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
 pub async fn saves_peek(app: AppHandle, id: String) -> Res<Value> {
     let st = app.state::<App>();
     let g = game(&st, &id)?;
-    if g.cloud != Some(true) || !signed_in(&st.dir) || spots_of(&st, &id, &g).is_empty() {
+    if g.cloud != Some(true) || spots_of(&st, &id, &g).is_empty() {
         return Ok(Value::Null);
     }
+    let Some(ticket) = peek_account(&st.dir) else { return Ok(Value::Null) };
     let state = saves::state(&st.dir, &id);
-    let list = match peeked(&id, &state.synced_hash) {
+    let list = match peeked(&ticket, &id, &state.synced_hash) {
         Some(list) => list,
         None => {
             // Offline or any other trouble: the badge keeps what this PC knows.
             let Ok((list, _)) = cloud_list(&app, &id).await else { return Ok(Value::Null) };
-            keep_peek(&id, &state.synced_hash, &list);
+            if !keep_peek(&ticket, &id, &state.synced_hash, &list) {
+                return Ok(Value::Null);
+            }
             list
         }
     };
@@ -1823,6 +1890,107 @@ mod account_tests {
     }
 
     #[test]
+    fn switching_accounts_does_not_reuse_the_previous_cloud_peek() {
+        let dir = AccountDir::new();
+        let first = Account { token: "peek-first-token".into(), user: User { uid: "peek-first".into(), ..Default::default() }, ..Default::default() };
+        let second = Account { token: "peek-second-token".into(), user: User { uid: "peek-second".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&first));
+        let ticket = peek_account(&dir.0).unwrap();
+        keep_peek(&ticket, "peek-switched", "same-local-save", &[CloudCopy { v: "first-account-copy".into(), ..Default::default() }]);
+        store(&dir.0, None);
+        store(&dir.0, Some(&second));
+        let ticket = peek_account(&dir.0).unwrap();
+        assert!(peeked(&ticket, "peek-switched", "same-local-save").is_none());
+    }
+
+    #[test]
+    fn an_old_cloud_peek_cannot_replace_the_new_accounts_list() {
+        let dir = AccountDir::new();
+        let first = Account { token: "first".into(), user: User { uid: "first".into(), ..Default::default() }, ..Default::default() };
+        let second = Account { token: "second".into(), user: User { uid: "second".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&first));
+        let old = peek_account(&dir.0).unwrap();
+        store(&dir.0, Some(&second));
+        let current = peek_account(&dir.0).unwrap();
+        let list = [CloudCopy { v: "second-copy".into(), ..Default::default() }];
+        assert!(keep_peek(&current, "game", "synced", &list));
+        assert!(!keep_peek(&old, "game", "synced", &[CloudCopy { v: "first-copy".into(), ..Default::default() }]));
+        assert_eq!(peeked(&current, "game", "synced").unwrap()[0].v, "second-copy");
+    }
+
+    #[test]
+    fn refreshing_the_same_account_keeps_its_cloud_peek() {
+        let dir = AccountDir::new();
+        let mut account = Account { token: "refresh-token".into(), user: User { uid: "refresh-user".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&account));
+        let ticket = peek_account(&dir.0).unwrap();
+        assert!(keep_peek(&ticket, "game", "synced", &[CloudCopy::default()]));
+        account.user.username = "New display name".into();
+        store(&dir.0, Some(&account));
+        assert_eq!(peeked(&ticket, "game", "synced").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn a_new_token_rejects_the_previous_sessions_cloud_peek() {
+        let dir = AccountDir::new();
+        let mut account = Account { token: "old-token".into(), user: User { uid: "same-user".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&account));
+        let ticket = peek_account(&dir.0).unwrap();
+        account.token = "new-token".into();
+        store(&dir.0, Some(&account));
+        assert!(!keep_peek(&ticket, "game", "synced", &[CloudCopy::default()]));
+    }
+
+    #[test]
+    fn signing_out_rejects_an_unfinished_cloud_peek() {
+        let dir = AccountDir::new();
+        let account = Account { token: "signout-token".into(), user: User { uid: "signout-user".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&account));
+        let ticket = peek_account(&dir.0).unwrap();
+        store(&dir.0, None);
+        assert!(!keep_peek(&ticket, "game", "synced", &[CloudCopy::default()]));
+        assert!(peek_account(&dir.0).is_none());
+    }
+
+    #[test]
+    fn accounts_without_user_ids_have_separate_cloud_peeks() {
+        let dir = AccountDir::new();
+        store(&dir.0, Some(&Account { token: "first-legacy-token".into(), ..Default::default() }));
+        let first = peek_account(&dir.0).unwrap();
+        assert!(keep_peek(&first, "game", "synced", &[CloudCopy::default()]));
+        store(&dir.0, Some(&Account { token: "second-legacy-token".into(), ..Default::default() }));
+        let second = peek_account(&dir.0).unwrap();
+        assert!(peeked(&second, "game", "synced").is_none());
+        assert!(!keep_peek(&first, "game", "synced", &[CloudCopy::default()]));
+    }
+
+    #[test]
+    fn a_failed_account_change_keeps_the_current_cloud_peek() {
+        let dir = AccountDir::new();
+        let mut account = Account { token: "kept-token".into(), user: User { uid: "kept-user".into(), ..Default::default() }, ..Default::default() };
+        store(&dir.0, Some(&account));
+        let ticket = peek_account(&dir.0).unwrap();
+        assert!(keep_peek(&ticket, "game", "synced", &[CloudCopy::default()]));
+        std::fs::create_dir(dir.0.join("account.json.tmp")).unwrap();
+        account.token = "failed-token".into();
+        store(&dir.0, Some(&account));
+        assert_eq!(peeked(&ticket, "game", "synced").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn another_data_folders_account_does_not_clear_a_cloud_peek() {
+        let first = AccountDir::new();
+        let second = AccountDir::new();
+        let account = Account { token: "folder-token".into(), user: User { uid: "folder-user".into(), ..Default::default() }, ..Default::default() };
+        store(&first.0, Some(&account));
+        let ticket = peek_account(&first.0).unwrap();
+        assert!(keep_peek(&ticket, "game", "synced", &[CloudCopy::default()]));
+        store(&second.0, Some(&account));
+        store(&second.0, None);
+        assert_eq!(peeked(&ticket, "game", "synced").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
     fn reading_a_plain_token_does_not_rewrite_the_account() {
         let dir = AccountDir::new();
         let saved = br#"{"token":"test-token","user":{"uid":"42","username":"Player","avatar":""}}"#;
@@ -2076,14 +2244,24 @@ mod sync_tests {
 
     #[test]
     fn a_game_page_opened_again_uses_the_list_it_just_asked_for() {
-        super::keep_peek("peek-same", "synced", &[cloud("2", "from-other-pc")]);
-        assert_eq!(super::peeked("peek-same", "synced").map(|l| l.len()), Some(1));
+        let mut cache = super::PeekCache::default();
+        cache.games.insert("game".into(), super::Peek { at: std::time::Instant::now(), synced: "synced".into(), list: vec![cloud("2", "from-other-pc")] });
+        assert_eq!(cache.peeked("game", "synced").map(|l| l.len()), Some(1));
     }
 
     #[test]
     fn a_sync_since_the_last_look_asks_the_cloud_again() {
-        super::keep_peek("peek-synced", "before", &[cloud("2", "from-other-pc")]);
-        assert!(super::peeked("peek-synced", "after").is_none());
+        let mut cache = super::PeekCache::default();
+        cache.games.insert("game".into(), super::Peek { at: std::time::Instant::now(), synced: "before".into(), list: vec![cloud("2", "from-other-pc")] });
+        assert!(cache.peeked("game", "after").is_none());
+    }
+
+    #[test]
+    fn an_expired_cloud_peek_asks_the_website_again() {
+        let mut cache = super::PeekCache::default();
+        let at = std::time::Instant::now() - super::PEEK_REST;
+        cache.games.insert("game".into(), super::Peek { at, synced: "same".into(), list: vec![cloud("2", "from-other-pc")] });
+        assert!(cache.peeked("game", "same").is_none());
     }
 
     #[test]
