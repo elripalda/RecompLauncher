@@ -41,7 +41,7 @@
     history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/><path d="M12 8v4.5l3 2"/>',
     pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-    findfolder: '<path d="M10.5 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2.5"/><circle cx="16.5" cy="15.5" r="3"/><path d="m18.7 17.7 2.3 2.3"/>',
+    openfolder: '<path d="M3 17.5V7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h7.5A1.5 1.5 0 0 1 20 9.5V11"/><path d="M3 17.5 5.4 12a1.5 1.5 0 0 1 1.4-1H21a1 1 0 0 1 .9 1.4l-2.3 5.7a1.5 1.5 0 0 1-1.4.9H4.5A1.5 1.5 0 0 1 3 17.5z"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
@@ -463,7 +463,7 @@
       case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Easy Setup')), { cls: 'main easy', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
-      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
+      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
     }
   }
 
@@ -1526,7 +1526,7 @@
     const acts = [
       mainButton(a, 'g-main'),
       !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
-      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'findfolder' }) : '',
+      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'openfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
       verGroup(a) ? btn('g-vers', 'versions', esc(tn(verGroup(a).list.length, '1 version', '{n} versions')), { id, icon: 'layers' }) : '',
