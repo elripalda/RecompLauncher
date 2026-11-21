@@ -19,7 +19,7 @@ use std::path::PathBuf;
 /// (named files to choose), "update" (detail: what to pick), "rebuild" (its setup step changed;
 /// detail "kept": the copy's gone, and the step runs again from what it kept, prepare.keeps_copy),
 /// "build_missing" (detail: the folder that's gone), "own_build_missing" (detail: where its setup
-/// builds it), "way" (set up by hand, but it has to be built from the copy first).
+/// builds it).
 ///
 /// `changed`: it's built again because its setup step changed since it was built (a new
 /// `prepare.version`, which comes with an update). Play then says it's finishing the update, not
@@ -68,12 +68,7 @@ fn needs_after_update(reason: &'static str, detail: impl Into<String>) -> Status
 
 pub fn of(f: &Facts) -> Status {
     let (p, g) = (f.profile, f.game);
-    // Built from the copy before it starts: only the launcher's way does that.
-    let built_from_copy = p.prepare.is_some() && p.start.is_some();
     if g.hand().is_some() {
-        if built_from_copy {
-            return needs("way", "");
-        }
         return ready("by_hand");
     }
     if f.own_program {
@@ -293,15 +288,42 @@ mod tests {
     }
 
     #[test]
-    fn set_up_by_hand_is_ready_unless_it_is_built_from_the_copy() {
-        let d = dir("by-hand");
-        let mut g = set_up(&d);
-        g.manual = Some(Default::default());
-        g.mode = crate::library::SetupMode::ByHand;
+    fn set_up_by_hand_does_not_require_the_profiles_build() {
+        let d = dir("by-hand-build");
+        let g = Installed {
+            path: d.clone(), manual: Some(Default::default()),
+            mode: crate::library::SetupMode::ByHand, ..Default::default()
+        };
         let p = built_from_copy();
-        assert_eq!(of(&facts(&p, &g)), needs("way", ""));
-        let plain = profile(serde_json::json!({ "game": { "kind": "iso", "label": "Your disc" }, "start": { "program": ["game.exe"], "args": ["{game}"] } }));
-        assert_eq!(of(&facts(&plain, &g)), ready("by_hand"));
+        assert_eq!(of(&facts(&p, &g)), ready("by_hand"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn set_up_by_hand_does_not_require_named_inputs() {
+        let d = dir("by-hand-inputs");
+        let g = Installed {
+            path: d.clone(), manual: Some(Default::default()),
+            mode: crate::library::SetupMode::ByHand, ..Default::default()
+        };
+        let p = profile(serde_json::json!({
+            "inputs": [{ "id": "base", "label": "Extracted game", "role": "game", "formats": [{ "type": "folder" }] }],
+            "prepare": { "program": ["game.exe"], "args": ["--prepare", "{input:base}"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        }));
+        assert_eq!(of(&facts(&p, &g)), ready("by_hand"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn set_up_by_hand_is_ready_for_a_profile_without_a_build_step() {
+        let d = dir("by-hand-plain");
+        let g = Installed {
+            path: d.clone(), manual: Some(Default::default()),
+            mode: crate::library::SetupMode::ByHand, ..Default::default()
+        };
+        let p = profile(serde_json::json!({ "game": { "kind": "iso", "label": "Your disc" }, "start": { "program": ["game.exe"], "args": ["{game}"] } }));
+        assert_eq!(of(&facts(&p, &g)), ready("by_hand"));
         let _ = fs::remove_dir_all(&d);
     }
 

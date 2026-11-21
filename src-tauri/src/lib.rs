@@ -2839,12 +2839,6 @@ fn start_game_with_monitor_context(
             manual = None;
         }
     }
-    // Set up by hand on a game that's built from the player's copy: the hand setup skips the build,
-    // so there's nothing finished to start. The player is asked to go back to the launcher's way.
-    if manual.is_some() && profile_of(&st, id, &g).map(|p| p.prepare.is_some() && p.start.is_some()).unwrap_or(false) {
-        trail::note(format!("Play {id}: set up by hand, but it's built from the copy first; asking to use the launcher's way"));
-        return Err(Error::Msg("NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".into()));
-    }
     // The executable the player picked (Set Game Executable), not the program the game's setup
     // file starts (the game they moved somewhere else, or a build of their own): theirs starts, as
     // it is. The setup file's command line is for its own program, and its own folder may be gone.
@@ -2876,7 +2870,7 @@ fn start_game_with_monitor_context(
     }
     // A recomp the launcher knows how to set up: the player's copy goes where the game reads it,
     // and the game starts straight away instead of its own launcher.
-    let whole = if manual.is_some() { None } else { profile_of(&st, id, &g) };
+    let whole = profile_for_play(&st, id, &g, manual.is_some());
     // One game of several: only its inputs, and its own saves when it has them.
     let prof = whole.clone().map(|mut p| {
         if let Some(pk) = &pick {
@@ -6785,6 +6779,14 @@ fn python_here() -> Option<(PathBuf, Vec<&'static str>)> {
         return find("python3.exe").or_else(|| find("python.exe")).map(|p| (p, vec![]));
     }
     find("python3").or_else(|| find("python")).map(|p| (p, vec![]))
+}
+
+/// A manual start uses the player's command instead of the automatic setup profile.
+fn profile_for_play(st: &App, id: &str, g: &Installed, manual: bool) -> Option<profile::Profile> {
+    if manual {
+        return None;
+    }
+    profile_of(st, id, g)
 }
 
 /// The program the player picked in the game's settings, when the game's setup file starts another
@@ -11795,5 +11797,71 @@ mod own_build_pick_tests {
         std::fs::write(mine.join("data.pak"), b"x").unwrap();
         assert_eq!(check_own_build(&home, &install, &mine, &done).unwrap(), Some(mine.clone()));
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod manual_play_tests {
+    use super::*;
+
+    fn prepared_game(name: &str) -> (PathBuf, App, Installed) {
+        let d = std::env::temp_dir().join(format!("rl-manual-play-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let game = d.join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        let manifest = json!({
+            "format": 1,
+            "inputs": [{ "id": "base", "label": "Extracted game", "role": "game", "formats": [{ "type": "folder" }] }],
+            "prepare": { "program": ["game.exe"], "args": ["--prepare", "{input:base}"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        });
+        std::fs::write(game.join("recomplauncher.json"), manifest.to_string()).unwrap();
+        std::fs::write(game.join("game.exe"), b"synthetic program, never executed").unwrap();
+        let manual = library::ManualSetup { exe: Some(PathBuf::from("game.exe")), how: "none".into(), ..Default::default() };
+        let g = Installed {
+            id: "manual-game".into(), path: game, manual: Some(manual),
+            mode: library::SetupMode::ByHand, ..Default::default()
+        };
+        let st = tests::app_in(&d, Library::default());
+        (d, st, g)
+    }
+
+    #[test]
+    fn manual_play_uses_the_chosen_program_without_automatic_setup() {
+        let (d, st, g) = prepared_game("ready");
+        assert!(profile_for_play(&st, &g.id, &g, true).is_none());
+        let (exe, args) = manual_plan(&g, g.hand().unwrap()).unwrap().unwrap();
+        assert_eq!(exe, g.path.join("game.exe"));
+        assert!(args.is_empty());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn manual_play_keeps_the_automatic_profile_when_hand_setup_is_inactive() {
+        let (d, st, mut g) = prepared_game("inactive");
+        g.mode = library::SetupMode::Easy;
+        let p = profile_for_play(&st, &g.id, &g, g.hand().is_some()).unwrap();
+        assert_eq!(p.inputs[0].id, "base");
+        assert_eq!(p.start.unwrap().args, vec!["--play"]);
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn manual_play_rejects_a_missing_program() {
+        let (d, st, g) = prepared_game("missing");
+        std::fs::remove_file(g.path.join("game.exe")).unwrap();
+        assert!(profile_for_play(&st, &g.id, &g, true).is_none());
+        assert!(manual_plan(&g, g.hand().unwrap()).unwrap_err().to_string().contains("isn't an available program"));
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn manual_play_rejects_a_folder_in_place_of_a_program() {
+        let (d, st, g) = prepared_game("folder");
+        std::fs::remove_file(g.path.join("game.exe")).unwrap();
+        std::fs::create_dir(g.path.join("game.exe")).unwrap();
+        assert!(profile_for_play(&st, &g.id, &g, true).is_none());
+        assert!(manual_plan(&g, g.hand().unwrap()).unwrap_err().to_string().contains("isn't an available program"));
+        std::fs::remove_dir_all(d).unwrap();
     }
 }

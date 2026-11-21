@@ -35,8 +35,6 @@ test('a skipped game starts as its own setup leaves it, after that setup when it
   assert.match(rust, /let mut skipped = manual\.is_none\(\) && player_sets_up\(&st, id\);/);
   assert.match(rust, /manual = Some\(library::ManualSetup \{ how: "none"\.into\(\), \.\.Default::default\(\) \}\);/);
   assert.match(rust, /if \(manual\.is_none\(\) \|\| rebuild \|\| skipped\) && !prof/);
-  // After the "built from your copy" refusal of Set Up By Hand, so skipping isn't refused.
-  assert.ok(rust.indexOf('NEED_WAY|') < rust.indexOf('let mut skipped = manual.is_none()'));
   // A game built from the copy into a folder of its own starts the player's build instead, asked
   // for once when there isn't one.
   assert.match(rust, /return Err\(Error::Msg\(format!\("NEED_OWN_BUILD\|\{\}", home_dir\.display\(\)\)\)\);/);
