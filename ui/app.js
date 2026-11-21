@@ -381,7 +381,42 @@ async function playSync(ids) {
   } catch (e) { /* this PC's own numbers stay */ }
   return JSON.stringify(S.cloudPlay || null) !== before;
 }
-setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); } }, 10 * 60 * 1000);
+setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); } }, 10 * 60 * 1000);
+// Sponsor spots in the app for this account, from the website (Sponsors in the admin). Home shows
+// one between Ready to Play and Recently Updated when there is one.
+async function sponsSync() {
+  const before = JSON.stringify(S.spons || []);
+  let s = [];
+  if (accountId() && !(S.account && S.account.offline)) {
+    try { const r = await invoke('spons_mine'); s = r && Array.isArray(r.s) ? r.s.filter((x) => x && x.id && x.img) : []; } catch (e) { s = []; }
+  }
+  S.spons = s;
+  if (JSON.stringify(s) !== before && S.view === 'home') render(true);
+}
+const sponsFor = (slot) => (S.spons || []).find((x) => x.slot === slot) || null;
+function sponsBand(slot) {
+  const x = sponsFor(slot);
+  if (!x) return '';
+  const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
+  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
+}
+// One view per spot per launch, once it's on screen.
+const SP_SEEN = new Set();
+let spObs = null;
+function sponsWatch() {
+  if (!('IntersectionObserver' in window)) return;
+  if (!spObs) spObs = new IntersectionObserver((list) => {
+    for (const en of list) {
+      if (!en.isIntersecting) continue;
+      spObs.unobserve(en.target);
+      const id = Number(en.target.dataset.sp);
+      if (!id || SP_SEEN.has(id)) continue;
+      SP_SEEN.add(id);
+      invoke('spons_seen', { id }).catch(() => {});
+    }
+  }, { threshold: 0.5 });
+  for (const el of $$('.sp-tile')) spObs.observe(el);
+}
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
 // for sourceforge:<name>, or a Forgejo server for forgejo:<server>/<owner>/<name>.
@@ -1717,6 +1752,7 @@ function pageHome() {
     ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
     ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
     ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
+    ${sponsBand('app_home')}
     ${shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
     ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
     ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
@@ -4929,6 +4965,7 @@ function render(keepScroll) {
   watchMore();
   reviveSoon(main);
   if (v === 'game') { paintLooks(); igWatch(); }
+  if (v === 'home') sponsWatch();
   if (typing) { const f = $('#' + typing.id); if (f) { f.focus({ preventScroll: true }); try { f.setSelectionRange(typing.a, typing.b); } catch (e) { /* fine */ } } }
 }
 // The Library's tile size and view: pinned to the window's bottom-right corner, outside the page,
@@ -8930,6 +8967,7 @@ async function act(el, e) {
     case 'unhide': toast(t('It shows in the Catalog again.')); return unhideGame(id);
     case 'hidden-list': return hiddenModal();
     case 'ig-go': return igGo(el.dataset.id);
+    case 'sp-go': return invoke('open_url', { url: `${SITE}/api/spons.php?go=${encodeURIComponent(el.dataset.id)}` }).catch(fail);
     case 'skip-ver': {
       const id = el.dataset.id, tag = S.updates[id];
       if (!tag) return;

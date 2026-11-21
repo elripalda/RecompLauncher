@@ -56,6 +56,7 @@ or a lost request never counts anything twice.
 | --- | --- |
 | `POST ?a=play` | `{"pc", "games": [{"game", "secs", "last", "count", "longest", "recent"}]}`, up to 500 and 1 MB → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
 | `GET ?a=play` | `{"games": {ID: {"secs", "last", "count", "longest", "recent"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+| `GET ?a=spons` | `{"s": [{"id", "slot", "img", "alt", "house"}]}`: sponsor spots for this account (Home's `app_home`, between Ready to Play and Recently Updated; `cloud::spons_mine`, `sponsSync` in app.js). Views go to `/api/spons.php?seen=<id>` (`cloud::spons_seen`) and a click opens `/api/spons.php?go=<id>`. Empty when there's nothing for this account. |
 
 `count`, `longest` and `recent` draw a game's "Your play time" card (this week, this month,
 sessions, longest, the last two weeks) over all the PCs:
