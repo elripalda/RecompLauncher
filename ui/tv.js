@@ -377,8 +377,8 @@
   // Setup Required: a yellow badge on the cover until the player says it's set up.
   // Only on a game in the player's Library, as a to-do: nothing that reads as a warning on the rest.
   const sreqBadge = (a) => S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
-  // What a Setup Required recomp needs before it plays, as a sheet: its developer's steps, the
-  // README, its folder, and Done, Play (after which Play is back for good).
+  // What a Setup Required recomp needs on the PC, as a sheet to read: its developer's steps, the
+  // README and its folder. A note, never a gate: Play is on the game's page and just runs.
   function tvSetupReq(id) {
     const a = byId(id);
     if (!a) return;
@@ -390,8 +390,8 @@
       ${inst ? '' : `<p class="tv-sreq-p dim">${esc(t('Install it first, then come back here.'))}</p>`}`;
     const items = [readme ? { label: t('Open the README'), icon: 'page', run: () => invoke('open_url', { url: readme }).catch(fail) } : null];
     if (inst) items.push({ label: t('Open its folder'), icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
-      { label: t('Done, Play'), icon: 'play', cls: 'warn', run: async () => { await saveUi({ setup_ok: Object.assign({}, (S.settings.ui || {}).setup_ok || {}, { [id]: true }) }, true); draw(true); playGame(id); } },
-      { label: t('Not yet'), icon: 'chevL', run: () => {} });
+      { label: t('Play'), icon: 'play', run: () => playGame(id) },
+      { label: t('Close'), icon: 'chevL', run: () => {} });
     else items.push({ label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) }, { label: t('Close'), icon: 'chevL', run: () => {} });
     sheet(tf('Set up {name}', { name: a.name }), items.filter(Boolean), 'sreq', head);
   }
@@ -1526,7 +1526,7 @@
     const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
       mainButton(a, 'g-main'),
-      !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
+      needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'openfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',

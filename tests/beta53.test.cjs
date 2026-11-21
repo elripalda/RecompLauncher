@@ -32,40 +32,31 @@ test('Skip Easy Setup is on the setup window, the Manage tab and in Settings, no
 });
 
 test('a skipped game starts as its own setup leaves it, after that setup when it has one', () => {
-  assert.match(rust, /let mut skipped = manual\.is_none\(\) && player_sets_up\(&st, id\);/);
-  assert.match(rust, /manual = Some\(library::ManualSetup \{ how: "none"\.into\(\), \.\.Default::default\(\) \}\);/);
-  assert.match(rust, /if \(manual\.is_none\(\) \|\| rebuild \|\| skipped\) && !prof/);
-  // After the "built from your copy" refusal of Set Up By Hand, so skipping isn't refused.
-  assert.ok(rust.indexOf('NEED_WAY|') < rust.indexOf('let mut skipped = manual.is_none()'));
-  // A game built from the copy into a folder of its own starts the player's build instead, asked
-  // for once when there isn't one.
-  assert.match(rust, /return Err\(Error::Msg\(format!\("NEED_OWN_BUILD\|\{\}", home_dir\.display\(\)\)\)\);/);
+  assert.match(rust, /let skipped = picked\.is_none\(\) && player_sets_up\(&st, id\);/);
+  assert.match(rust, /let own_road = picked\.is_some\(\) \|\| skipped;/);
+  assert.match(rust, /if picked\.is_none\(\) && !prof/);
+  assert.match(rust, /_ if own_road => \{[^]*?own_plan\(&g, picked\.as_deref\(\)\)\?/);
+  // Two roads only: nothing asks a skipped game where its build is, or to set it up another way.
+  assert.doesNotMatch(rust, /NEED_OWN_BUILD|NEED_WAY/);
 });
 
 const named = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
 
-test('Use a Build You Already Have: a line under the copy in Easy Setup, a Manage row, and the skipped-game prompt', () => {
-  const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
-  // Easy Setup: one quiet line, and the folder shows in the copy's box until Set Up uses it.
-  assert.match(fn(steps, 'ssAlt'), /if \(su\.own_build\) return `<p class="ss-alt">\$\{esc\(tf\('Already built \{name\} from your copy, outside the launcher\? Skip the build:'/);
-  assert.match(fn(steps, 'stepsRun'), /await invoke\('setup_use_build', ns\.own \? \{ id, folder: ns\.own \} : \{ id \}\);/);
-  assert.match(fn(named, 'useOwnBuild'), /invoke\('setup_use_build', \{ id, folder: typeof p === 'string' \? p : p\.path \}\)/);
-  assert.match(app, /\/\^NEED_OWN_BUILD\\\|\/\.test/);
-  assert.match(fn(app, 'manageStartRows'), /data-act="ownbuild"/);
-  // Big Picture draws the same steps, so it has the same line.
+test('no build of the player\'s own: Easy Setup builds in the folder the manifest names, or Easy Setup is skipped', () => {
+  assert.doesNotMatch(steps, /ownpick|keepbuild|data-ss="rebuild"|setup_use_build/);
+  assert.doesNotMatch(named, /useOwnBuild|setup_use_build/);
+  assert.doesNotMatch(app, /data-act="ownbuild"|askWhereBuild|useOwnBuild/);
+  assert.doesNotMatch(rust, /build_dir|prebuilt|fn setup_use_build|fn check_own_build/);
+  // Big Picture draws the same steps.
   assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
-  // It says where the game's own setup builds it, when that's outside the launcher's folder for
-  // the game (build_where): on the last step, beside what Set Up starts.
-  assert.match(fn(steps, 'ssSummary'), /su\.build_where && !m\.skipBuild \? `<div><span>\$\{esc\(t\('Builds into'\)\)\}/);
+  // It still says where the game's own setup builds it, when that's outside the launcher's folder.
+  assert.match(fn(steps, 'ssSummary'), /su\.build_where \? `<div><span>\$\{esc\(t\('Builds into'\)\)\}/);
 });
 
-test('the launcher building it again goes back to the setup\'s own folder once that has worked; an update keeps the player\'s', () => {
-  // Built in the setup's own folder, while the player's build stays in use until the setup works.
-  assert.match(rust, /    g\.build_dir = None;\n    let p = profile_of\(&st, &id, &g\)/);
-  assert.doesNotMatch(rust, /if g\.build_dir\.take\(\)\.is_some\(\) \{/);
-  // Let go of only where a setup is done: setup_copy.
-  assert.match(rust, /x\.build_dir = None;\n\s+x\.prepare_version = [^\n]*\n\s+x\.setup_before = None;/);
-  assert.match(rust, /build_dir: prev\.as_ref\(\)\.and_then\(\|p\| p\.build_dir\.clone\(\)\),/);
-  assert.match(rust, /if let Some\(dir\) = g\.build_dir\.as_ref\(\)\.filter\(\|d\| d\.is_dir\(\)\) \{\n\s+p\.rebase_build\(&g\.path, dir\);/);
+test('no Set Up By Hand anywhere', () => {
+  assert.doesNotMatch(app, /manualModal|set_manual|manual_defaults|Set Up By Hand/);
+  assert.doesNotMatch(tv, /manualModal|set_manual|Set Up By Hand/);
+  assert.doesNotMatch(rust, /ManualSetup|fn set_manual|fn manual_plan|fill_copy_args/);
 });

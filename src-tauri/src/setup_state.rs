@@ -2,7 +2,7 @@
 //!
 //! It's worked out from what the player chose and what's on disk, and it never changes the
 //! library. A reason to set up again is said here; it's never made by forgetting the player's
-//! copy, their own build or the program they picked, so a setup that's cancelled or fails leaves
+//! copy or the program they picked, so a setup that's cancelled or fails leaves
 //! the game as it was.
 
 use crate::library::Installed;
@@ -13,13 +13,12 @@ use std::path::PathBuf;
 /// The answer. `reason` is one word the page turns into its button and its line.
 ///
 /// Ready: "ready" (set up with the copy), "built" (its build is here and it starts without the
-/// copy), "own_build", "own_program", "by_hand", "skipped".
+/// copy), "own_program", "skipped".
 ///
 /// Not ready: "copy" (no copy yet; detail: what to pick), "copy_wrong" (detail: why), "files"
 /// (named files to choose), "update" (detail: what to pick), "rebuild" (its setup step changed;
 /// detail "kept": the copy's gone, and the step runs again from what it kept, prepare.keeps_copy),
-/// "build_missing" (detail: the folder that's gone), "own_build_missing" (detail: where its setup
-/// builds it), "way" (set up by hand, but it has to be built from the copy first).
+/// "build_missing" (detail: the folder that's gone).
 ///
 /// `changed`: it's built again because its setup step changed since it was built (a new
 /// `prepare.version`, which comes with an update). Play then says it's finishing the update, not
@@ -68,28 +67,14 @@ fn needs_after_update(reason: &'static str, detail: impl Into<String>) -> Status
 
 pub fn of(f: &Facts) -> Status {
     let (p, g) = (f.profile, f.game);
-    // Built from the copy before it starts: only the launcher's way does that.
-    let built_from_copy = p.prepare.is_some() && p.start.is_some();
-    if g.hand().is_some() {
-        if built_from_copy {
-            return needs("way", "");
-        }
-        return ready("by_hand");
-    }
     if f.own_program {
         return ready("own_program");
     }
-    let here = g.prebuilt && p.build_folder_here(&g.path).is_some();
-    let built = p.build_done(&g.path) == Some(true) || here;
+    // Skip Easy Setup: Play runs the program as it is, so nothing is asked for.
     if f.skipped {
-        // Skipped on a game built into a folder of its own: it starts the player's own build.
-        let Some(home) = p.build_home(&g.path) else { return ready("skipped") };
-        let theirs = g.build_dir.as_ref().is_some_and(|d| d.is_dir()) || here;
-        if !theirs {
-            return needs("own_build_missing", home.display().to_string());
-        }
-        return ready("own_build");
+        return ready("skipped");
     }
+    let built = p.build_done(&g.path) == Some(true);
     if !p.inputs.is_empty() && !f.inputs_ready {
         return needs("files", "");
     }
@@ -104,18 +89,16 @@ pub fn of(f: &Facts) -> Status {
     let uses_copy = p.start_uses_game();
     // Built, and it doesn't take the copy when it starts: the copy isn't needed to play.
     let plays_built = built && !uses_copy;
-    let built_reason = if g.build_dir.is_some() { "own_build" } else { "built" };
-    let launcher_built = !g.prebuilt && g.build_dir.is_none();
-    let changed = launcher_built && p.prepare_version_changed(&g.prepare_version);
+    let changed = p.prepare_version_changed(&g.prepare_version);
     // Its finished files are listed and one isn't there (one that lists none can't tell).
     let unfinished = p.build_done(&g.path) == Some(false);
     match (&f.copy_wrong, &f.copy) {
-        (Some(_), _) if plays_built => return ready(built_reason),
+        (Some(_), _) if plays_built => return ready("built"),
         (Some(why), _) => return needs("copy_wrong", why.clone()),
         // The copy's gone, and its setup step kept what it needs: built again from that.
         (None, None) if changed && builds_from_kept(p, g) => return needs_after_update("rebuild", "kept"),
         (None, None) if unfinished && builds_from_kept(p, g) => return needs("rebuild", "kept"),
-        (None, None) if plays_built => return ready(built_reason),
+        (None, None) if plays_built => return ready("built"),
         (None, None) => return needs("copy", need.label.clone()),
         (None, Some(_)) => {}
     }
@@ -139,8 +122,7 @@ pub fn of(f: &Facts) -> Status {
 /// Its setup step can run again without the copy (`prepare.keeps_copy`): the launcher built it,
 /// what the step kept is still there, and starting it doesn't take the copy either.
 pub fn builds_from_kept(p: &Profile, g: &Installed) -> bool {
-    let launcher_built = !g.prebuilt && g.build_dir.is_none();
-    launcher_built && !p.start_uses_game() && p.kept_from_copy(&g.path).is_some()
+    !p.start_uses_game() && p.kept_from_copy(&g.path).is_some()
 }
 
 #[cfg(test)]
@@ -269,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn skipped_on_a_game_built_into_its_own_folder_needs_the_players_build() {
+    fn skipped_on_a_game_built_into_its_own_folder_just_plays() {
         let d = dir("skipped");
         let mut g = set_up(&d);
         g.game_copy = None;
@@ -282,26 +264,7 @@ mod tests {
         }));
         let mut f = facts(&p, &g);
         f.skipped = true;
-        assert_eq!(of(&f).reason, "own_build_missing");
-        let mine = d.join("mine");
-        fs::create_dir_all(&mine).unwrap();
-        g.build_dir = Some(mine);
-        let mut f = facts(&p, &g);
-        f.skipped = true;
-        assert_eq!(of(&f), ready("own_build"));
-        let _ = fs::remove_dir_all(&d);
-    }
-
-    #[test]
-    fn set_up_by_hand_is_ready_unless_it_is_built_from_the_copy() {
-        let d = dir("by-hand");
-        let mut g = set_up(&d);
-        g.manual = Some(Default::default());
-        g.mode = crate::library::SetupMode::ByHand;
-        let p = built_from_copy();
-        assert_eq!(of(&facts(&p, &g)), needs("way", ""));
-        let plain = profile(serde_json::json!({ "game": { "kind": "iso", "label": "Your disc" }, "start": { "program": ["game.exe"], "args": ["{game}"] } }));
-        assert_eq!(of(&facts(&plain, &g)), ready("by_hand"));
+        assert_eq!(of(&f), ready("skipped"));
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -411,15 +374,5 @@ mod tests {
         let update = serde_json::to_value(needs_after_update("rebuild", "kept")).unwrap();
         assert_eq!(update["changed"], true);
         assert_eq!(update["reason"], "rebuild");
-    }
-
-    #[test]
-    fn a_players_own_build_is_never_built_again_from_what_the_step_kept() {
-        let d = dir("kept-own");
-        let mut g = built_copy_gone(&d);
-        g.prepare_version = "1".into();
-        g.prebuilt = true;
-        assert!(!builds_from_kept(&keeps_copy(), &g));
-        let _ = fs::remove_dir_all(&d);
     }
 }

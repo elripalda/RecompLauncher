@@ -70,28 +70,6 @@ test('a required extra that is off holds Set Up, and marks the Extras step', () 
   assert.equal(c.stepsModel('g', su, { at: 1 }).blocked, false);
 });
 
-test('with a build already there, build options do nothing and hold nothing back', () => {
-  const c = context();
-  const su = copy({ prebuilt: '/install/Game', prepare_options: [vs(false)] });
-  const m = c.stepsModel('g', su, {});
-  assert.ok(m.skipBuild);
-  assert.equal(m.missing.length, 0, 'the build stands in for the copy');
-  assert.equal(m.reqOff, false);
-  assert.match(c.stepsView('g', su, { at: 1 }, { name: 'R' }), /<label class="su-opt off">/);
-  assert.equal(c.stepsModel('g', su, { rebuild: true }).skipBuild, false, 'Build It Again needs the copy again');
-});
-
-test('the player\'s own build shows in the copy\'s box; one that failed holds Set Up', () => {
-  const c = context();
-  const su = copy({ own_build: '/install/Game' });
-  const view = (ns) => c.stepsView('g', su, ns, { name: 'Recomp', game: 'Game' });
-  assert.match(view({}), /Already built Recomp from your copy, outside the launcher\? Skip the build: <button type="button" data-ss="ownpick">Choose That Folder<\/button>/);
-  assert.match(view({ own: '/games/Recomp' }), /<div class="ss-box on">[^]*Your own build[^]*data-ss="owncopy"/);
-  const bad = { own: '/games/x', ownErr: 'That folder is empty.' };
-  assert.ok(c.stepsModel('g', su, bad).blocked);
-  assert.match(view(bad), /<div class="ss-box warn">[^]*That folder is empty\./);
-});
-
 test('the last step says what Set Up starts, in the developer\'s words', () => {
   const c = context();
   const su = copy({ copy: '/roms/G.iso', prepare_label: 'Building the game (10 minutes)', build_where: '/home/p/Games/Hop' });
@@ -149,8 +127,6 @@ test('a game whose setup step kept the copy builds again without it, on both scr
   assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { kept: true });
   // A copy picked anyway is used: the player chose it.
   assert.deepEqual({ ...(await c.stepsRun('g', { copy: '/roms/G.nup' }, null)) }, { copy: '/roms/G.nup' });
-  // A build that's already there still skips the build.
-  assert.equal(c.stepsModel('g', copy({ kept: true, prebuilt: '/install/G' }), {}).kept, false);
   const app = read('app.js'), tv = read('tv.js');
   assert.match(app, /if \(go\.kept\) return suBegin\('', true\);/);
   assert.match(tv, /if \(go\.kept\) return tsBegin\('', true\);/);

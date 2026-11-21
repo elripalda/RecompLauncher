@@ -2822,12 +2822,11 @@ mod mac_discovery_tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn mac_manual_setup_starts_the_selected_bundle() {
+    fn mac_picked_program_starts_the_selected_bundle() {
         let d = temp("manual-setup");
         let app = bundle(&d, "Engine");
         let g = crate::library::Installed { path: d.clone(), ..Default::default() };
-        let manual = crate::library::ManualSetup { exe: Some(PathBuf::from("My Game.app")), how: "none".into(), ..Default::default() };
-        let (exe, args) = crate::manual_plan(&g, &manual).unwrap().unwrap();
+        let (exe, args) = crate::own_plan(&g, Some(Path::new("My Game.app"))).unwrap().unwrap();
         assert_eq!(exe, app.join("Contents/MacOS/Engine"));
         assert!(args.is_empty());
     }

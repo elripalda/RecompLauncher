@@ -56,17 +56,15 @@ test('a game built from a copy that is gone says it plays without it, instead of
   const { copyNotNeeded, copyGoneText } = load(S);
   assert.equal(copyNotNeeded('hookshot'), true);
   assert.equal(copyGoneText('hookshot'), "Your copy isn't here anymore. Hookshot doesn't need it: it's already built.");
-  // Its copy still there, a game that isn't set up, or the player's own build: not this case.
+  // Its copy still there, or a game that isn't set up: not this case.
   S.setup.hookshot = Object.assign({}, built, { copy: 'D:/hookshot.nup' });
   assert.equal(copyNotNeeded('hookshot'), false);
   S.setup.hookshot = Object.assign({}, built, { status: { ready: false, reason: 'copy' } });
   assert.equal(copyNotNeeded('hookshot'), false);
-  S.setup.hookshot = Object.assign({}, built, { status: { ready: true, reason: 'own_build' } });
-  assert.equal(copyNotNeeded('hookshot'), false);
 });
 
 test('every copy row uses it: Before You Play, the Manage tab and Big Picture', () => {
-  assert.match(app, /d: st\.reason === 'own_build' \? t\('Your own build'\) : copyGoneText\(id\)/);
+  assert.match(app, /d: copyGoneText\(id\)/);
   // Manage tab: said, and picking a copy isn't the main button then.
   assert.match(app, /const gone = copyNotNeeded\(id\), have = su\.copy \|\| gone;\r?\n\s+const sub = su\.copy \? su\.copy : gone \? copyGoneText\(id\) : su\.needs;/);
   assert.match(app, /class="btn\$\{have \? '' : ' main'\}" data-act="setup"/);

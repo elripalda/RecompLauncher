@@ -36,16 +36,6 @@ async function runtimeFetch(id, ns, redraw) {
   catch (e) { ns.dlss = { failed: true }; }
   finally { off(); redraw(); }
 }
-// A build the player already has, anywhere (Use a Build You Already Have): its folder picked, and
-// used in place of building it again. True when it's set.
-async function useOwnBuild(id) {
-  const p = await pickFile({ title: t('The folder your build is in'), directory: true });
-  if (!p) return false;
-  await invoke('setup_use_build', { id, folder: typeof p === 'string' ? p : p.path });
-  S.setup[id] = await invoke('game_setup', { id });
-  await refreshState();
-  return true;
-}
 async function namedInputsAction(id, act, input, ns) {
   if (ns.busy) return;
   if (act === 'toggle-optional') { ns.extras = !ns.extras; return; }
@@ -55,8 +45,6 @@ async function namedInputsAction(id, act, input, ns) {
   try {
     const su = S.setup[id], row = namedInputRows(su).find((r) => r.id === input);
     if (act === 'run') return 'run';
-    if (act === 'prebuilt') { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
-    if (act === 'ownbuild') return (await useOwnBuild(id)) ? 'ready' : undefined;
     if (act === 'dlss-off' || act === 'dlss-on') {
       await invoke('dlss_set', { id, input, on: act === 'dlss-on' });
     } else if (act === 'dlss-retry') {

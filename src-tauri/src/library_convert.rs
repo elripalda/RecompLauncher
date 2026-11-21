@@ -6,11 +6,16 @@
 //! from three places: Set Up By Hand being on (`manual`), the Skip Easy Setup list in the
 //! settings (`ui.easy_skip`), and a program the player picked (`exe_rules` 255, which turned
 //! Easy Setup off for that game at every start).
+//!
+//! Format 3 (Beta 67): a game has two roads, Easy Setup or Skip Easy Setup. Set Up By Hand
+//! (`mode` "by_hand", `manual`) and a build the player pointed the launcher at (`build_dir`,
+//! `prebuilt`) are gone: those games are Skip Easy Setup, since the program the player runs knows
+//! where its build is.
 
 use serde_json::Value;
 
 /// The format this launcher writes.
-pub const FORMAT: u32 = 2;
+pub const FORMAT: u32 = 3;
 
 /// A program the player picked (`Installed::exe_rules`): the launcher never picks again over it.
 const PLAYER_PICK: u64 = u8::MAX as u64;
@@ -21,9 +26,35 @@ pub fn to_current(v: &mut Value) -> bool {
     if from >= FORMAT as u64 {
         return false;
     }
-    modes_from_old_fields(v);
+    if from < 2 {
+        modes_from_old_fields(v);
+    }
+    two_roads(v);
     v["format"] = FORMAT.into();
     true
+}
+
+/// Format 2 -> 3: hand setups and the player's own builds become Skip Easy Setup. A hand setup's
+/// program becomes the picked Game Executable; with none recorded the release's program runs.
+fn two_roads(v: &mut Value) {
+    let Some(games) = v.get_mut("installed").and_then(Value::as_object_mut) else { return };
+    for g in games.values_mut() {
+        let Some(g) = g.as_object_mut() else { continue };
+        let hand = g.remove("manual").filter(|m| !m.is_null());
+        let by_hand = g.get("mode").and_then(Value::as_str) == Some("by_hand");
+        let built_elsewhere = g.remove("build_dir").is_some_and(|d| !d.is_null());
+        let here = g.remove("prebuilt").and_then(|p| p.as_bool()).unwrap_or(false);
+        if !(by_hand || built_elsewhere || here) {
+            continue;
+        }
+        g.insert("mode".into(), "own".into());
+        if !by_hand {
+            continue;
+        }
+        let Some(exe) = hand.as_ref().and_then(|m| m.get("exe")).filter(|e| e.is_string()) else { continue };
+        g.insert("exe".into(), exe.clone());
+        g.insert("exe_rules".into(), PLAYER_PICK.into());
+    }
 }
 
 /// Format 1 -> 2: each installed game's mode, from the fields that said it before. The Skip Easy
@@ -73,10 +104,37 @@ mod tests {
     }
 
     #[test]
-    fn set_up_by_hand_becomes_its_mode() {
+    fn set_up_by_hand_becomes_skip_easy_setup() {
         let mut v = json!({ "installed": { "hopper": { "manual": { "how": "none" } } } });
         assert!(to_current(&mut v));
-        assert_eq!(mode(&v, "hopper").as_deref(), Some("by_hand"));
+        assert_eq!(mode(&v, "hopper").as_deref(), Some("own"));
+        assert!(v["installed"]["hopper"].get("manual").is_none());
+    }
+
+    #[test]
+    fn a_hand_setups_program_becomes_the_picked_game_executable() {
+        let mut v = json!({ "format": 2, "installed": { "hopper": { "mode": "by_hand", "exe": "hopper.exe", "manual": { "exe": "bin/real.exe", "how": "arg" } } } });
+        to_current(&mut v);
+        assert_eq!(v["installed"]["hopper"]["exe"], json!("bin/real.exe"));
+        assert_eq!(v["installed"]["hopper"]["exe_rules"], json!(PLAYER_PICK));
+    }
+
+    #[test]
+    fn a_hand_setup_kept_for_later_is_dropped_and_the_game_stays_easy() {
+        let mut v = json!({ "format": 2, "installed": { "hopper": { "manual": { "exe": "x.exe" } } } });
+        to_current(&mut v);
+        assert_eq!(mode(&v, "hopper"), None);
+        assert!(v["installed"]["hopper"].get("manual").is_none());
+    }
+
+    #[test]
+    fn a_build_the_player_pointed_at_becomes_skip_easy_setup() {
+        let mut v = json!({ "format": 2, "installed": { "hopper": { "build_dir": "/builds/hopper" }, "sky": { "prebuilt": true } } });
+        to_current(&mut v);
+        assert_eq!(mode(&v, "hopper").as_deref(), Some("own"));
+        assert_eq!(mode(&v, "sky").as_deref(), Some("own"));
+        assert!(v["installed"]["hopper"].get("build_dir").is_none());
+        assert!(v["installed"]["sky"].get("prebuilt").is_none());
     }
 
     #[test]
@@ -134,7 +192,7 @@ mod tests {
         });
         to_current(&mut v);
         let game = |id: &str| serde_json::from_value::<crate::library::Installed>(v["installed"][id].clone()).unwrap();
-        assert!(game("hopper").hand().is_some());
+        assert!(game("hopper").player_sets_up(false));
         assert!(game("skyracer").player_sets_up(false));
     }
 }
