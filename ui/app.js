@@ -2816,7 +2816,7 @@ function gameBody(a) {
     else if (!r.list.length) body = `<div class="stack"><div class="card"><p style="margin:0">${esc(t('No releases yet.'))}</p></div></div>`;
     else {
       const latest = latestRel(a, r.list);
-      body = `<div class="stack">${inst && inst.pinned ? `<div class="card pinned"><div class="set-row"><div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div><button type="button" class="btn main" data-act="install" data-id="${esc(id)}">${esc(t('Go to the newest'))}</button></div></div>` : ''}
+      body = `<div class="stack">${inst && inst.pinned ? pinnedCard(id, inst, r.list, latest) : ''}
       <div class="card rels">${r.list.filter((x) => !x.draft).slice(0, 10).map((x, n) => relDrawer(id, inst, r.list, x, n, latest)).join('')}</div></div>`;
     }
   } else if (S.tab === 'saves') {
@@ -2931,6 +2931,17 @@ function relState(id, inst, list, x) {
 }
 // The release the game page's Latest version names (the store's version), so the pill and that
 // line agree; when no tag matches it, the newest release that isn't a pre-release, as GitHub does.
+// A version the player picked: updates wait. Its button goes to the version the store let out
+// (`latest`, by name), so when that's older than theirs (a nightly past the last release) it says
+// it goes back, not to the newest (#393).
+function pinnedCard(id, inst, list, latest) {
+  const at = (tag) => list.findIndex((x) => relKey(x.tag_name) === relKey(tag));
+  const back = !!latest && at(inst.tag) >= 0 && at(inst.tag) < at(latest);
+  const label = back ? tf('Go Back to {version}', { version: latest }) : t('Go to the newest');
+  const go = latest ? `data-act="version" data-tag="${esc(latest)}"` : 'data-act="install"';
+  const head = `<div class="k"><b>${esc(tf('You\'re on {tag}, picked by you', { tag: inst.tag }))}</b><span>${esc(t('Updates wait until you go back to the newest version.'))}</span></div>`;
+  return `<div class="card pinned"><div class="set-row">${head}<button type="button" class="btn main" ${go} data-id="${esc(id)}">${esc(label)}</button></div></div>`;
+}
 function latestRel(a, list) {
   const want = relKey(a.version);
   const named = want ? list.find((x) => relKey(x.tag_name) === want) : null;
@@ -5658,7 +5669,7 @@ async function checkUpdates(loud) {
   if (S.view === 'downloads') render(true);
   // Never on its own to a version the site found crashing for a lot of players.
   const auto = Object.keys(S.updates).filter((id) => autoUpdates(id) && !S.running.has(id) && !S.jobs[id] && !(S.paused || {})[id] && !badVersion(byId(id), S.updates[id]));
-  for (const id of auto) startInstall(id);
+  for (const id of auto) updateGame(id);
   if (auto.length) toast(updatingLine(auto));
   const waiting = Object.keys(S.updates).filter((k) => !auto.includes(k));
   if (waiting.length) toast(readyLine(waiting));
@@ -6674,8 +6685,10 @@ async function startInstall(id, dir, tag, anyway) {
     if (!(await confirmPack(id, pack))) return;
     (S.packFrom = S.packFrom || {})[id] = from;
   }
+  // The update on offer (no version given, or that one): asked and said about as an update.
+  const updating = !!(S.library[id] && S.updates[id] && (!tag || tag === S.updates[id]));
   // An update of a recomp with several games: all of them get it.
-  if (S.library[id] && hasGames(id) && S.updates[id] && !tag) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
+  if (updating && hasGames(id)) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
   // Asked where it goes: the first time, with more than one library, or always when the player
   // turned on Ask Where to Install (Easy Setup games too).
   if (dir === undefined && !S.library[id] && (!S.settings.asked_location || (S.settings.library_dirs || []).length || (S.settings.ui || {}).ask_where)) {
@@ -6688,7 +6701,7 @@ async function startInstall(id, dir, tag, anyway) {
   // Easy Setup's install asks for nothing here: the player's copy is asked for on the Easy Setup screen,
   // which opens once the download is done (a bare file picker over the page said nothing of why).
   // An update the site found crashing for a lot of players: asked once, the player decides.
-  const badNext = S.library[id] && !tag && !anyway && S.updates[id] && badVersion(byId(id), S.updates[id]);
+  const badNext = updating && !anyway && badVersion(byId(id), S.updates[id]);
   if (badNext) {
     const v = await ask(t('This Update Is Crashing a Lot'), `<p>${esc(badNext.note || tf('{version} is crashing for a lot of players. The version you have keeps working.', { version: S.updates[id] }))}</p>`,
       [{ label: t('Keep My Version'), icon: 'chevL', v: null, main: true }, { label: t('Update Anyway'), icon: 'down', v: 'go' }]);
@@ -6709,6 +6722,11 @@ async function startInstall(id, dir, tag, anyway) {
   render(true);
   dlArgs(id, { id, dir: dir || null, tag: tag || null });
   try { await invoke('install', { id, dir: dir || null, tag: tag || null }); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
+}
+// An update to the version the update check found (S.updates), by name: an install with no
+// version goes to the one the store let out, which isn't always it (#393).
+function updateGame(id) {
+  return startInstall(id, undefined, S.updates[parentId(id)] || undefined);
 }
 // What each download was started with, so Resume carries on with the same version and folder.
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
@@ -6732,7 +6750,12 @@ const BUILD_KINDS = [N_('Flatpak'), N_('AppImage'), N_('Linux Folder'), N_('Inst
 const buildList = (msg) => String(msg).split('|').slice(1).map((s) => { const best = s.startsWith('*'); const [name, label] = s.replace(/^\*/, '').split('\t'); return { name, label: label || '', best }; });
 function pickBuild(id, builds, current) {
   const a = byId(id) || { name: id };
-  const go = (file) => { S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() }; render(true); dlArgs(id, { id, dir: null, tag: null, file }); invoke('install', { id, dir: null, tag: null, file }).catch((e) => { delete S.jobs[id]; fail(e); render(true); }); };
+  // The same version in another build (Change Build), or the first install's own version and
+  // folder: with no version, the install would go to the one the store let out (#393).
+  const was = (S.dlArgs || {})[id] || {};
+  const tag = S.library[id] ? S.library[id].tag || null : was.tag || null;
+  const dir = S.library[id] ? null : was.dir || null;
+  const go = (file) => { S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() }; render(true); dlArgs(id, { id, dir, tag, file }); invoke('install', { id, dir, tag, file }).catch((e) => { delete S.jobs[id]; fail(e); render(true); }); };
   if (window.tvPickBuild && window.tvPickBuild(id, builds, current, go)) return;
   // Kinds of build to choose from (a portable zip, an installer): each shows its kind, and the usual
   // one is marked. Builds of one kind (one per region): just their names, none suggested.
@@ -8887,7 +8910,7 @@ async function act(el, e) {
     case 'update-all': {
       // Every game with an update, one after another (downloads wait their turn).
       const ids = Object.keys(S.updates).filter((x) => S.library[x] && !S.running.has(x) && !S.jobs[x] && !(S.paused || {})[x]);
-      for (const x of ids) startInstall(x);
+      for (const x of ids) updateGame(x);
       if (ids.length) toast(updatingLine(ids));
       return;
     }
@@ -9023,12 +9046,13 @@ async function act(el, e) {
     case 'readme': { S.readmeOpen = !S.readmeOpen; const c = el.closest('.rdm'); if (c) { c.classList.toggle('open', S.readmeOpen); el.setAttribute('aria-expanded', String(S.readmeOpen)); } return; }
     case 'run-say': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
     case 'ver-go': if (S.view === 'game') return switchVersion(id); closeMenu(); return go('game', id);
-    case 'install': return startInstall(id);
+    // An Update button too (the game's page, Downloads): the version on offer.
+    case 'install': return S.library[parentId(id)] && S.updates[parentId(id)] ? updateGame(id) : startInstall(id);
     case 'reinstall-new': return startInstall(id, null, null, true);
     case 'goback': return startInstall(id, undefined, el.dataset.tag);
     case 'wine-tools': return wineTools();
     case 'have-it': return haveIt(id);
-    case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) startInstall(u); return;
+    case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) updateGame(u); return;
     case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; render(true); } return invoke('cancel', { id });
     case 'dl-pause': return invoke('pause', { id });
     case 'dl-resume': return resumeDl(id);
