@@ -9697,25 +9697,27 @@ fn portable_remap(dir: &Path) {
     if was.len() == 2 && was != now {
         let file = dir.join("library.json");
         if let Some(mut v) = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
-            fn walk(v: &mut Value, was: &str, now: &str) {
-                match v {
-                    Value::String(s) => {
-                        if s.len() >= 2 && s[..2].eq_ignore_ascii_case(was) && (s.len() == 2 || matches!(s.as_bytes()[2], b'\\' | b'/')) {
-                            *s = format!("{now}{}", &s[2..]);
-                        }
-                    }
-                    Value::Array(a) => a.iter_mut().for_each(|x| walk(x, was, now)),
-                    Value::Object(o) => o.values_mut().for_each(|x| walk(x, was, now)),
-                    _ => {}
-                }
-            }
-            walk(&mut v, &was, &now);
+            remap_drive(&mut v, &was, &now);
             if let Ok(b) = serde_json::to_vec_pretty(&v) {
                 let _ = std::fs::write(&file, b);
             }
         }
     }
     let _ = std::fs::write(&mark, &now);
+}
+
+fn remap_drive(v: &mut Value, was: &str, now: &str) {
+    match v {
+        Value::String(s) => {
+            // Game names and settings are strings too; two bytes can split a Unicode character.
+            if s.get(..2).is_some_and(|drive| drive.eq_ignore_ascii_case(was)) && (s.len() == 2 || matches!(s.as_bytes()[2], b'\\' | b'/')) {
+                *s = format!("{now}{}", &s[2..]);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| remap_drive(x, was, now)),
+        Value::Object(o) => o.values_mut().for_each(|x| remap_drive(x, was, now)),
+        _ => {}
+    }
 }
 
 /// Whether this launcher is portable, and where it keeps its data, for Settings.
@@ -10432,6 +10434,25 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_drive_remap_preserves_unicode_labels() {
+        let mut library = json!({
+            "installed": {"game": {"name": "ゼルダの伝説", "path": "E:\\Games\\ゼルダ", "exe": "遊ぶ.exe"}},
+            "settings": {"ui": {"label": "🎮 Library", "note": "Aé", "choices": ["界", "é", "", "E", null]}}
+        });
+        let mut expected = library.clone();
+        expected["installed"]["game"]["path"] = json!("F:\\Games\\ゼルダ");
+        super::remap_drive(&mut library, "E:", "F:");
+        assert_eq!(library, expected);
+    }
+
+    #[test]
+    fn portable_drive_remap_only_changes_matching_drive_paths() {
+        let mut paths = json!(["E:", "e:\\Games\\Game.exe", "E:/Games/data", "D:\\Games", "E:relative", "E::label", "Elsewhere", {"folder": "E:/nested", "number": 2}]);
+        super::remap_drive(&mut paths, "E:", "F:");
+        assert_eq!(paths, json!(["F:", "F:\\Games\\Game.exe", "F:/Games/data", "D:\\Games", "E:relative", "E::label", "Elsewhere", {"folder": "F:/nested", "number": 2}]));
+    }
+
 
     #[test]
     fn the_catalogs_xbox_360_title_id_is_used_first_and_in_capitals() {
