@@ -2365,10 +2365,13 @@
       if (!TS.id) return;
       if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
     }
+    // setup_copy turns away a game with named inputs too: those set up with the copy instead.
+    const named = ((S.setup[TS.id] || {}).inputs || []).length > 0;
     // No path: built again from what it kept, so there's no copy to read or check.
-    Object.assign(TS, { stage: 'run', path, kept: !path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    Object.assign(TS, { stage: 'run', path, kept: !path && !named, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
-    try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
+    const run = named ? invoke('setup_inputs_run', { id: TS.id, copy: path || null }) : invoke('setup_copy', { id: TS.id, path });
+    try { await run; } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
   const TS_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
   function tsPump() {

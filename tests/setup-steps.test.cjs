@@ -144,3 +144,32 @@ test('a game whose setup step kept the copy builds again without it, on both scr
   assert.match(tv, /const order = \(TS\.kept \? \[\] : \['read', 'verify'\]\)/);
   assert.match(app, /\/\^NEED_REBUILD\\\|kept\$\/\.test\([^\n]*\) S\.setupNote = null;/);
 });
+
+// #374: a game with its copy (game) and named inputs (dlc, nvidia.dlss) both.
+test('Set Up hands over the copy in its box when the game has named inputs too', async () => {
+  const c = context();
+  c.S.setup.g = copy({ inputs: [dlc('dlc')] });
+  assert.deepEqual({ ...(await c.stepsRun('g', { copy: '/roms/AoE.nsp' }, null)) }, { copy: '/roms/AoE.nsp' });
+});
+
+test('a copy found in the folders is handed over too when the game has named inputs', async () => {
+  const c = context({ g: { path: '/roms/AoE.nsp' } });
+  c.S.setup.g = copy({ inputs: [dlc('dlc')] });
+  assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { copy: '/roms/AoE.nsp' });
+});
+
+test('named inputs without a game copy still start setup_inputs_run alone', async () => {
+  const c = context();
+  c.S.setup.g = { needs: 'x', kind: '', inputs: [disc(1, '/roms/D1.iso')], prepare_options: [] };
+  assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { inputs: true });
+});
+
+test('both screens set a game with named inputs up with setup_inputs_run and the copy', () => {
+  for (const [src, who] of [[read('app.js'), 'SU'], [read('tv.js'), 'TS']]) {
+    const named = `const named = ((S.setup[${who}.id] || {}).inputs || []).length > 0;`;
+    const run = `const run = named ? invoke('setup_inputs_run', { id: ${who}.id, copy: path || null }) : invoke('setup_copy', { id: ${who}.id, path });`;
+    assert.ok(src.includes(named), `${who}: knows the game has named inputs`);
+    assert.ok(src.includes(run), `${who}: starts setup_inputs_run with the copy`);
+    assert.match(src, /kept: !path && !named/);
+  }
+});

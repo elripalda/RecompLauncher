@@ -273,7 +273,8 @@ async function stepsDrop(id, path, ns) {
 }
 
 // Set Up: what starts, by what the screen has. { ready: text } when nothing has to run,
-// { copy: path } for setup_copy, { kept: true } for setup_copy without the copy (built again from
+// { copy: path } for the copy in its box (setup_copy, or setup_inputs_run with it when the game
+// has named inputs too), { kept: true } for setup_copy without the copy (built again from
 // what it kept), { inputs: true } for setup_inputs_run, or nothing when it
 // couldn't (the reason is in ns). saving: the options' save still on its way, which the backend
 // checks the required ones against.
@@ -296,8 +297,9 @@ async function stepsRun(id, ns, saving) {
     } finally { ns.busy = false; }
   }
   await saving;
-  if ((su.inputs || []).length) return { inputs: true };
+  // The copy first, named inputs or not: it's only on this screen until Set Up (#374).
   const game = m.own.find((r) => r.legacy && r.id === 'game');
   if (game && game.path) return { copy: game.path };
+  if ((su.inputs || []).length) return { inputs: true };
   return m.kept ? { kept: true } : null;
 }
