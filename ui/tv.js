@@ -460,10 +460,10 @@
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
-      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
+      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Easy Setup')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
-      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Install') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
+      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
     }
   }
 
@@ -572,7 +572,7 @@
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
-        if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
+        if (easyNotReady(id)) return { label: t('Easy Setup'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
         return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', play: true, run: () => playGame(id), sub: updateBuildDue(id) ? t('Needs a new build after the update') : '' };
       }
       case 'settingup': {

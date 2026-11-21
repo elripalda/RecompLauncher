@@ -1236,11 +1236,11 @@ function actions(a, size = 'big') {
     case 'busy': return progress(a.id) + (canPause(a.id) ? `<button type="button" class="${sq}" data-act="dl-pause" data-id="${id}" aria-label="${esc(t('Pause'))}" title="${esc(t('Pause'))}">${PAUSE}</button>` : '') + `<button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>`;
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
-    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main', 'setup', esc(t('Set up')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY))}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY)) + more;
+    case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main', 'setup', esc(t('Easy Setup')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY))}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY)) + more;
     case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy.
-    default: return (isSaved(a.id) ? (turnkey(a) ? b('main easy', 'install', esc(t('Easy Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DISC_S.replace(/14/g, '18')) : b('main', 'install', esc(t('Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DOWN)) : b('main', 'addlib', esc(t('Add to Library')), PLUS)) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + (size === 'big' && !a.custom ? b('glass', 'have-it', esc(t('Locate Installed')), FOLDER_FIND) : '') + more;
+    default: return (isSaved(a.id) ? (turnkey(a) ? b('main easy', 'install', esc(t('Easy Setup')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DISC_S.replace(/14/g, '18')) : b('main', 'install', esc(t('Install')) + (a.size ? ` <span style="opacity:.7;font-weight:600">· ${esc(a.size)}</span>` : ''), DOWN)) : b('main', 'addlib', esc(t('Add to Library')), PLUS)) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + (size === 'big' && !a.custom ? b('glass', 'have-it', esc(t('Locate Installed')), FOLDER_FIND) : '') + more;
   }
 }
 
@@ -3545,7 +3545,7 @@ function suDraw() {
       <div class="su-bar"><i style="width:${barW}%"></i></div>`;
   } else if (SU.stage === 'update') {
     const picks = [su.update_file ? `<button type="button" class="pick" data-su="ufile"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5z"/><path d="M14 3v4.5h4.5"/></svg><b>${esc(t('Update File'))}</b><span>${esc(t('The file, as it came'))}</span></button>` : '', su.update_folder ? `<button type="button" class="pick" data-su="ufolder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Update Folder'))}</b><span>${esc(t('A folder with its files'))}</span></button>` : ''].filter(Boolean);
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')} ${esc(t('It goes in with your copy, once.'))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')} ${esc(t('It goes in with your copy, once.'))}</p>
       ${SU.uerr ? `<p class="su-err">${esc(t(SU.uerr))}</p>` : ''}
       ${pickChoices(picks)}
       ${su.update_optional ? `<button type="button" class="btn" data-su="uskip" style="margin-top:12px">${esc(t('Skip for Now'))}</button>` : ''}`;
@@ -3556,22 +3556,22 @@ function suDraw() {
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="play">${PLAY}${esc(t('Play'))}</button><button type="button" class="btn big" data-su="settings">${esc(t('Settings'))}</button></div>`;
   } else if (SU.stage === 'wrong') {
     const w = SU.wrong || {};
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('This Looks Like Another Copy'))}</h2><p class="su-err">${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('This Looks Like Another Copy'))}</h2><p class="su-err">${esc(tf('Your copy reads as {found}. This recomp is made for {want}.', { found: w.found || '', want: (w.want || []).join(', ') }))}</p>
       <p>${esc(t('Another region or version of the game may not work with it.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="anyway">${esc(t('Use It Anyway'))}</button></div>`;
   } else if (SU.stage === 'convert') {
     const c = SU.conv || {}, pc = c.total ? Math.min(100, Math.round((c.done / c.total) * 100)) : 0;
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Making a Plain Copy'))}</h2><p style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.dest || '')}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('Making a Plain Copy'))}</h2><p style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.dest || '')}</p>
       <p class="muted su-conv-n">${esc(tf('{done} of {total}', { done: fmtB(c.done || 0), total: fmtB(c.total || 0) }))}</p>
       <div class="su-bar"><i style="width:${pc}%"></i></div>
       <p class="muted">${esc(t('Your own file stays as it is. Setup goes on with the plain copy when it\'s done.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn big" data-su="convert-stop">${esc(t('Stop'))}</button></div>`;
   } else if (/^CONVERT\|/.test(SU.err || '')) {
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('Make a Plain Copy?'))}</h2><p>${esc(t(SU.err.replace(/^CONVERT\|/, '')))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('Make a Plain Copy?'))}</h2><p>${esc(t(SU.err.replace(/^CONVERT\|/, '')))}</p>
       <p class="muted">${esc(t('The launcher can make a plain copy beside it and set the game up with that. Your own file stays as it is.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="convert">${esc(t('Make a Plain Copy'))}</button><button type="button" class="btn big" data-su="again">${esc(t('Try another copy'))}</button></div>`;
   } else {
-    right = `<span class="kick">${esc(t('Set up'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>
       ${S.library[SU.id] ? `<p class="su-hand">${esc(t('Still not working?'))} <button type="button" class="link-btn" data-su="manual">${esc(t('Set it up by hand'))}</button></p>` : ''}`;
   }
@@ -4508,7 +4508,7 @@ function devTab(a) {
     ${r.items.length ? `<div class="card dev-list">${r.items.map((x) => `<div class="dev-item ${x.level}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DEV_MARK[x.level]}</svg><div><b>${esc(x.text)}</b>${x.detail ? `<span>${esc(x.detail)}</span>` : ''}</div></div>`).join('')}</div>` : ''}
     <div class="card"><h3 style="margin-bottom:8px">${esc(t('Try it like a player'))}</h3>
       <p class="muted" style="margin:0 0 14px">${esc(t('Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.'))}</p>
-      <div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(t('Set up'))}</button><button type="button" class="btn" data-act="tab" data-tab="settings"${S.setup[id] && S.setup[id] !== 'loading' ? '' : ' disabled'}>${esc(t('Settings'))}</button><button type="button" class="btn" data-act="url" data-url="https://recompstore.com/hub?tab=docs">${esc(t('The developer guide'))}</button></div></div>
+      <div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(t('Easy Setup'))}</button><button type="button" class="btn" data-act="tab" data-tab="settings"${S.setup[id] && S.setup[id] !== 'loading' ? '' : ' disabled'}>${esc(t('Settings'))}</button><button type="button" class="btn" data-act="url" data-url="https://recompstore.com/hub?tab=docs">${esc(t('The developer guide'))}</button></div></div>
     <p class="muted dev-path">${esc(g ? g.path : '')}</p>
   </div>`;
 }
@@ -4670,7 +4670,7 @@ function pageSettings() {
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
         ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
-        + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Install too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
+        + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Setup too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
           + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup on its setup window, or the Easy Setup switch in its Manage tab.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
         + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
@@ -4693,7 +4693,7 @@ function pageSettings() {
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
-          + row(t('Auto-Install'), t('When an Easy Install game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
+          + row(t('Auto-Install'), t('When an Easy Setup game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
@@ -6340,7 +6340,7 @@ function gameMenu(id) {
   const first = st === 'running' ? { act: 'stop', id, label: t('Close game'), icon: 'stop' }
     : st === 'settingup' ? { act: 'setup-cancel', id, label: t('Cancel Setup'), icon: 'stop' }
     : g ? null
-      : st === 'get' ? (isSaved(id) ? { act: 'install', id, label: x && turnkey(x) ? t('Easy Install') : t('Install'), icon: x && turnkey(x) ? 'disc' : 'down' } : { act: 'addlib', id, label: t('Add to Library'), icon: 'plus' }) : null;
+      : st === 'get' ? (isSaved(id) ? { act: 'install', id, label: x && turnkey(x) ? t('Easy Setup') : t('Install'), icon: x && turnkey(x) ? 'disc' : 'down' } : { act: 'addlib', id, label: t('Add to Library'), icon: 'plus' }) : null;
   const pinned = pins().includes(id);
   // Before it's installed: its project page, under the rest. Reporting a problem waits until it's
   // installed (Troubleshoot): there's nothing to report about a game the player hasn't run.
@@ -6621,7 +6621,7 @@ async function startInstall(id, dir, tag, anyway) {
   // An update of a recomp with several games: all of them get it.
   if (S.library[id] && hasGames(id) && S.updates[id] && !tag) toast(tf('Updating {name} updates all {n} of its games.', { name: S.library[id].name, n: S.gameSets[id].games.length }));
   // Asked where it goes: the first time, with more than one library, or always when the player
-  // turned on Ask Where to Install (Easy Install too).
+  // turned on Ask Where to Install (Easy Setup games too).
   if (dir === undefined && !S.library[id] && (!S.settings.asked_location || (S.settings.library_dirs || []).length || (S.settings.ui || {}).ask_where)) {
     await loadLibs();
     // Big Picture asks too, as a sheet the controller can answer.
@@ -6629,7 +6629,7 @@ async function startInstall(id, dir, tag, anyway) {
     return locationModal(id);
   }
   if (S.running.has(id)) return toast(t('Close the game first.'), true);
-  // Easy Install asks for nothing here: the player's copy is asked for on the Easy Setup screen,
+  // Easy Setup's install asks for nothing here: the player's copy is asked for on the Easy Setup screen,
   // which opens once the download is done (a bare file picker over the page said nothing of why).
   // An update the site found crashing for a lot of players: asked once, the player decides.
   const badNext = S.library[id] && !tag && !anyway && S.updates[id] && badVersion(byId(id), S.updates[id]);

@@ -76,7 +76,7 @@ test('files from before get no Use Them Again line', () => {
   assert.doesNotMatch(c.stepsView('h', su({ inputs_ready: false }), {}, { name: 'H' }), /Set up before with|data-ss="relink"/);
 });
 
-test('players can be asked where each game goes, Easy Install too', () => {
+test('players can be asked where each game goes, Easy Setup games too', () => {
   assert.match(fn(app, 'startInstall'), /\|\| \(S\.settings\.ui \|\| \{\}\)\.ask_where\)\) \{/);
   assert.match(app, /sw\('ask_where', ui\.ask_where, t\('Ask Where to Install'\), 'ui-toggle'\)/);
   assert.match(fn(app, 'locationModal'), /data-ask-where/);
