@@ -995,7 +995,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-scroll{gap:20px;padding-right:18px}
 .ni-tv.ss .ss-cap{font-size:17px}
 .ni-tv.ss .ss-cap i{font-size:18px}
-.ni-tv.ss .ss-box{height:196px;grid-template-columns:68px minmax(0,1fr);grid-template-rows:auto 56px;gap:18px 26px;padding:0 28px;border-radius:24px}
+.ni-tv.ss .ss-box{min-height:196px;grid-template-columns:68px minmax(0,1fr);grid-template-rows:auto 56px;gap:18px 26px;padding:20px 28px;border-radius:24px}
 .ni-tv.ss .ss-ic{width:68px;height:68px}
 .ni-tv.ss .ss-ic svg{width:30px;height:30px}
 .ni-tv.ss .ss-box .k b{font-size:28px}

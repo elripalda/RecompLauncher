@@ -33,6 +33,20 @@ test('a copy found in the folders fills its box, tagged, and Set Up can start', 
   assert.match(html, /Game\.iso/);
 });
 
+test('the copy box is titled with the game it is based on', () => {
+  const c = context();
+  const html = c.stepsView('g', copy(), {}, { name: 'Recomp', game: 'Game' });
+  assert.match(html, /<div class="k"><b>Game<\/b><span title="Your disc">Your disc<\/span>/);
+});
+
+test('a single named input\'s label is said once in its box, under the game\'s name', () => {
+  const c = context();
+  const jar = { id: 'jar', label: 'Your copy: Game.jar', role: 'game', file: true, active: true, path: null, extensions: ['jar'] };
+  const su = { kind: '', inputs: [jar], prepare_options: [] };
+  const html = c.stepsView('g', su, {}, { name: 'Recomp', game: 'Game' });
+  assert.match(html, /<div class="k"><b>Game<\/b><span title="Your copy: Game\.jar">Your copy: Game\.jar<\/span>/);
+});
+
 test('the copy box keeps the same buttons empty or filled', () => {
   const c = context();
   const btns = (html) => html.match(/data-ss="(file|folder)"/g).join();
