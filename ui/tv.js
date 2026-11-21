@@ -1180,7 +1180,7 @@
     // Recently installed, with how the store checked each one in the same pill as the desktop.
     // A opens the game.
     if (!S.dlHist && typeof loadDlHist === 'function') loadDlHist();
-    const done = (S.dlHist || []).filter((h) => h.tag).slice(0, 6).map((h) => {
+    const done = latestPerGame((S.dlHist || []).filter((h) => h.tag)).slice(0, 6).map((h) => {
       const info = scanInfo(h);
       if (!info) return '';
       const a = libAppOf(h.id);

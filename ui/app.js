@@ -4295,6 +4295,38 @@ function scanPill(h) {
   }
   return `<span class="scan-pill ${info.cls}" data-scan="${esc(key)}" title="${esc(t(SCAN_TIP))}"><i>${info.ic}</i>${esc(info.text)}</span>`;
 }
+// A Completed row's way to its patch notes: a quiet "i", so the list stays calm.
+const INFO_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg>';
+// Each game's newest download only (the history is newest first), like Steam: installing the same
+// game three times is one row. The totals and the History tab still count every one.
+function latestPerGame(hist) {
+  const seen = new Set();
+  return hist.filter((h) => {
+    if (seen.has(h.id)) return false;
+    seen.add(h.id);
+    return true;
+  });
+}
+// The day a download finished, for Recent's day headers: today, yesterday, else the date.
+// Calendar days, so last night at 23:50 is yesterday, not today.
+function dayOf(ts) {
+  const d = new Date(ts * 1000), now = new Date();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return t('today');
+  if (d.toDateString() === yesterday.toDateString()) return t('yesterday');
+  const year = d.getFullYear() === now.getFullYear() ? undefined : 'numeric';
+  return d.toLocaleDateString(curLocale(), { year, month: 'short', day: 'numeric' });
+}
+const clockOf = (ts) => new Date(ts * 1000).toLocaleTimeString(curLocale(), timeOpts({ hour: 'numeric', minute: '2-digit' }));
+// What a finished download did, in a few words.
+function didWhat(h) {
+  if (!h.update) return tf('Installed {tag}', { tag: h.tag });
+  if (h.from) return tf('Updated {from} → {to}', { from: h.from, to: h.tag });
+  return tf('Updated to {tag}', { tag: h.tag });
+}
+// Downloads, one page: the totals as one line, what's downloading (the one that's moving on top,
+// then every one waiting), the game updates that are ready, what didn't finish, and Recent. The
+// launcher's own update isn't here: it has its pill in the title bar.
 function pageDownloads() {
   if (!S.dlHist) loadDlHist();
   const hist = S.dlHist || [];
@@ -4306,14 +4338,9 @@ function pageDownloads() {
     return a.hero ? pic(thumbOf(a.hero, w), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>'; };
   const total = hist.reduce((n, h) => n + (h.size || 0), 0), secs = hist.reduce((n, h) => n + (h.secs || 0), 0);
   const avg = secs ? total / secs : 0;
-  const nInst = gameCount(libInstalls().filter((g) => !g.local).map(libApp));
-  const disk = libInstalls().reduce((n, g) => n + (g.size || 0), 0);
-  const stats = [
-    [t('Downloaded'), fmtB(total) || '0 MB', tn(hist.length, '1 download', '{n} downloads')],
-    [t('In your library'), tn(nInst, '1 game', '{n} games'), fmtB(disk) ? tf('{size} downloaded', { size: fmtB(disk) }) : ''],
-    [t('Updates installed'), fmtNum(hist.filter((h) => h.update).length), ups.length ? tn(ups.length, '1 more ready', '{n} more ready') : t('All up to date')],
-    [t('Average speed'), avg ? tf('{speed}/s', { speed: fmtB(avg) }) : '—', hist[0] ? tf('Last one {when}', { when: ago(hist[0].when) }) : ''],
-  ];
+  const totals = [tf('{size} downloaded', { size: fmtB(total) || '0 MB' }), tn(hist.length, '1 download', '{n} downloads')];
+  if (avg) totals.push(tf('{speed}/s average', { speed: fmtB(avg) }));
+  totals.push(tn(hist.filter((h) => h.update).length, '1 update installed', '{n} updates installed'));
   // The one at the top: the download that's moving, else the first one there is.
   const lead = act.find((id) => S.jobs[id] && S.jobs[id].phase !== 'queued') || act[0];
   const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New option'); };
@@ -4327,8 +4354,6 @@ function pageDownloads() {
         <h2>${esc(a.name)}</h2>${progress(lead)}<div class="acts">${jobBtns(lead)}</div></div>
       <div class="dl-graph"><svg viewBox="0 0 300 96" preserveAspectRatio="none" data-dl-graph="${esc(lead)}" aria-hidden="true">${dlGraph(lead)}</svg>
         <div class="dl-gstats" data-dl-gstat="${esc(lead)}">${gs.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div></div></section>`; })() : '';
-  // RecompLauncher's own update: up top, where it's seen first.
-  const self = S.launcherUpd ? `<section class="dl-self"><img src="img/mark.svg" alt=""><div class="mid"><b>${esc(tf('RecompLauncher {version} is ready', { version: verName(S.launcherUpd.version) }))}</b><span>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</span></div><button type="button" class="btn main" data-act="self-update">${DOWN}${esc(t('Update now'))}</button></section>` : '';
   const queue = act.filter((id) => id !== lead).map((id) => { const a = appOf(id);
     return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b>${progress(id)}</div><span class="tag cy">${esc(kindTag(id))}</span><span class="acts">${jobBtns(id, true)}</span></div>`; }).join('');
   const upRows = ups.map((id) => { const a = appOf(id);
@@ -4336,90 +4361,50 @@ function pageDownloads() {
     return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span>${scanPill({ id, tag: S.updates[id], update: true })}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
   const failRows = fails.map((r) => { const a = appOf(r.id);
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
+  // Recent: each game once, with its newest install or update, under the day it happened. Its
+  // older ones fold under it, so nothing the old History tab listed is lost. Clearing only hides
+  // what's listed; the totals above stay.
   const ui = S.settings.ui || {};
-  const shown = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
-  const histRows = shown.slice(0, 40).map((h) => { const a = appOf(h.id); const inst = S.library[h.id];
-    // The row opens the game's page; Play is its own button.
-    return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}</span>${scanPill(h)}</span></div>
-      <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(agoCap(h.when))}</span>
-      ${inst ? `<button type="button" class="btn sm dl-play" data-act="play" data-id="${esc(h.id)}">${PLAY}${esc(t('Play'))}</button>` : '<span class="dl-play" aria-hidden="true"></span>'}</div>`; }).join('');
+  const kept = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
+  const shown = latestPerGame(kept).slice(0, 40);
+  S.dlOpen = S.dlOpen || new Set();
+  const recentRow = (h) => {
+    const a = appOf(h.id), inst = S.library[h.id];
+    const earlier = kept.filter((x) => x.id === h.id).slice(1);
+    const open = S.dlOpen.has(h.id);
+    // Patch Notes opens the game's Updates tab, where the newest release's notes start open. A
+    // local build has no releases, so no button (its space keeps rows lined up).
+    const hasNotes = !!(byId(h.id) || {}).repo && !(inst && inst.local);
+    const notes = hasNotes ? `<button type="button" class="dl-notes" data-act="upd-game" data-id="${esc(h.id)}" aria-label="${esc(t('Patch Notes'))}" title="${esc(t('Patch Notes'))}">${INFO_I}</button>` : '<span class="dl-notes" aria-hidden="true"></span>';
+    const more = earlier.length ? `<button type="button" class="dl-earlier-btn" data-act="dl-earlier" data-id="${esc(h.id)}" aria-expanded="${open}">${esc(tn(earlier.length, '1 earlier download', '{n} earlier downloads'))}${CHEV_D}</button>` : '';
+    const link = byId(h.id) || inst ? ` link" data-act="open" data-id="${esc(h.id)}` : '';
+    const row = `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(didWhat(h))}</span>${scanPill(h)}${more}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
+    if (!open) return row;
+    return row + `<div class="dl-earlier">${earlier.map((x) => `<div><span>${esc(didWhat(x))}</span><small>${esc(when(x.when))}</small></div>`).join('')}</div>`;
+  };
+  let day = '';
+  const recentRows = shown.map((h) => {
+    const label = dayOf(h.when);
+    const head = label === day ? '' : `<div class="dl-day">${esc(label)}</div>`;
+    day = label;
+    return head + recentRow(h);
+  }).join('');
   const nothing = !act.length && !ups.length && !fails.length && !shown.length;
-  const updLog = updateLog(hist).filter((u) => (u.when || 0) > (ui.upd_cleared || 0));
-  const tab = S.dlTab === 'updates' ? 'updates' : 'downloads';
-  const tabs = `<div class="tabs dl-tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${[['downloads', t('Downloads')], ['updates', t('History')]].map(([k, n]) => `<button type="button" role="tab" class="${tab === k ? 'on' : ''}" aria-selected="${tab === k}" data-act="dl-tab" data-tab="${k}">${esc(n)}</button>`).join('')}</div></div>`;
-  // Clearing only hides what's listed; the totals above stay.
-  const canClear = tab === 'updates' ? updLog.length : shown.length;
-  const bar = `<div class="dl-bar">${tabs}${canClear ? `<button type="button" class="btn sm" data-act="dl-clear" data-k="${tab === 'updates' ? 'upd_cleared' : 'dl_cleared'}">${esc(t('Clear history'))}</button>` : ''}</div>`;
-  const head = `<div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(tab === 'updates' ? t('Every update the launcher has installed, newest first. Open one to read what changed.') : t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p></div></div>${self}${bar}`;
-  if (tab === 'updates') return `<div class="page dl-page" style="max-width:1100px">${head}${updatesTab(updLog)}</div>`;
   const n = (k) => `<span class="dl-n">${k}</span>`;
-  return `<div class="page dl-page" style="max-width:1100px">${head}
-    ${hero || `<div class="stats dl-stats">${stats.map(([k, v, sub]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b><small>${esc(sub || '')}</small></div>`).join('')}</div>`}
-    ${queue || upRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Up Next'))}${n(act.length - (lead ? 1 : 0) + ups.length)}</h2>${ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : ''}</div><div class="dl-list">${queue}${upRows}</div></section>` : ''}
-    ${failRows ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Didn\'t finish'))}${n(fails.length)}</h2></div><div class="dl-list">${failRows}</div></section>` : ''}
-    ${shown.length ? `<section class="shelf"><div class="shelf-h"><h2>${esc(t('Completed'))}${n(shown.length)}</h2></div><div class="dl-list">${histRows}</div></section>` : ''}
+  const shelf = (title, count, extra, rows) => `<section class="shelf"><div class="shelf-h"><h2>${esc(title)}${n(count)}</h2>${extra}</div><div class="dl-list">${rows}</div></section>`;
+  const updateAll = ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : '';
+  const clear = shown.length ? `<button type="button" class="btn sm" data-act="dl-clear" data-k="dl_cleared">${esc(t('Clear history'))}</button>` : '';
+  return `<div class="page dl-page" style="max-width:1100px"><div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p><p class="dl-totals">${totals.map(esc).join(' · ')}</p></div></div>
+    ${hero}
+    ${queue ? shelf(t('Up Next'), act.length - (lead ? 1 : 0), '', queue) : ''}
+    ${upRows ? shelf(t('Updates ready'), ups.length, updateAll, upRows) : ''}
+    ${failRows ? shelf(t('Didn\'t finish'), fails.length, '', failRows) : ''}
+    ${shown.length ? shelf(t('Recent'), shown.length, clear, recentRows) : ''}
     ${nothing ? `<div class="empty"><h2>${esc(t('No downloads'))}</h2><p>${esc(t('Games you install or update show their progress here.'))}</p></div>` : ''}</div>`;
 }
 
-// Downloads > Updates: each update as a row that opens to its patch notes (every release between
-// the version it came from and the one it went to), plus the launcher's own updates.
-function updateLog(hist) {
-  const out = hist.filter((h) => h.update).map((h) => ({ key: `${h.id}@${h.tag}@${h.when}`, id: h.id, name: h.name, tag: h.tag, from: h.from || '', when: h.when, repo: h.repo || (byId(h.id) || {}).repo || '' }));
-  for (const u of ((S.settings.ui || {}).self_updates || [])) out.push({ key: `self@${u.to}@${u.when}`, self: true, name: 'RecompLauncher', tag: u.to, from: u.from || '', when: u.when });
-  return out.sort((a, b) => (b.when || 0) - (a.when || 0)).slice(0, 80);
-}
 const relKey = (tag) => String(tag || '').replace(/^v/i, '').toLowerCase();
-// The releases an update covers, newest first: from (left out) up to tag.
-function relsBetween(list, from, tag) {
-  const rel = list.filter((x) => !x.draft);
-  const i = rel.findIndex((x) => relKey(x.tag_name) === relKey(tag));
-  if (i < 0) return [];
-  const j = from ? rel.findIndex((x) => relKey(x.tag_name) === relKey(from)) : -1;
-  return rel.slice(i, j > i ? Math.min(j, i + 8) : i + 1);
-}
-function updNotes(u) {
-  if (u.self) {
-    const n = S.selfNotes;
-    if (n === undefined) { loadSelfNotes(); return `<p class="muted">${esc(t('Loading the notes…'))}</p>`; }
-    return n && relKey(n.version) === relKey(u.tag) && n.notes ? updClamp(`<div class="md">${md(n.notes, true, { foldTables: true })}</div>`, u) : `<p class="muted">${esc(t('The notes for this version are on recomplauncher.com.'))}</p>`;
-  }
-  if (!u.repo) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
-  const r = S.rels[u.repo];
-  if (!r) { loadRels(u.repo); return `<p class="muted">${esc(t('Loading the notes…'))}</p>`; }
-  if (r.loading) return `<p class="muted">${esc(t('Loading the notes…'))}</p>`;
-  if (r.error) return `<p class="muted">${esc(t(r.error))}</p>`;
-  const got = relsBetween(r.list, u.from, u.tag);
-  if (!got.length) return `<p class="muted">${esc(t('No notes for this one.'))}</p>`;
-  const notes = got.map((x) => `<div class="upd-rel">${got.length > 1 ? `<div class="upd-rel-h"><b>${esc(x.name || x.tag_name)}</b><span>${esc(date(x.published_at))}</span></div>` : ''}<div class="md">${x.body ? md(x.body, false, { foldTables: true }) : `<p class="muted">${esc(t('No notes for this one.'))}</p>`}</div></div>`).join('');
-  return updClamp(notes, u);
-}
-// Long notes start as a preview with Show All; Open in Updates goes to the game's own Updates tab.
-function updClamp(html, u) {
-  const open = byId(u.id) && !u.self ? `<button type="button" class="btn sm" data-act="upd-game" data-id="${esc(u.id)}">${esc(t('Open in Updates'))}</button>` : '';
-  return `<div class="upd-notes"><div class="upd-clip">${html}</div><div class="upd-acts"><button type="button" class="btn sm upd-all" data-act="upd-all" hidden>${esc(t('Show All'))}</button>${open}</div></div>`;
-}
-// After the notes are in: the preview's button shows only when there's more than fits.
-function updMeasure(box) {
-  const clip = box && box.querySelector('.upd-clip'), all = box && box.querySelector('.upd-all');
-  if (!clip || !all) return;
-  const long = clip.scrollHeight > 380;
-  all.hidden = !long;
-  clip.classList.toggle('cut', long);
-}
-async function loadSelfNotes() {
-  if (S.selfNotes === null && loadSelfNotes.busy) return;
-  loadSelfNotes.busy = true;
-  S.selfNotes = null;
-  try { S.selfNotes = await invoke('launcher_notes'); } catch (e) { S.selfNotes = null; }
-  loadSelfNotes.busy = false;
-  for (const el of $$('.upd.open[data-self]')) fillUpd(el);
-}
-function fillUpd(el) {
-  const u = (S.updLog || []).find((x) => x.key === el.dataset.key);
-  const box = el.querySelector('.upd-in');
-  if (u && box) { box.innerHTML = updNotes(u); requestAnimationFrame(() => updMeasure(box)); }
-}
-// The drawer arrow shared by Downloads > History and a game's Updates tab.
+// The drawer arrow shared by a game's Updates tab, Settings → Changelog and Downloads' Recent.
 const CHEV_D = '<svg class="upd-chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 // Settings → Changelog: the launcher's own releases from its GitHub, as the same drawers as a
 // game's Updates tab. Ten at first, Show More adds ten older ones at a time (GitHub gives the
@@ -4458,27 +4443,6 @@ function selfRelDrawer(x, n) {
   const chev = `<button type="button" class="rel-chev" data-act="rel" tabindex="-1" aria-hidden="true">${CHEV_D}</button>`;
   return `<div class="rel${open ? ' open' : ''}" data-key="${esc(key)}"><div class="rel-h">${head}${chev}</div>
     <div class="rel-body"${open ? '' : ' inert'}><div class="rel-in"><div class="md">${notes}</div></div></div></div>`;
-}
-function updatesTab(log) {
-  S.updLog = log;
-  S.updOpen = S.updOpen || new Set();
-  if (!log.length) return `<div class="empty"><h2>${esc(t('No updates yet'))}</h2><p>${esc(t('When a game you have gets a new version and you install it, it\'s listed here with what changed.'))}</p></div>`;
-  return `<div class="upd-list">${log.map((u) => {
-    const a = u.self ? null : byId(u.id) || { id: u.id, name: u.name };
-    const img = u.self ? '<span class="upd-self cap" aria-hidden="true"><img src="img/mark.svg" alt=""></span>' : a.hero ? pic(thumbOf(a.hero, 320), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>';
-    const open = S.updOpen.has(u.key);
-    return `<div class="upd${open ? ' open' : ''}" data-key="${esc(u.key)}"${u.self ? ' data-self="1"' : ''}>
-      <button type="button" class="upd-h" data-act="upd" aria-expanded="${open}">${img}<span class="mid"><b>${esc(u.self ? 'RecompLauncher' : a.name || u.name)}</b><span>${esc(u.from ? tf('{from} → {to}', { from: u.self ? verName(u.from) : u.from, to: u.self ? verName(u.tag) : u.tag }) : tf('Updated to {tag}', { tag: u.self ? verName(u.tag) : u.tag }))}</span></span><span class="dl-when">${esc(agoCap(u.when))}</span>${CHEV_D}</button>
-      <div class="upd-body"><div class="upd-in">${open ? updNotes(u) : ''}</div></div></div>`;
-  }).join('')}</div>`;
-}
-function toggleUpd(el) {
-  const row = el.closest('.upd');
-  if (!row) return;
-  const k = row.dataset.key, open = !row.classList.contains('open');
-  if (open) { S.updOpen.add(k); fillUpd(row); } else S.updOpen.delete(k);
-  row.classList.toggle('open', open);
-  el.setAttribute('aria-expanded', String(open));
 }
 
 // ---------- developer tools: a local build and what the launcher makes of its recomplauncher.json ----------
@@ -4988,15 +4952,16 @@ function renderSide() {
   const v = S.view, ui = S.settings.ui || {};
   applySide();
   for (const b of $$('.side .nav[data-go]')) b.classList.toggle('on', b.dataset.go === (v === 'game' ? (pins().includes(S.arg) ? '' : S.from) : v));
-  // Downloading now, or else how many updates are ready (games and the launcher), as a badge.
+  // Downloading now, or else how many game updates are ready, as a badge. The launcher's own
+  // update isn't counted: it has its own pill in the title bar.
   const nd = Object.keys(S.jobs).length;
-  const nu = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]).length + (S.launcherUpd ? 1 : 0);
+  const nu = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]).length;
   const nb = $('#n-dl');
   nb.textContent = nd || nu || '';
   nb.classList.toggle('badge-n', !nd && nu > 0);
   nb.title = !nd && nu ? tn(nu, '1 update ready', '{n} updates ready') : '';
-  // A new launcher: its own button at the foot of the sidebar too.
-  { const su = $('#side-upd'); if (su) su.hidden = !S.launcherUpd; }
+  // A new launcher: the Update pill in the title bar, on every page.
+  { const pill = $('#upd-pill'); if (pill) pill.hidden = !S.launcherUpd; }
   if (window.achSide) window.achSide();
   document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
   document.body.classList.toggle('nonames', !!ui.hide_names);
@@ -5318,6 +5283,8 @@ function go(view, arg, fromEl) {
   S.back.push({ view: S.view, arg: S.arg, tab: S.tab, scroll: $('#main').scrollTop });
   if (S.back.length > 40) S.back.shift();
   if (view === 'game') { S.from = S.view === 'game' ? S.from : S.view; S.tab = S.nextTab || 'overview'; S.nextTab = null; }
+  const toTabs = view === 'game' && S.toTabs;
+  S.toTabs = false;
   const swap = () => {
     S.view = view; S.arg = arg;
     // Discover opens at the top, so it starts again from the first page of its list.
@@ -5327,11 +5294,25 @@ function go(view, arg, fromEl) {
     $('#main').scrollTop = 0;
     S.anim = view === 'game' ? 'enter-game' : 'enter';
     render();
+    if (toTabs) tabsToTop();
   };
   // A soft cross-fade between pages, where the window can do it (WebKitGTK on Linux can crash on it).
   if (S.os === 'windows' && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) { document.startViewTransition(swap); return; }
   swap();
   void fromEl;
+}
+
+// Patch Notes and Open in Updates: the game's page opens with its tab bar at the top of the window,
+// just under the window's own bar (which lies over the page), so the release notes are in view
+// instead of under the banner.
+function tabsToTop() {
+  const main = $('#main'), gp = $('#main .gp'), tabs = $('#main .gp .tabs');
+  if (!main || !tabs) return;
+  // The releases are often still loading, and a page that short can't scroll that far.
+  gp.classList.add('to-tabs');
+  const bar = ($('.topbar') || {}).offsetHeight || 0;
+  const below = tabs.getBoundingClientRect().top - main.getBoundingClientRect().top;
+  main.scrollTop += below - bar - 12;
 }
 
 function back() {
@@ -5469,7 +5450,6 @@ async function loadRels(repo, force) {
     S.rels[repo] = { list: [], error: String(e), archived: previous };
   }
   if (S.view === 'game') refreshGame();
-  else if (S.view === 'downloads') for (const el of $$('.upd.open')) fillUpd(el);
   else if (S.view === 'settings' && S.setTab === 'changelog' && repo === SELF_REPO) setSection('changelog', false);
   else if (statusChanged && ['home', 'discover', 'library'].includes(S.view)) render(true);
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
@@ -7438,7 +7418,7 @@ const LL = { told: '' };
 async function lookForLauncher(atStart) {
   let v = null;
   try { v = await invoke('launcher_update', { force: false }); } catch { return; }
-  // A file that turned out wrong isn't offered any more, so the banner goes too.
+  // A file that turned out wrong isn't offered any more, so the Update pill goes too.
   S.launcherUpd = v && v.version ? v : null;
   if (v && v.version && v.version !== LL.told) {
     LL.told = v.version;
@@ -7589,7 +7569,7 @@ function updateToast(v) {
     modal(`<h2>${esc(t('Time to Update'))}</h2><p>${esc(v.required ? tf('This version of RecompLauncher is too old to keep up with the recomps. Update to {version} to keep playing. It only takes a moment.', { version: verName(v.version) }) : tf('You\'re a few updates behind. {version} has fixes for crashes and setup problems people ran into on this one. It only takes a moment.', { version: verName(v.version) }))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not now'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Update now'))}</button></div>`, (x, close) => { close(); if (x.dataset.x === 'yes') selfUpdate(); }, t('Time to Update'));
   }
-  // Otherwise no toast: the start window and the Downloads page already announce the update.
+  // Otherwise no toast: the start window and the Update pill in the title bar already announce it.
 }
 
 function resetModal(what) {
@@ -9037,11 +9017,9 @@ async function act(el, e) {
     case 'set-tab': return setSection(el.dataset.k);
     case 'devshot': return devShotView(el.dataset.id, Number(el.dataset.i));
     case 'dl-clear': return saveUi({ [el.dataset.k]: Math.floor(Date.now() / 1000) });
-    case 'dl-tab': if (S.dlTab === el.dataset.tab) return; S.dlTab = el.dataset.tab; S.anim = 'enter-soft'; return render();
-    case 'upd': return toggleUpd(el);
+    case 'dl-earlier': if (S.dlOpen.has(id)) S.dlOpen.delete(id); else S.dlOpen.add(id); return render(true);
     case 'rel': return toggleRel(el);
-    case 'upd-all': { const clip = el.closest('.upd-notes') && el.closest('.upd-notes').querySelector('.upd-clip'); if (clip) { const on = !clip.classList.contains('all'); clip.classList.toggle('all', on); el.textContent = on ? t('Show Less') : t('Show All'); } return; }
-    case 'upd-game': S.nextTab = 'updates'; return go('game', id);
+    case 'upd-game': S.nextTab = 'updates'; S.toTabs = true; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
     case 'dev-add': return devAdd();
     case 'dev-open': S.nextTab = 'dev'; return go('game', id);
