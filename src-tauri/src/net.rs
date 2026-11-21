@@ -334,7 +334,8 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
     }
     tried(url);
     let started = Instant::now();
-    match rb.send().await {
+    // Over Encrypted Client Hello when the site has a key for it (ech.rs).
+    match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
             if trouble_status(code) {
@@ -375,7 +376,7 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
         return None;
     }
     let started = Instant::now();
-    match rb.send().await {
+    match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
             if !r.status().is_success() {
@@ -726,6 +727,30 @@ pub fn proxy_shown() -> Option<String> {
 /// Every client the launcher makes asks this for its proxy.
 pub fn with_proxy(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     b.no_proxy().proxy(reqwest::Proxy::custom(proxy_for))
+}
+
+/// Redirects are followed (GitHub's and SourceForge's downloads go through them), but never from
+/// https down to plain http.
+fn redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|a| {
+        if a.previous().len() >= 10 {
+            a.error("too many redirects")
+        } else if a.url().scheme() != "https" && a.previous().iter().any(|u| u.scheme() == "https") {
+            a.error("a redirect away from https")
+        } else {
+            a.follow()
+        }
+    })
+}
+
+/// The settings of the launcher's client. Here rather than where it's made, so the client that
+/// asks the server over Encrypted Client Hello (ech.rs) is the same in everything but its TLS.
+pub fn client_builder() -> reqwest::ClientBuilder {
+    with_proxy(reqwest::Client::builder())
+        .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
+        .redirect(redirects())
+        // Slow DNS or a busy mobile connection can take a while to connect.
+        .connect_timeout(Duration::from_secs(15))
 }
 
 #[cfg(test)]
