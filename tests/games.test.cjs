@@ -20,6 +20,8 @@ function ctx(extra = {}) {
     S: { library: {}, gameSets: {}, os: 'windows', running: new Set(), settings: { ui: {} } },
     window: {}, invoke: async () => ({}), t: (s) => s, tf: (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => v[k]), tn: (n, one, many) => (n === 1 ? one : many.replace('{n}', n)), esc: (s) => String(s),
   }, extra));
+  // The game's own picture of a kind, as app.js reads it (whatever shows over it).
+  vm.runInContext(`${app.match(/^const ART_KINDS = .*$/m)[0]}\n${fn(app, 'gameArt')}`, c);
   vm.runInContext(games, c);
   return c;
 }
@@ -52,6 +54,32 @@ test('each game is its own app with its own art, falling back to the recomp', ()
   assert.equal(j.menuPick, true, 'no options of its own: picked in the recomp\'s menu');
   assert.equal(vm.runInContext("subOf('cogbox--gow3').rid", c), 'cogbox');
   assert.equal(vm.runInContext("subOf('solo')", c), null);
+});
+
+test('a game with its own cover doesn\'t take the recomp\'s project cover', () => {
+  const c = ctx();
+  c.ids = new Map([['cogbox', Object.assign({}, COG, { project_cover: '/cog-p.jpg', project_hero: '/cogh-p.jpg' })]]);
+  vm.runInContext('addGameApps(ids)', c);
+  const g1 = c.ids.get('cogbox--gow1'), g3 = c.ids.get('cogbox--gow3');
+  assert.equal(g1.cover, '/g1.jpg');
+  assert.equal(g1.project_cover, '', 'every game of the series would show the same cover');
+  assert.equal(g1.project_hero, '/cogh-p.jpg', 'no hero of its own: the recomp\'s look');
+  assert.equal(g3.project_cover, '/cog-p.jpg', 'no cover of its own: the recomp\'s look');
+});
+
+test('a game\'s own project picture comes with it', () => {
+  const c = ctx();
+  const box = Object.assign({}, COG, { games: COG.games.map((g) => (g.id === 'gow1' ? Object.assign({}, g, { project_cover: '/g1-p.jpg' }) : g)) });
+  c.ids = new Map([['cogbox', box]]);
+  vm.runInContext('addGameApps(ids)', c);
+  assert.equal(c.ids.get('cogbox--gow1').project_cover, '/g1-p.jpg');
+});
+
+test('a game takes the recomp\'s game picture, not one the player set for the recomp', () => {
+  const c = ctx();
+  c.ids = new Map([['cogbox', Object.assign({}, COG, { hero: 'local:C:/c/mine.jpg', _hero: '/cogh.jpg' })]]);
+  vm.runInContext('addGameApps(ids)', c);
+  assert.equal(c.ids.get('cogbox--gow1').hero, '/cogh.jpg');
 });
 
 test('one install shows as a tile for each game, with its own play time', () => {
@@ -353,7 +381,7 @@ test('a game\'s page doesn\'t show its recomp\'s game info as its own', () => {
 
 test('the install dialog shows a game\'s own cover, never its recomp\'s repeated', () => {
   const confirm = fn(app, 'confirmPack');
-  assert.match(confirm, /g\.cover \? pic\(thumbOf\(g\.cover, 160\)/);
+  assert.match(confirm, /const c = catalogArt\(g, 'cover'\); return `<li>\$\{c \? pic\(thumbOf\(c, 160\)/);
   assert.match(confirm, /: '<span class="ph"><\/span>'/);
   assert.doesNotMatch(confirm, /byId\(id \+ GAME_SEP/);
 });
