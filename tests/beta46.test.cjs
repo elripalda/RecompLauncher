@@ -35,7 +35,7 @@ test("GitHub's note boxes become boxes, and a quote keeps its lines together", (
 test('the History notes preview long notes with Show All and a way to the game', () => {
   assert.match(app, /function updClamp\(html, u\)/);
   assert.match(app, /data-act="upd-all" hidden>/);
-  assert.match(app, /case 'upd-game': S\.nextTab = 'updates'; return go\('game', id\);/);
+  assert.match(app, /case 'upd-game': S\.nextTab = 'updates'; S\.toTabs = true; return go\('game', id\);/);
   assert.match(read('titlecase.js'), /, \.md';/);
 });
 

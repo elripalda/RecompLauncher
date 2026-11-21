@@ -5342,6 +5342,8 @@ function go(view, arg, fromEl) {
   S.back.push({ view: S.view, arg: S.arg, tab: S.tab, scroll: $('#main').scrollTop });
   if (S.back.length > 40) S.back.shift();
   if (view === 'game') { S.from = S.view === 'game' ? S.from : S.view; S.tab = S.nextTab || 'overview'; S.nextTab = null; }
+  const toTabs = view === 'game' && S.toTabs;
+  S.toTabs = false;
   const swap = () => {
     S.view = view; S.arg = arg;
     // Discover opens at the top, so it starts again from the first page of its list.
@@ -5351,11 +5353,25 @@ function go(view, arg, fromEl) {
     $('#main').scrollTop = 0;
     S.anim = view === 'game' ? 'enter-game' : 'enter';
     render();
+    if (toTabs) tabsToTop();
   };
   // A soft cross-fade between pages, where the window can do it (WebKitGTK on Linux can crash on it).
   if (S.os === 'windows' && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) { document.startViewTransition(swap); return; }
   swap();
   void fromEl;
+}
+
+// Patch Notes and Open in Updates: the game's page opens with its tab bar at the top of the window,
+// just under the window's own bar (which lies over the page), so the release notes are in view
+// instead of under the banner.
+function tabsToTop() {
+  const main = $('#main'), gp = $('#main .gp'), tabs = $('#main .gp .tabs');
+  if (!main || !tabs) return;
+  // The releases are often still loading, and a page that short can't scroll that far.
+  gp.classList.add('to-tabs');
+  const bar = ($('.topbar') || {}).offsetHeight || 0;
+  const below = tabs.getBoundingClientRect().top - main.getBoundingClientRect().top;
+  main.scrollTop += below - bar - 12;
 }
 
 function back() {
@@ -9065,7 +9081,7 @@ async function act(el, e) {
     case 'upd': return toggleUpd(el);
     case 'rel': return toggleRel(el);
     case 'upd-all': { const clip = el.closest('.upd-notes') && el.closest('.upd-notes').querySelector('.upd-clip'); if (clip) { const on = !clip.classList.contains('all'); clip.classList.toggle('all', on); el.textContent = on ? t('Show Less') : t('Show All'); } return; }
-    case 'upd-game': S.nextTab = 'updates'; return go('game', id);
+    case 'upd-game': S.nextTab = 'updates'; S.toTabs = true; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
     case 'dev-add': return devAdd();
     case 'dev-open': S.nextTab = 'dev'; return go('game', id);

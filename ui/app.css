@@ -417,6 +417,8 @@ body.light .known-fix b{color:#127a45}
 .gp-acts .btn.big{min-width:210px}
 .gp-acts .prog{min-width:300px}
 .tabs{position:relative;z-index:2;max-width:var(--gp-max);margin:30px auto 0;padding:0 40px;display:flex;gap:4px}
+/* Opened from Patch Notes: room below the tab bar, so it can sit at the top while the notes load */
+.gp.to-tabs .g-body{min-height:100vh}
 .tabs-in{display:flex;min-width:0;overflow-x:auto;gap:4px;padding:4px;border-radius:16px;background:var(--card);border:1px solid var(--line);position:relative}
 .tabs button{flex:none;white-space:nowrap;position:relative;z-index:1;height:40px;padding:0 18px;border-radius:12px;color:var(--muted);font-weight:700;font-size:14px;transition:color .2s}
 .tabs button:hover{color:var(--ink)}
