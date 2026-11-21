@@ -35,8 +35,6 @@ async function whatsNew() {
   if (ui.seen_version === S.version) return;
   // A new install has nothing to compare with: just remember this version.
   if (!ui.seen_version && !S.settings.setup_done) return saveUi({ seen_version: S.version });
-  // Downloads > Updates lists the launcher's own updates too.
-  if (ui.seen_version && !(ui.self_updates || []).some((u) => u.to === S.version)) await saveUi({ self_updates: [{ from: ui.seen_version, to: S.version, when: Math.floor(Date.now() / 1000) }].concat(ui.self_updates || []).slice(0, 20) }, true);
   const from = ui.seen_version;
   // Show What's New After an Update off (Settings → Updates and Downloads): the notes stay in
   // Settings → Changelog.

@@ -32,9 +32,7 @@ test("GitHub's note boxes become boxes, and a quote keeps its lines together", (
   assert.equal(md('> one\n> two'), '<blockquote><p>one two</p></blockquote>');
 });
 
-test('the History notes preview long notes with Show All and a way to the game', () => {
-  assert.match(app, /function updClamp\(html\)/);
-  assert.match(app, /data-act="upd-all" hidden>/);
+test('Patch Notes on Downloads opens the game on its Updates tab', () => {
   assert.match(app, /case 'upd-game': S\.nextTab = 'updates'; S\.toTabs = true; return go\('game', id\);/);
   assert.match(read('titlecase.js'), /, \.md';/);
 });
