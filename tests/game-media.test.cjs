@@ -119,6 +119,15 @@ test('the versions list icon is the project\'s too', () => {
   assert.equal(x.catalogArt(x.zel, 'icon'), 'proj-icon');
 });
 
+test('the developer\'s picture shows on their line, desktop and Big Picture', () => {
+  const src = app.match(/^const devPic = .*$/m)[0];
+  const devPic = new Function('devOf', `${src} return devPic;`)(() => ({ avatar: 'page-face' }));
+  assert.equal(devPic({ developer_avatar: 'dev-face' }), 'dev-face');
+  assert.equal(devPic({}), 'page-face');
+  assert.match(app, /const face = devPic\(a\);/);
+  assert.match(read('tv.js'), /const face = devPic\(a\);/);
+});
+
 test('Show Game Names refreshes the pictures of shortcuts already made', () => {
   assert.match(app, /sw\('game_names', ui\.game_names, t\('Show Game Names'\), 'game-names'\)/);
   assert.match(app, /case 'game-names': return saveUi\(\{ game_names: !\(S\.settings\.ui \|\| \{\}\)\.game_names \}\)\.then\(refreshShortcutArt\);/);

@@ -1500,7 +1500,8 @@
     const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc);
     // Who made it, under "Based on" as on the desktop page: their picture, their name, Verified.
     const who = (dv && dv.name) || a.author;
-    const pic = dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : '';
+    const face = devPic(a);
+    const pic = face ? `<img class="tv-dev-pic" src="${esc(face)}" alt="">` : '';
     const vchip = dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : '';
     const byLine = who ? `<p class="tv-based tv-by">${pic}<span>${htmlIn(t('By {who}'), { who: `<b>${esc(who)}</b>` })}</span>${vchip}</p>` : '';
     const ps = projectState(a);

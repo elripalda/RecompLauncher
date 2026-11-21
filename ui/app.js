@@ -716,7 +716,8 @@ function pickArt(a, k, gameOnly) {
 const catalogArt = (a, k) => pickArt(a, k, !!(S.settings.ui || {}).game_names);
 // Desktop and Steam shortcuts show the same set as the launcher, so Show Game Names changes
 // theirs too. Quietly: a shortcut keeps its old pictures when they can't be fetched.
-const refreshShortcutArt = () => invoke('refresh_shortcut_art').catch(() => {});// What shows for a kind when this version has no picture of its own: the one the player set for
+const refreshShortcutArt = () => invoke('refresh_shortcut_art').catch(() => {});
+// What shows for a kind when this version has no picture of its own: the one the player set for
 // every version, else (Show Game Media) the recommended version's, else the catalog's.
 function usualArt(a, k) {
   const shared = (S.arts || {})[gameKey(a)] || {};
@@ -772,12 +773,17 @@ const TICK = (s = 16) => `<svg class="vtick" width="${s}" height="${s}" viewBox=
 // Who made it, under a game's name: their picture, their name, and the Verified badge.
 // Who owns a project, from its address: owner/repo, gitlab:owner/..., forgejo:host/owner/repo.
 const repoOwner = (a) => ((a && a.repo) || '').replace(/^[a-z]+:/, '').split('/')[/^forgejo:/.test((a && a.repo) || '') ? 1 : 0] || '';
+// The developer's picture, for their line on a recomp's page only (never a game's icon): the one
+// the catalog gives with the recomp, else their developer page's.
+const devPic = (a) => (a && a.developer_avatar) || (devOf(a) || {}).avatar || '';
 function devLine(a) {
   const d = devOf(a);
+  const face = devPic(a);
+  const img = face ? `<img src="${esc(face)}" alt="" width="24" height="24" loading="lazy">` : '';
   // No developer page: the project's owner, as words.
-  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line"><span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
+  if (!d) { const own = a.author || repoOwner(a); return own && a.repo ? `<div class="dev-row"><span class="dev-line">${img}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(own)}</b>` })}</span></span></div>` : ''; }
   const name = d.name || a.author || '';
-  const pic = d.avatar ? `<img src="${esc(d.avatar)}" alt="" width="24" height="24" loading="lazy">` : `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
+  const pic = img || `<span class="dev-ph">${esc(name.slice(0, 1).toUpperCase())}</span>`;
   const by = `<span class="dev-line">${pic}<span>${htmlFill(t('By {who}'), { who: `<b>${esc(name)}</b>` })}</span></span>`;
   // The byline is plain words for everyone; only the Verified badge is a pill, and it's the link to their page.
   const devPage = esc(SITE + '/dev/' + encodeURIComponent(d.slug));
