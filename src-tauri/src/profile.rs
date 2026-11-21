@@ -876,6 +876,10 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
     }
     let runnable = |p: &Path| -> bool {
         let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        // Mac metadata sidecars can inherit run permission on an external drive.
+        if n.starts_with("._") {
+            return false;
+        }
         if [".dll", ".so", ".exe", ".txt", ".md", ".ini", ".cfg", ".json", ".pdb", ".zip", ".7z", ".dat", ".bin"].iter().any(|e| n.ends_with(e)) || n.contains(".so.") {
             return false;
         }
@@ -2998,6 +3002,32 @@ mod tests {
         assert_eq!(super::native_twin(&d, "pd.i686.exe").unwrap().file_name().unwrap(), "pd.x86_64");
         assert_eq!(super::native_twin(&d, "pd.pal.i686.exe").unwrap().file_name().unwrap(), "pd.pal.x86_64");
         assert!(super::native_twin(&d, "other.exe").is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dusklight_starts_its_mac_program_instead_of_appledouble_metadata() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dusklight-appledouble");
+        let exe = d.join("Dusklight.app/Contents/MacOS/Dusklight");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").unwrap();
+        let metadata = d.join("._Dusklight.app");
+        std::fs::write(&metadata, b"\x00\x05\x16\x07AppleDouble").unwrap();
+        // Windows-formatted drives can give the metadata the same run permission as the program.
+        std::fs::set_permissions(&metadata, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(got, exe);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_native_twin_never_uses_appledouble_metadata_with_a_program_extension() {
+        let d = tmp("native-appledouble");
+        std::fs::write(d.join("._game.x86_64"), b"\x00\x05\x16\x07AppleDouble").unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), None);
         let _ = std::fs::remove_dir_all(&d);
     }
 
