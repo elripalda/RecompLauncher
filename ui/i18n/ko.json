@@ -1910,6 +1910,7 @@
  "Its Linux build needs a newer Linux": "Linux 빌드에는 더 새로운 Linux가 필요합니다",
  "It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game's page, or update your system.": "이 Linux에 있는 것보다 새로운 시스템 라이브러리(glibc)용으로 만들어졌습니다. Windows 버전은 보통 Proton으로 잘 실행되니, 게임 페이지에서 그 버전으로 바꾸거나 시스템을 업데이트하세요.",
  "It needs to be told where your game files are": "게임 파일 위치를 알려 줘야 합니다",
+ "This recomp reads your extracted game from a folder given to it when it starts, and its page doesn't set that up yet. Add --game_data_root and the folder with your game's files (the one with default.xex) to its launch options in its Manage menu.": "이 리컴프는 시작할 때 전달받은 폴더에서 압축을 푼 게임을 읽는데, 아직 페이지에 그 설정이 없습니다. 관리 메뉴의 실행 옵션에 --game_data_root와 게임 파일이 있는 폴더(default.xex가 있는 폴더)를 추가하세요.",
  "That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup.": "그건 게임의 디스크 이미지나 ROM이지, 게임을 실행하는 프로그램이 아닙니다. 리컴프 자체의 프로그램(보통 폴더 안의 .exe)을 고르세요. 가지고 있는 게임 사본은 리컴프 설정에서 지정합니다.",
  "That's a compressed file, not a program. Unpack it first, then pick the program inside.": "그건 압축 파일이지 프로그램이 아닙니다. 먼저 압축을 푼 다음 안에 있는 프로그램을 고르세요.",
  "That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage).": "그건 프로그램이 아닙니다. 게임을 실행하는 파일(보통 .exe, Linux에서는 확장자가 없는 파일이나 .AppImage)을 고르세요.",
