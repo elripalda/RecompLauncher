@@ -7657,13 +7657,34 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
         let at = |tag: &str| rels.iter().position(|r| same_tag(&r.tag_name, tag));
         if let Some(i) = at(&t) {
             let r = &rels[i];
-            let newer = at(&g.tag).map(|j| i < j).unwrap_or_else(|| !older_version(&r.tag_name, &g.tag));
+            let newer = at(&g.tag).map(|j| i < j).unwrap_or_else(|| newer_than_gone(r, g));
             return (!same_tag(&r.tag_name, &g.tag) && newer && builds(r)).then(|| r.tag_name.clone());
         }
     }
     let r = catalog::latest_for(rels, &g.tag)?;
     let known = rels.iter().any(|x| same_tag(&x.tag_name, &g.tag));
-    (r.tag_name != g.tag && (known || !older_version(&r.tag_name, &g.tag)) && builds(r)).then(|| r.tag_name.clone())
+    (r.tag_name != g.tag && (known || newer_than_gone(r, g)) && builds(r)).then(|| r.tag_name.clone())
+}
+
+/// Whether `r` is newer than the installed release when that one isn't in the list anymore (a
+/// nightly its project deleted): by version when both tags are versions, else by date, published
+/// after the game was installed. "nightly-680" against "v3.0.0" can't be told by its name, and
+/// taking it for older sent Longshot players back to v3.0.0 (#393).
+fn newer_than_gone(r: &Release, g: &Installed) -> bool {
+    let version = |s: &str| s.trim().trim_start_matches(['v', 'V']).starts_with(|c: char| c.is_ascii_digit());
+    if version(&r.tag_name) && version(&g.tag) {
+        return !older_version(&r.tag_name, &g.tag);
+    }
+    let Some(out) = r.published_at.as_deref().and_then(released_secs) else { return false };
+    out > g.updated_at as i64
+}
+
+/// A release's date ("2026-11-19T02:18:27Z") in seconds since 1970.
+fn released_secs(s: &str) -> Option<i64> {
+    let num = |a: usize, b: usize| s.get(a..b)?.parse::<i64>().ok();
+    let days = days_from_civil(num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (h, m, sec) = (num(11, 13).unwrap_or(0), num(14, 16).unwrap_or(0), num(17, 19).unwrap_or(0));
+    Some(days * 86400 + h * 3600 + m * 60 + sec)
 }
 
 /// The project whose releases a game's Updates tab lists and its update badge and news read, which
@@ -10586,6 +10607,39 @@ mod tests {
     #[test]
     fn going_to_another_version_than_the_newest_picks_it() {
         assert!(picked_by_player("nightly-681", "v3.0.0", false, Some("v3.0.0"), ("v3.0.0", false)));
+    }
+
+    /// Longshot's list on 2026-11-21: the store let out v3.0.0; nightly-680 was installed on the
+    /// 21st and deleted from the server since, nightly-681 is the newest.
+    fn longshot_after_a_nightly_went() -> (Vec<Release>, serde_json::Value, Installed) {
+        let rel = |tag: &str, pre: bool, at: &str| -> Release {
+            let asset = serde_json::json!({ "name": format!("LongshotBuilder-{tag}-windows-x64.zip"), "browser_download_url": format!("https://git.magicbean.dev/x/{tag}.zip"), "size": 10 });
+            serde_json::from_value(serde_json::json!({ "tag_name": tag, "prerelease": pre, "published_at": at, "assets": [asset] })).unwrap()
+        };
+        let rels = vec![rel("nightly-681", true, "2026-11-21T16:26:36Z"), rel("v3.0.0", false, "2026-11-19T02:18:27Z")];
+        let entry = serde_json::json!({ "id": "longshot", "tag": "v3.0.0", "assets": { "windows": "LongshotBuilder-*-windows-x64.zip" } });
+        let installed_on_the_21st = released_secs("2026-11-21T09:30:00Z").unwrap() as u64;
+        let g = Installed { id: "longshot".into(), tag: "nightly-680".into(), proton: true, updated_at: installed_on_the_21st, ..Default::default() };
+        (rels, entry, g)
+    }
+
+    #[test]
+    fn a_deleted_nightly_is_not_updated_back_to_an_older_release() {
+        let (rels, entry, g) = longshot_after_a_nightly_went();
+        assert_eq!(offered_update(&g, Some(&entry), &rels), None);
+    }
+
+    #[test]
+    fn a_release_out_after_a_deleted_nightly_was_installed_is_offered() {
+        let (rels, entry, mut g) = longshot_after_a_nightly_went();
+        g.updated_at = released_secs("2026-11-18T00:00:00Z").unwrap() as u64;
+        assert_eq!(offered_update(&g, Some(&entry), &rels).as_deref(), Some("v3.0.0"));
+    }
+
+    #[test]
+    fn a_release_date_reads_as_seconds() {
+        assert_eq!(released_secs("1970-01-02T00:00:01Z"), Some(86401));
+        assert_eq!(released_secs("not a date"), None);
     }
 
     #[test]
