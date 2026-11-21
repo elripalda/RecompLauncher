@@ -33,9 +33,27 @@ test('an installed game\'s setup rows type the copy picker', () => {
   assert.deepEqual(Array.from(opts.filters[0].extensions), ['jar']);
 });
 
-test('the copy picker still offers All files beside the declared types', () => {
+test('with declared types the copy picker offers only those, no All files', () => {
   const opts = pickerFor({ entry: { launcher: { inputs: [JAR_INPUT] } } });
-  assert.deepEqual(Array.from(opts.filters[1].extensions), ['*']);
+  assert.equal(opts.filters.length, 1);
+});
+
+test('a game block\'s copy is not typed by a named input of role game (installed)', () => {
+  const setup = { kind: 'iso', inputs: [{ id: 'second', role: 'game', active: true, file: true, extensions: ['bin'] }] };
+  assert.deepEqual(Array.from(pickerFor({ setup }).filters[0].extensions), ['*']);
+});
+
+test('a game block\'s copy is not typed by a named input of role game (catalog)', () => {
+  const opts = pickerFor({ entry: { launcher: { game: { kind: 'iso' }, inputs: [JAR_INPUT] } } });
+  assert.deepEqual(Array.from(opts.filters[0].extensions), ['*']);
+});
+
+test('a copy input that takes any file leaves the picker open to any file', () => {
+  const inputs = [
+    { id: 'jar', role: 'game', active: true, file: true, extensions: ['jar'] },
+    { id: 'data', role: 'disc', active: true, file: true, extensions: [] },
+  ];
+  assert.deepEqual(Array.from(pickerFor({ setup: { inputs } }).filters[0].extensions), ['*']);
 });
 
 test('shared keys and other games\' inputs do not type the copy picker', () => {
