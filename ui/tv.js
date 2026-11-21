@@ -569,7 +569,7 @@
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
-      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
+      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
         if (easyNotReady(id)) return { label: t('Easy Setup'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
@@ -2410,7 +2410,8 @@
     let list = [];
     try { list = await invoke('versions', { id }); } catch (e) { return fail(e); }
     const g = S.library[id];
-    const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.newest ? null : v.tag)) }));
+    // By name, the newest too: with no version the install goes to the one the store let out (#393).
+    const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.tag)) }));
     if (!items.length) return toast(t('No other versions for this PC.'));
     sheet(t('Other versions'), items);
   }
