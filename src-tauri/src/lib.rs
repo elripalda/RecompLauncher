@@ -7679,12 +7679,19 @@ fn newer_than_gone(r: &Release, g: &Installed) -> bool {
     out > g.updated_at as i64
 }
 
-/// A release's date ("2026-11-19T02:18:27Z") in seconds since 1970.
+/// A release's date ("2026-11-19T02:18:27Z", or with an offset like "+02:00", which a Forgejo
+/// server may send) in seconds since 1970.
 fn released_secs(s: &str) -> Option<i64> {
     let num = |a: usize, b: usize| s.get(a..b)?.parse::<i64>().ok();
     let days = days_from_civil(num(0, 4)?, num(5, 7)?, num(8, 10)?);
     let (h, m, sec) = (num(11, 13).unwrap_or(0), num(14, 16).unwrap_or(0), num(17, 19).unwrap_or(0));
-    Some(days * 86400 + h * 3600 + m * 60 + sec)
+    // After the seconds (and any fraction of one): the offset from UTC, ahead of it with "+".
+    let zone = s.get(19..).unwrap_or("").trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+    let sign = if zone.starts_with('+') { 1 } else if zone.starts_with('-') { -1 } else { 0 };
+    let hours = zone.get(1..3).and_then(|x| x.parse::<i64>().ok()).unwrap_or(0);
+    let minutes = zone.get(4..6).and_then(|x| x.parse::<i64>().ok()).unwrap_or(0);
+    let offset = sign * (hours * 3600 + minutes * 60);
+    Some(days * 86400 + h * 3600 + m * 60 + sec - offset)
 }
 
 /// The project whose releases a game's Updates tab lists and its update badge and news read, which
@@ -10612,14 +10619,16 @@ mod tests {
     /// Longshot's list on 2026-11-21: the store let out v3.0.0; nightly-680 was installed on the
     /// 21st and deleted from the server since, nightly-681 is the newest.
     fn longshot_after_a_nightly_went() -> (Vec<Release>, serde_json::Value, Installed) {
+        // A build for every test machine (Windows and Linux x64, Mac arm64), so each finds one.
         let rel = |tag: &str, pre: bool, at: &str| -> Release {
-            let asset = serde_json::json!({ "name": format!("LongshotBuilder-{tag}-windows-x64.zip"), "browser_download_url": format!("https://git.magicbean.dev/x/{tag}.zip"), "size": 10 });
-            serde_json::from_value(serde_json::json!({ "tag_name": tag, "prerelease": pre, "published_at": at, "assets": [asset] })).unwrap()
+            let names = [format!("Longshot-{tag}-windows-x64.zip"), format!("Longshot-{tag}-linux-x64.tar.gz"), format!("Longshot-{tag}-macos-arm64.zip")];
+            let assets: Vec<serde_json::Value> = names.iter().map(|n| serde_json::json!({ "name": n, "browser_download_url": format!("https://git.magicbean.dev/x/{n}"), "size": 10 })).collect();
+            serde_json::from_value(serde_json::json!({ "tag_name": tag, "prerelease": pre, "published_at": at, "assets": assets })).unwrap()
         };
         let rels = vec![rel("nightly-681", true, "2026-11-21T16:26:36Z"), rel("v3.0.0", false, "2026-11-19T02:18:27Z")];
-        let entry = serde_json::json!({ "id": "longshot", "tag": "v3.0.0", "assets": { "windows": "LongshotBuilder-*-windows-x64.zip" } });
+        let entry = serde_json::json!({ "id": "longshot", "tag": "v3.0.0" });
         let installed_on_the_21st = released_secs("2026-11-21T09:30:00Z").unwrap() as u64;
-        let g = Installed { id: "longshot".into(), tag: "nightly-680".into(), proton: true, updated_at: installed_on_the_21st, ..Default::default() };
+        let g = Installed { id: "longshot".into(), tag: "nightly-680".into(), updated_at: installed_on_the_21st, ..Default::default() };
         (rels, entry, g)
     }
 
@@ -10639,6 +10648,8 @@ mod tests {
     #[test]
     fn a_release_date_reads_as_seconds() {
         assert_eq!(released_secs("1970-01-02T00:00:01Z"), Some(86401));
+        // Two hours ahead of UTC, with a fraction of a second: the same moment.
+        assert_eq!(released_secs("1970-01-02T02:00:01.250+02:00"), Some(86401));
         assert_eq!(released_secs("not a date"), None);
     }
 
