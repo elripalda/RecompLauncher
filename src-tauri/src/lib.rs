@@ -4037,7 +4037,7 @@ fn remember_copy_check(st: &App, id: &str, copy: &Path, crc32: &str) {
     st.save();
 }
 
-/// A choice made outside Easy Setup's window (Choose Your Copy, Use a Build You Already Have):
+/// A choice made outside Easy Setup's window (Choose Your Copy, the Easy Setup switch):
 /// what an earlier window kept, if one somehow didn't close, would undo it, so it goes.
 fn settle_outside_setup(x: &mut Installed) {
     if !setup_window_open(&x.id) {

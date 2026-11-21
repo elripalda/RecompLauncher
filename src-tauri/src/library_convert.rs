@@ -7,7 +7,7 @@
 //! settings (`ui.easy_skip`), and a program the player picked (`exe_rules` 255, which turned
 //! Easy Setup off for that game at every start).
 //!
-//! Format 3 (Beta 67): a game has two roads, Easy Setup or Skip Easy Setup. Set Up By Hand
+//! Format 3 (Beta 68): a game has two roads, Easy Setup or Skip Easy Setup. Set Up By Hand
 //! (`mode` "by_hand", `manual`) and a build the player pointed the launcher at (`build_dir`,
 //! `prebuilt`) are gone: those games are Skip Easy Setup, since the program the player runs knows
 //! where its build is.
