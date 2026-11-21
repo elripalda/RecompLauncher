@@ -1278,9 +1278,12 @@ function askSupportUrl(a, ask) {
 function fileCovers(p) {
   const list = (v) => Array.isArray(v) && v.length > 0;
   const game = p && p.game && typeof p.game === 'object' ? p.game : null;
-  // Named inputs alone (no `game` block) are Easy Setup too: the setup screen asks for them.
+  // The player's copy asked for through named inputs (no `game` block) is Easy Setup too: a
+  // required input of role game or disc that isn't a shared key, as the site counts it.
+  const inputs = Array.isArray(p && p.inputs) ? p.inputs : [];
+  const copyInput = inputs.some((i) => i && !i.optional && !i.shared && ['game', 'disc'].includes(i.role || 'game'));
   return {
-    easy_setup: !!game || list(p && p.inputs),
+    easy_setup: !!game || copyInput,
     settings: list(p && p.settings),
     prepare: !!(p && p.prepare),
     verified: !!game && (list(game.dumps) || list(game.check && game.check.ids)),

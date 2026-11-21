@@ -1754,8 +1754,11 @@ fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
 /// Each Launcher Support feature a recomplauncher.json sets up itself.
 fn profile_covers(p: &profile::Profile) -> Value {
     let game = p.game.as_ref();
-    // Named inputs alone (no `game` block) are Easy Setup too: the setup screen asks for them.
-    let easy_setup = game.is_some() || !p.inputs.is_empty();
+    // The player's copy asked for through named inputs (no `game` block) is Easy Setup too: a
+    // required input of role game or disc that isn't a shared key. The site counts it the same way
+    // (rs_sdk_easy), so the card agrees with the catalog.
+    let copy_input = p.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
+    let easy_setup = game.is_some() || copy_input;
     json!({
         "easy_setup": easy_setup,
         "settings": !p.settings.is_empty(),
@@ -10428,6 +10431,17 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(super::profile_covers(&p)["easy_setup"], true);
+    }
+
+    #[test]
+    fn launcher_support_does_not_count_optional_named_inputs_alone_as_easy_setup() {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "inputs": [{ "id": "dlc", "label": "Extra levels", "role": "dlc", "optional": true }],
+            "start": { "program": ["game.exe"] }
+        }))
+        .unwrap();
+        assert_eq!(super::profile_covers(&p)["easy_setup"], false);
     }
 
     #[test]

@@ -86,6 +86,12 @@ test("a repo file with named inputs and no game block counts as the project's Ea
   assert.match(rowOf(html, 'Easy Setup'), /sup-p/);
 });
 
+test('a repo file whose only named input is optional DLC is not Easy Setup', () => {
+  const inputs = [{ id: 'dlc', label: 'Extra levels', role: 'dlc', optional: true }];
+  const html = render({ launcher_from: 'repo', launcher: { format: 1, inputs, start: { program: ['game.exe'] } } });
+  assert.match(rowOf(html, 'Easy Setup'), /sup-no/);
+});
+
 test('everything from the project shows Full Support instead of a count', () => {
   const html = render({}, EVERYTHING, { name: 'Dev', verified: true });
   assert.match(html, /sup-full[^]*Full Support/);
