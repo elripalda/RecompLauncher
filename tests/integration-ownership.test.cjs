@@ -80,6 +80,12 @@ test("a Forgejo project's repo file counts as the project's", () => {
   assert.match(rowOf(html, 'Easy Setup'), /sup-p/);
 });
 
+test("a repo file with named inputs and no game block counts as the project's Easy Setup", () => {
+  const inputs = [{ id: 'jar', label: 'Your copy', role: 'game', formats: [{ type: 'file', extensions: ['jar'] }] }];
+  const html = render({ launcher_from: 'repo', launcher: { format: 1, inputs, start: { program: ['game.exe'] } } });
+  assert.match(rowOf(html, 'Easy Setup'), /sup-p/);
+});
+
 test('everything from the project shows Full Support instead of a count', () => {
   const html = render({}, EVERYTHING, { name: 'Dev', verified: true });
   assert.match(html, /sup-full[^]*Full Support/);

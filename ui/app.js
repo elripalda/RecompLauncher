@@ -1278,8 +1278,9 @@ function askSupportUrl(a, ask) {
 function fileCovers(p) {
   const list = (v) => Array.isArray(v) && v.length > 0;
   const game = p && p.game && typeof p.game === 'object' ? p.game : null;
+  // Named inputs alone (no `game` block) are Easy Setup too: the setup screen asks for them.
   return {
-    easy_setup: !!game,
+    easy_setup: !!game || list(p && p.inputs),
     settings: list(p && p.settings),
     prepare: !!(p && p.prepare),
     verified: !!game && (list(game.dumps) || list(game.check && game.check.ids)),

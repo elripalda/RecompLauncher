@@ -1748,14 +1748,21 @@ async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, drop
 fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
     let dir = st.lib.lock().unwrap().installed.get(&id).map(|g| g.path.clone())?;
     let p = profile::release_profile(&dir)?.profile;
+    Some(profile_covers(&p))
+}
+
+/// Each Launcher Support feature a recomplauncher.json sets up itself.
+fn profile_covers(p: &profile::Profile) -> Value {
     let game = p.game.as_ref();
-    Some(json!({
-        "easy_setup": game.is_some(),
+    // Named inputs alone (no `game` block) are Easy Setup too: the setup screen asks for them.
+    let easy_setup = game.is_some() || !p.inputs.is_empty();
+    json!({
+        "easy_setup": easy_setup,
         "settings": !p.settings.is_empty(),
         "prepare": p.prepare.is_some(),
         "verified": game.map(|g| !g.dumps.is_empty() || !g.check.ids.is_empty()).unwrap_or(false),
         "saves": !p.saves.is_empty(),
-    }))
+    })
 }
 
 // ---------- the launcher's own file browser ----------
@@ -10411,6 +10418,17 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn launcher_support_counts_named_inputs_without_a_game_block_as_easy_setup() {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "inputs": [{ "id": "jar", "label": "Your copy", "role": "game", "formats": [{ "type": "file", "extensions": ["jar"] }] }],
+            "start": { "program": ["game.exe"], "args": ["--game", "{input:jar}"] }
+        }))
+        .unwrap();
+        assert_eq!(super::profile_covers(&p)["easy_setup"], true);
+    }
 
     #[test]
     fn the_catalogs_xbox_360_title_id_is_used_first_and_in_capitals() {
