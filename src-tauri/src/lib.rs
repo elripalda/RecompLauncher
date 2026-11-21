@@ -5608,6 +5608,10 @@ fn setup_inputs_run(app: AppHandle, st: State<'_, App>, id: String, copy: Option
     let sub = pick.as_ref().map(|p| p.game.id.clone());
     if setup_busy(&id) || setup_busy(&rid) || st.running.lock().unwrap().contains_key(&rid) { return Err(Error::Msg("Close the game or stop setup first.".into())); }
     let mut g = in_plain_folder(&st, &rid)?;
+    // Built by the launcher from here on, as setup_copy does: its settings and finished files go
+    // with the setup's own build, not a build of the player's elsewhere. Their build stays in use
+    // until this setup has worked.
+    g.build_dir = None;
     let mut p = profile_of(&st, &rid, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     if let Some(pk) = &pick {
         games::scope(&mut p, &pk.game, &pk.all);
@@ -5791,6 +5795,11 @@ fn keep_inputs_build(x: &mut Installed, p: &profile::Profile, copy: Option<&Path
         x.game_copy = Some(c.clone());
     }
     x.prepare_version = p.prepare.as_ref().map(|pr| pr.version.clone()).unwrap_or_default();
+    // Its setup step built it: Play starts that build now, not one the player chose before.
+    if p.prepare.is_some() {
+        x.prebuilt = false;
+        x.build_dir = None;
+    }
 }
 
 /// The player picked their copy of the game.
@@ -10781,6 +10790,41 @@ mod tests {
         let status = crate::setup_state::of(&facts);
         assert!(status.ready, "{status:?}");
         assert_eq!(g.game_copy, Some(copy));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_setup_with_named_inputs_that_builds_takes_over_from_the_players_own_build() {
+        let (d, game) = inputs_copy_dir("own-build");
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "inputs": [{ "id": "dlc", "label": "DLC", "role": "dlc", "optional": true }],
+            "prepare": { "program": ["builder.sh"], "version": "1" },
+            "start": { "program": ["play.sh"] }
+        }))
+        .unwrap();
+        let mine = d.join("MyBuild");
+        let mut g = Installed { id: "combo".into(), path: game, build_dir: Some(mine), prebuilt: true, ..Default::default() };
+        super::keep_inputs_build(&mut g, &p, None);
+        assert_eq!(g.build_dir, None);
+        assert!(!g.prebuilt);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_setup_with_named_inputs_that_builds_nothing_keeps_the_players_build() {
+        let (d, game) = inputs_copy_dir("no-build");
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "inputs": [{ "id": "dlc", "label": "DLC", "role": "dlc", "optional": true }],
+            "start": { "program": ["play.sh"] }
+        }))
+        .unwrap();
+        let mine = d.join("MyBuild");
+        let mut g = Installed { id: "combo".into(), path: game, build_dir: Some(mine.clone()), prebuilt: true, ..Default::default() };
+        super::keep_inputs_build(&mut g, &p, None);
+        assert_eq!(g.build_dir, Some(mine));
+        assert!(g.prebuilt);
         let _ = std::fs::remove_dir_all(&d);
     }
 
