@@ -2935,6 +2935,9 @@ function refreshGame() {
   if (S.view !== 'game' || !$('#g-body') || ($('.gp') && $('.gp').dataset.gp !== S.arg)) return render(true);
   const id = S.arg, a = byId(id) || (S.library[id] && libApp(S.library[id]));
   if (!a) { $('.gp').dataset.gp = ''; return render(true); }
+  // Just installed (or its setup forgotten after an update): its Easy Setup state is read again,
+  // or the page shows Play and "Not found" for a game that isn't set up yet.
+  if (S.library[id] && S.setup[id] === undefined) loadSetup(id);
   const tabs = gameTabs(a);
   const have = $$('.tabs-in button').map((b) => b.dataset.tab + (b.querySelector('.tab-beta') ? '+' : '')).join();
   if (have !== tabs.map(([k, , x]) => k + (x ? '+' : '')).join()) {

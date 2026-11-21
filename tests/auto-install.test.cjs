@@ -89,6 +89,10 @@ test('Easy Install starts the download without opening a file picker', () => {
   assert.doesNotMatch(start, /pickFile|copyPickOpts/);
 });
 
+test('a game page redrawn in place reads the setup state of a game just installed', () => {
+  assert.match(fn(app, 'refreshGame'), /if \(S\.library\[id\] && S\.setup\[id\] === undefined\) loadSetup\(id\);/);
+});
+
 test('a finished Easy Install download opens the Easy Setup screen for the copy', () => {
   assert.match(doneHandler, /else if \(su && su\.needs && su\.status && !su\.status\.ready\) await setupModal\(id\);/);
 });
