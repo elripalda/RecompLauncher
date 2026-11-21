@@ -7048,11 +7048,14 @@ async function selfUpdate(win) {
     if (S.os === 'linux') await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
     else await invoke('update_launcher');
   } catch (e) {
-    if (win) updWinReset(win);
     if (!blocked('', e) && !cantReplace(e)) fail(e);
     lookForLauncher();
   }
-  finally { S.selfUpdating = false; }
+  finally {
+    S.selfUpdating = false;
+    // An external download link returns successfully without closing the launcher.
+    if (win) updWinReset(win);
+  }
 }
 // The AppImage sits in a folder this account can't change, so it can't update itself in place.
 // Say where and why, and offer the new AppImage to download instead of a bare error.
@@ -7538,7 +7541,7 @@ function updWinProgress(el, p) {
   const amount = tf('{done} of {total}', { done: fmtB(p.done), total: fmtB(p.total) });
   sub.innerHTML = `<span class="uw-num" style="min-width:${el.dataset.amountW}px">${esc(amount)}</span> · ${esc(t('RecompLauncher opens again by itself'))}`;
 }
-// The download didn't go (the error says why): Update Now is a button again, and Later is back.
+// The request ended, with an error or an external download link: Update Now and Later work again.
 function updWinReset(el) {
   el.classList.remove('busy');
   delete el.dataset.amountW;
