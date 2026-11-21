@@ -248,6 +248,17 @@ What the player sees:
    it's complete, and writes your settings.
 3. "Ready to play", with Play and Settings. Play starts `start.program` straight away.
 
+That's one of two roads, and the only one that reads this file's setup. A player can also turn
+Easy Setup off for your game (Skip Easy Setup). Then Play runs your release's program, or the one
+they picked under Manage → Game Executable, with their launch options, and nothing else: no copy,
+no `prepare`, no `start.args`. Your own launcher window, if you have one, does the rest:
+
+```json
+"start": { "program": ["bin/game.exe"], "args": ["--iso", "{game}"] }
+```
+
+with Easy Setup on runs `bin/game.exe --iso <their disc>`; skipped, it runs `bin/game.exe` alone.
+
 ### `game`: the player's copy
 
 - `kind`: `"iso"`, `"folder"` or `"iso_or_folder"`.
@@ -721,8 +732,7 @@ settings are written. It runs again whenever the player changes their copy.
   next Play opens a small Finish the Update window: Build Now builds it again (from what the step
   kept, with `keeps_copy`, or from the player's copy), asks about any option the update added, and
   starts the game when it's done. A game set up from named `inputs` opens Easy Setup for it, with a
-  note that the game is built again. A build the player pointed the launcher at
-  themselves ("Use a Build You Already Have") isn't asked. An update of your game doesn't change
+  note that the game is built again. An update of your game doesn't change
   `version` by itself: when the step builds the game itself (its recompiled program), so every
   release needs a new build, put your release version in `version` each time you package one
   (`"version": "0.4.2"`). Without it, players keep playing the build of the release they set up.
@@ -733,11 +743,8 @@ settings are written. It runs again whenever the player changes their copy.
 - `"done"` (optional): the files the step leaves when it has finished, like
   `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
   when your own launcher built it, and plays without asking for the copy (unless `start` uses
-  `{game}`). If one goes missing, the player is asked to set up again. It's also what a finished
-  build has: when a player points the launcher at a build of their own, the files of `done` in
-  your build folder must be in theirs, so list one your
-  build always leaves, like `["{install}/YourGame/game.pak"]`. Without `done`, any folder with files
-  in it is taken.
+  `{game}`). If one goes missing, the player is asked to set up again. List one your build always
+  leaves, like `["{install}/YourGame/game.pak"]`.
 - `"keeps_copy": true` (optional): your step keeps what it needs from the copy in your build folder
   (the first `folders.game`) and can run again from there without it, like an update that rebuilds
   from what the first build unpacked. Then a player who deleted their copy to save space isn't
