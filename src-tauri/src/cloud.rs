@@ -355,6 +355,29 @@ pub async fn playtime_pull(app: AppHandle) -> Res<Value> {
     Ok(play_call(req, &url).await.unwrap_or(Value::Null))
 }
 
+/// Sponsor spots for this account in the app ({s: [{id, slot, img, alt, house}]}). Quiet like play time:
+/// signed out, offline or an older website all just give nothing.
+#[tauri::command]
+pub async fn spons_mine(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let Some(a) = load(&st.dir) else { return Ok(Value::Null) };
+    let url = format!("{}?a=spons", api());
+    let req = st.http.get(&url).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    Ok(play_call(req, &url).await.unwrap_or(Value::Null))
+}
+
+/// A sponsor spot was on screen: one view, sent and forgotten.
+#[tauri::command]
+pub async fn spons_seen(app: AppHandle, id: u64) -> Res<()> {
+    let st = app.state::<App>();
+    let http = st.http.clone();
+    let url = format!("{}/api/spons.php?seen={id}", crate::catalog::base());
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::net::send(http.post(&url).timeout(crate::net::QUICK), &url, false).await;
+    });
+    Ok(())
+}
+
 // ---------- signing in ----------
 
 /// The sign-in that's waiting for the player to approve it on the website.

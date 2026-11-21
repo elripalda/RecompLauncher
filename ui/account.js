@@ -29,6 +29,8 @@ async function loadAccount(fresh) {
   if (S.account.signedIn && !S.account.offline && typeof libSync === 'function') libSync();
   // Playtime over all the account's PCs (or back to this PC's own when signed out).
   if (typeof playSync === 'function') playSync().then((changed) => changed && render(true));
+  // Sponsor spots for this account (none when signed out).
+  if (typeof sponsSync === 'function') sponsSync();
 }
 
 // ---------- your reports ----------
