@@ -4295,6 +4295,28 @@ function scanPill(h) {
   }
   return `<span class="scan-pill ${info.cls}" data-scan="${esc(key)}" title="${esc(t(SCAN_TIP))}"><i>${info.ic}</i>${esc(info.text)}</span>`;
 }
+// Each game's newest download only (the history is newest first), like Steam: installing the same
+// game three times is one row. The totals and the History tab still count every one.
+function latestPerGame(hist) {
+  const seen = new Set();
+  return hist.filter((h) => {
+    if (seen.has(h.id)) return false;
+    seen.add(h.id);
+    return true;
+  });
+}
+// When a download finished, the way Steam says it: "Today 10:01", "Yesterday 18:22", else the date
+// and time. Calendar days, so last night at 23:50 is yesterday, not today.
+function doneAt(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000), now = new Date();
+  const time = d.toLocaleTimeString(curLocale(), timeOpts({ hour: 'numeric', minute: '2-digit' }));
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return tf('Today {time}', { time });
+  if (d.toDateString() === yesterday.toDateString()) return tf('Yesterday {time}', { time });
+  const year = d.getFullYear() === now.getFullYear() ? undefined : 'numeric';
+  return d.toLocaleString(curLocale(), timeOpts({ year, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
+}
 function pageDownloads() {
   if (!S.dlHist) loadDlHist();
   const hist = S.dlHist || [];
@@ -4337,12 +4359,12 @@ function pageDownloads() {
   const failRows = fails.map((r) => { const a = appOf(r.id);
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   const ui = S.settings.ui || {};
-  const shown = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
+  const shown = latestPerGame(hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0)));
   const histRows = shown.slice(0, 40).map((h) => { const a = appOf(h.id); const inst = S.library[h.id];
     // The row opens the game's page; Play is its own button.
     return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}</span>${scanPill(h)}</span></div>
-      <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(agoCap(h.when))}</span>
-      ${inst ? `<button type="button" class="btn sm dl-play" data-act="play" data-id="${esc(h.id)}">${PLAY}${esc(t('Play'))}</button>` : '<span class="dl-play" aria-hidden="true"></span>'}</div>`; }).join('');
+      <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(tf('Completed: {when}', { when: doneAt(h.when) }))}</span>
+      ${inst ? `<button type="button" class="btn main sm dl-play" data-act="play" data-id="${esc(h.id)}">${PLAY}${esc(t('Play'))}</button>` : '<span class="dl-play" aria-hidden="true"></span>'}</div>`; }).join('');
   const nothing = !act.length && !ups.length && !fails.length && !shown.length;
   const updLog = updateLog(hist).filter((u) => (u.when || 0) > (ui.upd_cleared || 0));
   const tab = S.dlTab === 'updates' ? 'updates' : 'downloads';

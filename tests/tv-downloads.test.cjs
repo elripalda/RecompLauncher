@@ -19,7 +19,8 @@ function downloadsContext(launcherUpd) {
     sfx: () => {}, calls: [],
   });
   c.selfUpdate = () => c.calls.push('selfUpdate');
-  vm.runInContext(fn(tv, 'scanTag') + fn(tv, 'pageDownloads'), c);
+  const latestPerGame = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8').match(/^function latestPerGame\([^]*?^}/m)[0];
+  vm.runInContext(latestPerGame + fn(tv, 'scanTag') + fn(tv, 'pageDownloads'), c);
   vm.runInContext(fn(tv, 'activate'), c);
   return c;
 }
