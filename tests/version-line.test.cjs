@@ -82,3 +82,9 @@ test('a Library game that is only saved shows its latest version', () => {
   const grid = fn('libraryGrid');
   assert.match(grid, /x\.saved \? tile\(x\.a, \{ wide, w, ver: showVer\(\) \? x\.a\.version \|\| '' : null/);
 });
+
+test('the Downloads page keeps its number boxes styled after the game page moved to its own strip', () => {
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'ui', 'app.css'), 'utf8');
+  assert.match(css, /\.stats\{display:grid;/);
+  assert.match(css, /\.stats>div\{[^}]*border:1px solid var\(--line\)/);
+});
