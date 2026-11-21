@@ -3005,8 +3005,24 @@ function copyFormats(id) {
 const fmtTags = (exts) => exts.map((e) => `<span class="fmt">.${esc(e)}</span>`).join('');
 // The line under the drop area, for that kind of copy.
 const copyDrop = (f) => (f.type === 'rom' ? t('Drop your ROM here') : f.type === 'disc' ? t('Drop your disc image here') : t('Drop your game file here'));
+// The file types the game's own named inputs give for its copy (role game or disc, not shared keys
+// nor a file the launcher fetches): from its setup once installed, else from the catalog's copy of
+// its recomplauncher.json. [] when none says.
+function inputCopyExts(id) {
+  const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : null;
+  const isCopy = (r) => ['game', 'disc'].includes(r.role || 'game') && !r.shared && !r.runtime;
+  const clean = (list) => [...new Set(list.map((e) => String(e).toLowerCase().replace(/^\./, '')).filter(Boolean))];
+  // Installed: only this game's inputs (a recomp of several games leaves the others inactive).
+  if (su && su.inputs) return clean(su.inputs.filter((r) => r.active !== false && isCopy(r)).flatMap((r) => r.extensions || []));
+  const a = byId(id) || {};
+  const declared = ((a.launcher && a.launcher.inputs) || []).filter(isCopy);
+  return clean(declared.flatMap((r) => (r.formats || []).flatMap((f) => f.extensions || [])));
+}
 function copyPickOpts(id) {
   const a = byId(id) || { id };
+  // The file types the project's own file names for the copy come first: they're the exact ones.
+  const declared = inputCopyExts(id);
+  if (declared.length) return { title: t('Your copy of the game'), directory: false, multiple: false, filters: [{ name: t('Your copy of the game'), extensions: declared }, { name: t('All files'), extensions: ['*'] }] };
   // A console with files of its own (cartridge ROMs, Switch games, Amiga disks): those.
   const own = extsFor(a.origin);
   if (own) return { title: t('Your copy of the game'), directory: false, multiple: false, filters: [{ name: tf('{console} files', { console: originName(a.origin) }), extensions: own }, { name: t('All files'), extensions: ['*'] }] };
