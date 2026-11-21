@@ -1048,7 +1048,7 @@ pub const APPIMAGE_UNPACK: &str = "APPIMAGE_UNPACK|";
 /// after it. Err names the one that didn't unpack, and why.
 #[cfg(target_os = "linux")]
 pub(crate) fn unpack_appimages(dir: &Path, staging: &Path) -> Result<(), Error> {
-    let images = appimages_in(dir);
+    let images = real_appimages(appimages_in(dir));
     let alone_at_top = images.len() == 1 && images[0].parent() == Some(dir);
     let work = staging.with_extension("appdir");
     for image in &images {
@@ -1095,6 +1095,31 @@ fn unpack_one(image: &Path, work: &Path, into: &Path) -> io::Result<()> {
     }
     fs::remove_file(image)?;
     merge_into(work, into)
+}
+
+/// The AppImages to unpack. A file that's only named like one, such as a start script a release
+/// keeps under an older name beside its real AppImage, stays as it is when the release has a real
+/// one. A release whose only AppImage isn't one still stops, so its tarball is installed instead.
+#[cfg(target_os = "linux")]
+fn real_appimages(named: Vec<PathBuf>) -> Vec<PathBuf> {
+    let (programs, others): (Vec<PathBuf>, Vec<PathBuf>) = named.into_iter().partition(|p| is_elf(p));
+    if programs.is_empty() {
+        return others;
+    }
+    for other in &others {
+        let name = other.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        crate::trail::note(format!("Install: {name} isn't an AppImage, so it stays a plain file"));
+    }
+    programs
+}
+
+/// A Linux program: an AppImage starts like one, a script doesn't.
+#[cfg(target_os = "linux")]
+fn is_elf(path: &Path) -> bool {
+    use std::io::Read;
+    let mut magic = [0u8; 4];
+    let read = fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic));
+    read.is_ok() && &magic == b"\x7fELF"
 }
 
 /// The AppImages anywhere in `dir`: regular files named `….AppImage`, never through a link.
@@ -2225,6 +2250,20 @@ mod tests {
         assert!(staged.files.contains(&PathBuf::from("Game/AppRun")));
         assert!(staged.files.contains(&PathBuf::from("Editor/AppRun")));
         assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_script_named_like_an_appimage_beside_a_real_one_stays_a_plain_file() {
+        let d = tmp("stage-appimage-script");
+        let image = crate::appimage::tests::game_image();
+        let script = b"#!/bin/sh\nexec \"$(dirname \"$0\")/Game.AppImage\" \"$@\"\n";
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game/Game.AppImage", image.as_slice()), ("Game/OldName.AppImage", script.as_slice())])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("OldName.AppImage")));
+        assert!(!staged.files.contains(&PathBuf::from("Game.AppImage")));
     }
 
     #[cfg(target_os = "linux")]

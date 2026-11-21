@@ -158,6 +158,8 @@ in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
 - A release with several AppImages unpacks each into a folder named after it
   (`MyGame-Editor-x86_64.AppImage` into `MyGame-Editor-x86_64/`, started from its `AppRun`). Ship
   one when you can.
+- A file named like an AppImage that isn't one (a start script you keep under an older name, say)
+  stays a plain file, as long as the release has a real AppImage beside it.
 - An AppImage a player already has comes in the same way: Bring Your Recomps unpacks it into their
   Recomp Library and leaves their file where it is.
 
