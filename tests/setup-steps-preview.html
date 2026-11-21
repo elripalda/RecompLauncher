@@ -60,8 +60,10 @@ const CASES = [
     su: { needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Your game', role: 'game', file: true, folder: true, extensions: ['nsp', 'xci'], active: true, path: '/r/switch/Game.nsp' }, { id: 'prod', label: 'Switch prod.keys', role: 'key', shared: 'switch.prod-keys', file: true, extensions: ['keys'], active: true, path: 'stored' }, { id: 'title', label: 'Switch title.keys', role: 'key', shared: 'switch.title-keys', file: true, extensions: ['keys'], active: true, path: null }], prepare_options: [] } },
   { title: 'SSX · required extra (Windows)', id: 'ssx', game: { name: 'SSX', game: 'SSX', origin: 'xbox360' }, fm: { exts: ['iso'] },
     su: { needs: 'Your copy of SSX for Xbox 360 (EA-2413): its disc image (.iso), or the extracted folder with default.xex.', kind: 'iso_or_folder', copy: '/r/xbox360/SSX.iso', inputs: [dlc('tu', 'Title update 0.0.3.2 (about 9 MB): the gear for levels 11 to 15', null), dlc('me', 'SSX Mount Eddie (about 250 MB): the Mt. Eddie region and the classic riders', null)], own_build: '/x/SSX', prepare_label: 'Recompiling SSX for your PC from your disc (10 to 30 minutes the first time)', prepare_options: [{ id: 'vs', label: 'Microsoft Visual Studio Build Tools', note: 'Needed to build SSX on your PC (Windows asks for permission).', required: true, license: { name: 'Microsoft Visual Studio license terms', url: 'https://example.com' }, on: false }] } },
+  { title: 'Phone game · one named file with a long label', id: 'ph', game: { name: 'Example phone recomp', game: 'Example Phone Game', origin: 'j2me' },
+    su: { needs: 'x', kind: '', inputs: [{ id: 'jar', label: 'Your copy of Example Phone Game for Nokia Series 40 (128x128): Example_Phone_Game_s40v2.jar', role: 'game', file: true, extensions: ['jar'], active: true, path: null }], prepare_options: [] } },
 ];
-const TV = new URLSearchParams(location.search).has('tv') || location.hash === '#tv';
+const TV =new URLSearchParams(location.search).has('tv') || location.hash === '#tv';
 let html = '';
 for (const c of CASES) {
   S.setup[c.id] = c.su;
