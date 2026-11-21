@@ -694,12 +694,26 @@ const ART_KINDS = [['cover', '_cov'], ['hero', '_hero'], ['logo', '_logo'], ['ic
 // version (Customize's "every version" box) are kept under this key, so versions the catalog adds
 // later look the same too.
 const gameKey = (a) => (a && a.title ? 'game--' + a.title : '');
-// A version's own picture of a kind, as the catalog has it, whatever shows in its place.
-function catalogArt(a, k) {
+// The game's own picture of a kind (cover, hero, logo, icon: always the game itself), as the
+// catalog has it, whatever shows in its place.
+function gameArt(a, k) {
   const stash = ART_KINDS.find((x) => x[0] === k)[1];
   return a[stash] !== undefined ? a[stash] : a[k] || '';
 }
-// What shows for a kind when this version has no picture of its own: the one the player set for
+// The catalog has two sets of pictures for a recomp: the game's, and the project's
+// (project_cover...: the look its developer gave it on their website page). A recomp shows the
+// project's first and the game's for any it lacks. `gameOnly` (Show Game Names): the game's only,
+// to match the names. The developer's own picture is never one of them, even where an older
+// catalog put it in a picture's place.
+function pickArt(a, k, gameOnly) {
+  const avatar = a.developer_avatar || '';
+  const notAvatar = (u) => (u && u !== avatar ? u : '');
+  const game = notAvatar(gameArt(a, k));
+  if (gameOnly) return game;
+  return notAvatar(a['project_' + k]) || game;
+}
+// A version's own picture of a kind, as the catalog has it for how recomps show now.
+const catalogArt = (a, k) => pickArt(a, k, !!(S.settings.ui || {}).game_names);// What shows for a kind when this version has no picture of its own: the one the player set for
 // every version, else (Show Game Media) the recommended version's, else the catalog's.
 function usualArt(a, k) {
   const shared = (S.arts || {})[gameKey(a)] || {};
@@ -722,7 +736,8 @@ function applyCover(a, id) {
   const own = S.library[id] || (S.arts || {})[id] || {};
   for (const [k, stash] of ART_KINDS) {
     const f = own[k + '_file'];
-    const native = catalogArt(a, k);
+    // The field itself holds the game's picture: anything else shown is stashed over it.
+    const native = gameArt(a, k);
     const want = f ? 'local:' + f : usualArt(a, k);
     if (want === native) { if (a[stash] !== undefined) { a[k] = a[stash]; delete a[stash]; } continue; }
     if (a[stash] === undefined) a[stash] = a[k] || '';
@@ -5400,7 +5415,7 @@ async function loadCatalog(force, asked) {
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
     // Kept for offline use, but not while the window is opening: a while later, at the sizes shown.
-    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [thumbOf(a.cover, tileThumb()), a.hero ? thumbOf(a.hero, 960) : '', a.logo]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => { const hero = catalogArt(a, 'hero'); return [thumbOf(catalogArt(a, 'cover'), tileThumb()), hero ? thumbOf(hero, 960) : '', catalogArt(a, 'logo')]; }).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     if (urls.length) setTimeout(() => invoke('prefetch_images', { urls }).catch(() => {}), 15000);
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
@@ -6580,7 +6595,7 @@ async function confirmPack(id, pack) {
     return (await window.tvAsk(title, [{ label: t('Install'), icon: 'down' }, { label: t('Cancel'), icon: 'chevL' }], head)) === 0;
   }
   // Only a game's own cover: the recomp's, repeated beside every name, would read as a mistake.
-  const items = pack.map((g) => `<li>${g.cover ? pic(thumbOf(g.cover, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`).join('');
+  const items = pack.map((g) => { const c = catalogArt(g, 'cover'); return `<li>${c ? pic(thumbOf(c, 160), '', 'loading="lazy"') : '<span class="ph"></span>'}<span>${esc(g.name)}</span></li>`; }).join('');
   const text = `<p>${esc(line)}</p><ul class="pack-list">${items}</ul>`;
   const v = await ask(title, text, [{ label: t('Cancel'), icon: 'chevL', v: null }, { label: t('Install'), icon: 'down', v: 'go', main: true, focus: true }]);
   return v === 'go';

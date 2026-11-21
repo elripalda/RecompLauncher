@@ -13,13 +13,15 @@ function load(ui, arts = {}, library = {}) {
   assert.ok(start >= 0 && end > start);
   const rec = { id: 'race-rec', title: 'race', name: 'Racer Recomp', cover: 'rec-cover', icon: 'rec-icon' };
   const neo = { id: 'race-neo', title: 'race', name: 'Racer Neo', cover: 'neo-cover', icon: 'neo-icon' };
-  const ids = new Map([[rec.id, rec], [neo.id, neo]]);
+  // A recomp with both sets: the game's pictures and its project's own look.
+  const zel = { id: 'zelda', name: 'Zelda Recomp', game: 'Zelda', cover: 'game-cover', hero: 'game-hero', icon: 'game-icon', project_cover: 'proj-cover', project_icon: 'proj-icon', developer_avatar: 'dev-face' };
+  const ids = new Map([[rec.id, rec], [neo.id, neo], [zel.id, zel]]);
   const group = { id: 'race', pick: 'race-rec', list: [rec, neo], every: [rec, neo] };
   const S = { settings: { ui }, arts, library };
   const verGroup = (a) => (a && a.title === 'race' ? group : null);
   const index = () => ({ ids });
-  const f = new Function('S', 'verGroup', 'index', `${app.slice(start, end)} return { applyCover, catalogArt };`);
-  return Object.assign(f(S, verGroup, index), { rec, neo, S });
+  const f = new Function('S', 'verGroup', 'index', `${app.slice(start, end)} return { applyCover, catalogArt, pickArt };`);
+  return Object.assign(f(S, verGroup, index), { rec, neo, zel, S });
 }
 
 test('a version shows its own store pictures when Show Game Media is off', () => {
@@ -59,6 +61,62 @@ test('a picture set for every version shows on a version that has none of its ow
 test('a name set for every version shows on a version without its own', () => {
   const x = load({ names: { 'game--race': 'Racer' } });
   assert.equal(x.applyCover(x.neo, 'race-neo').name, 'Racer');
+});
+
+test('a recomp shows its project\'s pictures first', () => {
+  const x = load({});
+  x.applyCover(x.zel, 'zelda');
+  assert.equal(x.zel.cover, 'proj-cover');
+  assert.equal(x.zel.icon, 'proj-icon');
+});
+
+test('a picture the project lacks is the game\'s', () => {
+  const x = load({});
+  assert.equal(x.applyCover(x.zel, 'zelda').hero, 'game-hero');
+});
+
+test('a catalog without project pictures shows the game\'s as before', () => {
+  const x = load({});
+  assert.equal(x.applyCover(x.rec, 'race-rec').cover, 'rec-cover');
+});
+
+test('Show Game Names shows the game\'s pictures only', () => {
+  const x = load({ game_names: true });
+  x.applyCover(x.zel, 'zelda');
+  assert.equal(x.zel.cover, 'game-cover');
+  assert.equal(x.zel.icon, 'game-icon');
+});
+
+test('turning Show Game Names off brings the project\'s pictures back', () => {
+  const x = load({ game_names: true });
+  x.applyCover(x.zel, 'zelda');
+  x.S.settings.ui = {};
+  assert.equal(x.applyCover(x.zel, 'zelda').cover, 'proj-cover');
+});
+
+test('the game\'s picture stays the field\'s own while the project\'s shows over it', () => {
+  const x = load({});
+  x.applyCover(x.zel, 'zelda');
+  assert.equal(x.pickArt(x.zel, 'cover', true), 'game-cover');
+});
+
+test('a picture the player set wins over both sets', () => {
+  const x = load({}, {}, { zelda: { cover_file: 'C:/c/mine.jpg' } });
+  assert.equal(x.applyCover(x.zel, 'zelda').cover, 'local:C:/c/mine.jpg');
+  x.S.settings.ui = { game_names: true };
+  assert.equal(x.applyCover(x.zel, 'zelda').cover, 'local:C:/c/mine.jpg');
+});
+
+test('the developer\'s picture is never a recomp\'s icon', () => {
+  const x = load({});
+  const a = { icon: 'dev-face', project_icon: 'dev-face', cover: 'c', developer_avatar: 'dev-face' };
+  assert.equal(x.pickArt(a, 'icon', false), '');
+  assert.equal(x.pickArt(a, 'icon', true), '');
+});
+
+test('the versions list icon is the project\'s too', () => {
+  const x = load({});
+  assert.equal(x.catalogArt(x.zel, 'icon'), 'proj-icon');
 });
 
 test('the versions menu and card draw each version\'s own icon', () => {
