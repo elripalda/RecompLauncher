@@ -6877,14 +6877,6 @@ async function playGame2(id, program) {
         if (v === 'get') invoke('open_url', { url: 'https://www.python.org/downloads/' }).catch(fail);
         return;
       }
-      // Set up by hand on a game that's built from the copy: back to the launcher's way, then Play.
-      if (/^NEED_WAY\|/.test(String(err && err.message ? err.message : err))) {
-        const v = await ask(t('Use the Launcher\'s Way?'), `<p>${esc(t('This game is built from your copy before it starts, and only the launcher\'s way does that. Your hand setup is skipped, and the game is built and started the usual way.'))}</p>`,
-          [{ label: t('Use the Launcher\'s Way'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
-        if (v !== 'yes') return;
-        try { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); } catch (e) { return fail(e); }
-        return playGame(id);
-      }
       // Easy Setup skipped on a game built from the copy, with no build yet: where it is, asked
       // once (or Easy Setup goes back on for it).
       if (/^NEED_OWN_BUILD\|/.test(String(err && err.message ? err.message : err))) {
@@ -8400,7 +8392,6 @@ const TS_FIX = {
   move: [N_('Move…'), (id) => moveModal(id)],
   files: [N_('Open Its Folder'), (id) => invoke('open_folder', { id })],
   manual: [N_('Set Up By Hand…'), (id) => manualModal(id)],
-  byhandoff: [N_('Use the Launcher\'s Way'), async (id) => { S.library[id] = await invoke('set_manual', { id, manual: null }); applyEasySkip(); toast(t('It uses the launcher\'s own setup again.')); render(true); }],
   dxruntime: [N_('Get It'), () => invoke('open_url', { url: 'https://www.microsoft.com/en-us/download/details.aspx?id=35' })],
   lookroute: [N_('Try Both Ways'), async (id) => { await invoke('look_reset_route', { id }); toast(t('Done. Press Play to try the Look again.')); }],
   clean: [N_('Try a Clean Start'), async (id) => { await invoke('clean_start_next', { id }); playGame(id); }],
@@ -8412,8 +8403,6 @@ const TS_TEXT = [
   N_('You can set it up by hand'),
   N_('Point the launcher at its program and your game files yourself.'),
   N_('It\'s set up by hand'),
-  N_('Set up by hand, it never gets built'),
-  N_('This game is built from your copy before it starts, and only the launcher\'s way does that. Go back to it and press Play.'),
   N_('It hasn\'t been built from your copy yet'),
   N_('Press Play and pick your copy. The launcher builds the game from it before it starts.'),
   N_('The game built from your copy isn\'t there anymore'),

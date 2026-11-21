@@ -5066,7 +5066,6 @@ fn not_set_up(s: &setup_state::Status) -> Error {
         "rebuild" => format!("NEED_REBUILD|{}", s.detail),
         "build_missing" => format!("NEED_BUILD|{}", s.detail),
         "own_build_missing" => format!("NEED_OWN_BUILD|{}", s.detail),
-        "way" => "NEED_WAY|This game is built from your copy before it starts, and only the launcher's way does that.".to_string(),
         _ => format!("NEED_COPY|{}", s.detail),
     };
     Error::Msg(msg)
@@ -6479,15 +6478,10 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
         out.push(check("info", "You can set it up by hand", "Point the launcher at its program and your game files yourself.", "manual"));
         return Ok(out);
     };
+    // Set up by hand starts the program the player named, also on a game its setup builds.
     if let Some(m) = g.hand() {
-        // A game its setup builds from the copy: set up by hand skips the build, so there's
-        // nothing to start. The launcher's way builds it.
-        if profile_of(&st, &id, &g).map(|p| p.prepare.is_some() && p.start.is_some()).unwrap_or(false) {
-            out.push(check("bad", "Set up by hand, it never gets built", "This game is built from your copy before it starts, and only the launcher's way does that. Go back to it and press Play.", "byhandoff"));
-        } else {
-            let ok = m.copy.as_ref().map(|c| c.exists()).unwrap_or(true);
-            out.push(check(if ok { "info" } else { "bad" }, "It's set up by hand", if ok { "It starts the way you set it up, not the launcher's way." } else { "Your game files aren't where you pointed it anymore." }, "manual"));
-        }
+        let ok = m.copy.as_ref().map(|c| c.exists()).unwrap_or(true);
+        out.push(check(if ok { "info" } else { "bad" }, "It's set up by hand", if ok { "It starts the way you set it up, not the launcher's way." } else { "Your game files aren't where you pointed it anymore." }, "manual"));
     }
     let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     // A program in a setup's working folder (temp\…\build) or one of the game's tools: what it

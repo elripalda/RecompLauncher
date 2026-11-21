@@ -366,7 +366,7 @@ impl Installed {
         self.hand().is_none() && (self.mode == SetupMode::Own || all)
     }
 
-    /// Set Up By Hand turned off ("Use the Launcher's Way"): the launcher sets it up again. The
+    /// Set Up By Hand turned off: the launcher sets it up again. The
     /// hand setup, and a program or build the player picked, stay recorded.
     pub fn leave_hand(&mut self) {
         if self.mode == SetupMode::ByHand {
