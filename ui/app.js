@@ -3013,12 +3013,13 @@ function copyFormats(id) {
 const fmtTags = (exts) => exts.map((e) => `<span class="fmt">.${esc(e)}</span>`).join('');
 // The line under the drop area, for that kind of copy.
 const copyDrop = (f) => (f.type === 'rom' ? t('Drop your ROM here') : f.type === 'disc' ? t('Drop your disc image here') : t('Drop your game file here'));
-// The file types the game's own named inputs give for its copy (role game or disc, not shared keys
-// nor a file the launcher fetches): from its setup once installed, else from the catalog's copy of
-// its recomplauncher.json. [] when none says.
+// The file types the game's own named inputs give for its copy: a required input of role game or
+// disc that isn't a shared key nor a file the launcher fetches, the same rule as Launcher Support
+// and the site. From its setup once installed, else from the catalog's copy of its
+// recomplauncher.json. [] when none says.
 function inputCopyExts(id) {
   const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : null;
-  const isCopy = (r) => ['game', 'disc'].includes(r.role || 'game') && !r.shared && !r.runtime;
+  const isCopy = (r) => ['game', 'disc'].includes(r.role || 'game') && !r.optional && !r.shared && !r.runtime;
   const clean = (list) => [...new Set(list.map((e) => String(e).toLowerCase().replace(/^\./, '')).filter(Boolean))];
   // Installed: only this game's inputs (a recomp of several games leaves the others inactive).
   if (su && su.inputs) return clean(su.inputs.filter((r) => r.active !== false && isCopy(r)).flatMap((r) => r.extensions || []));

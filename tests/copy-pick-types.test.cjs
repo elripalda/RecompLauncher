@@ -47,6 +47,14 @@ test('shared keys and other games\' inputs do not type the copy picker', () => {
   assert.deepEqual(Array.from(pickerFor({ setup: { inputs } }).filters[0].extensions), ['jar']);
 });
 
+test('an optional disc input does not type the copy picker', () => {
+  const inputs = [
+    { id: 'jar', role: 'game', active: true, extensions: ['jar'] },
+    { id: 'bonus', role: 'disc', optional: true, active: true, extensions: ['iso'] },
+  ];
+  assert.deepEqual(Array.from(pickerFor({ setup: { inputs } }).filters[0].extensions), ['jar']);
+});
+
 test('without declared types the console\'s own files are used as before', () => {
   const opts = pickerFor({ entry: { origin: 'NES' } });
   assert.deepEqual(Array.from(opts.filters[0].extensions), ['nes']);
