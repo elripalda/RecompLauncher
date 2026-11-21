@@ -5221,24 +5221,21 @@ struct SpareCopy {
     why: &'static str,
 }
 
-/// Free Up Space: the player's copy, when the game no longer reads it. Only for a game built from
-/// it whose start doesn't name it, or a disc image the launcher unpacked into the game's folder (a
+/// Free Up Space: the player's copy (or the named file it was built from, spare_files), when the
+/// game no longer reads it. Only for a game built from it whose start doesn't name it, or a
+/// disc image the launcher unpacked into the game's folder (a
 /// real copy, never a link), and only when nothing else of the player's uses it: no other game's
 /// copy, update or picked files, nor the game's own folder or build, are in it.
 fn spare_copy(g: &Installed, p: &profile::Profile, others: &[Installed]) -> Option<SpareCopy> {
-    if g.local || p.start.is_none() || !p.inputs.is_empty() {
+    if g.local || p.start.is_none() {
         return None;
+    }
+    if !p.inputs.is_empty() {
+        return spare_files(g, p, others);
     }
     let need = p.game.as_ref()?;
     let copy = g.game_copy.clone().filter(|c| c.exists())?;
-    let overlaps = |x: &Path| x.starts_with(&copy) || copy.starts_with(x);
-    if overlaps(&g.path) || g.build_dir.as_deref().is_some_and(overlaps) || g.update_copy.as_deref().is_some_and(overlaps) {
-        return None;
-    }
-    let used_elsewhere = others.iter().filter(|o| o.id != g.id).any(|o| {
-        o.game_copy.iter().chain(o.update_copy.iter()).chain(o.setup_inputs.values()).chain(std::iter::once(&o.path)).any(|x| overlaps(x))
-    });
-    if used_elsewhere {
+    if still_used(g, &copy, others) {
         return None;
     }
     let why = if p.build_done(&g.path) == Some(true) && !p.start_uses_game() {
@@ -5250,6 +5247,35 @@ fn spare_copy(g: &Installed, p: &profile::Profile, others: &[Installed]) -> Opti
     };
     let size = std::fs::metadata(&copy).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0);
     Some(SpareCopy { path: copy, size, why })
+}
+
+/// Free Up Space for a game set up from named files: the file or folder of the player's it was
+/// built from, once it plays without it (inputs::plays_built). While several are still there
+/// (discs, DLC), they all stay: Free Up Space moves one thing to the trash.
+fn spare_files(g: &Installed, p: &profile::Profile, others: &[Installed]) -> Option<SpareCopy> {
+    // A game that takes a copy too reads it again whenever it's built, so nothing goes.
+    if p.game.is_some() || !inputs::plays_built(p, g, &g.inputs_ready) {
+        return None;
+    }
+    let picked: Vec<&PathBuf> = p.inputs.iter().filter(|i| inputs::players(i)).filter_map(|i| g.setup_inputs.get(&i.id)).filter(|x| x.exists()).collect();
+    let [copy] = picked.as_slice() else { return None };
+    if still_used(g, copy, others) {
+        return None;
+    }
+    let size = std::fs::metadata(copy).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0);
+    Some(SpareCopy { path: (*copy).clone(), size, why: "built" })
+}
+
+/// Something in or around `copy` is still in use: this game's own folder, build or update, or
+/// another game's copy, update, picked files or folder. Then Free Up Space leaves it.
+fn still_used(g: &Installed, copy: &Path, others: &[Installed]) -> bool {
+    let overlaps = |x: &Path| x.starts_with(copy) || copy.starts_with(x);
+    if overlaps(&g.path) || g.build_dir.as_deref().is_some_and(overlaps) || g.update_copy.as_deref().is_some_and(overlaps) {
+        return true;
+    }
+    others.iter().filter(|o| o.id != g.id).any(|o| {
+        o.game_copy.iter().chain(o.update_copy.iter()).chain(o.setup_inputs.values()).chain(std::iter::once(&o.path)).any(|x| overlaps(x))
+    })
 }
 
 /// What the launcher can set up for a game: its copy and its settings. None for games it can't.
@@ -11708,6 +11734,54 @@ mod beta54_tests {
         assert!(spare_copy(&g, &p, &[g.clone(), other]).is_none());
         // Not unpacked (its files aren't in the game's folder): the game still reads the image.
         std::fs::remove_file(install.join("data/default.xex")).unwrap();
+        assert!(spare_copy(&g, &p, std::slice::from_ref(&g)).is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// PrimeRecomp's shape (#393): built from one picked folder, started without it, set up.
+    fn built_from_a_folder(d: &Path) -> (profile::Profile, Installed) {
+        let install = d.join("games/prime");
+        let dump = d.join("dumps/prime");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::create_dir_all(dump.join("romfs")).unwrap();
+        let p: profile::Profile = serde_json::from_value(json!({
+            "inputs": [{ "id": "base", "label": "Extracted game", "role": "game", "formats": [{ "type": "folder" }] }],
+            "prepare": { "program": ["prime.exe"], "args": ["--prepare", "--game={input:base}"] },
+            "start": { "program": ["prime.exe"], "args": ["--play"] }
+        })).unwrap();
+        let mut g = Installed { id: "prime".into(), path: install, game_copy: Some(dump.clone()), ..Default::default() };
+        g.setup_inputs.insert("base".into(), dump);
+        g.inputs_ready = inputs::signature(&p, &g, d).unwrap();
+        (p, g)
+    }
+
+    #[test]
+    fn the_folder_a_game_was_built_from_is_spare() {
+        let d = tmp("spare-files");
+        let (p, g) = built_from_a_folder(&d);
+        let spare = spare_copy(&g, &p, std::slice::from_ref(&g)).expect("built from it, started without it");
+        assert_eq!((spare.why, spare.path), ("built", d.join("dumps/prime")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_folder_a_game_was_built_from_stays_while_another_game_uses_it() {
+        let d = tmp("spare-files-shared");
+        let (p, g) = built_from_a_folder(&d);
+        let mut other = Installed { id: "prime-mod".into(), path: d.join("games/prime-mod"), ..Default::default() };
+        other.setup_inputs.insert("base".into(), d.join("dumps/prime"));
+        assert!(spare_copy(&g, &p, &[g.clone(), other]).is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn files_inside_the_game_folder_are_never_spare() {
+        let d = tmp("spare-files-inside");
+        let (p, mut g) = built_from_a_folder(&d);
+        let inside = g.path.join("dump");
+        std::fs::create_dir_all(inside.join("romfs")).unwrap();
+        g.setup_inputs.insert("base".into(), inside);
+        g.inputs_ready = inputs::signature(&p, &g, &d).unwrap();
         assert!(spare_copy(&g, &p, std::slice::from_ref(&g)).is_none());
         let _ = std::fs::remove_dir_all(&d);
     }

@@ -714,7 +714,9 @@ settings are written. It runs again whenever the player changes their copy.
   last run made, not start again from the disc.
 - **Built from the player's copy?** Keep everything the game needs in your folder, so it plays
   without the copy, and list what the build leaves in `done`. To build again later without the
-  copy, see `keeps_copy` below.
+  copy, see `keeps_copy` below. The same goes for named `inputs`: once built, a game whose
+  `start` doesn't use `{input:...}` plays without them
+  ([SETUP-INPUTS.md](SETUP-INPUTS.md#persistence-replacement-and-privacy)).
 - `"version"` (optional): change it only when players who already set up must run the step again,
   like when your output format changes. Nothing else in this file makes them set up again. The
   game's page keeps its Play button, with "Needs a new build after the update" under it, and the

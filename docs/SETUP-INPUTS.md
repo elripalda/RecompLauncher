@@ -148,9 +148,28 @@ An update keeps the setup. The player's files and the fingerprint carry over, an
 checks them again, so a game set up before plays straight away. When your new release needs the
 setup step to run again (its output changed), bump `prepare.version`. When the step's output lives
 in the game's folder, list it in `prepare.done`; if an update takes it away, Play asks for setup
-again instead of starting without it. The selected source files must still be where the player
-left them, or they're asked for again. Keep source files available after setup if a project reads
-them at runtime.
+again instead of starting without it.
+
+Once your setup step has built the game, the player's own files can be moved or deleted, as a
+copy can: Play starts the build without them, and the game's page offers Free Up Space when one
+file or folder was picked. That holds while:
+
+- `start` has no `{input:...}`, and none of the player's inputs has a `destination`;
+- the build is still there: every file of `prepare.done`, and the folder `start` plays from;
+- `prepare.version` is the one it was built with.
+
+Otherwise the files must stay where the player left them, or they're asked for again. A new
+`prepare.version` asks for them too, because the step runs again from them. List `prepare.done`
+so the launcher can tell a finished build from one an update took away:
+
+```json
+"inputs": [{ "id": "base", "label": "Your extracted game (exefs and romfs)", "formats": [{ "type": "folder" }] }],
+"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game={input:base}"], "done": ["{install}/game/romfs"] },
+"start": { "program": ["yourgame.exe"], "args": ["--play"] }
+```
+
+Launchers before 0.90 Beta 68 ask for the files again whenever they're gone, so until your `min`
+is that version, tell players to keep them.
 
 Imported keys live under the launcher's private `shared-keys/<shared-type>/` directory. These are
 not account credentials and do not use the RecompLauncher account token slot. Replacing keys is
