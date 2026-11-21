@@ -9600,26 +9600,6 @@ fn open_link(app: &AppHandle, id: String) {
     let _ = app.emit("open-game", id);
 }
 
-/// Easy Install, before the download: is this the copy the game needs? The same checks its setup
-/// runs (kind of file, disc and version), from the catalog's setup for it, so a wrong copy is found
-/// now instead of after the download.
-#[tauri::command(async)]
-fn precheck_copy(st: State<'_, App>, id: String, path: String) -> Res<String> {
-    let p = PathBuf::from(&path);
-    if !p.exists() {
-        return Err(Error::Msg("That file isn't there anymore.".into()));
-    }
-    let cat = cached_catalog(&st);
-    let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
-    // Nothing is installed yet, so only the catalog's setup counts (a folder that isn't there).
-    let none = st.dir.join("precheck").join(&id);
-    let prof = profile::find(&none, str_of(&entry, "repo"), &entry).ok_or_else(|| Error::Msg("This game's copy can only be checked once it's installed.".into()))?;
-    let g = prof.game.as_ref().filter(|_| prof.inputs.is_empty()).ok_or_else(|| Error::Msg("This game's copy can only be checked once it's installed.".into()))?;
-    profile::check_copy(g, &p).map_err(Error::Msg)?;
-    roms::fits_copy_ids(&entry, &p).map_err(|found| Error::Msg(format!("That copy reads as {found}, and this recomp is made for another version of the game.")))?;
-    Ok(p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
-}
-
 /// The game folders the player's emulators know about, that aren't among their game folders yet.
 #[tauri::command(async)]
 fn emulator_folders(st: State<'_, App>) -> Vec<emus::Found> {
@@ -10360,7 +10340,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             take_link, ui_ready, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
-            precheck_copy,
             emulator_folders,
             games_rom_folder,
             add_github,

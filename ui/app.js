@@ -6609,10 +6609,8 @@ async function startInstall(id, dir, tag, anyway) {
     return locationModal(id);
   }
   if (S.running.has(id)) return toast(t('Close the game first.'), true);
-  // Easy Install with no copy found in the player's folders: the copy is picked while it downloads.
-  // With Auto-Install off nothing sets up by itself after the download, so there's nothing to pick it for.
-  // A recomp of several games: each game's copy is asked for on its own setup, after the download.
-  const pickNow = autoInstall() && !S.library[id] && !tag && !anyway && !pack.length && turnkey(byId(id)) && !S.owned[id] && !(S.prePicked || {})[id] && !document.body.classList.contains('tv-on');
+  // Easy Install asks for nothing here: the player's copy is asked for on the Easy Setup screen,
+  // which opens once the download is done (a bare file picker over the page said nothing of why).
   // An update the site found crashing for a lot of players: asked once, the player decides.
   const badNext = S.library[id] && !tag && !anyway && S.updates[id] && badVersion(byId(id), S.updates[id]);
   if (badNext) {
@@ -6634,46 +6632,7 @@ async function startInstall(id, dir, tag, anyway) {
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
   dlArgs(id, { id, dir: dir || null, tag: tag || null });
-  if (pickNow) pickWhileDownloading(id);
   try { await invoke('install', { id, dir: dir || null, tag: tag || null }); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
-}
-// Easy Install: the download starts and the player picks their copy meanwhile. It's checked
-// against what the game needs while it downloads. Picked before the download is done, setup
-// starts with it as soon as it is. While they pick, the end of the download doesn't open the
-// setup window (it would cover the picker's questions): it opens here once they're done, with
-// what they picked, or asking for it when they closed the picker.
-async function pickWhileDownloading(id) {
-  (S.pickingCopy = S.pickingCopy || {})[id] = true;
-  let path = null;
-  try { path = await pickCheckedCopy(id); } finally { delete S.pickingCopy[id]; }
-  if (S.jobs[id]) {
-    if (!path) return;
-    (S.prePicked = S.prePicked || {})[id] = path;
-    return toast(t('That\'s the right copy. It\'s set up as soon as the download is done.'));
-  }
-  // The download ended while they were picking (or it stopped: then there's nothing to set up).
-  if (!S.library[id]) await refreshState();
-  if (!S.library[id]) return;
-  await setupModal(id);
-  if (path && SU.el && SU.id === id && SU.stage === 'steps') suBegin(path);
-}
-// The player's copy for a game not installed yet, checked against what it needs. '' when it can
-// only be checked once it's installed (setup asks for it then), null when they stopped.
-async function pickCheckedCopy(id) {
-  for (;;) {
-    const f = await pickFile(copyPickOpts(id)).catch(() => null);
-    if (!f) return null;
-    const path = typeof f === 'string' ? f : f.path;
-    try { await invoke('precheck_copy', { id, path }); return path; } catch (e) {
-      const msg = String(e && e.message ? e.message : e);
-      // Can't be checked before it's installed: nothing is kept, setup asks after the download.
-      if (/only be checked once it's installed/i.test(msg)) return '';
-      // Compressed: kept, and made plain during setup.
-      if (/^CONVERT\|/.test(msg)) { toast(t('It\'s compressed. Setup makes a plain copy of it after the download.')); return path; }
-      const v = await ask(t('That Copy Won\'t Work'), `<p>${esc(t(msg))}</p>`, [{ label: t('Pick Another'), icon: 'disc', v: 'again', main: true }, { label: t('Pick It Later'), sub: t('The download goes on'), icon: 'chevL', v: null }]);
-      if (v !== 'again') return null;
-    }
-  }
 }
 // What each download was started with, so Resume carries on with the same version and folder.
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
@@ -9676,9 +9635,6 @@ T.event.listen('install', ({ payload: p }) => {
       if ((((S.settings.ui || {}).switch_from) || {})[id]) refreshState().then(() => betterDone(id));
       // A game the launcher sets up: straight on to its copy, unless it already has one.
       const busy = SU.el || (window.tvSetupBusy && window.tvSetupBusy());
-      // A copy picked (and checked) before the download: its setup starts with it at once.
-      const pre = (S.prePicked || {})[id];
-      if (pre) delete S.prePicked[id];
       // Auto-Install off (Settings → Updates): nothing opens by itself; Set Up on its page starts it.
       const auto = autoInstall();
       const after = () => {
@@ -9686,10 +9642,7 @@ T.event.listen('install', ({ payload: p }) => {
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
         else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
-        // The player is still picking their copy (Easy Install): the setup window opens when
-        // they're done, with what they picked, so it never covers the picker's questions.
-        else if (S.easy.has(id) && (S.pickingCopy || {})[id]) { /* pickWhileDownloading opens it */ }
-        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) { await setupModal(id); if (pre && SU.el && SU.id === id && SU.stage === 'steps') suBegin(pre); } else toast(tf('{name} is ready to play.', { name })); });
+        else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) await setupModal(id); else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
       };
