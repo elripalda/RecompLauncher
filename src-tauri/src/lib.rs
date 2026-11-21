@@ -325,6 +325,21 @@ fn catalog_tag(entry: &Value) -> Option<String> {
     entry.get("tag").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
 }
 
+/// Whether an install of `tag` is a version the player picked (`Installed::pinned`: no update is
+/// offered until they go back). The same version again (Reinstall, Change Build) stays as it was
+/// (`have`: the installed tag, and whether it was picked). The newest release, one the launcher
+/// fell back to, or the one the store let out (`store`) is where updates go anyway, so never.
+fn picked_by_player(tag: &str, newest: &str, fell_back: bool, store: Option<&str>, have: (&str, bool)) -> bool {
+    let (have_tag, have_pinned) = have;
+    if !have_tag.is_empty() && tag == have_tag {
+        return have_pinned;
+    }
+    if fell_back || tag == newest {
+        return false;
+    }
+    store != Some(tag)
+}
+
 /// The same release name, give or take a leading "v" and letter case.
 fn same_tag(a: &str, b: &str) -> bool {
     let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).trim_start_matches('.').to_ascii_lowercase();
@@ -412,7 +427,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         },
         None => newest,
     };
-    let pinned = rel.tag_name != newest.tag_name && !fell_back;
+    let have_pinned = st.lib.lock().unwrap().installed.get(id).is_some_and(|g| g.pinned);
+    let store = listed.map(|r| r.tag_name.as_str());
+    let pinned = picked_by_player(&rel.tag_name, &newest.tag_name, fell_back, store, (have.as_str(), have_pinned));
     let (mut os, arch) = (os_for(st, &entry, id), assets::arch_now());
     // On Linux with Proton, a release with a Linux build and a Windows one: the player picks the
     // first time (the Linux one is the usual pick), and updates keep the system they picked. A
@@ -10552,6 +10569,31 @@ mod tests {
         assert_eq!(offered_update(&pinned, Some(&entry), &rels), None);
         // No checked release in the list: the newest one.
         assert_eq!(offered_update(&g, Some(&serde_json::json!({ "id": "g" })), &rels).as_deref(), Some("v3"));
+    }
+
+    // Longshot (#393): the store let out v3.0.0, the newest release is a nightly.
+    #[test]
+    fn reinstalling_the_version_the_player_picked_keeps_it_picked() {
+        assert!(picked_by_player("nightly-681", "v3.0.0", false, Some("v3.0.0"), ("nightly-681", true)));
+    }
+
+    #[test]
+    fn reinstalling_a_version_nobody_picked_doesnt_pick_it() {
+        assert!(!picked_by_player("nightly-681", "nightly-681", false, Some("v3.0.0"), ("nightly-681", false)));
+        assert!(!picked_by_player("nightly-680", "nightly-681", false, Some("v3.0.0"), ("nightly-680", false)));
+    }
+
+    #[test]
+    fn going_to_another_version_than_the_newest_picks_it() {
+        assert!(picked_by_player("nightly-681", "v3.0.0", false, Some("v3.0.0"), ("v3.0.0", false)));
+    }
+
+    #[test]
+    fn going_to_the_store_version_or_the_newest_picks_nothing() {
+        // "Go Back to v3.0.0" from a picked nightly, and an update to the version on offer.
+        assert!(!picked_by_player("v3.0.0", "nightly-681", false, Some("v3.0.0"), ("nightly-681", true)));
+        assert!(!picked_by_player("v3.1.0", "v3.1.0", false, None, ("v3.0.0", false)));
+        assert!(!picked_by_player("v2.9.0", "v3.0.0", true, None, ("", false)));
     }
 
     #[test]
