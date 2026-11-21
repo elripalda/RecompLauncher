@@ -189,7 +189,7 @@ function stepsView(id, su, ns, game) {
   const back = m.steps.length > 1 ? `<button type="button" class="btn big${m.at ? '' : ' ghost'}" data-ss="back"${m.at ? '' : ' tabindex="-1" aria-hidden="true" disabled'}>${esc(t('Back'))}</button>` : '';
   const next = m.last ? `<button type="button" class="btn main big" data-ss="run"${m.blocked ? ' disabled' : ''}>${esc(ns.busy ? t('Working…') : t('Set Up'))}</button>`
     : `<button type="button" class="btn main big" data-ss="next"${m.cur.id === 'game' && (m.missing.length || m.broken) ? ' disabled' : ''}>${esc(t('Next'))}</button>`;
-  return `<div class="ss-head"><span class="kick">${esc(t('Set up'))} · ${esc(name)}</span>${rail}<h2>${esc(head)}</h2><p>${esc(lead)}</p></div>
+  return `<div class="ss-head"><span class="kick">${esc(t('Easy Setup'))} · ${esc(name)}</span>${rail}<h2>${esc(head)}</h2><p>${esc(lead)}</p></div>
     <div class="ss-scroll">${body}${notice}${error ? `<p class="su-err" role="alert">${esc(t(error))}</p>` : ''}</div>
     <div class="ss-foot">${back}<p class="why" role="status">${ok ? CHECK : ''}${esc(status)}</p>${next}</div>`;
 }

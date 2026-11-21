@@ -79,29 +79,20 @@ test('a finished installer download opens its installer only with Auto-Install o
   assert.match(doneHandler, /if \(isInstallerApp\(byId\(id\)\)\) \{ if \(auto && !busy/);
 });
 
-test('a finished Easy Install download opens its setup only with Auto-Install on', () => {
+test('a finished Easy Setup download opens its setup only with Auto-Install on', () => {
   assert.match(doneHandler, /su\.needs && su\.status && !su\.status\.ready && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
 });
 
-test('Easy Install asks for the copy while it downloads only with Auto-Install on', () => {
+test('Easy Setup starts the download without opening a file picker', () => {
   const start = fn(app, 'startInstall');
-  assert.match(start, /const pickNow = autoInstall\(\) && !S\.library\[id\] && !tag && !anyway && !pack\.length && turnkey\(byId\(id\)\)/);
+  assert.match(start, /dlArgs\(id, \{ id, dir: dir \|\| null, tag: tag \|\| null \}\);\n\s+try \{ await invoke\('install'/);
+  assert.doesNotMatch(start, /pickFile|copyPickOpts/);
 });
 
-test('Easy Install starts the download and opens the copy picker together, with no question first', () => {
-  const start = fn(app, 'startInstall');
-  assert.match(start, /dlArgs\(id, \{ id, dir: dir \|\| null, tag: tag \|\| null \}\);\n\s+if \(pickNow\) pickWhileDownloading\(id\);\n\s+try \{ await invoke\('install'/);
-  assert.doesNotMatch(app, /Pick Your Copy First\?/);
+test('a game page redrawn in place reads the setup state of a game just installed', () => {
+  assert.match(fn(app, 'refreshGame'), /if \(S\.library\[id\] && S\.setup\[id\] === undefined\) loadSetup\(id\);/);
 });
 
-test('a copy picked while it downloads waits for the download to be done', () => {
-  const pick = fn(app, 'pickWhileDownloading');
-  assert.match(pick, /if \(S\.jobs\[id\]\) \{\n\s+if \(!path\) return;\n\s+\(S\.prePicked = S\.prePicked \|\| \{\}\)\[id\] = path;/);
-});
-
-test('a download that ends while the copy is being picked leaves the setup window to the picking', () => {
-  assert.match(doneHandler, /else if \(S\.easy\.has\(id\) && \(S\.pickingCopy \|\| \{\}\)\[id\]\) \{ \/\* pickWhileDownloading opens it \*\/ \}/);
-  const pick = fn(app, 'pickWhileDownloading');
-  assert.match(pick, /try \{ path = await pickCheckedCopy\(id\); \} finally \{ delete S\.pickingCopy\[id\]; \}/);
-  assert.match(pick, /await setupModal\(id\);\n\s+if \(path && SU\.el && SU\.id === id && SU\.stage === 'steps'\) suBegin\(path\);/);
+test('a finished Easy Setup download opens the Easy Setup screen for the copy', () => {
+  assert.match(doneHandler, /else if \(su && su\.needs && su\.status && !su\.status\.ready\) await setupModal\(id\);/);
 });
