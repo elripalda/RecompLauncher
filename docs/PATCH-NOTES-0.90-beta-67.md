@@ -11,6 +11,7 @@ A new update window, cleaner game pages, starting with your PC, and a batch of f
 
 ### Saves and updates
 - **A new RecompLauncher opens a window over the app with its notes, and Update Now fills up as it downloads;** after an update a small card says what's new, Settings → Changelog lists every version, and Settings → Updates and Downloads can keep the launcher up to date by itself. — Added by @Xarishark ([#372](https://github.com/elripalda/RecompLauncher/pull/372)).
+- **Easy Setup finishes for games that ask for your copy and another file, like a DLC,** instead of stopping at "Choose your copy of the game first." Those games also start the build Easy Setup made. — Fixed by @Xarishark ([#385](https://github.com/elripalda/RecompLauncher/pull/385)).
 - **A newer save from another PC now says it syncs when you press Play,** above Play and on the Saves tab, instead of "Up to date" and a Restore button. — Improved by @Xarishark ([#363](https://github.com/elripalda/RecompLauncher/pull/363)).
 
 ### Everything else
@@ -18,6 +19,7 @@ A new update window, cleaner game pages, starting with your PC, and a batch of f
 - **Run in background is now called Close to tray.** It works the same. — Improved by @Xarishark ([#367](https://github.com/elripalda/RecompLauncher/pull/367)).
 - **If the launcher's window went blank (one flat colour) after it started, it now comes back by itself,** and downloads and games keep going; if it keeps happening, the launcher says RivaTuner Statistics Server is the usual cause. — Fixed by @Xarishark ([#362](https://github.com/elripalda/RecompLauncher/pull/362)).
 - **Mac games picked as an app now import, update and move properly,** a game moved to another drive on Linux or Mac keeps its links so it still starts, and a Mac no longer offers Add to desktop, which did nothing there. — Fixed by @Xarishark ([#361](https://github.com/elripalda/RecompLauncher/pull/361), [#377](https://github.com/elripalda/RecompLauncher/pull/377)).
+- **On Linux, recomps kept as AppImages outside a launcher (like Gear Lever's AppImages folder) are found,** so the launcher doesn't offer to download them again. — Fixed by @Xarishark ([#383](https://github.com/elripalda/RecompLauncher/pull/383)).
 - **A second click on a game's "…" button closes its menu,** instead of opening it again. — Fixed by @Xarishark ([#364](https://github.com/elripalda/RecompLauncher/pull/364)).
 
 Keep the logs coming from the crash window and Settings → Beta. Every one helps.
