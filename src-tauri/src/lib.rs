@@ -2887,15 +2887,18 @@ fn start_game_with_monitor_context(
     if let Some(p) = prof.as_ref().filter(|p| !p.inputs.is_empty()) {
         inputs::validate(p).map_err(Error::Msg)?;
         upgrade_fingerprints(&st, Some(id));
-        let ready = match (&pick, whole.as_ref()) {
-            (Some(pk), Some(w)) => game_inputs_ready(p, w, &g, &pk.game, &st.dir),
-            _ => inputs::ready(p, &g, &st.dir),
-        };
-        if !ready {
+        let w = whole.as_ref().unwrap_or(p);
+        let (ready, built) = inputs_now(p, w, &g, pick.as_ref().map(|pk| &pk.game), &st.dir);
+        if !ready && !built {
             return Err(Error::Msg("NEED_COPY|Finish choosing this game's files in Easy Setup.".into()));
         }
+        if built {
+            trail::note(format!("Play {id}: built from the player's files, which it plays without"));
+        }
+        // Built without the player's files at hand: only the keys and DLSS go in the game's folder.
+        let placed = if ready { p.clone() } else { inputs::launcher_kept(p) };
         let mut staged = g.clone();
-        inputs::stage(p, &mut staged, &st.dir).map_err(Error::Msg)?;
+        inputs::stage(&placed, &mut staged, &st.dir).map_err(Error::Msg)?;
         // DLSS wanted but not fetched yet (setup ran offline, or it was removed): fetched in the
         // background for next time. This start goes on without it.
         if p.inputs.iter().any(|i| i.role == "runtime" && !g.runtime_off.contains(&i.id)) && dlss::current(&st.dir).is_none() {
@@ -2972,7 +2975,7 @@ fn start_game_with_monitor_context(
             // again from their copy.
             let (copy, copy_wrong) = usable_copy(&g, p);
             let found = copy.clone().or_else(|| p.already_in_place(&g.path));
-            let facts = setup_state::Facts { profile: p, game: &g, inputs_ready: true, copy: found, copy_wrong, own_program: false, skipped: false };
+            let facts = setup_state::Facts { profile: p, game: &g, inputs_ready: true, inputs_built: false, copy: found, copy_wrong, own_program: false, skipped: false };
             let status = setup_state::of(&facts);
             if !status.ready {
                 trail::note(format!("Play {id}: not set up ({}) {}", status.reason, status.detail));
@@ -4853,6 +4856,22 @@ fn game_inputs_ready(scoped: &profile::Profile, whole: &profile::Profile, g: &In
     (inputs::current(scoped, g, dir, own).is_some() && scoped.build_done(&g.path) != Some(false)) || inputs::ready(whole, g, dir)
 }
 
+/// A game's named files now: as they were set up (the first), or else whether the game built
+/// from them plays without them (the second). One game of several (`game`): its own setup, or
+/// the whole recomp's.
+fn inputs_now(scoped: &profile::Profile, whole: &profile::Profile, g: &Installed, game: Option<&games::Game>, dir: &Path) -> (bool, bool) {
+    let ready = match game {
+        Some(x) => game_inputs_ready(scoped, whole, g, x, dir),
+        None => inputs::ready(scoped, g, dir),
+    };
+    if ready {
+        return (true, false);
+    }
+    let own = game.and_then(|x| g.games.get(&x.id)).map(|s| s.inputs_ready.as_str()).unwrap_or("");
+    let built = inputs::plays_built(scoped, g, own) || inputs::plays_built(scoped, g, &g.inputs_ready);
+    (false, built)
+}
+
 /// Fingerprints an older launcher saved are rewritten as v2 when they still match, so a game
 /// set up before stays set up and is never checked the old way again. One game (on Play and
 /// Easy Setup) or every installed one (once at startup).
@@ -5039,12 +5058,12 @@ fn copy_for_setup(g: &Installed, p: &profile::Profile) -> Res<Option<PathBuf>> {
 
 /// Easy Setup's answer for a game (`p` scoped to one game of several when it's that game's):
 /// set up, or why not. The page and Play read the same one.
-fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, inputs_ready: bool) -> setup_state::Status {
+fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, (inputs_ready, inputs_built): (bool, bool)) -> setup_state::Status {
     let (picked, copy_wrong) = usable_copy(g, p);
     let copy = picked.or_else(|| p.already_in_place(&g.path));
     let own_program = player_program(st, id, g).is_some();
     let skipped = player_sets_up(&st, id);
-    setup_state::of(&setup_state::Facts { profile: p, game: g, inputs_ready, copy, copy_wrong, own_program, skipped })
+    setup_state::of(&setup_state::Facts { profile: p, game: g, inputs_ready, inputs_built, copy, copy_wrong, own_program, skipped })
 }
 
 /// Set up and ready to start as it is, by the same answer Play and the game's page give (one game
@@ -5055,11 +5074,8 @@ pub(crate) fn plays_as_set_up(st: &App, recomp: &str, g: &Installed, game: Optio
     if let Some((x, all)) = game {
         games::scope(&mut p, x, all);
     }
-    let inputs_ready = match game {
-        Some((x, _)) => game_inputs_ready(&p, &whole, g, x, &st.dir),
-        None => inputs::ready(&p, g, &st.dir),
-    };
-    easy_status(st, recomp, g, &p, inputs_ready).ready
+    let named = inputs_now(&p, &whole, g, game.map(|(x, _)| x), &st.dir);
+    easy_status(st, recomp, g, &p, named).ready
 }
 
 /// What Play answers for a game that isn't set up: the page opens Easy Setup (or asks) for it.
@@ -5253,14 +5269,13 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
     let p = p;
     let cur = p.current(&g.path, &g.picks);
     let up = p.game.as_ref().and_then(|c| c.update.as_ref());
-    let inputs_ready = match &pick {
-        Some(pk) => game_inputs_ready(&p, &whole, &g, &pk.game, &st.dir),
-        None => inputs::ready(&p, &g, &st.dir),
-    };
+    let named = inputs_now(&p, &whole, &g, pick.as_ref().map(|pk| &pk.game), &st.dir);
+    // Set up, for the page: the files as they were, or a build that plays without them.
+    let inputs_ready = named.0 || named.1;
     let copy = g.game_copy.clone().filter(|c| c.exists()).or_else(|| p.already_in_place(&g.path));
     let built = p.build_done(&g.path) == Some(true) || (g.prebuilt && p.build_folder_here(&g.path).is_some());
     let set_up = if p.inputs.is_empty() { copy.is_some() || built } else { inputs_ready };
-    let status = easy_status(&st, &id, &g, &p, inputs_ready);
+    let status = easy_status(&st, &id, &g, &p, named);
     let system = system_needs(&whole, &g);
     Some(Setup {
         inputs: inputs::rows(&p, &g, &st.dir).unwrap_or_default(),
@@ -10797,7 +10812,7 @@ mod tests {
         .unwrap();
         let mut g = Installed { id: "combo".into(), path: game, ..Default::default() };
         super::keep_inputs_build(&mut g, &p, Some(&copy));
-        let facts = crate::setup_state::Facts { profile: &p, game: &g, inputs_ready: true, copy: g.game_copy.clone(), copy_wrong: None, own_program: false, skipped: false };
+        let facts = crate::setup_state::Facts { profile: &p, game: &g, inputs_ready: true, inputs_built: false, copy: g.game_copy.clone(), copy_wrong: None, own_program: false, skipped: false };
         let status = crate::setup_state::of(&facts);
         assert!(status.ready, "{status:?}");
         assert_eq!(g.game_copy, Some(copy));

@@ -42,6 +42,8 @@ pub struct Facts<'a> {
     pub game: &'a Installed,
     /// The named files still match what they were set up with.
     pub inputs_ready: bool,
+    /// They don't, but the game built from them plays without them (inputs::plays_built).
+    pub inputs_built: bool,
     /// The copy to use: the one picked, still there, or the game's files already where it reads
     /// them.
     pub copy: Option<PathBuf>,
@@ -91,7 +93,13 @@ pub fn of(f: &Facts) -> Status {
         return ready("own_build");
     }
     if !p.inputs.is_empty() && !f.inputs_ready {
-        return needs("files", "");
+        if !f.inputs_built {
+            return needs("files", "");
+        }
+        // Built from the named files, which aren't needed to play: as a copy isn't once built.
+        if p.game.is_none() {
+            return ready("built");
+        }
     }
     let Some(need) = p.game.as_ref() else { return ready("ready") };
     // Settings only (the game finds its copy itself), or a copy only its own setup takes.
@@ -172,7 +180,7 @@ mod tests {
     }
 
     fn facts<'a>(p: &'a Profile, g: &'a Installed) -> Facts<'a> {
-        Facts { profile: p, game: g, inputs_ready: false, copy: g.game_copy.clone().filter(|c| c.exists()), copy_wrong: None, own_program: false, skipped: false }
+        Facts { profile: p, game: g, inputs_ready: false, inputs_built: false, copy: g.game_copy.clone().filter(|c| c.exists()), copy_wrong: None, own_program: false, skipped: false }
     }
 
     fn set_up(d: &Path) -> Installed {
@@ -317,6 +325,37 @@ mod tests {
         let mut f = facts(&p, &g);
         f.inputs_ready = true;
         assert_eq!(of(&f), ready("ready"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn named_files_gone_after_the_build_still_play() {
+        let d = dir("files-built");
+        let g = set_up(&d);
+        let p = profile(serde_json::json!({
+            "inputs": [{ "id": "base", "label": "Extracted game", "role": "game", "formats": [{ "type": "folder" }] }],
+            "prepare": { "program": ["game.exe"], "args": ["--game={input:base}"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        }));
+        let mut f = facts(&p, &g);
+        f.inputs_built = true;
+        assert_eq!(of(&f), ready("built"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn named_files_gone_with_a_copy_still_ask_for_the_copy() {
+        let d = dir("files-built-copy");
+        let g = Installed { path: d.clone(), ..Default::default() };
+        let p = profile(serde_json::json!({
+            "game": { "kind": "iso_or_folder", "label": "Your copy" },
+            "inputs": [{ "id": "patch", "label": "The patch", "role": "update", "formats": [{ "type": "file" }] }],
+            "prepare": { "program": ["game.exe"], "args": ["--game", "{game}", "--patch={input:patch}"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        }));
+        let mut f = facts(&p, &g);
+        f.inputs_built = true;
+        assert_eq!(of(&f), needs("copy", "Your copy"));
         let _ = fs::remove_dir_all(&d);
     }
 

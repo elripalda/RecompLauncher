@@ -311,6 +311,41 @@ pub fn current(p: &Profile, g: &Installed, dir: &Path, stored: &str) -> Option<S
 pub fn ready(p: &Profile, g: &Installed, dir: &Path) -> bool {
     current(p, g, dir, &g.inputs_ready).is_some() && p.build_done(&g.path) != Some(false)
 }
+/// The player's own files: not a shared key, nor a file the launcher fetches itself.
+pub fn players(i: &Input) -> bool {
+    i.shared.is_empty() && i.role != "runtime"
+}
+/// Built from the player's files, the game plays without them, as a game built from its copy
+/// does (#393): a setup with them finished (`stored`, its fingerprint), with the setup step the
+/// profile has now, its build is still there, and nothing the game starts with needs them (no
+/// `{input:…}` in `start`, none placed in the game's folder). Then they can be moved or deleted.
+pub fn plays_built(p: &Profile, g: &Installed, stored: &str) -> bool {
+    if stored.is_empty() {
+        return false;
+    }
+    let (Some(pr), Some(start)) = (p.prepare.as_ref(), p.start.as_ref()) else { return false };
+    // A new setup step (an update) builds again, from the files: they're asked for then.
+    if pr.version != g.prepare_version {
+        return false;
+    }
+    if p.build_done(&g.path) == Some(false) || p.built_folder_missing(&g.path).is_some() {
+        return false;
+    }
+    if p.inputs.iter().any(|i| players(i) && !i.destination.is_empty()) {
+        return false;
+    }
+    !start.args.iter().chain(start.env.values()).any(|a| a.contains("{input:"))
+}
+/// The profile as Play uses it for a build that plays without the player's files: only what
+/// the launcher keeps itself (shared keys, DLSS) is placed in the game's folder.
+pub fn launcher_kept(p: &Profile) -> Profile {
+    let mut kept = p.clone();
+    let gone: Vec<String> = kept.inputs.iter().filter(|i| players(i)).map(|i| i.id.clone()).collect();
+    kept.inputs.retain(|i| !players(i));
+    // Still declared, so a placeholder in the setup step's args isn't taken for a misspelled id.
+    kept.skipped_inputs.extend(gone);
+    kept
+}
 /// Every file picked for setup is still there, and the ones placed in the game's folder are the
 /// same as when they were placed (path, size, time). For putting back a setup an update emptied.
 pub fn kept_since_setup(p: &Profile, g: &Installed, dir: &Path) -> bool {
@@ -872,5 +907,90 @@ mod tests {
         });
         assert!(!has_temp, "Temporary .recomplauncher-input file was not cleaned up!");
         fs::remove_dir_all(dir).unwrap();
+    }
+    /// PrimeRecomp's shape (#393): built from one picked folder, started without it, set up.
+    fn built_from_files(extra: serde_json::Value) -> (Profile, Installed, PathBuf) {
+        let (_, mut g, dir) = fixture();
+        let mut v = serde_json::json!({
+            "inputs": [{ "id": "base", "label": "Extracted game", "role": "game", "formats": [{ "type": "folder" }] }],
+            "prepare": { "program": ["game.exe"], "args": ["--prepare", "--game={input:base}"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        });
+        if let Some(o) = extra.as_object() { for (k, x) in o { v[k] = x.clone(); } }
+        let p: Profile = serde_json::from_value(v).unwrap();
+        let dump = dir.join("dump");
+        fs::create_dir_all(dump.join("romfs")).unwrap();
+        g.setup_inputs.insert("base".into(), dump);
+        g.inputs_ready = signature(&p, &g, &dir).unwrap();
+        (p, g, dir)
+    }
+    #[test]
+    fn a_build_plays_without_the_files_it_was_built_from() {
+        let (p, g, dir) = built_from_files(serde_json::json!({}));
+        fs::remove_dir_all(&g.setup_inputs["base"]).unwrap();
+        assert!(!ready(&p, &g, &dir));
+        assert!(plays_built(&p, &g, &g.inputs_ready));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_setup_that_never_finished_has_no_build_to_play() {
+        let (p, mut g, dir) = built_from_files(serde_json::json!({}));
+        g.inputs_ready.clear();
+        assert!(!plays_built(&p, &g, &g.inputs_ready));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_game_started_with_its_files_still_needs_them() {
+        let start = serde_json::json!({ "program": ["game.exe"], "args": ["--play", "{input:base}"] });
+        let (p, g, dir) = built_from_files(serde_json::json!({ "start": start }));
+        assert!(!plays_built(&p, &g, &g.inputs_ready));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_file_placed_in_the_game_folder_is_still_needed() {
+        let (_, mut g, dir) = fixture();
+        let p: Profile = serde_json::from_value(serde_json::json!({
+            "inputs": [{ "id": "base", "label": "Disc", "formats": [{ "type": "file" }], "destination": "disc.iso" }],
+            "prepare": { "program": ["game.exe"], "args": ["--prepare"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        })).unwrap();
+        let disc = dir.join("picked.iso");
+        fs::write(&disc, b"disc").unwrap();
+        g.setup_inputs.insert("base".into(), disc);
+        g.inputs_ready = signature(&p, &g, &dir).unwrap();
+        assert!(!plays_built(&p, &g, &g.inputs_ready));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_new_setup_step_needs_the_files_again() {
+        let (mut p, g, dir) = built_from_files(serde_json::json!({}));
+        p.prepare.as_mut().unwrap().version = "2".into();
+        assert!(!plays_built(&p, &g, &g.inputs_ready));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_build_missing_one_of_its_finished_files_needs_the_files_again() {
+        let prepare = serde_json::json!({ "program": ["game.exe"], "args": ["--game={input:base}"], "done": ["{install}/game.bin"] });
+        let (p, g, dir) = built_from_files(serde_json::json!({ "prepare": prepare }));
+        assert!(!plays_built(&p, &g, &g.inputs_ready));
+        fs::write(dir.join("game.bin"), b"built").unwrap();
+        assert!(plays_built(&p, &g, &g.inputs_ready));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn without_the_players_files_only_the_launchers_own_are_placed() {
+        let p: Profile = serde_json::from_value(serde_json::json!({
+            "inputs": [
+                { "id": "base", "label": "Extracted game", "formats": [{ "type": "folder" }] },
+                { "id": "keys", "label": "Switch keys", "role": "key", "shared": "switch.prod-keys" }
+            ],
+            "prepare": { "program": ["game.exe"], "args": ["--game={input:base}"] },
+            "start": { "program": ["game.exe"], "args": ["--play"] }
+        })).unwrap();
+        let kept = launcher_kept(&p);
+        let ids: Vec<&str> = kept.inputs.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, ["keys"]);
+        // The setup step's {input:base} is still a known placeholder.
+        assert!(validate(&kept).is_ok());
     }
 }
