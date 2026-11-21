@@ -29,7 +29,7 @@ test('nothing is decided before the core answers, nor for a game Easy Setup does
 });
 
 test('the game page and Big Picture both ask the core', () => {
-  assert.match(app, /: easyNotReady\(a\.id\) \? b\('main', 'setup'/);
+  assert.match(app, /: easyNotReady\(a\.id\) \? b\('main easy', 'setup'/);
   assert.match(tv, /return easyNotReady\(id\) \? btn\(key, 'setup'/);
   assert.match(tv, /if \(easyNotReady\(id\)\) return \{ label: t\('Easy Setup'\)/);
   // No view works it out from the copy alone any more.
