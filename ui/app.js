@@ -5503,7 +5503,9 @@ async function moveBuild(id) {
 async function freeUpSpace(id) {
   const su = S.setup[id], sp = su && su.spare;
   if (!sp) return;
-  const v = await ask(t('Free Up Space?'), `<p>${esc(tf('{file} goes to the {bin}. You can put it back from there.', { file: sp.path, bin: binName() }))}</p><p class="muted">${esc(t('Setting the game up again, or an update that builds it again, asks for your copy again.'))}</p>`,
+  // A game set up from several files (discs, DLC): each of them is said.
+  const gone = [sp.path, ...(sp.more || [])].map((file) => `<p>${esc(tf('{file} goes to the {bin}. You can put it back from there.', { file, bin: binName() }))}</p>`).join('');
+  const v = await ask(t('Free Up Space?'), `${gone}<p class="muted">${esc(t('Setting the game up again, or an update that builds it again, asks for your copy again.'))}</p>`,
     [{ label: tf('Move to the {bin}', { bin: binName() }), icon: 'bin', v: 'yes', main: true }, { label: t('Cancel'), icon: 'chevL', v: null }]);
   if (v !== 'yes') return;
   try {

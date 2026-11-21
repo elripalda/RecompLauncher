@@ -5219,6 +5219,9 @@ struct SpareCopy {
     /// "built": the game was built from it and starts without it. "unpacked": the launcher
     /// unpacked the disc image into the game's folder.
     why: &'static str,
+    /// The player's other files that go with it: a game set up from several (discs, DLC).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    more: Vec<PathBuf>,
 }
 
 /// Free Up Space: the player's copy (or the named file it was built from, spare_files), when the
@@ -5246,24 +5249,24 @@ fn spare_copy(g: &Installed, p: &profile::Profile, others: &[Installed]) -> Opti
         return None;
     };
     let size = std::fs::metadata(&copy).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0);
-    Some(SpareCopy { path: copy, size, why })
+    Some(SpareCopy { path: copy, size, why, more: vec![] })
 }
 
-/// Free Up Space for a game set up from named files: the file or folder of the player's it was
-/// built from, once it plays without it (inputs::plays_built). While several are still there
-/// (discs, DLC), they all stay: Free Up Space moves one thing to the trash.
+/// Free Up Space for a game set up from named files: the files and folders of the player's it
+/// was built from (several for discs or DLC), once it plays without them (inputs::plays_built).
+/// All of them, or none while one is still used elsewhere.
 fn spare_files(g: &Installed, p: &profile::Profile, others: &[Installed]) -> Option<SpareCopy> {
     // A game that takes a copy too reads it again whenever it's built, so nothing goes.
     if p.game.is_some() || !inputs::plays_built(p, g, &g.inputs_ready) {
         return None;
     }
-    let picked: Vec<&PathBuf> = p.inputs.iter().filter(|i| inputs::players(i)).filter_map(|i| g.setup_inputs.get(&i.id)).filter(|x| x.exists()).collect();
-    let [copy] = picked.as_slice() else { return None };
-    if still_used(g, copy, others) {
+    let picked: Vec<PathBuf> = p.inputs.iter().filter(|i| inputs::players(i)).filter_map(|i| g.setup_inputs.get(&i.id)).filter(|x| x.exists()).cloned().collect();
+    let (first, rest) = picked.split_first()?;
+    if picked.iter().any(|c| still_used(g, c, others)) {
         return None;
     }
-    let size = std::fs::metadata(copy).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0);
-    Some(SpareCopy { path: (*copy).clone(), size, why: "built" })
+    let size = picked.iter().map(|c| std::fs::metadata(c).map(|m| if m.is_file() { m.len() } else { 0 }).unwrap_or(0)).sum();
+    Some(SpareCopy { path: first.clone(), size, why: "built", more: rest.to_vec() })
 }
 
 /// Something in or around `copy` is still in use: this game's own folder, build or update, or
@@ -5444,17 +5447,26 @@ async fn free_up_space(st: State<'_, App>, id: String) -> Res<u64> {
     let p = profile_of(&st, &id, &g).ok_or_else(|| Error::Msg("This game has no setup profile.".into()))?;
     let others: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
     let spare = spare_copy(&g, &p, &others).ok_or_else(|| Error::Msg("This game still reads your copy, so it stays.".into()))?;
-    let size = if spare.path.is_dir() { manage::dir_size(&spare.path) } else { spare.size };
-    let path = spare.path.clone();
-    tokio::task::spawn_blocking(move || files::to_trash(&path)).await.map_err(|e| Error::Msg(e.to_string()))?
-        .map_err(|e| Error::Msg(format!("Couldn't move it to the trash ({e}). You can delete it yourself: {}", spare.path.display())))?;
+    let all: Vec<PathBuf> = std::iter::once(spare.path.clone()).chain(spare.more.iter().cloned()).collect();
+    let mut size = 0;
+    for path in &all {
+        // Inside one that already went (a DLC folder in the game's): nothing left to move.
+        if !path.exists() {
+            continue;
+        }
+        size += if path.is_dir() { manage::dir_size(path) } else { std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) };
+        let one = path.clone();
+        tokio::task::spawn_blocking(move || files::to_trash(&one)).await.map_err(|e| Error::Msg(e.to_string()))?
+            .map_err(|e| Error::Msg(format!("Couldn't move it to the trash ({e}). You can delete it yourself: {}", path.display())))?;
+    }
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&id) {
-        if x.game_copy.as_ref() == Some(&spare.path) {
+        if x.game_copy.as_ref().is_some_and(|c| all.contains(c)) {
             x.game_copy = None;
         }
     }
     st.save();
-    trail::note(format!("Free Up Space {id}: {} went to the trash ({}, the game {})", spare.path.display(), size, if spare.why == "built" { "was built from it" } else { "was unpacked from it" }));
+    let names: Vec<String> = all.iter().map(|p| p.display().to_string()).collect();
+    trail::note(format!("Free Up Space {id}: {} went to the trash ({}, the game {})", names.join(", "), size, if spare.why == "built" { "was built from it" } else { "was unpacked from it" }));
     Ok(size)
 }
 
@@ -11771,6 +11783,20 @@ mod beta54_tests {
         let mut other = Installed { id: "prime-mod".into(), path: d.join("games/prime-mod"), ..Default::default() };
         other.setup_inputs.insert("base".into(), d.join("dumps/prime"));
         assert!(spare_copy(&g, &p, &[g.clone(), other]).is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn every_file_a_game_was_built_from_is_spare_together() {
+        let d = tmp("spare-files-two");
+        let (mut p, mut g) = built_from_a_folder(&d);
+        let dlc = d.join("dumps/dlc");
+        std::fs::create_dir_all(&dlc).unwrap();
+        p.inputs.push(serde_json::from_value(json!({ "id": "dlc", "label": "DLC", "role": "dlc", "optional": true, "formats": [{ "type": "folder" }] })).unwrap());
+        g.setup_inputs.insert("dlc".into(), dlc.clone());
+        g.inputs_ready = inputs::signature(&p, &g, &d).unwrap();
+        let spare = spare_copy(&g, &p, std::slice::from_ref(&g)).expect("built from both, started without them");
+        assert_eq!((spare.path, spare.more), (d.join("dumps/prime"), vec![dlc]));
         let _ = std::fs::remove_dir_all(&d);
     }
 
