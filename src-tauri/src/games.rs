@@ -63,6 +63,15 @@ impl Game {
     }
 }
 
+/// A game's picture as a full address: the catalog can give one on its own site as a path (/media/...).
+fn full_url(pic: &str) -> String {
+    if pic.starts_with('/') {
+        format!("{}{}", crate::catalog::base(), pic)
+    } else {
+        pic.to_string()
+    }
+}
+
 /// A recomp's catalog entry as one of its games shows: the game's own pictures over the recomp's.
 /// Its project picture only when the game has no picture of that kind of its own, or the recomp's
 /// one project cover would make every game of a series look the same (as ui/games.js childArt).
@@ -72,12 +81,12 @@ pub fn with_game_art(entry: &Value, game: &Game) -> Value {
         let (pic, project) = game.art(kind);
         let pk = format!("project_{kind}");
         if !project.is_empty() {
-            a[&pk] = Value::from(project);
+            a[&pk] = Value::from(full_url(project));
         } else if !pic.is_empty() {
             a[&pk] = Value::from("");
         }
         if !pic.is_empty() {
-            a[kind] = Value::from(pic);
+            a[kind] = Value::from(full_url(pic));
         }
     }
     a
@@ -315,20 +324,28 @@ mod tests {
     #[test]
     fn a_games_own_picture_wins_over_the_recomps_project_one() {
         let recomp = json!({ "cover": "/series.jpg", "project_cover": "/series-p.jpg", "project_hero": "/series-ph.jpg" });
-        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "/g2.jpg".into(), ..Default::default() };
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "https://cdn.example/g2.jpg".into(), ..Default::default() };
         let a = with_game_art(&recomp, &game);
-        assert_eq!(a["cover"], "/g2.jpg");
+        assert_eq!(a["cover"], "https://cdn.example/g2.jpg");
         assert_eq!(a["project_cover"], "", "the recomp's project cover would make every game look the same");
         assert_eq!(a["project_hero"], "/series-ph.jpg", "no hero of its own: the recomp's look");
     }
 
     #[test]
+    fn a_games_pictures_on_the_catalogs_site_become_full_addresses() {
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "/media/x.png".into(), project_hero: "/media/p.png".into(), ..Default::default() };
+        let a = with_game_art(&json!({}), &game);
+        assert_eq!(a["cover"], format!("{}/media/x.png", crate::catalog::base()));
+        assert_eq!(a["project_hero"], format!("{}/media/p.png", crate::catalog::base()));
+    }
+
+    #[test]
     fn a_games_own_project_picture_comes_first() {
         let recomp = json!({ "cover": "/series.jpg", "project_cover": "/series-p.jpg" });
-        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "/g2.jpg".into(), project_cover: "/g2-p.jpg".into(), ..Default::default() };
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "https://cdn.example/g2.jpg".into(), project_cover: "https://cdn.example/g2-p.jpg".into(), ..Default::default() };
         let a = with_game_art(&recomp, &game);
-        assert_eq!(a["project_cover"], "/g2-p.jpg");
-        assert_eq!(a["cover"], "/g2.jpg");
+        assert_eq!(a["project_cover"], "https://cdn.example/g2-p.jpg");
+        assert_eq!(a["cover"], "https://cdn.example/g2.jpg");
     }
 
     #[test]

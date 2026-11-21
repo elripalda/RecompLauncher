@@ -703,8 +703,8 @@ function gameArt(a, k) {
 // The catalog has two sets of pictures for a recomp: the game's, and the project's
 // (project_cover...: the look its developer gave it on their website page). A recomp shows the
 // project's first and the game's for any it lacks. `gameOnly` (Show Game Names): the game's only,
-// to match the names. The developer's own picture is never one of them, even where an older
-// catalog put it in a picture's place.
+// to match the names. A picture at the same address as developer_avatar is left out: a safety
+// net only, the catalog itself takes old avatar icons out.
 function pickArt(a, k, gameOnly) {
   const avatar = a.developer_avatar || '';
   const notAvatar = (u) => (u && u !== avatar ? u : '');

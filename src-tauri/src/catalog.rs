@@ -1279,8 +1279,8 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
 /// The picture of a kind (cover, hero, logo, icon) a recomp shows from its catalog entry, the same
 /// pick as ui/app.js pickArt: the project's own (project_<kind>, the look its developer gave it on
 /// their website page) first, else the game's. `game_only` (Show Game Names): the game's only, to
-/// match the names. The developer's picture is never one of them, even where an older catalog put
-/// it in a picture's place.
+/// match the names. A picture at the same address as developer_avatar is left out: a safety net
+/// only, the catalog itself takes old avatar icons out.
 pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
     let field = |k: &str| -> &'a str { entry.get(k).and_then(Value::as_str).unwrap_or("") };
     let avatar = field("developer_avatar");
