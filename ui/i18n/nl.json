@@ -2699,6 +2699,7 @@
  "Completed: {when}": "Voltooid: {when}",
  "Today {time}": "Vandaag {time}",
  "Yesterday {time}": "Gisteren {time}",
+ "Patch Notes": "Patchnotes",
  "This Update Looks Wrong": "Deze update lijkt niet in orde",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} is twee keer niet geïnstalleerd, dus het updatebestand lijkt niet in orde. Het wordt niet opnieuw aangeboden, en een gerepareerde versie verschijnt vanzelf zodra die uit is. Op je pc hoeft niets te veranderen.",
  "OK": "OK",

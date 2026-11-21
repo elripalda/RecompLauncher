@@ -2696,6 +2696,7 @@
  "Completed: {when}": "Concluído: {when}",
  "Today {time}": "Hoje {time}",
  "Yesterday {time}": "Ontem {time}",
+ "Patch Notes": "Notas da atualização",
  "This Update Looks Wrong": "Esta atualização parece com defeito",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "O RecompLauncher {to} não instalou duas vezes, então o arquivo de atualização parece com defeito. Ele não será oferecido de novo, e um corrigido aparece sozinho assim que sair. Você não precisa mudar nada no seu PC.",
  "OK": "OK",

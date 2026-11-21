@@ -2699,6 +2699,7 @@
  "Completed: {when}": "完成于：{when}",
  "Today {time}": "今天 {time}",
  "Yesterday {time}": "昨天 {time}",
+ "Patch Notes": "更新说明",
  "This Update Looks Wrong": "此更新似乎有问题",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} 两次都未能安装，因此它的更新文件似乎有问题。它不会再次提供，修复后的版本一推出就会自动出现。你的电脑无需做任何更改。",
  "OK": "确定",

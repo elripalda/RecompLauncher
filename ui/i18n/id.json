@@ -2699,6 +2699,7 @@
  "Completed: {when}": "Selesai: {when}",
  "Today {time}": "Hari ini {time}",
  "Yesterday {time}": "Kemarin {time}",
+ "Patch Notes": "Catatan Rilis",
  "This Update Looks Wrong": "Pembaruan ini tampaknya bermasalah",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dua kali gagal terpasang, jadi file pembaruannya tampaknya bermasalah. Pembaruan ini tidak akan ditawarkan lagi, dan versi yang sudah diperbaiki akan muncul sendiri begitu dirilis. Tidak ada yang perlu diubah di PC-mu.",
  "OK": "OK",

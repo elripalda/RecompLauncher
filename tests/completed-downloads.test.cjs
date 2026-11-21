@@ -64,3 +64,32 @@ test('Big Picture lists a game installed three times once', () => {
   const html = c.pageDownloads();
   assert.equal(html.match(/data-key="scan:lostodyssey@v1\.1\.0"/g).length, 1);
 });
+
+// The desktop Downloads page, drawn for real with plain stand-ins for its helpers.
+function desktopPage(hist, library, catalog) {
+  const c = vm.createContext({
+    S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, dlTab: 'downloads' },
+    curLocale: () => 'en-US',
+    timeOpts: (o) => Object.assign({}, o, { hourCycle: 'h23' }),
+    t: (s) => s, esc: String,
+    tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
+    tn: (n) => String(n), fmtB: String, fmtNum: String, ago: () => '', took: String,
+    byId: (id) => catalog[id], libInstalls: () => [], libApp: (g) => g, gameCount: () => 0,
+    scanPill: () => '', updateLog: () => [], updatesTab: () => '', pic: () => '', thumbOf: String,
+  });
+  vm.runInContext(topFn('latestPerGame') + topFn('doneAt') + topFn('pageDownloads'), c);
+  return c.pageDownloads();
+}
+
+test('a finished download offers Patch Notes, which opens the game on its Updates tab', () => {
+  const html = desktopPage([{ id: 'lostodyssey', tag: 'v1.1.0', when: at(0, 10, 1) }], { lostodyssey: { tag: 'v1.1.0' } }, { lostodyssey: { name: 'Lost Odyssey', repo: 'freefrank/LostOdysseyRecomp' } });
+  assert.match(html, /<button type="button" class="btn sm dl-notes" data-act="upd-game" data-id="lostodyssey">Patch Notes<\/button>/);
+  assert.match(html, /<span class="dl-when">Completed: Today 10:01<\/span>/);
+  assert.doesNotMatch(html, /data-act="play"/);
+});
+
+test('a local build has no releases, so its row has no Patch Notes', () => {
+  const html = desktopPage([{ id: 'mine', tag: 'own', when: at(0, 9, 0) }], { mine: { tag: 'own', local: true } }, { mine: { name: 'Mine', repo: 'me/mine' } });
+  assert.doesNotMatch(html, /data-act="upd-game"/);
+  assert.match(html, /<span class="dl-notes" aria-hidden="true"><\/span>/);
+});

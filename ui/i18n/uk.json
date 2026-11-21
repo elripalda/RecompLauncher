@@ -2699,6 +2699,7 @@
  "Completed: {when}": "Завершено: {when}",
  "Today {time}": "Сьогодні {time}",
  "Yesterday {time}": "Учора {time}",
+ "Patch Notes": "Список змін",
  "This Update Looks Wrong": "Схоже, це оновлення пошкоджене",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} двічі не вдалося встановити, тож файл оновлення, схоже, пошкоджений. Його більше не пропонуватимуть, а виправлений з'явиться сам, щойно вийде. На твоєму ПК нічого змінювати не потрібно.",
  "OK": "ОК",

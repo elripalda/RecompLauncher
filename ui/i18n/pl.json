@@ -2699,6 +2699,7 @@
  "Completed: {when}": "Ukończono: {when}",
  "Today {time}": "Dzisiaj {time}",
  "Yesterday {time}": "Wczoraj {time}",
+ "Patch Notes": "Lista zmian",
  "This Update Looks Wrong": "Ta aktualizacja wygląda na wadliwą",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dwa razy się nie zainstalował, więc plik aktualizacji wygląda na wadliwy. Nie będzie już proponowany, a poprawiony pojawi się sam, gdy tylko zostanie wydany. Na twoim komputerze nie trzeba nic zmieniać.",
  "OK": "OK",

@@ -4361,10 +4361,12 @@ function pageDownloads() {
   const ui = S.settings.ui || {};
   const shown = latestPerGame(hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0)));
   const histRows = shown.slice(0, 40).map((h) => { const a = appOf(h.id); const inst = S.library[h.id];
-    // The row opens the game's page; Play is its own button.
+    // The row opens the game's page; Patch Notes opens its Updates tab, where the newest release's
+    // notes start open. A local build has no releases, so no button (its space keeps rows lined up).
+    const hasNotes = !!(byId(h.id) || {}).repo && !(inst && inst.local);
     return `<div class="dl-row${byId(h.id) || inst ? ' link" data-act="open" data-id="' + esc(h.id) : ''}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(h.update ? tf('Updated to {tag}', { tag: h.tag }) : tf('Installed {tag}', { tag: h.tag }))}</span>${scanPill(h)}</span></div>
       <span class="dl-meta"><b>${esc(fmtB(h.size))}</b><small>${esc(took(h.secs || 0))}</small></span><span class="dl-when">${esc(tf('Completed: {when}', { when: doneAt(h.when) }))}</span>
-      ${inst ? `<button type="button" class="btn main sm dl-play" data-act="play" data-id="${esc(h.id)}">${PLAY}${esc(t('Play'))}</button>` : '<span class="dl-play" aria-hidden="true"></span>'}</div>`; }).join('');
+      ${hasNotes ? `<button type="button" class="btn sm dl-notes" data-act="upd-game" data-id="${esc(h.id)}">${esc(t('Patch Notes'))}</button>` : '<span class="dl-notes" aria-hidden="true"></span>'}</div>`; }).join('');
   const nothing = !act.length && !ups.length && !fails.length && !shown.length;
   const updLog = updateLog(hist).filter((u) => (u.when || 0) > (ui.upd_cleared || 0));
   const tab = S.dlTab === 'updates' ? 'updates' : 'downloads';

@@ -1408,8 +1408,7 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .scan-pill.warn i{background:#FFC861;color:#1d1300}
 .scan-pill.bad{color:var(--bad)!important;border-color:rgba(255,94,122,.35);background:rgba(255,94,122,.08)}
 .scan-pill.bad i{background:var(--bad);color:#1d0006}
-.dl-play{flex:none;width:86px;justify-content:center}
-.dl-play svg{width:14px;height:14px}
+.dl-notes{flex:none;min-width:112px;justify-content:center;white-space:nowrap}
 .dl-n{font:600 15px Figtree,sans-serif;color:var(--dim);margin-left:9px;letter-spacing:0}
 /* The download that's moving: its art, its progress and its speed, side by side */
 .dl-hero{display:grid;grid-template-columns:240px minmax(0,1fr) 300px;gap:22px;align-items:stretch;padding:16px;border-radius:22px;background:var(--noise),linear-gradient(160deg,var(--card2),var(--card) 70%);border:1px solid rgba(52,242,232,.22)}
