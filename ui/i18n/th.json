@@ -2637,8 +2637,6 @@
  "Patch Notes": "บันทึกแพตช์",
  "Recent": "ล่าสุด",
  "Updated {from} → {to}": "อัปเดต {from} → {to}",
- "1 earlier download": "ดาวน์โหลดก่อนหน้า 1 รายการ",
- "{n} earlier downloads": "ดาวน์โหลดก่อนหน้า {n} รายการ",
  "Downloading": "กำลังดาวน์โหลด",
  "Pause all": "หยุดชั่วคราวทั้งหมด",
  "Queued": "อยู่ในคิว",

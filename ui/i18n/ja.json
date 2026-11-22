@@ -2637,8 +2637,6 @@
  "Patch Notes": "パッチノート",
  "Recent": "最近",
  "Updated {from} → {to}": "{from} → {to} に更新",
- "1 earlier download": "以前のダウンロード 1 件",
- "{n} earlier downloads": "以前のダウンロード {n} 件",
  "Downloading": "ダウンロード中",
  "Pause all": "すべて一時停止",
  "Queued": "待機中",

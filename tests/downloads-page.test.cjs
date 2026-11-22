@@ -117,17 +117,11 @@ test('Recent puts each day under its own header', () => {
   assert.match(html, /<div class="dl-day">today<\/div>/);
 });
 
-test("a game's older downloads fold under its row, closed at first", () => {
+test("a game downloaded several times is one Recent row, with nothing folded under it", () => {
   const hist = [3, 2, 1].map((n) => ({ id: 'lostodyssey', tag: 'v1.1.0', update: n > 1, from: 'v1.0.0', when: at(0, 10, n) }));
   const html = desktopPage(hist, {});
-  assert.match(html, /data-act="dl-earlier" data-id="lostodyssey" aria-expanded="false">2 earlier downloads/);
-  assert.doesNotMatch(html, /class="dl-earlier"/);
-});
-
-test("an opened game shows each of its older downloads", () => {
-  const hist = [3, 2, 1].map((n) => ({ id: 'lostodyssey', tag: 'v1.1.0', update: n > 1, from: 'v1.0.0', when: at(0, 10, n) }));
-  const html = desktopPage(hist, {}, { dlOpen: new Set(['lostodyssey']) });
-  assert.match(html, /<div class="dl-earlier"><div><span>Updated v1\.0\.0 → v1\.1\.0<\/span><small>[^<]+<\/small><\/div><div><span>Installed v1\.1\.0<\/span>/);
+  assert.equal(html.match(/<b>Lost Odyssey<\/b>/g).length, 1);
+  assert.doesNotMatch(html, /earlier/);
 });
 
 test('Downloads is one page: no tabs and no launcher banner, even with a launcher update', () => {

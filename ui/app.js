@@ -4552,27 +4552,21 @@ function pageDownloads() {
   const failRows = fails.map((r) => { const a = appOf(r.id);
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   // Recent: each game once, with its newest install or update, under the day it happened. Its
-  // older ones fold under it, so nothing the old History tab listed is lost. Clearing only hides
+  // older downloads aren't listed (its Updates tab has every release). Clearing only hides
   // what's listed.
   const ui = S.settings.ui || {};
   const kept = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
   const shown = latestPerGame(kept).slice(0, 40);
-  S.dlOpen = S.dlOpen || new Set();
   const recentRow = (h) => {
     const a = appOf(h.id), inst = S.library[h.id];
-    const earlier = kept.filter((x) => x.id === h.id).slice(1);
-    const open = S.dlOpen.has(h.id);
     // Patch Notes opens the game's Updates tab, where the newest release's notes start open. A
     // local build has no releases, so no button (its space keeps rows lined up).
     const hasNotes = !!(byId(h.id) || {}).repo && !(inst && inst.local);
     const notes = hasNotes ? `<button type="button" class="dl-notes" data-act="upd-game" data-id="${esc(h.id)}" aria-label="${esc(t('Patch Notes'))}" title="${esc(t('Patch Notes'))}">${INFO_I}</button>` : '<span class="dl-notes" aria-hidden="true"></span>';
-    const more = earlier.length ? `<button type="button" class="dl-earlier-btn" data-act="dl-earlier" data-id="${esc(h.id)}" aria-expanded="${open}">${esc(tn(earlier.length, '1 earlier download', '{n} earlier downloads'))}${CHEV_D}</button>` : '';
     const link = byId(h.id) || inst ? ` link" data-act="open" data-id="${esc(h.id)}` : '';
     // Only the store's Safe pill: every download is checked against its checksum, so saying so on
     // each row is noise.
-    const row = `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(didWhat(h))}</span>${scanPill({ ...h, verified: false })}${more}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
-    if (!open) return row;
-    return row + `<div class="dl-earlier">${earlier.map((x) => `<div><span>${esc(didWhat(x))}</span><small>${esc(when(x.when))}</small></div>`).join('')}</div>`;
+    return `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(didWhat(h))}</span>${scanPill({ ...h, verified: false })}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
   };
   let day = '';
   const recentRows = shown.map((h) => {
@@ -9102,7 +9096,6 @@ async function act(el, e) {
     case 'set-tab': return setSection(el.dataset.k);
     case 'devshot': return devShotView(el.dataset.id, Number(el.dataset.i));
     case 'dl-clear': return saveUi({ [el.dataset.k]: Math.floor(Date.now() / 1000) });
-    case 'dl-earlier': if (S.dlOpen.has(id)) S.dlOpen.delete(id); else S.dlOpen.add(id); return render(true);
     case 'rel': return toggleRel(el);
     case 'upd-game': S.nextTab = 'updates'; S.toTabs = true; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);

@@ -2637,8 +2637,6 @@
  "Patch Notes": "패치 노트",
  "Recent": "최근",
  "Updated {from} → {to}": "{from} → {to} 업데이트됨",
- "1 earlier download": "이전 다운로드 1개",
- "{n} earlier downloads": "이전 다운로드 {n}개",
  "Downloading": "다운로드 중",
  "Pause all": "모두 일시 정지",
  "Queued": "대기 중",
