@@ -45,7 +45,7 @@ function updRun(a, su) {
   for (const k of order) {
     total += weight[k];
     const s = st[k], i = order.indexOf(k);
-    have += i < cur || (s && s.done) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0;
+    have += i < cur || (s && s.over) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0;
   }
   const pc = Math.round((have / total) * 100);
   const rows = order.map((k, i) => {

@@ -27,6 +27,13 @@ test('before anything is read, the waiting line shows', () => {
   assert.equal(verifyLine(undefined, 'Reading all of it'), 'Reading all of it');
 });
 
+test('the bar counts a step finished by its own flag, not by the bytes a read has reached', () => {
+  // (a read's events carry `done`, the bytes so far: taken as "finished", the bar jumped to the end of the check)
+  assert.match(app, /SU\.steps\[SU\.step\], \{ over: true \}/);
+  assert.doesNotMatch(app, /s && s\.done\)/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../ui/update-build.js'), 'utf8'), /s && s\.done\)/);
+});
+
 test('Easy Setup, Finish the Update and Big Picture all use it', () => {
   for (const f of ['ui/app.js', 'ui/update-build.js', 'ui/tv.js']) {
     assert.match(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), /verify: verifyLine\(/, f);
