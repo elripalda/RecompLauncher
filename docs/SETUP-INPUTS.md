@@ -93,6 +93,47 @@ arguments. Unknown placeholder IDs are configuration errors. When one game of se
 the other games' inputs aren't unknown: their arguments are left out, so only that game's
 `"--rom={input:rom-blue}"` reaches the command line.
 
+## Checking, placing and unpacking a file
+
+An input can say how to tell it's the right game, and where the launcher puts it. These are the
+options `game` had, so anything `game` did, an input does too:
+
+```json
+{
+  "format": 1,
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your PS2 disc image (.iso) of the USA release",
+      "formats": [{"type": "file"}, {"type": "folder"}],
+      "check": {"iso9660": "SLUS_206.51"},
+      "dumps": [{"name": "USA", "crc32": "0011aabb", "size": 4700372992}],
+      "into": "game",
+      "contains": ["SYSTEM.CNF"],
+      "extract": "iso9660"
+    },
+    {
+      "id": "update", "label": "Your title update (TU 1.03)", "role": "update",
+      "formats": [{"type": "file"}], "into": "game/Content", "name": "tu00000003.bin"
+    }
+  ],
+  "start": {"program": ["game.exe"], "args": ["--game_data_root={input:game}"]}
+}
+```
+
+- `check` (`file`, `iso9660`, `xdvdfs`, `nup_build_id`, `ids`): checked when the player picks it;
+  another game's copy is refused with a plain reason. Never again on Play.
+- `dumps`: known good dumps (CRC32). Only an input with these is read whole on setup, for the
+  verified badge; any other is checked by its shape and `check` only.
+- `into` and `name`: placed in that folder of your release before each start (links, or a copy on
+  another drive). `contains` lists what the folder must hold; files the player already put there
+  count as picked. Use `destination` instead for a file the launcher copies in and keeps.
+- `extract`: a disc image unpacked on setup into `into` (or `game-files`): `xdvdfs` (Xbox, Xbox
+  360) or `iso9660` (PS2, PSP).
+- With role `update`, `sha256` (the one known file) or `name` checks the file when it's picked.
+
+A field the launcher doesn't know is ignored, so an input written for a newer launcher still reads.
+
 ## File placement
 
 Use `destination`, e.g. `"keys/prod.keys"` or `"content/disc1.iso"`, only when the project requires

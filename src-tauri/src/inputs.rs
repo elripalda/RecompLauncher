@@ -1,13 +1,14 @@
 //! Named Easy Setup inputs. Scope is discs/DLC/game files, three shared key types, and NVIDIA DLSS
 //! (nvidia.dlss, role runtime: a file the launcher fetches itself, approved by the maintainer).
 //! BIOS, firmware, fonts and generic shared-resource expansion are deliberately out of scope.
-use crate::{library::Installed, profile::Profile};
+use crate::{library::Installed, profile::{Check, Dump, Extra, GameCopy, Profile}};
 use serde::{Deserialize, Serialize};
 use std::{collections::{BTreeMap, BTreeSet}, fs, path::{Component, Path, PathBuf}};
 use sha2::{Digest, Sha256};
 
+/// One file or folder Easy Setup asks for. A field this launcher doesn't know is ignored, never a
+/// reason to drop the whole manifest: a newer SDK's option must not break an older launcher.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Input {
     pub id: String,
     pub label: String,
@@ -24,11 +25,132 @@ pub struct Input {
     /// Installation-relative file destination. Empty: pass {input:id} to start/prepare.
     #[serde(default)]
     pub destination: String,
+    /// How to tell it's the right game (a file in it, an ID, a build ID): checked when it's picked.
+    #[serde(default, skip_serializing_if = "Check::is_empty")]
+    pub check: Check,
+    /// Known good dumps: only an input with these is read whole on setup (CRC32, the verified badge).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dumps: Vec<Dump>,
+    /// What the folder the game reads must hold once it's placed (`default.xex`, `Media`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contains: Vec<String>,
+    /// A folder inside the game's folder it's placed in before each start (`.` for the game's own).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub into: String,
+    /// The name a single file must have there.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// A disc image the launcher unpacks on setup: "xdvdfs" or "iso9660".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub extract: String,
+    /// The one known file (an update): checked when it's picked.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sha256: String,
+    /// From the catalog's boot profile only: the game's own setup takes it (crate::profile::GameCopy).
+    #[serde(skip)]
+    pub for_setup: bool,
+    /// From the catalog's boot profile only: its check is a common file, not this game's alone.
+    #[serde(skip)]
+    pub generic: bool,
+    /// Made from a manifest's `game` field (or a store profile's copy), not written as an input:
+    /// its label may be empty, as `game.label` could be.
+    #[serde(skip)]
+    pub lifted: bool,
 }
 fn game_role() -> String { "game".into() }
 
+impl Input {
+    /// A file or folder the player picks (not a shared key, not one the launcher fetches).
+    pub fn picked(&self) -> bool {
+        self.shared.is_empty() && self.role != "runtime"
+    }
+
+    fn takes(&self, kind: &str) -> bool {
+        self.formats.iter().any(|f| f.kind == kind)
+    }
+
+    /// Its rules as the player's copy of the game: the same checks, unpacking and placing the
+    /// `game` field always had, run by the same code.
+    pub fn as_copy(&self) -> GameCopy {
+        let kind = match (self.takes("file"), self.takes("folder")) {
+            (true, true) => "iso_or_folder",
+            (false, true) => "folder",
+            _ => "iso",
+        };
+        GameCopy {
+            kind: kind.into(),
+            label: self.label.clone(),
+            check: self.check.clone(),
+            dumps: self.dumps.clone(),
+            into: self.into.clone(),
+            name: self.name.clone(),
+            extract: self.extract.clone(),
+            generic: self.generic,
+            for_setup: self.for_setup,
+            contains: self.contains.clone(),
+            update: None,
+        }
+    }
+
+    /// Its rules as the game's update (role update): put in its folder under its name, and checked
+    /// by its SHA-256 or its name, as `game.update` always was.
+    pub fn as_extra(&self) -> Extra {
+        let accepts = match (self.takes("file"), self.takes("folder")) {
+            (true, true) => "file or folder",
+            (false, true) => "folder",
+            _ => "file",
+        };
+        Extra { into: self.into.clone(), label: self.label.clone(), accepts: accepts.into(), optional: self.optional, name: self.name.clone(), sha256: self.sha256.clone() }
+    }
+
+    /// The input `game` becomes: id `game`, its kind as formats, every rule kept.
+    pub fn from_copy(g: &GameCopy) -> Input {
+        let formats = match g.kind.as_str() {
+            "folder" => vec![Format::of("folder")],
+            "iso_or_folder" => vec![Format::of("file"), Format::of("folder")],
+            _ => vec![Format::of("file")],
+        };
+        Input {
+            id: "game".into(),
+            label: g.label.clone(),
+            role: "game".into(),
+            formats,
+            check: g.check.clone(),
+            dumps: g.dumps.clone(),
+            contains: g.contains.clone(),
+            into: g.into.clone(),
+            name: g.name.clone(),
+            extract: g.extract.clone(),
+            for_setup: g.for_setup,
+            generic: g.generic,
+            lifted: true,
+            ..Default::default()
+        }
+    }
+
+    /// The input `game.update` becomes: id `update`, role update.
+    pub fn from_extra(x: &Extra) -> Input {
+        let formats = match (x.wants_file(), x.wants_folder()) {
+            (true, true) => vec![Format::of("file"), Format::of("folder")],
+            (false, true) => vec![Format::of("folder")],
+            _ => vec![Format::of("file")],
+        };
+        Input {
+            id: "update".into(),
+            label: x.label.clone(),
+            role: "update".into(),
+            optional: x.optional,
+            formats,
+            into: x.into.clone(),
+            name: x.name.clone(),
+            sha256: x.sha256.clone(),
+            lifted: true,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Format {
     /// file or folder; a file format may constrain extensions, without claiming encryption.
     #[serde(rename = "type")]
@@ -38,6 +160,12 @@ pub struct Format {
     /// IDs of shared key inputs to activate for this selected format.
     #[serde(default)]
     pub requires: Vec<String>,
+}
+
+impl Format {
+    fn of(kind: &str) -> Format {
+        Format { kind: kind.into(), ..Default::default() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,7 +251,7 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     for i in p.inputs.iter().filter(|i| !(i.optional && !known(i))) {
         let dlss = i.shared == crate::dlss::SHARED;
         if !i.shared.is_empty() && i.optional && !dlss { return Err("Shared key requirements must be required or conditional, not optional features.".into()); }
-        if !id_ok(&i.id) || ["game", "legacy-update"].contains(&i.id.as_str()) && p.game.is_some() || !ids.insert(&i.id) || i.label.trim().is_empty() {
+        if !id_ok(&i.id) || ["game", "legacy-update"].contains(&i.id.as_str()) && p.game.is_some() || !ids.insert(&i.id) || i.label.trim().is_empty() && !i.lifted {
             return Err("Setup inputs need unique IDs and a label; game is reserved when the legacy game field is used.".into());
         }
         if !ROLES.contains(&i.role.as_str()) { return Err("Unknown setup input role.".into()); }

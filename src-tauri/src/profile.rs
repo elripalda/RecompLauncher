@@ -470,12 +470,18 @@ pub struct Check {
     pub ids: Vec<String>,
 }
 
+impl Check {
+    /// Nothing to check.
+    pub fn is_empty(&self) -> bool {
+        self.file.is_empty() && self.xdvdfs.is_empty() && self.iso9660.is_empty() && self.nup_build_id.is_empty() && self.n64_region.is_empty() && self.n64_id.is_empty() && self.n64_rev.is_none() && self.ids.is_empty()
+    }
+}
+
 impl GameCopy {
     /// Whether anything about the copy is actually checked (a file in it, an id, a known dump), so
     /// "it checks out" means something; otherwise the copy only has to be there.
     pub fn checks_anything(&self) -> bool {
-        let c = &self.check;
-        !c.file.is_empty() || !c.xdvdfs.is_empty() || !c.iso9660.is_empty() || !c.nup_build_id.is_empty() || !c.n64_region.is_empty() || !c.n64_id.is_empty() || c.n64_rev.is_some() || !c.ids.is_empty() || !self.dumps.is_empty()
+        !self.check.is_empty() || !self.dumps.is_empty()
     }
 }
 
@@ -1459,6 +1465,28 @@ pub fn path_value(format: &str, p: &Path) -> String {
 }
 
 impl Profile {
+    /// `game` (and its `update`) as named inputs, first in the list: `game` and `update`, with every
+    /// rule they had. Named inputs are the one way to ask for files; a manifest written with `game`
+    /// reads the same as one written with inputs. `{game}` keeps filling in with the main input.
+    /// After this `game` is None; `main_copy` gives its rules back.
+    pub fn lift_game(&mut self) {
+        let Some(g) = self.game.take() else { return };
+        let mut lifted = vec![crate::inputs::Input::from_copy(&g)];
+        if let Some(up) = g.update.as_ref() {
+            lifted.push(crate::inputs::Input::from_extra(up));
+        }
+        // An input of the same id the manifest declares itself is the developer's: theirs stays.
+        lifted.retain(|l| !self.inputs.iter().any(|i| i.id == l.id));
+        self.inputs.splice(0..0, lifted);
+    }
+
+    /// The input the game's big copy box is for: the first one the player picks with role game,
+    /// else the first one they pick.
+    pub fn main_input(&self) -> Option<&crate::inputs::Input> {
+        let picked = || self.inputs.iter().filter(|i| i.picked() && i.role != "update" && i.role != "key");
+        picked().find(|i| i.role == "game").or_else(|| picked().next())
+    }
+
     /// Easy Setup, the same rule as the website's: it starts a program and takes the player's copy
     /// of the game, or it asks for the game or its disc as a required input.
     pub fn easy_setup(&self) -> bool {
@@ -4094,5 +4122,142 @@ mod build_here_tests {
         v["prepare"]["done"] = serde_json::json!(done.to_string_lossy());
         assert_eq!(prof(v).prepare.unwrap().done.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// `game` read as named inputs: every rule it had lands on the input it becomes, so the same code
+/// checks, unpacks and places it as before.
+#[cfg(test)]
+mod lift_tests {
+    use super::*;
+
+    /// The rules of a copy, as one value: what `game` had, or what an input gives back.
+    fn rules(g: &GameCopy) -> Value {
+        serde_json::json!({
+            "kind": g.kind, "label": g.label, "check": serde_json::to_value(&g.check).unwrap(), "dumps": serde_json::to_value(&g.dumps).unwrap(),
+            "into": g.into, "name": g.name, "extract": g.extract, "generic": g.generic, "for_setup": g.for_setup, "contains": g.contains,
+        })
+    }
+
+    /// Lifts one profile and checks it: `game` gone, an input `game` first with the same rules,
+    /// `game.update` as input `update` with the same rules, everything else as it was.
+    fn lifts_the_same(what: &str, p: &Profile) {
+        let Some(before) = p.game.clone() else { return };
+        let mut after = p.clone();
+        after.lift_game();
+        assert!(after.game.is_none(), "{what}: game still there");
+        let game = after.inputs.iter().find(|i| i.id == "game").unwrap_or_else(|| panic!("{what}: no input game"));
+        assert_eq!(rules(&game.as_copy()), rules(&before), "{what}: the copy's rules changed");
+        assert_eq!(after.main_input().map(|i| i.id.as_str()), Some("game"), "{what}: game isn't the main input");
+        if let Some(up) = before.update.as_ref() {
+            let lifted = after.inputs.iter().find(|i| i.id == "update").unwrap_or_else(|| panic!("{what}: no input update")).as_extra();
+            assert_eq!(serde_json::to_value(&lifted).unwrap(), serde_json::to_value(up).unwrap(), "{what}: the update's rules changed");
+        }
+        let start = |p: &Profile| serde_json::to_value(&p.start).unwrap();
+        let prepare = |p: &Profile| serde_json::to_value(&p.prepare).unwrap();
+        assert_eq!(start(&after), start(p), "{what}: start changed");
+        assert_eq!(prepare(&after), prepare(p), "{what}: prepare changed");
+        let own: Vec<&str> = after.inputs.iter().filter(|i| !i.lifted).map(|i| i.id.as_str()).collect();
+        let was: Vec<&str> = p.inputs.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(own, was, "{what}: the manifest's own inputs changed");
+        let ok_before = crate::inputs::validate(p).is_ok();
+        assert!(crate::inputs::validate(&after).is_ok() || !ok_before, "{what}: valid before, not after: {:?}", crate::inputs::validate(&after));
+    }
+
+    fn boot_profiles(all: &Value) -> Vec<(String, Profile)> {
+        let mut out = vec![];
+        let apps: Vec<(String, Value)> = match all.get("apps").and_then(Value::as_array) {
+            Some(list) => list.iter().map(|a| (a.get("id").and_then(Value::as_str).unwrap_or("?").to_string(), a.get("boot").cloned().unwrap_or(Value::Null))).collect(),
+            None => all.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default(),
+        };
+        for (id, b) in apps {
+            if let Some(p) = from_boot(&b) {
+                out.push((id, p));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_shipped_boot_profiles_lift_with_every_rule() {
+        let all: Value = serde_json::from_str(include_str!("../boot/boot-profiles.json")).unwrap();
+        let list = boot_profiles(&all);
+        assert!(list.iter().filter(|(_, p)| p.game.is_some()).count() > 20);
+        for (id, p) in &list {
+            lifts_the_same(id, p);
+        }
+    }
+
+    #[test]
+    fn the_examples_lift_with_every_rule() {
+        for (n, text) in BUILT_IN.iter().enumerate() {
+            let p: Profile = serde_json::from_str(text).unwrap();
+            lifts_the_same(&format!("built-in {n}"), &p);
+        }
+    }
+
+    /// The developers' manifests and the store's catalog (`RL_CORPUS`: a folder with `manifests/`
+    /// and `pc-catalog.json`), kept out of the repository. Every one with `game` lifts the same,
+    /// and none that read before fails to read now.
+    #[test]
+    fn the_corpus_lifts_with_every_rule() {
+        let Some(root) = std::env::var_os("RL_CORPUS").map(PathBuf::from) else { return };
+        let mut lifted = 0;
+        let mut unreadable = 0;
+        for e in std::fs::read_dir(root.join("manifests")).unwrap().flatten() {
+            let what = e.file_name().to_string_lossy().to_string();
+            let Ok(raw) = serde_json::from_slice::<Value>(&std::fs::read(e.path()).unwrap()) else { continue };
+            // One that doesn't read is dropped by every launcher alike (a value of the wrong type):
+            // dropping deny_unknown_fields only lets more read, never fewer.
+            let p = match serde_json::from_value::<Profile>(raw) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{what}: doesn't read: {e}");
+                    unreadable += 1;
+                    continue;
+                }
+            };
+            if p.game.is_some() {
+                lifted += 1;
+            }
+            lifts_the_same(&what, &p);
+        }
+        assert!(lifted >= 170, "only {lifted} manifests with game");
+        assert!(unreadable <= 2, "{unreadable} manifests don't read");
+        let cat: Value = serde_json::from_slice(&std::fs::read(root.join("pc-catalog.json")).unwrap()).unwrap();
+        let store = boot_profiles(&cat);
+        let copies = store.iter().filter(|(_, p)| p.game.is_some()).count();
+        assert!(copies >= 200, "only {copies} store profiles with a copy");
+        for (id, p) in &store {
+            lifts_the_same(id, p);
+        }
+    }
+
+    #[test]
+    fn an_unknown_input_field_is_ignored() {
+        let p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [{ "id": "base", "label": "Base", "formats": [{ "type": "file", "future": 1 }], "future": true }] })).unwrap();
+        assert_eq!(p.inputs[0].id, "base");
+        assert!(crate::inputs::validate(&p).is_ok());
+    }
+
+    #[test]
+    fn an_input_the_manifest_declares_as_game_stays_its_own() {
+        let mut p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "folder", "label": "Old" }, "inputs": [{ "id": "game", "label": "Mine", "formats": [{ "type": "file" }] }] })).unwrap();
+        p.lift_game();
+        assert_eq!(p.inputs.len(), 1);
+        assert_eq!(p.inputs[0].label, "Mine");
+    }
+
+    #[test]
+    fn an_input_can_have_every_rule_game_had() {
+        let p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [{
+            "id": "disc", "label": "Your disc", "formats": [{ "type": "file" }, { "type": "folder" }],
+            "check": { "iso9660": "SLUS_206.51" }, "dumps": [{ "name": "USA", "crc32": "0011aabb" }],
+            "contains": ["SYSTEM.CNF"], "into": "game", "extract": "iso9660"
+        }]})).unwrap();
+        let g = p.inputs[0].as_copy();
+        assert_eq!((g.kind.as_str(), g.check.iso9660.as_str(), g.dumps.len(), g.into.as_str(), g.extract.as_str()), ("iso_or_folder", "SLUS_206.51", 1, "game", "iso9660"));
+        assert_eq!(g.contains, ["SYSTEM.CNF"]);
+        assert_eq!(p.main_input().unwrap().id, "disc");
     }
 }
