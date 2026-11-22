@@ -3,7 +3,9 @@
 // or controller.
 (() => {
   'use strict';
-  const STEPS = ['lang', 'welcome', 'play', 'games', 'library', 'choices', 'data', 'account', 'done'];
+  const STEPS = ['lang', 'welcome', 'play', 'games', 'library', 'choices', 'data', 'account', 'cloud', 'done'];
+  // Cloud saves for every game is only a question once they're signed in.
+  const steps = () => STEPS.filter((k) => k !== 'cloud' || (S.account && S.account.signedIn));
   const O = { el: null, step: 0, scanning: false, scanned: false, dir: 1 };
   const LOGO = '<svg viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="oobg" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#oobg)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
   const ICON = {
@@ -16,6 +18,8 @@
     user: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>',
     plus: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8.5" r="3.4"/><path d="M3.5 20a6.6 6.6 0 0 1 11.6-4.3M18.5 14v6M15.5 17h6"/></svg>',
     cloud: '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2.5 2.5 3-3.5" /></svg>',
+    all: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2 2 3.2-3.6"/></svg>',
+    pick: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/></svg>',
     check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>',
   };
   const $o = (s) => O.el && O.el.querySelector(s);
@@ -124,13 +128,22 @@
       case 'account': {
         const a = S.account || {};
         if (a.signedIn) {
-          return `<div class="oob-logo oob-cloud">${ICON.cloud}</div><h1>${esc(t('You\'re signed in'))}</h1><p class="oob-lead">${esc(tf('As {name}. Each game asks before you first play it whether its saves go to your account.', { name: a.user.username }))}</p>`;
+          return `<div class="oob-logo oob-cloud">${ICON.cloud}</div><h1>${esc(t('You\'re signed in'))}</h1><p class="oob-lead">${esc(tf('As {name}. Next, pick which games back up their saves.', { name: a.user.username }))}</p>`;
         }
         return `<div class="oob-logo oob-cloud">${ICON.cloud}</div><h1>${esc(t('Keep your saves safe'))}</h1><p class="oob-lead">${esc(t('With a free RecompStore account, your saves go to the cloud after you play, ready on any PC. Everything works without one too.'))}</p>
           <div class="oob-two">
             <button type="button" class="oob-pick" data-o="acc" data-v="in">${ICON.user}<b>${esc(t('Sign in'))}</b><span>${esc(t('With Google, Discord, GitHub or your email, in your browser.'))}</span></button>
             <button type="button" class="oob-pick" data-o="acc" data-v="new">${ICON.plus}<b>${esc(t('Create an account'))}</b><span>${esc(t('Takes a minute in your browser. It\'s the same account as recompstore.com.'))}</span></button>
           </div>`;
+      }
+      case 'cloud': {
+        // The same two answers as the question signed-in players get later (account.js), picked
+        // like How Will You Play. Every game is marked until they pick: Continue keeps it.
+        const all = (S.settings.ui || {}).cloud_all !== false;
+        const [every, mine] = window.cloudAllChoices();
+        const pick = (c, icon, on) => `<button type="button" role="radio" aria-checked="${on}" class="oob-pick" data-o="cloud" data-v="${c.v}">${icon}<b>${esc(c.label)}</b><span>${esc(c.sub)}</span></button>`;
+        return `<h1>${esc(t('Back up your saves?'))}</h1><p class="oob-lead">${esc(t('After you play, a game\'s saves can go to your account, ready on any PC. A copy always stays on this PC.'))}</p>
+          <div class="oob-two" role="radiogroup" aria-label="${esc(t('Back up your saves?'))}">${pick(every, ICON.all, all)}${pick(mine, ICON.pick, !all)}</div>`;
       }
       default: {
         const found = games();
@@ -142,12 +155,12 @@
 
   function draw() {
     if (!O.el) return;
-    const k = STEPS[O.step];
+    const k = steps()[O.step];
     const stage = $o('.oob-stage');
     stage.innerHTML = `<div class="oob-step ${O.dir < 0 ? 'back' : ''}" data-step="${k}">${body(k)}</div>`;
-    const last = O.step === STEPS.length - 1;
+    const last = O.step === steps().length - 1;
     $o('.oob-foot').innerHTML = `<div class="oob-side">${O.step > 0 ? `<button type="button" class="btn" data-o="back">${esc(t('Back'))}</button>` : ''}</div>
-      <div class="oob-dots" aria-hidden="true">${STEPS.map((s, i) => `<i class="${i === O.step ? 'on' : i < O.step ? 'past' : ''}"></i>`).join('')}</div>
+      <div class="oob-dots" aria-hidden="true">${steps().map((s, i) => `<i class="${i === O.step ? 'on' : i < O.step ? 'past' : ''}"></i>`).join('')}</div>
       <div class="oob-side r">${k === 'games' && !(S.settings.rom_dirs || []).length ? `<button type="button" class="btn" data-o="next">${esc(t('Skip'))}</button>` : ''}<button type="button" class="btn main" data-o="${last ? 'finish' : 'next'}"${O.scanning ? ' disabled' : ''}>${esc(last ? t('Start playing') : k === 'account' && !(S.account && S.account.signedIn) ? t('No thanks') : t('Continue'))}</button></div>`;
     O.el.setAttribute('aria-label', t('Set up RecompLauncher'));
     const f = $o('.oob-step [aria-checked="true"]') || $o('.oob-step .btn.main') || $o('.oob-foot .btn.main');
@@ -197,6 +210,10 @@
         await save({ start_in_tv: b.dataset.v === 'tv' });
         $$o('.oob-pick').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
         return;
+      case 'cloud':
+        await window.setCloudAll(b.dataset.v === 'true');
+        $$o('.oob-pick').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+        return;
       case 'add': {
         const p = await pickFile({ title: t('A folder with your games'), directory: true }).catch(fail);
         if (!p) return;
@@ -239,12 +256,15 @@
     }
   }
 
-  function go(d) {
+  async function go(d) {
     const n = O.step + d;
-    if (n < 0 || n >= STEPS.length) return;
+    if (n < 0 || n >= steps().length) return;
+    // Continue on the cloud step without picking keeps the one marked: every game.
+    const leavingCloud = d > 0 && steps()[O.step] === 'cloud';
+    if (leavingCloud && (S.settings.ui || {}).cloud_all == null) await window.setCloudAll(true);
     O.dir = d;
     O.step = n;
-    if (STEPS[n] === 'library') invoke('libraries').then((l) => { S.libs = l; if (STEPS[O.step] === 'library') draw(); }).catch(() => {});
+    if (steps()[n] === 'library') invoke('libraries').then((l) => { S.libs = l; if (steps()[O.step] === 'library') draw(); }).catch(() => {});
     draw();
   }
 
@@ -291,7 +311,7 @@
     else if (e.key === 'Escape' && O.step > 0) { e.preventDefault(); go(-1); }
   }
   // Signed in while setup is open: the Account step shows it.
-  window.oobRedraw = () => { if (O.el && STEPS[O.step] === 'account') draw(); };
+  window.oobRedraw = () => { if (O.el && steps()[O.step] === 'account') draw(); };
   window.oobPad = (b) => {
     if (!O.el || document.querySelector('.scrim')) return false;
     if (['up', 'down', 'left', 'right'].includes(b)) nearest(b);
