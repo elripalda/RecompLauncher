@@ -1832,19 +1832,6 @@ mod tests {
     }
 }
 
-/// A recomp that needs things on the PC before it plays (Python, build tools, a long first build),
-/// going by the copy of the list on disk: true until the player has said it's set up.
-pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
-    let done = ui.get("setup_ok").and_then(|o| o.get(id)).and_then(Value::as_bool).unwrap_or(false);
-    if done {
-        return false;
-    }
-    load(&list_file(dir))
-        .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
-        .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod project_status_tests {
     use super::*;

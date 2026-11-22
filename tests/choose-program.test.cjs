@@ -97,20 +97,6 @@ test('the Overview shows Self-Managed next to the room the game takes', () => {
   assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), \(size \? esc\(fmtB\(size\)\) : '—'\) \+ selfManagedPill\(id\)\)/);
 });
 
-test('Where\'s Your Build? offers the build folder or the game\'s executable, each saying what it does', () => {
-  const ask = fn(app, 'askWhereBuild');
-  assert.match(ask, /t\('Use My Build Folder'\), t\('The launcher starts it and keeps its settings and save backups\.'\)/);
-  assert.match(ask, /t\('Set Game Executable'\), t\('Play just starts that file\. You manage everything else\.'\)/);
-  assert.match(ask, /data-x="easy">\$\{esc\(t\('Use Easy Setup Instead'\)\)\}/);
-  // Big Picture gets the same choices, with the same lines under them.
-  assert.match(ask, /if \(inTV\(\)\) \{\n\s+return ask\(title, [^\n]*sub: folder\[1\][^\n]*sub: program\[1\]/);
-});
-
-test('picking in Where\'s Your Build? only sets it; the player presses Play', () => {
-  assert.match(app, /const v = await askWhereBuild\(\);\n\s+if \(v === 'folder'\) \{\n\s+try \{ if \(!\(await useOwnBuild\(id\)\)\) return; \} catch \(e\) \{ return fail\(e\); \}\n\s+toast\(t\('Build folder set\. Press Play to start it\.'\)\);\n\s+return render\(true\);/);
-  assert.match(app, /if \(v === 'program'\) \{\n\s+try \{ if \(!\(await chooseProgram\(id\)\)\) return; \} catch \(e\) \{ return fail\(e\); \}\n\s+toast\(t\('Game executable set\. Press Play to start it\.'\)\);\n\s+return render\(true\);/);
-});
-
 test('Use Default lets the pick go in the core', () => {
   assert.match(app, /case 'forget-program':[^]*?invoke\('forget_program', \{ id \}\)/);
   assert.match(rust, /set_exe, forget_program, set_setup_mode, open_folder,/);
@@ -146,11 +132,8 @@ test('turning Easy Setup back on keeps the picked executable for switching back'
   const sw = fn(app, 'setEasySkip');
   assert.match(sw, /S\.library\[rid\] = await invoke\('set_setup_mode', \{ id, mode: on \? 'own' : 'easy' \}\);\r?\n\s+applyEasySkip\(\);/);
   assert.doesNotMatch(sw, /forget_program/);
-  // Every way back on goes through it: the Easy Setup switch (and the menu before install), and Where's Your Build?.
+  // Every way back on goes through it: the Easy Setup switch (and the menu before install).
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
-  assert.match(app, /if \(v === 'easy'\) \{\n\s+try \{ await setEasySkip\(id, false\); \}/);
-  // That link goes on with the Play already starting: a second playGame would be ignored.
-  assert.match(fn(app, 'playGame2'), /if \(v === 'easy'\) \{\n[^\n]*\n[^\n]*\n\s+return playGame2\(id, program\);/);
   assert.doesNotMatch(app, /easy-again/);
 });
 

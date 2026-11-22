@@ -4,7 +4,7 @@
 use super::*;
 use std::path::PathBuf;
 
-/// An app with one game, set up from the player's own build and a copy. Each test has its own game
+/// An app with one game, set up from a copy. Each test has its own game
 /// id: the open windows and the running setups are shared by every test.
 struct Fixture(App);
 
@@ -19,7 +19,6 @@ impl Fixture {
             name: "Hopper".into(),
             path: dir.join(id),
             game_copy: Some(PathBuf::from("/games/hopper.nup")),
-            build_dir: Some(PathBuf::from("/builds/hopper")),
             inputs_ready: "v2:abc".into(),
             prepare_version: "2".into(),
             played_secs: 60,
@@ -46,19 +45,18 @@ impl Fixture {
         self.0.lib.lock().unwrap().installed.get(id).cloned().unwrap()
     }
 
-    /// What a window or a run changes before it has worked: a new copy, the player's build let go,
+    /// What a window or a run changes before it has worked: a new copy and
     /// the fingerprint cleared.
     fn change(&self, id: &str) {
         let mut l = self.0.lib.lock().unwrap();
         let x = l.installed.get_mut(id).unwrap();
         x.game_copy = Some(PathBuf::from("/games/other.nup"));
-        x.build_dir = None;
         x.inputs_ready.clear();
     }
 
     fn as_it_was(&self, id: &str) -> bool {
         let g = self.game(id);
-        g.game_copy == Some(PathBuf::from("/games/hopper.nup")) && g.build_dir == Some(PathBuf::from("/builds/hopper")) && g.inputs_ready == "v2:abc"
+        g.game_copy == Some(PathBuf::from("/games/hopper.nup")) && g.inputs_ready == "v2:abc"
     }
 }
 

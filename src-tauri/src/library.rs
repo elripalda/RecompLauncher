@@ -5,29 +5,6 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Set Up By Hand: how a game starts and gets the player's game files, as the player said.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct ManualSetup {
-    /// The program that starts it (in its folder, or anywhere).
-    #[serde(default)]
-    pub exe: Option<PathBuf>,
-    /// The player's game files: a disc image, a ROM, or a folder.
-    #[serde(default)]
-    pub copy: Option<PathBuf>,
-    /// "folder": put in a folder inside the game's folder (`into`, "." for the folder itself);
-    /// "arg": handed to the program on its command line (`arg`, with {copy} for where they are);
-    /// "none": the game asks for them itself.
-    #[serde(default)]
-    pub how: String,
-    #[serde(default)]
-    pub into: String,
-    /// A single file's name there, when the game wants it named a certain way.
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub arg: String,
-}
-
 /// A copy read whole, with no errors: which file, as it was then, and its checksum.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct CopyCheck {
@@ -54,7 +31,7 @@ impl CopyCheck {
 }
 
 /// Who sets a game up. Switching only changes this: what the player picked for each way (their
-/// program, their build folder, their hand setup, their copy) stays recorded, so switching back
+/// program, their copy) stays recorded, so switching back
 /// finds it as it was.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -62,10 +39,8 @@ pub enum SetupMode {
     /// The launcher, with Easy Setup (on games it can do; other games start as they come).
     #[default]
     Easy,
-    /// The player (Skip Easy Setup): their own build or the program they picked.
+    /// The player (Skip Easy Setup): Play runs the release's program, or the one they picked.
     Own,
-    /// Set Up By Hand.
-    ByHand,
 }
 
 impl SetupMode {
@@ -131,10 +106,6 @@ pub struct Installed {
     /// Easy Setup doesn't ask for the player's copy.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub files_in_place: bool,
-    /// Set Up By Hand: the player says which program starts it and how it gets their game files.
-    /// Used while `mode` is ByHand (`hand()`); kept when the player switches away, for coming back.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manual: Option<ManualSetup>,
     /// Who sets this game up.
     #[serde(default, skip_serializing_if = "SetupMode::is_easy")]
     pub mode: SetupMode,
@@ -146,15 +117,6 @@ pub struct Installed {
     pub setup_inputs: BTreeMap<String, PathBuf>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub inputs_ready: String,
-    /// The player chose the build already on this PC (its game folder) instead of building it.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub prebuilt: bool,
-    /// The player's own build of a game its setup builds into a folder of its own (`folders.game`,
-    /// often under the home folder): kept wherever they put it, and used in that folder's place for
-    /// starting it, its settings file and its saves. A build by the launcher goes back to the setup's
-    /// own folder.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub build_dir: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input_staged: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -297,10 +259,6 @@ pub struct SetupChoices {
     #[serde(default)]
     pub games_ready: BTreeMap<String, String>,
     #[serde(default)]
-    pub prebuilt: bool,
-    #[serde(default)]
-    pub build_dir: Option<PathBuf>,
-    #[serde(default)]
     pub prepare_version: String,
     #[serde(default)]
     pub prepare_opts: BTreeMap<String, bool>,
@@ -321,8 +279,6 @@ impl SetupChoices {
             setup_inputs: g.setup_inputs.clone(),
             inputs_ready: g.inputs_ready.clone(),
             games_ready,
-            prebuilt: g.prebuilt,
-            build_dir: g.build_dir.clone(),
             prepare_version: g.prepare_version.clone(),
             prepare_opts: g.prepare_opts.clone(),
             runtime_off: g.runtime_off.clone(),
@@ -339,8 +295,6 @@ impl SetupChoices {
         for (k, x) in g.games.iter_mut() {
             x.inputs_ready = self.games_ready.get(k).cloned().unwrap_or_default();
         }
-        g.prebuilt = self.prebuilt;
-        g.build_dir = self.build_dir;
         g.prepare_version = self.prepare_version;
         g.prepare_opts = self.prepare_opts;
         g.runtime_off = self.runtime_off;
@@ -355,24 +309,12 @@ impl Installed {
         !self.installer_setup.is_empty() && self.exe.is_none() && !self.path.is_dir()
     }
 
-    /// Set Up By Hand, while that's how this game is set up.
-    pub fn hand(&self) -> Option<&ManualSetup> {
-        self.manual.as_ref().filter(|_| self.mode == SetupMode::ByHand)
-    }
-
     /// The player sets this game up their own way (Skip Easy Setup): for this game, or for every
-    /// game (`all`, the Settings switch). Not while it's set up by hand: that way comes first.
+    /// game (`all`, the Settings switch).
     pub fn player_sets_up(&self, all: bool) -> bool {
-        self.hand().is_none() && (self.mode == SetupMode::Own || all)
+        self.mode == SetupMode::Own || all
     }
 
-    /// Set Up By Hand turned off ("Use the Launcher's Way"): the launcher sets it up again. The
-    /// hand setup, and a program or build the player picked, stay recorded.
-    pub fn leave_hand(&mut self) {
-        if self.mode == SetupMode::ByHand {
-            self.mode = SetupMode::Easy;
-        }
-    }
 }
 
 fn half() -> u8 {
@@ -802,9 +744,6 @@ impl Library {
         for g in self.installed.values_mut() {
             let base = g.path.clone();
             g.exe = g.exe.take().map(|e| unix_path(&base, e));
-            if let Some(m) = g.manual.as_mut() {
-                m.exe = m.exe.take().map(|e| unix_path(&base, e));
-            }
         }
     }
 
@@ -1279,31 +1218,6 @@ mod mode_tests {
     }
 
     #[test]
-    fn a_hand_setup_is_used_only_while_it_is_the_mode() {
-        let mut g = Installed { manual: Some(ManualSetup { how: "none".into(), ..Default::default() }), ..Default::default() };
-        assert!(g.hand().is_none(), "recorded, but Easy Setup sets it up");
-        g.mode = SetupMode::ByHand;
-        assert!(g.hand().is_some());
-        // By hand comes first, even with Skip Easy Setup for every game.
-        assert!(!g.player_sets_up(true));
-    }
-
-    #[test]
-    fn leaving_the_hand_setup_goes_back_to_the_launcher_and_keeps_every_pick() {
-        let mut g = picked();
-        g.manual = Some(ManualSetup::default());
-        g.mode = SetupMode::ByHand;
-        g.leave_hand();
-        assert_eq!(g.mode, SetupMode::Easy);
-        assert!(g.manual.is_some(), "kept for Set Up By Hand to open with");
-        assert_eq!(g.exe_rules, u8::MAX, "the picked program stays recorded");
-        // Not set up by hand: nothing changes.
-        let mut own = Installed { mode: SetupMode::Own, ..Default::default() };
-        own.leave_hand();
-        assert_eq!(own.mode, SetupMode::Own);
-    }
-
-    #[test]
     fn a_window_closed_without_a_setup_puts_the_mode_back() {
         let mut g = picked();
         g.mode = SetupMode::Own;
@@ -1319,8 +1233,6 @@ mod mode_tests {
         assert!(easy.get("mode").is_none());
         let own = serde_json::to_value(Installed { mode: SetupMode::Own, ..Default::default() }).unwrap();
         assert_eq!(own["mode"], "own");
-        let hand = serde_json::to_value(Installed { mode: SetupMode::ByHand, ..Default::default() }).unwrap();
-        assert_eq!(hand["mode"], "by_hand");
     }
 }
 

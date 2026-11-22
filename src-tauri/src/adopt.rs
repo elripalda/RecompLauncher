@@ -954,7 +954,10 @@ fn associated_game(g: &Installed, id: &str, entry: Option<&Value>) -> Installed 
     next.verified = false;
     next.pinned = false;
     next.auto_update = false;
-    next.exe_rules = install::EXE_RULES;
+    // A program the player picked (Game Executable) stays theirs, as it does through an update.
+    if next.exe_rules != u8::MAX {
+        next.exe_rules = install::EXE_RULES;
+    }
     // These describe files supplied by the previous project's release. Treat the files as
     // the player's own until an explicit installation supplies a new manifest.
     next.files.clear();

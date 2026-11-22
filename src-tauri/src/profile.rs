@@ -1656,72 +1656,6 @@ impl Profile {
         has_files.then_some(home)
     }
 
-    /// The player's build in `to` standing in for the setup's own folder: every path of the
-    /// profile in that folder (how it starts, its settings files, its saves, its folders, and the
-    /// files a finished build has, prepare.done) moves with it. What the setup step runs stays as
-    /// it is: the launcher's own build goes to its folder.
-    pub fn rebase_build(&mut self, install: &Path, to: &Path) {
-        let Some(from) = self.build_home(install) else { return };
-        let moved = |t: &mut String| {
-            if t.is_empty() || t.contains("{game}") {
-                return;
-            }
-            let full = PathBuf::from(fill(t, install, None));
-            if let Ok(rest) = full.strip_prefix(&from) {
-                *t = (if rest.as_os_str().is_empty() { to.to_path_buf() } else { to.join(rest) }).to_string_lossy().into_owned();
-            }
-        };
-        if let Some(st) = self.start.as_mut() {
-            st.args.iter_mut().for_each(moved);
-            st.env.values_mut().for_each(moved);
-        }
-        for c in self.config.iter_mut() {
-            for f in c.file.iter_mut() {
-                moved(&mut f.path);
-                moved(&mut f.when);
-            }
-        }
-        self.saves.iter_mut().for_each(moved);
-        for list in self.folders.values_mut() {
-            for f in list.iter_mut() {
-                moved(&mut f.path);
-                moved(&mut f.when);
-            }
-        }
-        if let Some(pr) = self.prepare.as_mut() {
-            pr.done.iter_mut().for_each(moved);
-        }
-    }
-
-    /// The first file its setup step says it leaves (prepare.done, filled in) that isn't there.
-    /// None when they're all there, or it lists none.
-    pub fn done_missing(&self, install: &Path) -> Option<PathBuf> {
-        let done = &self.prepare.as_ref()?.done;
-        done.iter().map(|d| PathBuf::from(fill(d, install, None))).find(|p| !p.exists())
-    }
-
-    /// The files of prepare.done that are in the build folder `home`, relative to it: what a
-    /// finished build has, to look for in a folder the player says holds their own build.
-    pub fn done_in(&self, install: &Path, home: &Path) -> Vec<PathBuf> {
-        let Some(pr) = self.prepare.as_ref() else { return Vec::new() };
-        pr.done
-            .iter()
-            .filter_map(|d| PathBuf::from(fill(d, install, None)).strip_prefix(home).ok().map(Path::to_path_buf))
-            .filter(|rest| !rest.as_os_str().is_empty())
-            .collect()
-    }
-
-    pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
-        let pr = self.prepare.as_ref()?;
-        if !pr.done.is_empty() {
-            return None;
-        }
-        let first = self.folders.get("game")?.first()?;
-        let dir = PathBuf::from(fill(&first.path, install, None));
-        let full = std::fs::read_dir(&dir).ok()?.flatten().next().is_some();
-        (full && dir != install).then_some(dir)
-    }
-
     pub fn already_in_place(&self, install: &Path) -> Option<PathBuf> {
         let g = self.game.as_ref()?;
         let into = g.into.trim().trim_matches(['/', '\\']);
@@ -4155,101 +4089,10 @@ mod build_here_tests {
         let mut v = base.clone();
         v["start"]["env"] = serde_json::json!({ "DISC": "{game}" });
         assert!(prof(v).start_uses_game());
-        // No done list: the game's folder with files in it is offered as the build on this PC.
-        let mut v = base.clone();
-        v["prepare"].as_object_mut().unwrap().remove("done");
-        let p = prof(v.clone());
-        assert_eq!(p.build_done(&dir), None);
-        assert_eq!(p.build_folder_here(&dir), Some(game.clone()));
-        std::fs::remove_file(&done).unwrap();
-        assert_eq!(prof(v).build_folder_here(&dir), None, "an empty folder isn't a build");
         // One path for done works too.
         let mut v = base.clone();
         v["prepare"]["done"] = serde_json::json!(done.to_string_lossy());
         assert_eq!(prof(v).prepare.unwrap().done.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
-#[cfg(test)]
-mod own_build_tests {
-    use super::*;
-    use serde_json::json;
-
-    fn builder() -> Profile {
-        serde_json::from_value(json!({
-            "format": 1,
-            "game": { "kind": "iso_or_folder", "label": "Your copy" },
-            "start": { "program": ["HopperBuilder.exe"], "args": ["--play", "{home}/Games/Hopper"] },
-            "prepare": { "program": ["HopperBuilder.exe"], "args": ["--cli", "--prepare", "--game", "{game}"] },
-            "config": [{ "id": "main", "format": "ini", "file": [{ "path": "{home}/Games/Hopper/options.ini" }] }],
-            "saves": ["{local}/hopper", "{home}/Games/Hopper/user"],
-            "folders": { "saves": [{ "path": "{home}/Games/Hopper/user", "if": "{home}/Games/Hopper/user" }], "game": [{ "path": "{home}/Games/Hopper" }] }
-        }))
-        .unwrap()
-    }
-
-    #[test]
-    fn a_build_the_player_already_has_stands_in_for_the_setups_own_folder() {
-        let install = std::env::temp_dir().join("rl-own-build-install");
-        let mine = std::env::temp_dir().join("rl-own-build-mine");
-        let mut p = builder();
-        let home = p.build_home(&install).expect("built into a folder of its own");
-        assert!(home.ends_with("Games/Hopper") || home.ends_with("Games\\Hopper"));
-        p.rebase_build(&install, &mine);
-        let s = p.start.as_ref().unwrap();
-        assert_eq!(s.args[0], "--play");
-        assert_eq!(PathBuf::from(&s.args[1]), mine);
-        assert_eq!(PathBuf::from(&p.config[0].file[0].path), mine.join("options.ini"));
-        assert_eq!(p.saves[0], "{local}/hopper", "paths outside that folder stay as they are");
-        assert_eq!(PathBuf::from(&p.saves[1]), mine.join("user"));
-        assert_eq!(PathBuf::from(&p.folders["saves"][0].when), mine.join("user"));
-        assert_eq!(PathBuf::from(&p.folders["game"][0].path), mine);
-        // What the setup step runs stays as it is: the launcher's own build goes to its folder.
-        assert_eq!(p.prepare.as_ref().unwrap().args, vec!["--cli", "--prepare", "--game", "{game}"]);
-    }
-
-    #[test]
-    fn only_games_built_into_a_folder_of_their_own_have_one() {
-        let install = std::env::temp_dir().join("rl-own-build-install2");
-        let mut p = builder();
-        p.folders.insert("game".into(), vec![Place { path: "{install}".into(), when: String::new() }]);
-        assert_eq!(p.build_home(&install), None, "the game's own folder itself");
-        let mut inside = builder();
-        inside.folders.insert("game".into(), vec![Place { path: "{install}/game".into(), when: String::new() }]);
-        assert_eq!(inside.build_home(&install), Some(install.join("game")), "a folder inside it still has one");
-        let mut q = builder();
-        q.prepare = None;
-        assert_eq!(q.build_home(&install), None, "not built from the copy");
-        let mut r = builder();
-        r.folders.remove("game");
-        assert_eq!(r.build_home(&install), None);
-        let before = serde_json::to_string(&p).unwrap();
-        p.rebase_build(&install, Path::new("/elsewhere"));
-        assert_eq!(serde_json::to_string(&p).unwrap(), before, "nothing moves without a folder of its own");
-    }
-
-    #[test]
-    fn what_a_finished_build_has_moves_with_the_players_build() {
-        let install = std::env::temp_dir().join("rl-own-build-done");
-        let mine = std::env::temp_dir().join("rl-own-build-done-mine");
-        let _ = std::fs::remove_dir_all(&mine);
-        let mut p = builder();
-        p.prepare.as_mut().unwrap().done = vec!["{home}/Games/Hopper/bin/hopper.exe".into(), "{local}/hopper/cache.bin".into()];
-        let home = p.build_home(&install).unwrap();
-        // Only the done files in the build folder are what to look for in the player's folder.
-        assert_eq!(p.done_in(&install, &home), vec![PathBuf::from("bin").join("hopper.exe")]);
-        p.rebase_build(&install, &mine);
-        let done = &p.prepare.as_ref().unwrap().done;
-        assert_eq!(PathBuf::from(&done[0]), mine.join("bin").join("hopper.exe"));
-        assert_eq!(done[1], "{local}/hopper/cache.bin", "one outside that folder stays as it is");
-        assert_eq!(p.done_missing(&install), Some(mine.join("bin").join("hopper.exe")));
-    }
-
-    #[test]
-    fn nothing_is_missing_when_the_profile_lists_no_done_files() {
-        let install = std::env::temp_dir().join("rl-own-build-nodone");
-        assert_eq!(builder().done_missing(&install), None);
-        assert!(builder().done_in(&install, &install.join("Games")).is_empty());
     }
 }
