@@ -1407,6 +1407,8 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .dl-page .dl-moving .mid b{font-size:15.5px}
 .dl-page .dl-moving .dl-phase{font-size:13px}
 .dl-state{flex:none;color:var(--muted);font-size:12.5px;font-weight:600}
+/* The version an update goes to, in the game page's update blue (.gs-new) */
+.dl-row .mid .gs-new{color:var(--cyan)}
 .dl-row .btn.sq.sm{width:34px;height:34px;border-radius:10px}
 .dl-sub{display:flex!important;align-items:center;gap:10px;min-width:0}
 .dl-sub>span:first-child{flex:none}

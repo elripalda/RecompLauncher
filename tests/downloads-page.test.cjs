@@ -21,7 +21,7 @@ const helpers = {
 
 function appContext() {
   const c = vm.createContext({ ...helpers });
-  vm.runInContext(topFn('latestPerGame') + topFn('dayOf') + topConst('clockOf') + topFn('didWhat') + 'globalThis.clockOf = clockOf;', c);
+  vm.runInContext(topFn('latestPerGame') + topFn('dayOf') + topConst('clockOf') + topFn('withNewVer') + topFn('didWhat') + 'globalThis.clockOf = clockOf;', c);
   return c;
 }
 
@@ -57,8 +57,8 @@ test('a row shows only the time, in the player\'s clock', () => {
   assert.equal(appContext().clockOf(at(0, 9, 5)), '09:05');
 });
 
-test('an update says which version it came from and went to', () => {
-  assert.equal(appContext().didWhat({ update: true, from: 'v1.0.0', tag: 'v1.1.0' }), 'Updated v1.0.0 → v1.1.0');
+test('an update says which version it came from and went to, the new one in the update blue', () => {
+  assert.equal(appContext().didWhat({ update: true, from: 'v1.0.0', tag: 'v1.1.0' }), 'Updated v1.0.0 → <span class="gs-new">v1.1.0</span>');
 });
 
 test('a fresh install says the version it installed', () => {
@@ -92,10 +92,10 @@ function desktopPage(hist, library, more = {}) {
     ...helpers,
     S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, building: null, buildQ: [], setupJobs: {}, ...more },
     fmtB: String, byId: (id) => CATALOG[id], scanPill: () => '', pic: () => '', thumbOf: String,
-    pct: () => 0, dlLine: (id) => `line of ${id}`, dlTarget: () => 'Update to v2', buildLine: () => 'Building the game · 3%', buildPct: () => 3,
+    pct: () => 0, DOWN: '', dlLine: (id) => `line of ${id}`, dlTarget: () => 'Update to v2', buildLine: () => 'Building the game · 3%', buildPct: () => 3,
   });
   const consts = ['INFO_I', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
-  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
+  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
   vm.runInContext(code, c);
   return c.pageDownloads();
 }
@@ -190,13 +190,13 @@ test('no Pause all when only updates held for a build are waiting', () => {
 // The moving download's one line, with the real helpers it uses.
 function lineContext(jobs, library = {}, updates = {}) {
   const c = vm.createContext({ ...helpers, S: { jobs, library, updates }, fmtB: String, pct: () => 0 });
-  vm.runInContext('const DLSPD = { g: [10] };' + topConst('took') + topFn('progLabel') + topFn('dlPhase') + topFn('dlTarget') + topFn('dlLine'), c);
+  vm.runInContext('const DLSPD = { g: [10] };' + topConst('took') + topFn('progLabel') + topFn('dlPhase') + topFn('withNewVer') + topFn('dlTarget') + topFn('dlLine'), c);
   return c;
 }
 
 test("the moving download's line has the version, sizes, speed and time left", () => {
   const c = lineContext({ g: { phase: 'download', done: 0, total: 100, speed: 1 } }, { g: { tag: 'v1' } }, { g: 'v2' });
-  assert.equal(c.dlLine('g'), 'Update to v2 · 0 of 100 · 10/s · 10 sec left');
+  assert.equal(c.dlLine('g'), 'Update to <span class="gs-new">v2</span> · 0 of 100 · 10/s · 10 sec left');
 });
 
 test('a first install says Install on its line', () => {
@@ -207,4 +207,9 @@ test('a first install says Install on its line', () => {
 test('before its bytes come, the line says what the download is doing', () => {
   const c = lineContext({ g: { phase: 'unpack', done: 0, total: 0 } });
   assert.equal(c.dlLine('g'), 'Install · Unpacking');
+});
+
+test('an Updates ready row shows the version it goes to in the update blue', () => {
+  const html = desktopPage([], { lostodyssey: { tag: 'v1.1.0' } }, { updates: { lostodyssey: 'v1.2.0' } });
+  assert.match(html, /<span>v1\.1\.0 → <span class="gs-new">v1\.2\.0<\/span><\/span>/);
 });

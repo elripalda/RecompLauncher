@@ -4378,34 +4378,43 @@ function noteSpeed(id, p) {
   if (l.length > DL_KEEP) l.splice(0, l.length - DL_KEEP);
 }
 window.dlSpeedSeed = (id, list) => { DLSPD[id] = list.slice(-DL_KEEP); DLSPD[id].slot = Math.floor(Date.now() / DL_STEP); };
-// What a download on Downloads will be: the version an update goes to, else Install or Update,
-// or the plugin's name.
+// A translated text as HTML, with the version an update goes to in the game page's update blue
+// (.gs-new, as in its stats strip). Everything else in it is escaped.
+function withNewVer(text, values, blue) {
+  return esc(t(text)).replace(/\{(\w+)\}/g, (m, k) => {
+    if (!(k in values)) return m;
+    const v = esc(values[k]);
+    return k === blue ? `<span class="gs-new">${v}</span>` : v;
+  });
+}
+// What a download on Downloads will be, as HTML: the version an update goes to, else Install or
+// Update, or the plugin's name.
 function dlTarget(id) {
   const j = S.jobs[id] || {};
-  if (j.plug) return (plugMan(j.plugin) || {}).name || t('Plugin');
-  if (S.library[id] && S.updates[id]) return tf('Update to {tag}', { tag: S.updates[id] });
-  return S.library[id] ? t('Update') : t('Install');
+  if (j.plug) return esc((plugMan(j.plugin) || {}).name || t('Plugin'));
+  if (S.library[id] && S.updates[id]) return withNewVer('Update to {tag}', { tag: S.updates[id] }, 'tag');
+  return esc(S.library[id] ? t('Update') : t('Install'));
 }
-// A moving download's one line, as in the mockup: "Update to v1.2.0 · 72 MB of 148 MB · 48 MB/s ·
-// 2 sec left". Before and after the bytes come, what it's doing instead (Unpacking, Paused...).
-// The speed is the measured one above, which moves less than the download's own.
+// A moving download's one line, as HTML, as in the mockup: "Update to v1.2.0 · 72 MB of 148 MB ·
+// 48 MB/s · 2 sec left". Before and after the bytes come, what it's doing instead (Unpacking,
+// Paused...). The speed is the measured one above, which moves less than the download's own.
 function dlLine(id) {
   const j = S.jobs[id] || (S.paused || {})[id] || {};
   const what = dlTarget(id);
-  if (!S.jobs[id]) return `${what} · ${t('Paused')}`;
-  if (j.phase !== 'download' || !j.total) return `${what} · ${progLabel(j)[0] || t('Getting ready')}`;
+  if (!S.jobs[id]) return `${what} · ${esc(t('Paused'))}`;
+  if (j.phase !== 'download' || !j.total) return `${what} · ${esc(progLabel(j)[0] || t('Getting ready'))}`;
   const l = DLSPD[id] || [];
   const speed = l[l.length - 1] || j.speed || 0;
-  const parts = [what, tf('{done} of {total}', { done: fmtB(j.done), total: fmtB(j.total) })];
+  const parts = [tf('{done} of {total}', { done: fmtB(j.done), total: fmtB(j.total) })];
   if (speed) parts.push(tf('{speed}/s', { speed: fmtB(speed) }));
   const left = speed ? Math.max(0, j.total - j.done) / speed : 0;
   if (left) parts.push(tf('{time} left', { time: took(Math.max(1, Math.round(left))) }));
-  return parts.join(' · ');
+  return [what].concat(parts.map(esc)).join(' · ');
 }
 // Only that line changes while a download runs; the bar is paintProgress's.
 function paintDlLine(id) {
   const el = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
-  if (el) el.textContent = dlLine(id);
+  if (el) el.innerHTML = dlLine(id);
 }
 // A build right after an update (#429's Build Again After Updates) on Downloads: how far its
 // setup step is, from the builder's own progress (0 while it's still reading the copy).
@@ -4507,11 +4516,11 @@ function dayOf(ts) {
   return d.toLocaleDateString(curLocale(), { year, month: 'short', day: 'numeric' });
 }
 const clockOf = (ts) => new Date(ts * 1000).toLocaleTimeString(curLocale(), timeOpts({ hour: 'numeric', minute: '2-digit' }));
-// What a finished download did, in a few words.
+// What a finished download did, in a few words, as HTML: an update's new version in its blue.
 function didWhat(h) {
-  if (!h.update) return tf('Installed {tag}', { tag: h.tag });
-  if (h.from) return tf('Updated {from} → {to}', { from: h.from, to: h.tag });
-  return tf('Updated to {tag}', { tag: h.tag });
+  if (!h.update) return esc(tf('Installed {tag}', { tag: h.tag }));
+  if (h.from) return withNewVer('Updated {from} → {to}', { from: h.from, to: h.tag }, 'to');
+  return withNewVer('Updated to {tag}', { tag: h.tag }, 'tag');
 }
 // Downloads, one page: what's downloading or building (what's moving on top,
 // then every one waiting), the game updates that are ready, what didn't finish, and Recent. The
@@ -4531,24 +4540,24 @@ function pageDownloads() {
     return `<button type="button" class="btn sm sq" data-act="${act}" data-id="${esc(id)}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}"${j.phase === 'unpack' ? ' disabled' : ''}>${XS}</button>`; };
   const movingRow = (id) => { const a = appOf(id), held = !S.jobs[id];
     const two = held ? `<button type="button" class="btn main sm" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) ? `<button type="button" class="btn sm" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
-    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${esc(dlLine(id))}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${dlLine(id)}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
   const buildRow = (id) => { const a = appOf(id), p = buildPct(id);
     return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
   const quietRow = (id, sub, act) => { const a = appOf(id);
-    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(sub)}</span></span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
+    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${sub}</span></span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
   // An update held back for the build before it says so; any other waiting download says what
   // it'll be.
-  const waitingRow = (id) => { const sub = S.jobs[id].held ? `${dlTarget(id)} · ${t('Waiting for the build before it')}` : dlTarget(id);
+  const waitingRow = (id) => { const sub = S.jobs[id].held ? `${dlTarget(id)} · ${esc(t('Waiting for the build before it'))}` : dlTarget(id);
     return quietRow(id, sub, 'cancel'); };
   const waits = (id) => !!S.jobs[id] && S.jobs[id].phase === 'queued';
   const building = S.building && !S.jobs[S.building] ? [S.building] : [];
   const buildWaiting = S.buildQ.filter((id) => !S.jobs[id]);
-  const dlRows = act.filter((id) => !waits(id)).map(movingRow).concat(building.map(buildRow), act.filter(waits).map(waitingRow), buildWaiting.map((id) => quietRow(id, t('Waiting to build'), 'build-cancel'))).join('');
+  const dlRows = act.filter((id) => !waits(id)).map(movingRow).concat(building.map(buildRow), act.filter(waits).map(waitingRow), buildWaiting.map((id) => quietRow(id, esc(t('Waiting to build')), 'build-cancel'))).join('');
   const dlCount = act.length + building.length + buildWaiting.length;
   const pauseBtn = Object.keys(S.jobs).some(canPause) ? `<button type="button" class="btn sm" data-act="dl-pause-all">${esc(t('Pause all'))}</button>` : '';
   const upRows = ups.map((id) => { const a = appOf(id);
     // The pill is the new version's check, so the player sees it before they download it.
-    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span>${scanPill({ id, tag: S.updates[id], update: true })}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
+    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${withNewVer('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }, 'to')}</span>${scanPill({ id, tag: S.updates[id], update: true })}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
   const failRows = fails.map((r) => { const a = appOf(r.id);
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   // Recent: each game once, with its newest install or update, under the day it happened. Its
@@ -4566,7 +4575,7 @@ function pageDownloads() {
     const link = byId(h.id) || inst ? ` link" data-act="open" data-id="${esc(h.id)}` : '';
     // Only the store's Safe pill: every download is checked against its checksum, so saying so on
     // each row is noise.
-    return `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(didWhat(h))}</span>${scanPill({ ...h, verified: false })}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
+    return `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${didWhat(h)}</span>${scanPill({ ...h, verified: false })}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
   };
   let day = '';
   const recentRows = shown.map((h) => {
