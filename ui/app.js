@@ -2894,7 +2894,7 @@ function manageFileRows(id, inst) {
   // Cloud saves is switched here only; the Saves tab just offers to turn it on.
   if (S.account && S.account.signedIn) {
     const on = cloudOn(inst);
-    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>`);
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? t('On. Saves for this game are synced to the cloud.') : t('Off. Saves for this game are not synced to the cloud.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>`);
   }
   return rows;
 }

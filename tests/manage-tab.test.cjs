@@ -191,7 +191,7 @@ test('Cloud saves shows in Manage only when signed in', () => {
 
 test('Cloud saves switch is on when the game sends its saves', () => {
   const html = fileRows(Object.assign({ cloud: true }, GAME), true);
-  assert.match(html, /On\. After you play, its saves go to your account\./);
+  assert.match(html, /On\. Saves for this game are synced to the cloud\./);
   assert.match(html, /aria-checked="true"[^>]*data-act="saves-cloud"/);
 });
 
