@@ -2910,8 +2910,7 @@ fn start_game_with_monitor_context(
         }
         // Built: the files it no longer reads may be gone (Free Up Space), and aren't placed.
         let rows = inputs::rows(p, &g, &st.dir).map_err(Error::Msg)?;
-        let mut now = p.clone();
-        now.inputs.retain(|i| !i.picked() || i.optional || rows.iter().any(|r| r.id == i.id && r.path.is_some()));
+        let now = without_freed(p, &rows);
         let mut staged = g.clone();
         inputs::stage(&now, &mut staged, &st.dir).map_err(Error::Msg)?;
         // DLSS wanted but not fetched yet (setup ran offline, or it was removed): fetched in the
@@ -5079,6 +5078,18 @@ pub(crate) fn plays_as_set_up(st: &App, recomp: &str, g: &Installed, game: Optio
     }
     let sub = game.map(|(x, _)| x.id.as_str());
     easy_status(st, recomp, g, &p, sub).ready
+}
+
+/// The game as Play starts it once it's built: the files it no longer reads (gone with Free Up
+/// Space) are left out, and named as skipped, so their placeholders in the setup step's arguments
+/// aren't taken for misspelled ones.
+fn without_freed(p: &profile::Profile, rows: &[inputs::Row]) -> profile::Profile {
+    let mut now = p.clone();
+    let has = |id: &str| rows.iter().any(|r| r.id == id && r.path.is_some());
+    let freed: Vec<String> = p.inputs.iter().filter(|i| i.picked() && !i.optional && !has(&i.id)).map(|i| i.id.clone()).collect();
+    now.inputs.retain(|i| !freed.contains(&i.id));
+    now.skipped_inputs.extend(freed);
+    now
 }
 
 /// What Play answers for a game that isn't set up: the page opens Easy Setup (or asks) for it.
@@ -10020,6 +10031,41 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+
+    // Longshot's case: built, its dump freed (Free Up Space), and its setup step names the dump.
+    fn freed_game() -> (crate::profile::Profile, crate::library::Installed) {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "inputs": [{ "id": "game", "label": "Your copy", "formats": [{ "type": "file" }] }],
+            "prepare": { "program": ["build.sh"], "args": ["--game={input:game}"], "keeps_copy": true },
+            "start": { "program": ["game.sh"] }
+        }))
+        .unwrap();
+        (p, crate::library::Installed::default())
+    }
+
+    #[test]
+    fn play_leaves_out_a_freed_file_and_its_placeholder_still_reads() {
+        let (p, g) = freed_game();
+        let rows = crate::inputs::rows(&p, &g, &std::env::temp_dir()).unwrap();
+        let now = super::without_freed(&p, &rows);
+        assert!(now.inputs.is_empty());
+        assert_eq!(now.skipped_inputs, vec!["game".to_string()]);
+        assert_eq!(crate::inputs::validate(&now), Ok(()));
+    }
+
+    #[test]
+    fn play_keeps_a_file_that_is_still_picked() {
+        let (p, mut g) = freed_game();
+        let dump = std::env::temp_dir().join(format!("rl-freed-{}.bin", std::process::id()));
+        std::fs::write(&dump, b"dump").unwrap();
+        g.setup_inputs.insert("game".into(), dump.clone());
+        let rows = crate::inputs::rows(&p, &g, &std::env::temp_dir()).unwrap();
+        let now = super::without_freed(&p, &rows);
+        assert_eq!(now.inputs.len(), 1);
+        assert!(now.skipped_inputs.is_empty());
+        let _ = std::fs::remove_file(dump);
+    }
 
     #[test]
     fn launcher_support_counts_named_inputs_without_a_game_block_as_easy_setup() {
