@@ -180,8 +180,8 @@ pub struct Installed {
     /// How strong it is, 0 to 100.
     #[serde(default = "half")]
     pub look_amount: u8,
-    /// Cloud saves for this game: None until the player is asked (before its first Play while
-    /// signed in), then their answer.
+    /// Cloud saves for this game, when the player switched them for it (its Manage tab). None:
+    /// what they picked for every game (see `cloud_on`).
     #[serde(default)]
     pub cloud: Option<bool>,
     /// Where the player says the game saves (Saves, Change): ahead of everything else.
@@ -263,6 +263,13 @@ pub struct SetupUpgrade {
 }
 
 impl Installed {
+    /// Cloud saves on for this game: its own switch when it was set, otherwise what the player
+    /// picked for every game (`ui.cloud_all`, asked once after signing in; not asked yet is off).
+    pub fn cloud_on(&self, ui: &Value) -> bool {
+        let every_game = ui.get("cloud_all").and_then(Value::as_bool).unwrap_or(false);
+        self.cloud.unwrap_or(every_game)
+    }
+
     /// Its installer is downloaded and waits for Set Up: its folder is made by that installer, so
     /// a folder that isn't there yet isn't a missing game.
     pub fn installer_waits(&self) -> bool {

@@ -495,10 +495,15 @@ pub async fn account_signout(app: AppHandle) -> Res<()> {
 
 // ---------- a game's saves ----------
 
+/// The game as its saves see it. `cloud` is always set here: a game never switched on its own
+/// takes what the player picked for every game, so the checks below only read `cloud`.
 fn game(st: &App, id: &str) -> Res<Installed> {
     let g = st.lib.lock().unwrap().installed.get(id).cloned();
     // One game of several with saves of its own: its copies are its own, on the recomp's install.
-    g.or_else(|| own_saves(st, id).map(|p| p.g)).ok_or_else(|| Error::Msg("It isn't installed.".into()))
+    let g = g.or_else(|| own_saves(st, id).map(|p| p.g));
+    let mut g = g.ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.cloud = Some(g.cloud_on(&st.lib.lock().unwrap().settings.ui));
+    Ok(g)
 }
 
 /// One game of a recomp that carries several, when it declares its own saves.
@@ -796,14 +801,17 @@ async fn pending_copy(dir: &Path, id: &str, library: &Mutex<crate::library::Libr
     let enabled = {
         let l = library.lock().unwrap();
         let g = l.installed.get(id).or_else(|| crate::games::split(id).and_then(|(r, _)| l.installed.get(r)));
-        g.map(|g| g.cloud == Some(true)).unwrap_or(false)
+        g.map(|g| g.cloud_on(&l.settings.ui)).unwrap_or(false)
     };
     let pending = if enabled { saves::state(dir, id).pending } else { None };
     (guard, pending)
 }
 
 fn pending_ids(st: &App) -> Vec<String> {
-    let installed: Vec<Installed> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).cloned().collect();
+    let installed: Vec<Installed> = {
+        let l = st.lib.lock().unwrap();
+        l.installed.values().filter(|g| g.cloud_on(&l.settings.ui)).cloned().collect()
+    };
     let mut ids = Vec::new();
     for g in installed {
         ids.push(g.id.clone());
@@ -1491,7 +1499,10 @@ pub async fn saves_overview(app: AppHandle) -> Res<Value> {
 
 fn overview(app: &AppHandle) -> Value {
     let st = app.state::<App>();
-    let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let games: Vec<(String, Installed)> = {
+        let l = st.lib.lock().unwrap();
+        l.installed.iter().map(|(k, v)| (k.clone(), Installed { cloud: Some(v.cloud_on(&l.settings.ui)), ..v.clone() })).collect()
+    };
     // Copies made beside the games while the player's folder was away go to it now that it's back.
     let installed: Vec<Installed> = games.iter().map(|(_, g)| g.clone()).collect();
     saves::gather(&st.dir, &installed);
@@ -1984,6 +1995,38 @@ mod child_retry_tests {
         fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(false);
         assert!(pending_ids(&fixture.0).is_empty());
         assert_eq!(game(&fixture.0, "series--first").unwrap().cloud, Some(false));
+    }
+
+    #[test]
+    fn a_game_never_switched_is_off_until_every_game_is_picked() {
+        let fixture = Fixture::new(json!([]));
+        fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = None;
+        assert!(pending_ids(&fixture.0).is_empty());
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(false));
+    }
+
+    #[test]
+    fn a_game_never_switched_follows_every_game() {
+        let fixture = Fixture::new(json!([]));
+        {
+            let mut l = fixture.0.lib.lock().unwrap();
+            l.installed.get_mut("series").unwrap().cloud = None;
+            l.settings.ui = json!({ "cloud_all": true });
+        }
+        assert_eq!(pending_ids(&fixture.0), ["series"]);
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(true));
+    }
+
+    #[test]
+    fn a_game_switched_off_stays_off_with_every_game() {
+        let fixture = Fixture::new(json!([]));
+        {
+            let mut l = fixture.0.lib.lock().unwrap();
+            l.installed.get_mut("series").unwrap().cloud = Some(false);
+            l.settings.ui = json!({ "cloud_all": true });
+        }
+        assert!(pending_ids(&fixture.0).is_empty());
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(false));
     }
 
     #[tokio::test]
