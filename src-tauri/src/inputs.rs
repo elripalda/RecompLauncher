@@ -361,8 +361,15 @@ pub fn main_path(p: &Profile, g: &Installed) -> Option<PathBuf> {
     let main = p.main_input()?;
     picked(g, &main.id).or_else(|| main.in_place(&g.path))
 }
+/// The files `{input:<id>}` fills in with. The main one is the file the game is given for the
+/// player's copy, as `{game}` is: a .cue's first data track unless its label names .cue.
 pub fn available(p: &Profile, g: &Installed, dir: &Path) -> BTreeMap<String, PathBuf> {
-    rows(p, g, dir).unwrap_or_default().into_iter().filter(|r| r.active).filter_map(|r| Some((r.id, r.path?))).collect()
+    let mut paths: BTreeMap<String, PathBuf> = rows(p, g, dir).unwrap_or_default().into_iter().filter(|r| r.active).filter_map(|r| Some((r.id, r.path?))).collect();
+    let main = p.main_input().map(|i| i.id.clone());
+    if let Some(x) = main.and_then(|m| paths.get_mut(&m)) {
+        *x = p.handed(Some(x.as_path())).unwrap_or_else(|| x.clone());
+    }
+    paths
 }
 
 pub fn expand(t: &str, paths: &BTreeMap<String, PathBuf>, wine: bool) -> String {

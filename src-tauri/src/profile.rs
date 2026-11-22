@@ -4304,6 +4304,24 @@ mod lift_tests {
     }
 
     #[test]
+    fn the_main_input_fills_in_as_the_game_is_given_it() {
+        let d = std::env::temp_dir().join(format!("rl-main-handed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Game (USA).cue"), "FILE \"Game (USA).bin\" BINARY\n  TRACK 01 MODE2/2352\n").unwrap();
+        std::fs::write(d.join("Game (USA).bin"), b"disc").unwrap();
+        let mut p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "iso", "label": "Your disc" }, "start": { "program": ["g"], "args": ["--disc={input:game}"] } })).unwrap();
+        p.lift_game();
+        let mut g = crate::library::Installed { path: d.join("install"), ..Default::default() };
+        g.setup_inputs.insert("game".into(), d.join("Game (USA).cue"));
+        // Its label doesn't name .cue: the game gets the disc's data track, as with {game}.
+        assert_eq!(crate::inputs::available(&p, &g, &d)["game"], d.join("Game (USA).bin"));
+        p.inputs[0].label = "Pick the .cue file".into();
+        assert_eq!(crate::inputs::available(&p, &g, &d)["game"], d.join("Game (USA).cue"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn an_input_can_have_every_rule_game_had() {
         let p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [{
             "id": "disc", "label": "Your disc", "formats": [{ "type": "file" }, { "type": "folder" }],
