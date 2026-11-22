@@ -3554,9 +3554,10 @@ function noteBuilt(id) {
   const built = Object.assign({}, (S.settings.ui || {}).built_after, { [pid]: tag });
   saveUi({ built_after: built }, true);
 }
-// A build after an update ended (or failed): it leaves the Downloads list.
-function buildLeft() {
-  S.building = null;
+// A build ended (or failed): it leaves the Downloads list and the sidebar's count.
+function buildLeft(id) {
+  if (S.building === id) S.building = null;
+  renderSide();
   if (S.view === 'downloads') render(true);
 }
 // Waiting in the queue, or building now.
@@ -3690,12 +3691,12 @@ T.event.listen('setup', ({ payload: p }) => {
     // read again yet, so it still says so).
     if (p.id === S.building || updateBuildDue(p.id)) noteBuilt(p.id);
     delete S.setupJobs[p.id];
-    if (p.id === S.building) buildLeft();
+    buildLeft(p.id);
     setTimeout(nextInLine, 0);
     onSetupFinished(p.id, !!(SU.el && SU.id === p.id) || !!document.querySelector('.tv-setup:not(.out)'));
   } else if (p.step === 'error') {
     delete S.setupJobs[p.id];
-    if (p.id === S.building) buildLeft();
+    buildLeft(p.id);
     setTimeout(nextInLine, 0);
     if (!SU.el || SU.id !== p.id) {
       toast(p.text || t("Setup didn't finish."), true);
@@ -3703,9 +3704,12 @@ T.event.listen('setup', ({ payload: p }) => {
       if (S.view === 'game') refreshGame();
     }
   } else {
+    const started = !S.setupJobs[p.id];
     S.setupJobs[p.id] = p;
     paintSetupProgress(p.id);
-    if (p.id === S.building) paintBuildRow(p.id);
+    paintBuildRow(p.id);
+    // A new build: a row on Downloads and one more in the sidebar's count.
+    if (started) { renderSide(); if (S.view === 'downloads') render(true); }
   }
   if (SU.el && p.id === SU.id && SU.stage === 'run') {
     SU.q.push(p);
@@ -4456,7 +4460,16 @@ function buildPct(id) {
   const ev = (S.setupJobs || {})[id] || {};
   return ev.step === 'extras' ? Math.round((ev.pct || 0) * 100) : 0;
 }
+// Every build running now: the one after an update, and any started from a game's page (Easy
+// Setup's Set Up, Finish the Update's Build Now), watched in its window or hidden. Downloads lists
+// them and the sidebar counts them. A game still downloading shows as its download.
+function buildsNow() {
+  const ids = [S.building, ...Object.keys(S.setupJobs || {})];
+  return [...new Set(ids)].filter((id) => id && !S.jobs[id]);
+}
 function buildLine(id) {
+  // Easy Setup checks the whole copy before the game's own build step, and that's the long part.
+  if (((S.setupJobs || {})[id] || {}).step === 'verify') return t('Checking your copy');
   const p = buildPct(id);
   return p ? tf('Building the game · {pct}%', { pct: p }) : t('Building the game');
 }
@@ -4584,8 +4597,10 @@ function pageDownloads() {
   const movingRow = (id) => { const held = !S.jobs[id];
     const two = held ? `<button type="button" class="btn main sm" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) ? `<button type="button" class="btn sm" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
     return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, nextTag(id))}<span class="dl-phase" data-dl-phase="${esc(id)}">${dlLine(id)}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
+  // A build for an update has the pill of the version it builds; a first Easy Setup has none.
+  const buildTag = (id) => (id === S.building || updateBuildDue(id) ? (S.library[id] || {}).tag : '');
   const buildRow = (id) => { const p = buildPct(id);
-    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, (S.library[id] || {}).tag)}<span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, buildTag(id))}<span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
   const quietRow = (id, sub, act) => { const a = appOf(id);
     return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${sub}</span>${pillOf(id, nextTag(id))}</span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
   // An update held back for the build before it says so; any other waiting download says what
@@ -4594,9 +4609,8 @@ function pageDownloads() {
     return quietRow(id, sub, 'cancel'); };
   const waits = (id) => !!S.jobs[id] && S.jobs[id].phase === 'queued';
   // A queued game whose build is already running (started from its page) shows as building.
-  const runningBuild = (id) => !!(S.setupJobs || {})[id];
-  const building = [...new Set([S.building, ...S.buildQ.filter(runningBuild)])].filter((id) => id && !S.jobs[id]);
-  const buildWaiting = S.buildQ.filter((id) => !S.jobs[id] && !runningBuild(id));
+  const building = buildsNow();
+  const buildWaiting = S.buildQ.filter((id) => !S.jobs[id] && !building.includes(id));
   const dlRows = act.filter((id) => !waits(id)).map(movingRow).concat(building.map(buildRow), act.filter(waits).map(waitingRow), buildWaiting.map((id) => quietRow(id, esc(t('Waiting to build')), 'build-cancel'))).join('');
   const dlCount = act.length + building.length + buildWaiting.length;
   const pauseBtn = Object.keys(S.jobs).some(canPause) ? `<button type="button" class="btn sm" data-act="dl-pause-all">${esc(t('Pause all'))}</button>` : '';
@@ -5195,9 +5209,11 @@ function renderSide() {
   const v = S.view, ui = S.settings.ui || {};
   applySide();
   for (const b of $$('.side .nav[data-go]')) b.classList.toggle('on', b.dataset.go === (v === 'game' ? (pins().includes(S.arg) ? '' : S.from) : v));
-  // Downloading now, or else how many game updates are ready, as a badge. The launcher's own
-  // update isn't counted: it has its own pill in the title bar.
-  const nd = Object.keys(S.jobs).length;
+  // Downloading or building now, or else how many game updates are ready, as a badge. The
+  // launcher's own update isn't counted: it has its own pill in the title bar.
+  const builds = buildsNow();
+  const buildsWaiting = S.buildQ.filter((id) => !S.jobs[id] && !builds.includes(id));
+  const nd = Object.keys(S.jobs).length + builds.length + buildsWaiting.length;
   const nu = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]).length;
   const nb = $('#n-dl');
   nb.textContent = nd || nu || '';
@@ -9096,12 +9112,16 @@ async function act(el, e) {
     case 'cancel': return cancelDownload(id);
     case 'dl-pause': return invoke('pause', { id });
     case 'dl-pause-all': return pauseAll();
-    // A build after an update, on Downloads: stopped, or taken out of the queue. A cancelled
-    // setup sends no event of its own, so its last progress is cleared here.
-    case 'build-cancel':
+    // A build on Downloads: stopped (after an update, or started from its page), or taken out of
+    // the queue. A cancelled setup sends no event of its own, so its last progress is cleared here.
+    case 'build-cancel': {
       S.buildQ = S.buildQ.filter((x) => x !== id);
-      if (S.building === id) { S.building = null; delete S.setupJobs[id]; invoke('setup_cancel', { id }).catch(() => {}); setTimeout(pumpBuilds, 0); }
+      const running = S.building === id || !!(S.setupJobs || {})[id];
+      if (S.building === id) S.building = null;
+      if (running) { delete S.setupJobs[id]; invoke('setup_cancel', { id }).catch(() => {}); setTimeout(pumpBuilds, 0); }
+      renderSide();
       return render(true);
+    }
     case 'dl-resume': return resumeDl(id);
     case 'play': return playGame(id);
     case 'stop': return invoke('stop', { id });

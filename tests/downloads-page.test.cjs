@@ -93,9 +93,10 @@ function desktopPage(hist, library, more = {}) {
     S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, building: null, buildQ: [], setupJobs: {}, ...more },
     fmtB: String, byId: (id) => CATALOG[id], scanPill: (h) => (h.update ? `[safe ${h.tag}]` : ''), pic: () => '', thumbOf: String, N_: (s) => s,
     pct: () => 0, DOWN: '', dlLine: (id) => `line of ${id}`, dlTarget: () => 'Update to v2', buildLine: () => 'Building the game · 3%', buildPct: () => 3,
+    updateBuildDue: (id) => (more.due || []).includes(id),
   });
   const consts = ['INFO_I', 'BUILT_I', 'BUILT_TIP', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
-  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
+  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('buildsNow') + topFn('pageDownloads');
   vm.runInContext(code, c);
   return c.pageDownloads();
 }
@@ -165,6 +166,59 @@ test('a build right after an update is in the list, moving, with a cross that st
   assert.match(html, /<h2>Downloading<span class="dl-n">1<\/span><\/h2>/);
   assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-dl-phase="odyssey">Building the game · 3%<\/span><div class="prog" data-build-prog="odyssey"><div class="track"><i style="width:3%">/);
   assert.match(html, /data-act="build-cancel" data-id="odyssey"/);
+});
+
+test("a build started from its game's page is in the list, moving, with a cross that stops it", () => {
+  const html = desktopPage([], {}, { setupJobs: { odyssey: { step: 'extras' } } });
+  assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-dl-phase="odyssey">Building the game · 3%<\/span>/);
+  assert.match(html, /data-act="build-cancel" data-id="odyssey"/);
+});
+
+test("a first Easy Setup build has no pill: it isn't an update", () => {
+  const html = desktopPage([], { odyssey: { tag: 'v3' } }, { setupJobs: { odyssey: { step: 'extras' } } });
+  assert.match(html, /<div class="dl-name"><b>Odyssey Recomp<\/b><\/div>/);
+});
+
+test("Finish the Update's build has the pill of the version it builds", () => {
+  const html = desktopPage([], { odyssey: { tag: 'v3' } }, { setupJobs: { odyssey: { step: 'extras' } }, due: ['odyssey'] });
+  assert.match(html, /<div class="dl-name"><b>Odyssey Recomp<\/b>\[safe v3\]<\/div>/);
+});
+
+test('a game queued to build whose build already runs shows once, building', () => {
+  const html = desktopPage([], {}, { buildQ: ['odyssey'], setupJobs: { odyssey: { step: 'extras' } } });
+  assert.equal(html.match(/data-id="odyssey"/g).length, 1);
+  assert.doesNotMatch(html, /Waiting to build/);
+});
+
+// The builds running now, with the real helper.
+function buildsNowOf(more) {
+  const c = vm.createContext({ S: { jobs: {}, building: null, setupJobs: {}, ...more } });
+  vm.runInContext(topFn('buildsNow'), c);
+  // Copied into this realm's array, so deepEqual compares the items, not the Array types.
+  return [...vm.runInContext('buildsNow()', c)];
+}
+
+test('the builds running now count each game once: after an update, or from its page', () => {
+  assert.deepEqual(buildsNowOf({ building: 'a', setupJobs: { a: {}, b: {} } }), ['a', 'b']);
+});
+
+test("a game still downloading isn't counted as building", () => {
+  assert.deepEqual(buildsNowOf({ jobs: { a: {} }, setupJobs: { a: {} } }), []);
+});
+
+// A build row's line, with the real helpers.
+function buildLineOf(ev) {
+  const c = vm.createContext({ ...helpers, S: { setupJobs: { g: ev } } });
+  vm.runInContext(topFn('buildPct') + topFn('buildLine'), c);
+  return vm.runInContext("buildLine('g')", c);
+}
+
+test("while Easy Setup checks the copy, the build's line says so", () => {
+  assert.equal(buildLineOf({ step: 'verify', pct: 0.4 }), 'Checking your copy');
+});
+
+test("the game's own build step says how far it is", () => {
+  assert.equal(buildLineOf({ step: 'extras', pct: 0.42 }), 'Building the game · 42%');
 });
 
 test('the build comes after the downloads that are moving and before the ones waiting', () => {
