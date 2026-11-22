@@ -1524,9 +1524,10 @@ function copyLine(id) {
 const pickBtn = (id) => `<button type="button" class="btn sm" data-act="found-fix" data-id="${esc(id)}">${esc(t('Choose Your Copy'))}</button>`;
 // The player's copy as Before you play shows it: the file it's set up with (none yet: '') and the
 // formats to ask for. The copy is the game's main input (`copy`); its other files are rows of their
-// own (otherFileRows).
+// own (otherFileRows). Set up before and only due a new build (a new release): its copy is set up.
 function copyState(id, su) {
-  const file = su.inputs_ready ? (su.copy || '') : '';
+  const setUp = su.inputs_ready || ['rebuild', 'build_missing'].includes((su.status || {}).reason);
+  const file = setUp ? (su.copy || '') : '';
   return { file, exts: (su.copy_extensions || []).length ? su.copy_extensions : copyFormats(id).exts };
 }
 // The game's other files on Before you play, each as Easy Setup lists it: its update, more discs,

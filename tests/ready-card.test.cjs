@@ -25,6 +25,11 @@ test('a game not set up yet asks for its own input\'s formats, not the console\'
   assert.deepEqual(cs.exts, rom);
 });
 
+test('a copy set up before, with a new build due after an update, is still shown as set up', () => {
+  const cs = copyState({ needs: 'x', copy: 'C:/games/sky', copy_extensions: [], inputs_ready: false, status: { ready: false, reason: 'rebuild', changed: true } });
+  assert.equal(cs.file, 'C:/games/sky');
+});
+
 test('a copy picked and not set up yet isn\'t shown as set up', () => {
   const cs = copyState({ needs: 'x', copy: 'C:/roms/red.gb', copy_extensions: rom, inputs_ready: false, inputs: [] });
   assert.equal(cs.file, '');
