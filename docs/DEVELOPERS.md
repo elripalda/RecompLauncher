@@ -264,11 +264,30 @@ with Easy Setup on runs `bin/game.exe --iso <their disc>`; skipped, it runs `bin
 
 ### `inputs`: the player's copy
 
-Every file the launcher asks the player for is a named input. The first one with role `game` (the
-default role) is their copy of the game, the big box on the setup screen; the rest (an update,
-discs, DLC, keys) are rows under it. [SETUP-INPUTS.md](SETUP-INPUTS.md) has all of them.
+Every file the launcher asks the player for is a named input. **The top-level `game` field is
+deprecated** (still read until RecompLauncher 1.0, as the input `game`); **the input named `game`
+is the new way.** The same word, two things: write the copy as an entry in `inputs`, never as
+`"game": { ... }`. The player's copy is the big box on the setup screen; the rest are rows under
+it. [SETUP-INPUTS.md](SETUP-INPUTS.md) has all of them.
 
-- `id`: its name, used as `{input:<id>}` wherever paths fill in. Call the copy `game`.
+Which input for which file:
+
+1. **A game that is one file (or one folder):** one input, `"id": "game"`, `"role": "game"` (the
+   default role), passed as `{input:game}`.
+2. **A game on several discs:** every disc has `"role": "disc"`, ids `disc1` to `discN`, labels
+   `Disc 1` to `Disc N`, and no input has role `game`. The launcher makes Disc 1 the copy box by
+   itself. Give every disc a `check`. Don't give every disc role `game`: only the first would be
+   the copy box, and the Discs step, the "Insert your discs" heading and the "N of N discs
+   selected" count all go by role `disc`.
+3. **DLC:** `"role": "dlc"`, `"optional": true`, one input per package (`dlc1`, `dlc2`, ...).
+4. **An update:** `"role": "update"`, usually with `into` and `name` (where the game reads it).
+5. **Keys:** a `shared` input (`switch.prod-keys`, `switch.title-keys`, `wiiu.common-key`), never
+   a file of the game's own the player picks.
+6. **A folder input only when the copy is a folder:** an extracted PS3 game, or a Switch game's
+   `exefs` and `romfs`. Never a folder of discs or DLC (see "One file per input" below).
+
+- `id`: its name, used as `{input:<id>}` wherever paths fill in: `game` when the game is one
+  file, `disc1`..`discN`, `dlc1`.., `update`.
 - `label`: what to ask for. Name the region or serial if only one works.
 - `formats`: `[{ "type": "file" }]`, `[{ "type": "folder" }]`, or both for either. A file format can
   list `extensions` (without the dot).
@@ -306,8 +325,8 @@ argument, an optional file the player didn't pick leaves its whole argument out.
 
 ```json
 "inputs": [
-  { "id": "disc1", "label": "Disc 1 (.iso)", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }] },
-  { "id": "disc2", "label": "Disc 2 (.iso)", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }] },
+  { "id": "disc1", "label": "Disc 1", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }], "check": { "ids": ["SLUS-21501"] } },
+  { "id": "disc2", "label": "Disc 2", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }], "check": { "ids": ["SLUS-21502"] } },
   { "id": "dlc1", "label": "The Lost Levels DLC (.pkg)", "role": "dlc", "optional": true, "formats": [{ "type": "file" }] }
 ],
 "start": { "program": ["game.exe"], "args": ["--disc1={input:disc1}", "--disc2={input:disc2}", "--dlc1={input:dlc1}"] }

@@ -37,7 +37,7 @@
               "runtime"
             ],
             "default": "game",
-            "description": "runtime: a file the launcher fetches itself (only with shared nvidia.dlss)."
+            "description": "game: a game that is one file or folder (id \"game\", passed as {input:game}). disc: each disc of a game on several discs (ids disc1..discN, labels Disc 1..Disc N, a check on each, and no input with role game: the launcher makes Disc 1 the copy box). dlc: one optional package each (dlc1, dlc2..). update: a game's update, usually with into/name. key: with shared (switch.prod-keys...), never a file of the game's own. runtime: a file the launcher fetches itself (only with shared nvidia.dlss)."
           },
           "optional": {
             "type": "boolean",
@@ -237,8 +237,8 @@
     "game": {
       "type": "object",
       "deprecated": true,
-      "deprecationMessage": "Write the player's copy as an input with id \"game\" (see inputs). This still reads, as that input, until RecompLauncher 1.0, which drops it.",
-      "description": "From before named inputs: the player's copy of the game. It reads as the input \"game\" (and \"update\"), with every option, until RecompLauncher 1.0, which drops it: write it as one of inputs instead. The Developer tab shows your file converted.",
+      "deprecationMessage": "The top-level game FIELD is deprecated; the INPUT named game is the new way. Write the player's copy as an entry in inputs with id \"game\" (a game on several discs: disc1..discN with role disc). This field still reads, as that input, until RecompLauncher 1.0, which drops it.",
+      "description": "Deprecated: the top-level game FIELD, from before named inputs; the INPUT named game is the new way. The player's copy of the game. It reads as the input \"game\" (and \"update\"), with every option, until RecompLauncher 1.0, which drops it: write it as one of inputs instead. The Developer tab shows your file converted.",
       "properties": {
         "kind": {
           "enum": [
