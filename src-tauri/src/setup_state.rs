@@ -153,7 +153,8 @@ pub fn of(f: &Facts) -> Status {
         return needs("build_missing", gone.display().to_string());
     }
     if !finished {
-        return needs("rebuild", "");
+        // "cut": its last build was stopped partway, which Play and the page say.
+        return needs("rebuild", if f.cut { "cut" } else { "" });
     }
     let main_gone = main.is_some_and(|m| f.rows.iter().any(|r| r.id == m && r.path.is_none()));
     ready(if main_gone { "built" } else { "ready" })
@@ -263,7 +264,7 @@ mod tests {
         p.prepare.as_mut().unwrap().done = vec!["{install}/Hookshot/image.bin".into()];
         fs::write(d.join("Hookshot").join("image.bin"), b"half").unwrap();
         g.build_cut = true;
-        assert_eq!(status(&p, &g), needs("rebuild", ""));
+        assert_eq!(status(&p, &g), needs("rebuild", "cut"));
         let _ = fs::remove_dir_all(&d);
     }
 

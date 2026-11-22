@@ -1138,6 +1138,8 @@
  "Set a Background…": "Выбрать фон…",
  "Set a Cover…": "Задать обложку…",
  "Set it up": "Настроить",
+ "Game build": "Сборка игры",
+ "Its last build didn't finish. Set it up again before you play.": "Последняя сборка не завершилась. Настройте игру заново перед запуском.",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "Настройте её со своим диском, измените параметры и нажмите «Играть». Измените файл и нажмите «Проверить снова»: лаунчер каждый раз читает его заново.",
  "Set up": "Настроить",
  "Set up RecompLauncher": "Настройка RecompLauncher",

@@ -1138,6 +1138,8 @@
  "Set a Background…": "Arka plan ayarla…",
  "Set a Cover…": "Kapak ayarla…",
  "Set it up": "Kur",
+ "Game build": "Oyun derlemesi",
+ "Its last build didn't finish. Set it up again before you play.": "Son derlemesi bitmedi. Oynamadan önce yeniden kur.",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "Kendi diskinizle kurun, ayarlarını değiştirin, sonra Oyna'ya basın. Dosyayı değiştirip Yeniden kontrol et'e basın: başlatıcı onu her seferinde baştan okur.",
  "Set up": "Kur",
  "Set up RecompLauncher": "RecompLauncher'ı kurun",

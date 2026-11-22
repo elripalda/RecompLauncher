@@ -1138,6 +1138,8 @@
  "Set a Background…": "ตั้งพื้นหลัง…",
  "Set a Cover…": "ตั้งหน้าปก…",
  "Set it up": "ตั้งค่าเลย",
+ "Game build": "บิลด์ของเกม",
+ "Its last build didn't finish. Set it up again before you play.": "การสร้างครั้งล่าสุดยังไม่เสร็จ ตั้งค่าใหม่อีกครั้งก่อนเล่น",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "ตั้งค่าด้วยแผ่นของคุณเอง เปลี่ยนการตั้งค่า แล้วกด เล่น แก้ไฟล์แล้วกด ตรวจสอบอีกครั้ง: ตัวเปิดเกมจะอ่านไฟล์ใหม่ทุกครั้ง",
  "Set up": "ตั้งค่า",
  "Set up RecompLauncher": "ตั้งค่า RecompLauncher",
