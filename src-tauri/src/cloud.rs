@@ -1240,6 +1240,22 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
     }).await
 }
 
+/// Cloud saves picked for every game (Settings, Account, or the question after signing in): every
+/// game follows that again, whatever was switched for one game in its Manage tab before.
+#[tauri::command]
+pub fn saves_cloud_follow_all(app: AppHandle) -> Res<()> {
+    let st = app.state::<App>();
+    let mut l = st.lib.lock().unwrap();
+    follow_every_game(&mut l);
+    l.save(&st.dir).map_err(|e| Error::Msg(e.to_string()))
+}
+
+fn follow_every_game(l: &mut crate::library::Library) {
+    for g in l.installed.values_mut() {
+        g.cloud = None;
+    }
+}
+
 /// Turns cloud saves on or off for a game. On: what's on this PC goes up now (unless the cloud
 /// already has something newer, which the next Play sorts out).
 #[tauri::command]
@@ -2014,6 +2030,19 @@ mod child_retry_tests {
             l.settings.ui = json!({ "cloud_all": true });
         }
         assert_eq!(pending_ids(&fixture.0), ["series"]);
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(true));
+    }
+
+    #[test]
+    fn picking_for_every_game_drops_a_games_own_switch() {
+        let fixture = Fixture::new(json!([]));
+        {
+            let mut l = fixture.0.lib.lock().unwrap();
+            l.installed.get_mut("series").unwrap().cloud = Some(false);
+            l.settings.ui = json!({ "cloud_all": true });
+            follow_every_game(&mut l);
+        }
+        assert_eq!(fixture.0.lib.lock().unwrap().installed["series"].cloud, None);
         assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(true));
     }
 
