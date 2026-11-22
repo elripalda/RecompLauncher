@@ -92,9 +92,6 @@ pub struct Prepare {
     /// What the setup screen calls this step.
     #[serde(default)]
     pub label: String,
-    /// Seconds before it's given up on.
-    #[serde(default = "five_min")]
-    pub timeout: u64,
     /// Ticks on the setup screen before the step runs, each adding its arguments when it's on
     /// (a library the builder downloads under a company's license, say).
     #[serde(default, deserialize_with = "options_lenient", skip_serializing_if = "Vec::is_empty")]
@@ -246,10 +243,6 @@ impl Prepare {
         }
         self.program.iter().find_map(|p| native_twin(install, p))
     }
-}
-
-fn five_min() -> u64 {
-    300
 }
 
 /// A known good dump of the disc (from Redump), to check the player's copy against.

@@ -688,8 +688,7 @@ disc or building a cache, give the launcher a way to run it without a window:
 "prepare": {
   "program": ["yourgame.exe"],
   "args": ["--prepare", "--game", "{game}"],
-  "label": "Menu art and fonts from your disc",
-  "timeout": 300
+  "label": "Menu art and fonts from your disc"
 }
 ```
 
@@ -700,6 +699,8 @@ settings are written. It runs again whenever the player changes their copy.
   comes from its arguments and environment.
 - Print lines like `progress 0.4 Unpacking menu art` as you go. The number is from 0 to 1 and the
   text after it shows under the step.
+- There's no time limit: a full build on a Steam Deck can take hours. A step that prints nothing at
+  all for an hour is taken as stuck and stopped, so print a line now and then on long work.
 - Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
 - Write what you make to `{data}` (pass it in `args`, or read `RECOMPLAUNCHER_DATA`), and have your
   own launcher use the same place when it's given that path, so both stay in step.

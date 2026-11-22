@@ -4219,6 +4219,9 @@ fn prepare_args(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extr
     named.map(|a| profile::fill(a, install, copy)).collect()
 }
 
+/// How long a setup step may print nothing before it's given up on.
+const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
@@ -4288,8 +4291,11 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     // Whether it said Windows' path limit stopped it, on any line: the reason is usually followed
     // by a stack trace.
     let mut too_long = false;
-    let read = |said: &mut String, too_long: &mut bool| {
+    // When it last printed anything: a step that goes quiet for SILENT_FOR has stopped working.
+    let mut heard = Instant::now();
+    let read = |said: &mut String, too_long: &mut bool, heard: &mut Instant| {
         while let Ok(l) = rx.try_recv() {
+            *heard = Instant::now();
             let mut w = l.splitn(3, ' ');
             if w.next() == Some("progress") {
                 let pct = w.next().and_then(|x| x.parse::<f32>().ok()).unwrap_or(0.0).clamp(0.0, 1.0);
@@ -4300,16 +4306,15 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             }
         }
     };
-    let start = Instant::now();
     loop {
-        read(&mut said, &mut too_long);
+        read(&mut said, &mut too_long, &mut heard);
         if let Ok(Some(s)) = child.try_wait() {
             if s.success() {
                 return Ok(());
             }
             // The last of what it printed, which can arrive just after it closed.
             std::thread::sleep(std::time::Duration::from_millis(150));
-            read(&mut said, &mut too_long);
+            read(&mut said, &mut too_long, &mut heard);
             let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
             trail::note(format!("Setup step stopped with code {code}; it said last: {said}"));
             if cfg!(windows) && too_long {
@@ -4317,9 +4322,11 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             }
             return Err(if said.is_empty() { format!("Its setup step stopped with code {code}.") } else { format!("Its setup step stopped with code {code}: {said}") });
         }
-        if stopped() || start.elapsed().as_secs() > pr.timeout {
+        // No time limit: a full build on a Steam Deck can take hours. Only a step that has printed
+        // nothing for SILENT_FOR is given up on, and Cancel stops it any time.
+        if stopped() || heard.elapsed() > SILENT_FOR {
             kill_process_tree(&mut child);
-            return Err(if stopped() { "Stopped.".into() } else { "Its setup step took too long.".into() });
+            return Err(if stopped() { "Stopped.".into() } else { "Its setup step stopped answering: it printed nothing for an hour.".into() });
         }
         std::thread::sleep(std::time::Duration::from_millis(60));
     }
@@ -11066,7 +11073,6 @@ mod tests {
             program: vec![prog_name.into()],
             args: vec![],
             label: "Test Builder".into(),
-            timeout: 60,
             options: vec![],
             version: String::new(),
             done: vec![],
@@ -11122,7 +11128,6 @@ mod prepare_env_tests {
         }
         profile::Prepare {
             program: vec![name.into()],
-            timeout: 60,
             env: BTreeMap::from([("BUILD_CACHE".to_string(), "{data}/cache".to_string()), ("TEMP".to_string(), "not-this".to_string())]),
             ..Default::default()
         }

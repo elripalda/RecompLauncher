@@ -343,12 +343,6 @@
           "type": "string",
           "description": "Shown under 'Getting the extras'."
         },
-        "timeout": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 300,
-          "description": "Seconds."
-        },
         "done": {
           "type": "array",
           "items": { "type": "string" },
