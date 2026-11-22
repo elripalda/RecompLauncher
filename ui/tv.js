@@ -1174,7 +1174,9 @@
   }
 
   function pageDownloads() {
-    const act = Object.keys(S.jobs), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
+    // A build after an update is listed after the downloads, as on the desktop page.
+    const builds = [S.building, ...(S.buildQ || [])].filter((id) => id && !S.jobs[id]);
+    const act = Object.keys(S.jobs).concat(builds), rec = S.recent.filter((r) => !S.jobs[r.id]).slice(0, 6);
     const item = (id, inner, k, extra = '') => { const a = libAppOf(id); return `<button type="button" class="tv-item" data-f data-key="${k}" data-go-game="${esc(id)}">${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="">` : '<span class="ph"></span>'}<span class="k">${esc(a.name)}<small>${inner}</small></span>${extra}</button>`; };
     const ups = Object.keys(S.updates || {}).filter((id) => S.library[id] && !S.jobs[id]);
     // Recently installed, with how the store checked each one in the same pill as the desktop.
