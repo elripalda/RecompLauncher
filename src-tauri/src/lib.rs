@@ -4345,7 +4345,8 @@ fn prepare_args(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extr
 
 #[cfg(target_os = "linux")]
 extern "C" {
-    fn prctl(option: std::ffi::c_int, arg2: std::ffi::c_ulong, arg3: std::ffi::c_ulong, arg4: std::ffi::c_ulong, arg5: std::ffi::c_ulong) -> std::ffi::c_int;
+    // Variadic in C, so declared as it is there.
+    fn prctl(option: std::ffi::c_int, ...) -> std::ffi::c_int;
 }
 
 /// The setup step is sent SIGKILL when the thread that started it ends, the launcher killed
@@ -4358,7 +4359,7 @@ fn die_with_launcher(c: &mut std::process::Command) {
     const SIGKILL: std::ffi::c_ulong = 9;
     unsafe {
         c.pre_exec(|| {
-            prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+            prctl(PR_SET_PDEATHSIG, SIGKILL);
             Ok(())
         });
     }
