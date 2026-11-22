@@ -90,9 +90,9 @@ const CATALOG = {
 function desktopPage(hist, library, more = {}) {
   const c = vm.createContext({
     ...helpers,
-    S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, ...more },
+    S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, building: null, buildQ: [], setupJobs: {}, ...more },
     fmtB: String, byId: (id) => CATALOG[id], scanPill: () => '', pic: () => '', thumbOf: String,
-    pct: () => 0, dlLine: (id) => `line of ${id}`,
+    pct: () => 0, dlLine: (id) => `line of ${id}`, dlTarget: () => 'Update to v2', buildLine: () => 'Building the game · 3%', buildPct: () => 3,
   });
   const consts = ['INFO_I', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
   const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
@@ -136,13 +136,12 @@ test('Downloads is one page: no tabs and no launcher banner, even with a launche
   assert.doesNotMatch(html, /self-update|RecompLauncher/);
 });
 
-test('the totals are one line above the lists', () => {
+test('the totals line is gone: each download shows its own numbers', () => {
   const hist = [{ id: 'lostodyssey', tag: 'v1.1.0', update: true, size: 100, secs: 2, when: at(0, 10, 1) }];
-  const html = desktopPage(hist, {});
-  assert.match(html, /<p class="dl-totals">100 downloaded · 1 download · 50\/s average · 1 update installed<\/p>/);
+  assert.doesNotMatch(desktopPage(hist, {}), /dl-totals|average/);
 });
 
-// Lost Odyssey downloading, Odyssey and Bounce waiting their turn.
+// Lost Odyssey downloading, Odyssey waiting its turn, Mine held back for the build before it.
 const MOVING = { lostodyssey: { id: 'lostodyssey', phase: 'download', done: 50, total: 100 }, odyssey: { id: 'odyssey', phase: 'queued' }, mine: { id: 'mine', phase: 'queued', held: true } };
 
 test('every download is one Downloading list, with no Up Next', () => {
@@ -156,10 +155,33 @@ test('the download that is moving comes first, with its line and progress', () =
   assert.match(html, /<div class="dl-list"><div class="dl-row dl-moving">.*?<b>Lost Odyssey<\/b><span class="dl-phase" data-dl-phase="lostodyssey">line of lostodyssey<\/span><div class="prog" data-prog="lostodyssey">/);
 });
 
-test('a download waiting its turn is a quiet row that says Queued, with a cancel cross', () => {
+test('a download waiting its turn is a quiet row that says what it will be, Queued, and a cancel cross', () => {
   const html = desktopPage([], {}, { jobs: MOVING });
-  assert.match(html, /<div class="dl-row dl-q">.*?<b>Odyssey Recomp<\/b>.*?<span class="dl-state">Queued<\/span><button type="button" class="btn sm sq" data-act="cancel" data-id="odyssey" aria-label="Cancel"/);
+  assert.match(html, /<b>Odyssey Recomp<\/b><span class="dl-sub"><span>Update to v2<\/span><\/span><\/div><span class="dl-state">Queued<\/span><button type="button" class="btn sm sq" data-act="cancel" data-id="odyssey" aria-label="Cancel"/);
   assert.doesNotMatch(html, /data-prog="odyssey"/);
+});
+
+test('an update held back for a build says it waits for the build before it', () => {
+  const html = desktopPage([], {}, { jobs: MOVING });
+  assert.match(html, /<b>Mine<\/b><span class="dl-sub"><span>Update to v2 · Waiting for the build before it<\/span>/);
+});
+
+test('a build right after an update is in the list, moving, with a cross that stops the build', () => {
+  const html = desktopPage([], {}, { building: 'odyssey' });
+  assert.match(html, /<h2>Downloading<span class="dl-n">1<\/span><\/h2>/);
+  assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-dl-phase="odyssey">Building the game · 3%<\/span><div class="prog" data-build-prog="odyssey"><div class="track"><i style="width:3%">/);
+  assert.match(html, /data-act="build-cancel" data-id="odyssey"/);
+});
+
+test('the build comes after the downloads that are moving and before the ones waiting', () => {
+  const html = desktopPage([], {}, { jobs: MOVING, building: 'odyssey2' });
+  const order = [...html.matchAll(/data-act="(?:cancel|build-cancel)" data-id="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['lostodyssey', 'odyssey2', 'odyssey', 'mine']);
+});
+
+test('a game queued to build says it waits to build', () => {
+  const html = desktopPage([], {}, { buildQ: ['lostodyssey'] });
+  assert.match(html, /<b>Lost Odyssey<\/b><span class="dl-sub"><span>Waiting to build<\/span>/);
 });
 
 test('Pause all shows while something can be paused', () => {
@@ -171,8 +193,24 @@ test('no Pause all when only updates held for a build are waiting', () => {
   assert.doesNotMatch(html, /dl-pause-all/);
 });
 
-test("the moving download's line says how long is left, from the measured speed", () => {
-  const c = vm.createContext({ ...helpers, S: { jobs: { g: { phase: 'download', done: 0, total: 100, speed: 1 } } }, pct: () => 0 });
-  vm.runInContext('const DLSPD = { g: [10] };' + topConst('took') + topFn('progLabel') + topFn('dlPhase') + topFn('dlLine'), c);
-  assert.equal(c.dlLine('g'), 'Downloading · 0% · 10 sec left');
+// The moving download's one line, with the real helpers it uses.
+function lineContext(jobs, library = {}, updates = {}) {
+  const c = vm.createContext({ ...helpers, S: { jobs, library, updates }, fmtB: String, pct: () => 0 });
+  vm.runInContext('const DLSPD = { g: [10] };' + topConst('took') + topFn('progLabel') + topFn('dlPhase') + topFn('dlTarget') + topFn('dlLine'), c);
+  return c;
+}
+
+test("the moving download's line has the version, sizes, speed and time left", () => {
+  const c = lineContext({ g: { phase: 'download', done: 0, total: 100, speed: 1 } }, { g: { tag: 'v1' } }, { g: 'v2' });
+  assert.equal(c.dlLine('g'), 'Update to v2 · 0 of 100 · 10/s · 10 sec left');
+});
+
+test('a first install says Install on its line', () => {
+  const c = lineContext({ g: { phase: 'download', done: 0, total: 100, speed: 1 } });
+  assert.match(c.dlLine('g'), /^Install · /);
+});
+
+test('before its bytes come, the line says what the download is doing', () => {
+  const c = lineContext({ g: { phase: 'unpack', done: 0, total: 0 } });
+  assert.equal(c.dlLine('g'), 'Install · Unpacking');
 });

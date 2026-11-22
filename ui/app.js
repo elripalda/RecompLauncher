@@ -3538,6 +3538,11 @@ function buildsQuietly(id) {
   const missing = (su.inputs || []).some((r) => r.active && !r.optional && !r.runtime && !r.path);
   return !missing && !!(su.kept || su.copy);
 }
+// A build after an update ended (or failed): it leaves the Downloads list.
+function buildLeft() {
+  S.building = null;
+  if (S.view === 'downloads') render(true);
+}
 // Waiting in the queue, or building now.
 const buildWaits = (id) => S.building === id || S.buildQ.includes(id);
 function queueBuild(id) {
@@ -3560,6 +3565,7 @@ async function startNextBuild() {
     await loadSetup(id);
     if (S.running.has(id) || !buildsQuietly(id)) continue;
     S.building = id;
+    if (S.view === 'downloads') render(true);
     const su = S.setup[id];
     const named = (su.inputs || []).length > 0;
     const run = named ? invoke('setup_inputs_run', { id, copy: null }) : invoke('setup_copy', { id, path: su.kept ? '' : su.copy });
@@ -3654,12 +3660,12 @@ T.event.listen('setup', ({ payload: p }) => {
   if (!S.setupJobs) S.setupJobs = {};
   if (p.step === 'done') {
     delete S.setupJobs[p.id];
-    if (p.id === S.building) S.building = null;
+    if (p.id === S.building) buildLeft();
     setTimeout(nextInLine, 0);
     onSetupFinished(p.id, !!(SU.el && SU.id === p.id) || !!document.querySelector('.tv-setup:not(.out)'));
   } else if (p.step === 'error') {
     delete S.setupJobs[p.id];
-    if (p.id === S.building) S.building = null;
+    if (p.id === S.building) buildLeft();
     setTimeout(nextInLine, 0);
     if (!SU.el || SU.id !== p.id) {
       toast(p.text || t("Setup didn't finish."), true);
@@ -3669,6 +3675,7 @@ T.event.listen('setup', ({ payload: p }) => {
   } else {
     S.setupJobs[p.id] = p;
     paintSetupProgress(p.id);
+    if (p.id === S.building) paintBuildRow(p.id);
   }
   if (SU.el && p.id === SU.id && SU.stage === 'run') {
     SU.q.push(p);
@@ -4371,19 +4378,53 @@ function noteSpeed(id, p) {
   if (l.length > DL_KEEP) l.splice(0, l.length - DL_KEEP);
 }
 window.dlSpeedSeed = (id, list) => { DLSPD[id] = list.slice(-DL_KEEP); DLSPD[id].slot = Math.floor(Date.now() / DL_STEP); };
-// The moving download's line on Downloads: what it's doing, and how long is left while it
-// downloads. The time comes from the measured speed above, which moves less than the download's.
-function dlLine(id) {
-  const j = S.jobs[id] || {}, l = DLSPD[id] || [];
-  const speed = j.phase === 'download' ? l[l.length - 1] || j.speed || 0 : 0;
-  const left = speed && j.total ? Math.max(0, j.total - j.done) / speed : 0;
-  if (!left) return dlPhase(id);
-  return `${dlPhase(id)} · ${tf('{time} left', { time: took(Math.max(1, Math.round(left))) })}`;
+// What a download on Downloads will be: the version an update goes to, else Install or Update,
+// or the plugin's name.
+function dlTarget(id) {
+  const j = S.jobs[id] || {};
+  if (j.plug) return (plugMan(j.plugin) || {}).name || t('Plugin');
+  if (S.library[id] && S.updates[id]) return tf('Update to {tag}', { tag: S.updates[id] });
+  return S.library[id] ? t('Update') : t('Install');
 }
-// Only that line changes while a download runs; the bar and its numbers are paintProgress's.
+// A moving download's one line, as in the mockup: "Update to v1.2.0 · 72 MB of 148 MB · 48 MB/s ·
+// 2 sec left". Before and after the bytes come, what it's doing instead (Unpacking, Paused...).
+// The speed is the measured one above, which moves less than the download's own.
+function dlLine(id) {
+  const j = S.jobs[id] || (S.paused || {})[id] || {};
+  const what = dlTarget(id);
+  if (!S.jobs[id]) return `${what} · ${t('Paused')}`;
+  if (j.phase !== 'download' || !j.total) return `${what} · ${progLabel(j)[0] || t('Getting ready')}`;
+  const l = DLSPD[id] || [];
+  const speed = l[l.length - 1] || j.speed || 0;
+  const parts = [what, tf('{done} of {total}', { done: fmtB(j.done), total: fmtB(j.total) })];
+  if (speed) parts.push(tf('{speed}/s', { speed: fmtB(speed) }));
+  const left = speed ? Math.max(0, j.total - j.done) / speed : 0;
+  if (left) parts.push(tf('{time} left', { time: took(Math.max(1, Math.round(left))) }));
+  return parts.join(' · ');
+}
+// Only that line changes while a download runs; the bar is paintProgress's.
 function paintDlLine(id) {
   const el = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
   if (el) el.textContent = dlLine(id);
+}
+// A build right after an update (#429's Build Again After Updates) on Downloads: how far its
+// setup step is, from the builder's own progress (0 while it's still reading the copy).
+function buildPct(id) {
+  const ev = (S.setupJobs || {})[id] || {};
+  return ev.step === 'extras' ? Math.round((ev.pct || 0) * 100) : 0;
+}
+function buildLine(id) {
+  const p = buildPct(id);
+  return p ? tf('Building the game · {pct}%', { pct: p }) : t('Building the game');
+}
+function paintBuildRow(id) {
+  const line = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
+  if (line) line.textContent = buildLine(id);
+  const tr = document.querySelector(`[data-build-prog="${CSS.escape(id)}"] .track`);
+  if (!tr) return;
+  const p = buildPct(id);
+  tr.classList.toggle('busy', !p);
+  tr.querySelector('i').style.width = p + '%';
 }
 function dlPhase(id) {
   const j = S.jobs[id] || (S.paused || {})[id] || {};
@@ -4446,7 +4487,7 @@ function scanPill(h) {
 // A Completed row's way to its patch notes: a quiet "i", so the list stays calm.
 const INFO_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg>';
 // Each game's newest download only (the history is newest first), like Steam: installing the same
-// game three times is one row. The totals and the History tab still count every one.
+// game three times is one row. Its older downloads fold under it on Downloads.
 function latestPerGame(hist) {
   const seen = new Set();
   return hist.filter((h) => {
@@ -4472,7 +4513,7 @@ function didWhat(h) {
   if (h.from) return tf('Updated {from} → {to}', { from: h.from, to: h.tag });
   return tf('Updated to {tag}', { tag: h.tag });
 }
-// Downloads, one page: the totals as one line, what's downloading (the one that's moving on top,
+// Downloads, one page: what's downloading or building (what's moving on top,
 // then every one waiting), the game updates that are ready, what didn't finish, and Recent. The
 // launcher's own update isn't here: it has its pill in the title bar.
 function pageDownloads() {
@@ -4484,28 +4525,26 @@ function pageDownloads() {
   // A row's picture: the game's wide art when it has some (like Steam's), else its cover.
   const wide = (id, w = 320) => { const a = appOf(id); if (a.plug) { const pm = plugMan(a.plug.plugin); return `<span class="cap ph plug-ph">${pm ? plugIcon(pm, pm.icon) : PUZZLE}</span>`; }
     return a.hero ? pic(thumbOf(a.hero, w), 'cap') : a.cover ? `<span class="cap cov">${pic(thumbOf(a.cover, 160))}</span>` : '<span class="cap ph"></span>'; };
-  const total = hist.reduce((n, h) => n + (h.size || 0), 0), secs = hist.reduce((n, h) => n + (h.secs || 0), 0);
-  const avg = secs ? total / secs : 0;
-  const totals = [tf('{size} downloaded', { size: fmtB(total) || '0 MB' }), tn(hist.length, '1 download', '{n} downloads')];
-  if (avg) totals.push(tf('{speed}/s average', { speed: fmtB(avg) }));
-  totals.push(tn(hist.filter((h) => h.update).length, '1 update installed', '{n} updates installed'));
-  // The one at the top: the download that's moving, else the first one there is.
-  const lead = act.find((id) => S.jobs[id] && S.jobs[id].phase !== 'queued') || act[0];
-  const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New option'); };
-  // Downloading: one list. The download that's moving is on top with its progress; every one
-  // waiting is a quiet row under it. Cancel is the ✕ on each row.
-  const xBtn = (id) => { const j = S.jobs[id] || {};
-    return `<button type="button" class="btn sm sq" data-act="cancel" data-id="${esc(id)}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}"${j.phase === 'unpack' ? ' disabled' : ''}>${XS}</button>`; };
-  const movingRow = (id) => { const a = appOf(id), j = S.jobs[id] || {}, held = !S.jobs[id];
+  // Downloading: one list. What's moving comes first (downloads, then a build right after an
+  // update), then everything waiting its turn as a quiet row. Cancel is the ✕ on each row.
+  const xBtn = (id, act = 'cancel') => { const j = S.jobs[id] || {};
+    return `<button type="button" class="btn sm sq" data-act="${act}" data-id="${esc(id)}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}"${j.phase === 'unpack' ? ' disabled' : ''}>${XS}</button>`; };
+  const movingRow = (id) => { const a = appOf(id), held = !S.jobs[id];
     const two = held ? `<button type="button" class="btn main sm" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) ? `<button type="button" class="btn sm" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
     return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${esc(dlLine(id))}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
-  const waitingRow = (id) => { const a = appOf(id), j = S.jobs[id] || {};
-    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(kindTag(id))} · ${esc(progLabel(j)[0])}</span></span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id)}</div>`; };
-  // Only a download that's waiting its turn is a quiet row; anything else that's going (a second
-  // download, a paused one) shows its progress like the one on top.
-  const waiting = (id) => !!S.jobs[id] && S.jobs[id].phase === 'queued';
-  const order = (lead ? [lead] : []).concat(act.filter((id) => id !== lead));
-  const dlRows = order.map((id) => (id !== lead && waiting(id) ? waitingRow(id) : movingRow(id))).join('');
+  const buildRow = (id) => { const a = appOf(id), p = buildPct(id);
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
+  const quietRow = (id, sub, act) => { const a = appOf(id);
+    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(sub)}</span></span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
+  // An update held back for the build before it says so; any other waiting download says what
+  // it'll be.
+  const waitingRow = (id) => { const sub = S.jobs[id].held ? `${dlTarget(id)} · ${t('Waiting for the build before it')}` : dlTarget(id);
+    return quietRow(id, sub, 'cancel'); };
+  const waits = (id) => !!S.jobs[id] && S.jobs[id].phase === 'queued';
+  const building = S.building && !S.jobs[S.building] ? [S.building] : [];
+  const buildWaiting = S.buildQ.filter((id) => !S.jobs[id]);
+  const dlRows = act.filter((id) => !waits(id)).map(movingRow).concat(building.map(buildRow), act.filter(waits).map(waitingRow), buildWaiting.map((id) => quietRow(id, t('Waiting to build'), 'build-cancel'))).join('');
+  const dlCount = act.length + building.length + buildWaiting.length;
   const pauseBtn = Object.keys(S.jobs).some(canPause) ? `<button type="button" class="btn sm" data-act="dl-pause-all">${esc(t('Pause all'))}</button>` : '';
   const upRows = ups.map((id) => { const a = appOf(id);
     // The pill is the new version's check, so the player sees it before they download it.
@@ -4514,7 +4553,7 @@ function pageDownloads() {
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   // Recent: each game once, with its newest install or update, under the day it happened. Its
   // older ones fold under it, so nothing the old History tab listed is lost. Clearing only hides
-  // what's listed; the totals above stay.
+  // what's listed.
   const ui = S.settings.ui || {};
   const kept = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
   const shown = latestPerGame(kept).slice(0, 40);
@@ -4529,7 +4568,9 @@ function pageDownloads() {
     const notes = hasNotes ? `<button type="button" class="dl-notes" data-act="upd-game" data-id="${esc(h.id)}" aria-label="${esc(t('Patch Notes'))}" title="${esc(t('Patch Notes'))}">${INFO_I}</button>` : '<span class="dl-notes" aria-hidden="true"></span>';
     const more = earlier.length ? `<button type="button" class="dl-earlier-btn" data-act="dl-earlier" data-id="${esc(h.id)}" aria-expanded="${open}">${esc(tn(earlier.length, '1 earlier download', '{n} earlier downloads'))}${CHEV_D}</button>` : '';
     const link = byId(h.id) || inst ? ` link" data-act="open" data-id="${esc(h.id)}` : '';
-    const row = `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(didWhat(h))}</span>${scanPill(h)}${more}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
+    // Only the store's Safe pill: every download is checked against its checksum, so saying so on
+    // each row is noise.
+    const row = `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${esc(didWhat(h))}</span>${scanPill({ ...h, verified: false })}${more}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
     if (!open) return row;
     return row + `<div class="dl-earlier">${earlier.map((x) => `<div><span>${esc(didWhat(x))}</span><small>${esc(when(x.when))}</small></div>`).join('')}</div>`;
   };
@@ -4540,13 +4581,13 @@ function pageDownloads() {
     day = label;
     return head + recentRow(h);
   }).join('');
-  const nothing = !act.length && !ups.length && !fails.length && !shown.length;
+  const nothing = !dlCount && !ups.length && !fails.length && !shown.length;
   const n = (k) => `<span class="dl-n">${k}</span>`;
   const shelf = (title, count, extra, rows) => `<section class="shelf"><div class="shelf-h"><h2>${esc(title)}${n(count)}</h2>${extra}</div><div class="dl-list">${rows}</div></section>`;
   const updateAll = ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : '';
   const clear = shown.length ? `<button type="button" class="btn sm" data-act="dl-clear" data-k="dl_cleared">${esc(t('Clear history'))}</button>` : '';
-  return `<div class="page dl-page" style="max-width:1100px"><div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p><p class="dl-totals">${totals.map(esc).join(' · ')}</p></div></div>
-    ${dlRows ? shelf(t('Downloading'), act.length, pauseBtn, dlRows) : ''}
+  return `<div class="page dl-page" style="max-width:1100px"><div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p></div></div>
+    ${dlRows ? shelf(t('Downloading'), dlCount, pauseBtn, dlRows) : ''}
     ${upRows ? shelf(t('Updates ready'), ups.length, updateAll, upRows) : ''}
     ${failRows ? shelf(t('Didn\'t finish'), fails.length, '', failRows) : ''}
     ${shown.length ? shelf(t('Recent'), shown.length, clear, recentRows) : ''}
@@ -9005,6 +9046,12 @@ async function act(el, e) {
     case 'cancel': return cancelDownload(id);
     case 'dl-pause': return invoke('pause', { id });
     case 'dl-pause-all': return pauseAll();
+    // A build after an update, on Downloads: stopped, or taken out of the queue. A cancelled
+    // setup sends no event of its own, so its last progress is cleared here.
+    case 'build-cancel':
+      S.buildQ = S.buildQ.filter((x) => x !== id);
+      if (S.building === id) { S.building = null; delete S.setupJobs[id]; invoke('setup_cancel', { id }).catch(() => {}); setTimeout(pumpBuilds, 0); }
+      return render(true);
     case 'dl-resume': return resumeDl(id);
     case 'play': return playGame(id);
     case 'stop': return invoke('stop', { id });
