@@ -96,8 +96,8 @@ pub struct Prepare {
     /// (a library the builder downloads under a company's license, say).
     #[serde(default, deserialize_with = "options_lenient", skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<PrepareOption>,
-    /// Changed by the developer when players must run this step again (its output changed, say).
-    /// The only thing in the profile that makes a finished setup count as not done.
+    /// Not part of the SDK anymore: every new release builds again by itself. Read only to tell,
+    /// once, whether a setup from before format 3 was current (lib.rs, setup_was_current).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
     /// Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the
@@ -1766,14 +1766,6 @@ impl Profile {
         })
     }
 
-    /// Whether a game the launcher built from the player's copy was built with another
-    /// `prepare.version` than the manifest has now (`built_with`: the one kept at setup). The
-    /// developer changed it because players who already set up have to run the step again.
-    pub fn prepare_version_changed(&self, built_with: &str) -> bool {
-        let Some(pr) = self.prepare.as_ref() else { return false };
-        pr.version != built_with
-    }
-
     /// Whether `exe` is the program its start names (in any of its forms: the Windows one, or the
     /// native build by that name on Linux and Mac).
     pub fn starts_program(&self, exe: &Path) -> bool {
@@ -2871,26 +2863,6 @@ mod tests {
     }
 
     #[test]
-    fn a_changed_prepare_version_asks_for_a_new_build() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"],"version":"2"}}"#).unwrap();
-        assert!(p.prepare_version_changed(""));
-        assert!(p.prepare_version_changed("1"));
-        assert!(!p.prepare_version_changed("2"));
-    }
-
-    #[test]
-    fn no_prepare_version_matches_a_setup_from_before_versions_were_kept() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"]}}"#).unwrap();
-        assert!(!p.prepare_version_changed(""));
-    }
-
-    #[test]
-    fn a_game_without_a_setup_step_never_asks_for_a_new_build() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.exe"]}}"#).unwrap();
-        assert!(!p.prepare_version_changed("2"));
-    }
-
-    #[test]
     fn appimage_embedded_profile_wins_and_binds_renamed_container() {
         use crate::appimage::tests::{image, TempDir};
         let dir = TempDir::new();
@@ -3925,7 +3897,9 @@ mod tests {
         let d = tmp("sb");
         std::fs::create_dir_all(d.join("bin")).unwrap();
         std::fs::write(d.join("bin").join(if cfg!(windows) { "street-game.exe" } else { "street-game" }), "").unwrap();
-        let p = find(&d, "luckvj/streetball-revival", &Value::Null).unwrap();
+        let mut p = find(&d, "luckvj/streetball-revival", &Value::Null).unwrap();
+        // As profile_of fills them in from what's picked.
+        p.input_paths.insert("game".into(), PathBuf::from("/isos/nbas2.iso"));
         let mut picks = BTreeMap::new();
         picks.insert("intro".to_string(), 1usize);
         let (exe, args) = p.command(&d, Some(Path::new("/isos/nbas2.iso")), &picks).unwrap();

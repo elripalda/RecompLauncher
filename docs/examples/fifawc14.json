@@ -1,11 +1,14 @@
 {
   "format": 1,
   "repo": "HossEz/fifa-world-cup-2014-recompiled",
-  "game": {
-    "kind": "iso_or_folder",
-    "label": "Your copy of 2014 FIFA World Cup Brazil for Xbox 360: its disc image (.iso), or its folder with default.xex.",
-    "check": { "file": "default.xex", "xdvdfs": "default.xex" }
-  },
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your copy of 2014 FIFA World Cup Brazil for Xbox 360: its disc image (.iso), or its folder with default.xex.",
+      "formats": [{ "type": "file" }, { "type": "folder" }],
+      "check": { "file": "default.xex", "xdvdfs": "default.xex" }
+    }
+  ],
   "start": { "program": ["fifawc14.exe"], "args": ["--from_launcher"] },
   "config": [
     {

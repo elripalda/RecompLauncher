@@ -236,7 +236,9 @@
     },
     "game": {
       "type": "object",
-      "description": "The player's own copy of the game.",
+      "deprecated": true,
+      "deprecationMessage": "Write the player's copy as an input with id \"game\" (see inputs). This still reads, as that input.",
+      "description": "From before named inputs: the player's copy of the game. It reads as the input \"game\" (and \"update\"), with every option; write it as one of inputs instead. The Developer tab shows your file converted.",
       "properties": {
         "kind": {
           "enum": [
@@ -362,10 +364,6 @@
           "type": "boolean",
           "default": false,
           "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument (and prepare.env value) with {game} in it, so write the copy as one argument (--game={game}). List done too."
-        },
-        "version": {
-          "type": "string",
-          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to, not even a new release: when the step builds the game itself, put your release version here each time you package one."
         },
         "options": {
           "type": "array",

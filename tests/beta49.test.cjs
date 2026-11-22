@@ -13,11 +13,12 @@ test("no fingerprint: a game is set up on the release its last setup finished on
   assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| \{\n\s*let st = h\.state::<App>\(\);\n\s*upgrade_setups\(&st\);/);
 });
 
-test('prepare.version is in the schema, the developer guide and the profile', () => {
+test('prepare.version is out of the schema and the guide: every new release builds again', () => {
   const schema = JSON.parse(read('docs/recomplauncher.schema.json'));
-  const find = (o) => (o && typeof o === 'object' ? (o.keeps_copy && o.options && o.version ? o : Object.values(o).map(find).find(Boolean)) : null);
-  assert.equal(find(schema).version.type, 'string');
-  assert.match(read('docs/DEVELOPERS.md'), /`"version"` \(optional\)/);
+  const find = (o) => (o && typeof o === 'object' ? (o.keeps_copy && o.options && o.done ? o : Object.values(o).map(find).find(Boolean)) : null);
+  assert.equal(find(schema).version, undefined);
+  assert.doesNotMatch(read('docs/DEVELOPERS.md'), /`"version"` \(optional\)/);
+  assert.match(read('docs/DEVELOPERS.md'), /\*\*Every new release builds again\.\*\*/);
   assert.match(read('src-tauri/src/profile.rs'), /skip_serializing_if = "Vec::is_empty"\)\]\n    pub options: Vec<PrepareOption>/);
 });
 

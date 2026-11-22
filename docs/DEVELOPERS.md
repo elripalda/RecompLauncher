@@ -17,7 +17,7 @@ runs is completely set up without a `prepare` step.
 
 | Part | What players get | What you add |
 | --- | --- | --- |
-| Launch | Drop in a disc, it's checked and set up, Play starts the game directly | `game` and `start` |
+| Launch | Drop in a disc, it's checked and set up, Play starts the game directly | `inputs` and `start` |
 | Settings | Your video and gameplay settings on the game's page and in Big Picture mode | `config` and `settings` |
 | Preparation | Your own setup step that runs once before Play | `prepare` |
 | Verification | A "verified" badge when the player's copy matches a known dump | `dumps` |
@@ -109,7 +109,7 @@ goes along; what it writes anywhere else is left behind. So:
 
 ```json
 "start": { "program": ["MyRecomp.exe"], "args": ["--data", "{data}"] },
-"prepare": { "program": ["MyRecomp.exe"], "args": ["--prepare", "--game", "{game}", "--data", "{data}"], "done": ["{data}/build/game.pak"] },
+"prepare": { "program": ["MyRecomp.exe"], "args": ["--prepare", "--game", "{input:game}", "--data", "{data}"], "done": ["{data}/build/game.pak"] },
 "saves": ["{data}/saves"]
 ```
 
@@ -166,7 +166,7 @@ Use the AppImage's filename in `start.program`, for example:
 ```json
 "start": {
   "program": ["MyGame-x86_64.AppImage"],
-  "args": ["{game}"]
+  "args": ["{input:game}"]
 }
 ```
 
@@ -199,7 +199,7 @@ like a framework's `Versions/Current`, are kept. Name the app in `start.program`
 
 ```json
 "start": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"] },
-"prepare": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"], "args": ["--prepare", "--game", "{game}"] }
+"prepare": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"], "args": ["--prepare", "--game", "{input:game}"] }
 ```
 
 The first entry that exists on the player's system runs, so one file covers a Mac and Linux.
@@ -227,14 +227,17 @@ editor will complete fields and flag mistakes as you type. The schema is also in
   "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
   "format": 1,
   "repo": "you/your-recomp",
-  "game": {
-    "kind": "iso",
-    "label": "Your disc image (.iso) of the USA release, serial SLUS-20651.",
-    "check": { "iso9660": "SLUS_206.51" }
-  },
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your disc image (.iso) of the USA release, serial SLUS-20651.",
+      "formats": [{ "type": "file" }],
+      "check": { "iso9660": "SLUS_206.51" }
+    }
+  ],
   "start": {
     "program": ["bin/game.exe", "game.exe"],
-    "args": ["--iso", "{game}"]
+    "args": ["--iso", "{input:game}"]
   }
 }
 ```
@@ -244,8 +247,8 @@ What the player sees:
 1. They install your recomp. If the launcher already found their copy in one of their game
    folders, it offers that one. Otherwise they drop the disc image on the setup screen, or pick
    it or its folder.
-2. The setup screen reads the disc, checks it's your game, reads the whole image to make sure
-   it's complete, and writes your settings.
+2. The setup screen checks it's your game and writes your settings. A copy with known good dumps
+   (`dumps`) is read whole too, for the verified badge.
 3. "Ready to play", with Play and Settings. Play starts `start.program` straight away.
 
 That's one of two roads, and the only one that reads this file's setup. A player can also turn
@@ -254,16 +257,22 @@ they picked under Manage → Game Executable, with their launch options, and not
 no `prepare`, no `start.args`. Your own launcher window, if you have one, does the rest:
 
 ```json
-"start": { "program": ["bin/game.exe"], "args": ["--iso", "{game}"] }
+"start": { "program": ["bin/game.exe"], "args": ["--iso", "{input:game}"] }
 ```
 
 with Easy Setup on runs `bin/game.exe --iso <their disc>`; skipped, it runs `bin/game.exe` alone.
 
-### `game`: the player's copy
+### `inputs`: the player's copy
 
-- `kind`: `"iso"`, `"folder"` or `"iso_or_folder"`.
+Every file the launcher asks the player for is a named input. The first one with role `game` (the
+default role) is their copy of the game, the big box on the setup screen; the rest (an update,
+discs, DLC, keys) are rows under it. [SETUP-INPUTS.md](SETUP-INPUTS.md) has all of them.
+
+- `id`: its name, used as `{input:<id>}` wherever paths fill in. Call the copy `game`.
 - `label`: what to ask for. Name the region or serial if only one works.
-- `check`: how to tell it's the right game. Use whichever fits:
+- `formats`: `[{ "type": "file" }]`, `[{ "type": "folder" }]`, or both for either. A file format can
+  list `extensions` (without the dot).
+- `check`: how to tell it's the right game, checked when the player picks it. Use whichever fits:
   - `file`: a file that should be in the folder, like `"default.xex"`.
   - `xdvdfs`: a file on an Xbox 360 disc image.
   - `iso9660`: a file in the top folder of a PlayStation 2 (or any ISO 9660) disc image. Raw CD
@@ -274,8 +283,8 @@ with Easy Setup on runs `bin/game.exe --iso <their disc>`; skipped, it runs `bin
     of the package's newest title, from the table rows leading to it and the first 96 bytes of that
     file only, never the whole package, and a folder with `exefs/main` is read the same way. The
     file is recognised by its contents, not its extension. This is a content check only: it needs
-    and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Use
-    it with `kind: "iso_or_folder"`.
+    and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Give
+    it both formats, file and folder.
   - `ids`: the IDs your game reads, as on the copy: a GameCube or Wii disc's (`"GZ2E01"`, or
     `"GZ2"` for every region), an N64 cartridge's game code, a PlayStation or PS2 disc's serial,
     or an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`). Another
@@ -286,39 +295,45 @@ with Easy Setup on runs `bin/game.exe --iso <their disc>`; skipped, it runs `bin
     no `ids`.
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
-`backup-07.iso` is still found.
+`backup-07.iso` is still found. A copy is checked when the player picks it, never again on Play.
 
 **CD games kept as several files.** The launcher finds a `.cue` (with its `.bin` tracks), a `.gdi`
-or an `.m3u` as one copy. If your game reads that sheet, name it in `label`, and `{game}` is the
-sheet. Otherwise `{game}` is the disc's first data track, the `.bin`, so a game that reads single
+or an `.m3u` as one copy. If your game reads that sheet, name it in `label`, and `{input:game}` is the
+sheet. Otherwise `{input:game}` is the disc's first data track, the `.bin`, so a game that reads single
 disc images still gets one:
 
 ```json
-"game": {
-  "kind": "iso",
+{
+  "id": "game",
   "label": "Your dump of the USA release (SLUS-00797): pick the .cue file, with its .bin tracks beside it.",
+  "formats": [{ "type": "file" }],
   "check": { "iso9660": "SLUS_007.97" }
 }
 ```
 
-Leave `game` out if your recomp finds the game itself.
+Leave the inputs out if your recomp finds the game itself.
+
+A manifest from before may write the copy as `game` (with `kind`, `label`, `check`, `dumps` and
+`update`). It still reads, as the input `game` (and `update`), but it's no longer part of the SDK:
+the Developer tab shows your file with it moved into `inputs`, ready to copy.
 
 **A second pick: the game's update.** When the game needs something beside the player's copy,
-picked on its own (a title update, or a PS4 update folder kept apart from the game), add `update`
-to `game`. The launcher asks for it after the copy and puts it in your folder:
+picked on its own (a title update, or a PS4 update folder kept apart from the game), add an input
+with role `update`. The launcher asks for it with the copy and puts it in your folder:
 
 ```json
-"game": {
-  "kind": "folder",
-  "label": "Your game folder (CUSA00341).",
-  "check": { "file": "eboot.bin", "ids": ["CUSA00341"] },
-  "update": { "into": "update", "label": "Your 1.02 update folder.", "accepts": "folder", "optional": true }
-}
+"inputs": [
+  { "id": "game", "label": "Your game folder (CUSA00341).", "formats": [{ "type": "folder" }],
+    "check": { "file": "eboot.bin", "ids": ["CUSA00341"] } },
+  { "id": "update", "label": "Your 1.02 update folder.", "role": "update", "optional": true,
+    "formats": [{ "type": "folder" }], "into": "update" }
+]
 ```
 
 - `into`: the folder inside your release it goes in.
-- `label`: what to ask for.
-- `accepts`: `"file"` (the default), `"folder"` or `"file or folder"`.
+- `name`: the name it must have there (it's put in under this name, and a file with another name
+  is refused).
+- `sha256`: the one known file, checked when it's picked.
 - `optional`: the game plays without it, so the player can skip it.
 
 ### `start`
@@ -331,7 +346,7 @@ to `game`. The launcher asks for it after the copy and puts it in your folder:
 ```json
 "start": {
   "program": ["MyRecomp.exe"],
-  "args": ["--iso", "{game}"],
+  "args": ["--iso", "{input:game}"],
   "env": { "MYRECOMP_DATA": "{documents}/My Recomp" }
 }
 ```
@@ -360,7 +375,7 @@ These fill in anywhere a path, an argument or a value is written:
 | --- | --- |
 | `{install}` | Your game's folder |
 | `{data}` | `{install}/recompdata`: everything your game writes (see [Where your game writes](#where-your-game-writes)) |
-| `{game}` | The player's copy (the .iso or the folder; for a .cue, its .bin unless `label` names .cue) |
+| `{input:<id>}` | A file the player picked, by its input's id. For the copy (`{input:game}`): the .iso or the folder; for a .cue, its .bin unless `label` names .cue |
 | `{documents}` | Documents |
 | `{local}` | AppData\Local, or ~/.local/share |
 | `{config}` | AppData\Roaming, or ~/.config |
@@ -687,7 +702,7 @@ disc or building a cache, give the launcher a way to run it without a window:
 ```json
 "prepare": {
   "program": ["yourgame.exe"],
-  "args": ["--prepare", "--game", "{game}"],
+  "args": ["--prepare", "--game", "{input:game}"],
   "label": "Menu art and fonts from your disc"
 }
 ```
@@ -710,7 +725,7 @@ settings are written. It runs again whenever the player changes their copy.
   ```json
   "prepare": {
     "program": ["MyRecompBuilder.exe"],
-    "args": ["--prepare", "--game", "{game}"],
+    "args": ["--prepare", "--game", "{input:game}"],
     "env": { "MYRECOMP_CACHE": "{data}/cache" }
   }
   ```
@@ -721,7 +736,7 @@ settings are written. It runs again whenever the player changes their copy.
   to free some up first.
 - On Linux and the Steam Deck, a Windows program (`.exe`, `.bat`) runs through the same Proton the
   game plays with, so a Windows-only release can be set up there too. The paths it gets for the
-  player's files (`{game}`, `{input:...}`, `RECOMPLAUNCHER_DATA`, the temp folder) are Windows paths
+  player's files (`{input:game}`, `{input:...}`, `RECOMPLAUNCHER_DATA`, the temp folder) are Windows paths
   (`Z:\home\...`).
 - On Windows, if what you print says a path was too long (a `PathTooLongException`, "The filename
   or extension is too long"), the player is told to use a library folder with a shorter path or to
@@ -731,39 +746,36 @@ settings are written. It runs again whenever the player changes their copy.
 - **Built from the player's copy?** Keep everything the game needs in your folder, so it plays
   without the copy, and list what the build leaves in `done`. To build again later without the
   copy, see `keeps_copy` below.
-- `"version"` (optional): change it only when players who already set up must run the step again,
-  like when your output format changes. Nothing else in this file makes them set up again. The
-  game's page keeps its Play button, with "Needs a new build after the update" under it, and the
-  next Play opens a small Finish the Update window: Build Now builds it again (from what the step
-  kept, with `keeps_copy`, or from the player's copy), asks about any option the update added, and
-  starts the game when it's done. A game set up from named `inputs` opens Easy Setup for it, with a
-  note that the game is built again. An update of your game doesn't change
-  `version` by itself: when the step builds the game itself (its recompiled program), so every
-  release needs a new build, put your release version in `version` each time you package one
-  (`"version": "0.4.2"`). Without it, players keep playing the build of the release they set up.
+- **Every new release builds again.** When a player installs a new release of your game (or goes
+  back to an older one), the step runs again before it plays: you have nothing to bump. The game's
+  page keeps its Play button, with "Needs a new build after the update" under it, and the next Play
+  opens a small Finish the Update window: Build Now builds it again (from what the step kept, with
+  `keeps_copy`, or from the player's files), asks about any option the update added, and starts the
+  game when it's done. Players can turn on Build Games Again After Updates to have it done right
+  after an automatic update. Reinstalling the same release doesn't build again.
 - To build into the player's install folder instead of their home folder, pass it to your builder
-  (`"args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"]`) and start
+  (`"args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"]`) and start
   from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
   When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like
-  `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
-  when your own launcher built it, and plays without asking for the copy (unless `start` uses
-  `{game}`). If one goes missing, the player is asked to set up again. List one your build always
+  `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game plays without asking
+  for the copy (unless `start` uses `{input:game}`), and a game brought into the launcher with
+  its build counts as set up. If one goes missing, the player is asked to set up again. List one your build always
   leaves, like `["{install}/YourGame/game.pak"]`.
 - `"keeps_copy": true` (optional): your step keeps what it needs from the copy in your build folder
   (the first `folders.game`) and can run again from there without it, like an update that rebuilds
   from what the first build unpacked. Then a player who deleted their copy to save space isn't
-  asked for it again: when `version` changes, or a file of `done` is missing, Play builds the game
-  again from what you kept, and Easy Setup runs the step the same way when no copy is picked. The
-  launcher leaves out every argument (and `prepare.env` value) with `{game}` in it, so write the copy as one argument
-  (`--game={game}`, not `"--game", "{game}"`); option args (`--fetch-ngx-sdk`) are still added. List
+  asked for it again: when a new release is installed, or a file of `done` is missing, Play builds
+  the game again from what you kept, and Easy Setup runs the step the same way when no copy is picked. The
+  launcher leaves out every argument (and `prepare.env` value) with `{input:game}` in it, so write the copy as one argument
+  (`--game={input:game}`, not `"--game", "{input:game}"`); option args (`--fetch-ngx-sdk`) are still added. List
   `done` too, so the launcher can tell when the build is finished. When your build folder is gone,
   or the run fails, the player is asked for their copy and the game is built from that.
 
   ```json
   "prepare": {
     "program": ["YourGameBuilder.exe"],
-    "args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"],
+    "args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"],
     "done": ["{install}/YourGame/yourgame.exe"],
     "keeps_copy": true
   },
@@ -771,7 +783,7 @@ settings are written. It runs again whenever the player changes their copy.
   ```
 
 **A second file from the player.** When your step needs more than the copy, like an official patch
-or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{game}`. The
+or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{input:game}`. The
 setup screen asks for both. Don't download it in the step: players bring their own files.
 
 ```json
@@ -779,7 +791,7 @@ setup screen asks for both. Don't download it in the step: players bring their o
   { "id": "patch", "label": "The official 2.0 patch (patch20.zip)", "role": "update",
     "formats": [{ "type": "file", "extensions": ["zip"] }] }
 ],
-"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game", "{game}", "--patch", "{input:patch}"] }
+"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game", "{input:game}", "--patch", "{input:patch}"] }
 ```
 
 [SETUP-INPUTS.md](SETUP-INPUTS.md) has the rest: several discs, optional DLC, and `{input:<id>}` in
@@ -795,7 +807,7 @@ when it's on its `args` are added after the step's own:
 ```json
 "prepare": {
   "program": ["LongshotBuilder.exe"],
-  "args": ["--cli", "--prepare", "--game", "{game}"],
+  "args": ["--cli", "--prepare", "--game", "{input:game}"],
   "options": [
     {
       "id": "dlss",
@@ -866,11 +878,13 @@ the player agrees to the vendor's license:
 6. Print `progress` lines while it downloads. If it fails, exit with a code other than 0 and
    write the reason in your own log: the player sees "Its setup step stopped with code N".
 
-### `game.dumps`: known good copies
+### `dumps`: known good copies
 
 ```json
-"game": {
-  "kind": "iso",
+{
+  "id": "game",
+  "label": "Your Xbox 360 disc image (.iso).",
+  "formats": [{ "type": "file" }],
   "check": { "xdvdfs": "default.xex" },
   "dumps": [
     { "name": "USA", "size": 7838695424, "crc32": "1a2b3c4d" },
@@ -879,9 +893,9 @@ the player agrees to the vendor's license:
 }
 ```
 
-The launcher reads every byte of the player's copy anyway, to make sure it's complete. With
-`dumps` it also compares the CRC32 and shows "Matches the verified USA disc". Take the values
-from Redump. A copy that doesn't match still works; the player just doesn't get the badge.
+Only a file with `dumps` is read whole on setup: the launcher compares its CRC32 and shows
+"Matches the verified USA disc". Any other file is checked by its `check` only, so a 20 GB
+package isn't read just to set it up. Take the values from Redump. A copy that doesn't match still works; the player just doesn't get the badge.
 
 ## Controllers and Big Picture mode
 
@@ -923,7 +937,7 @@ Things that make a recomp feel finished in the launcher. None are required; each
   needs the USA one" saves you a bug report.
 - **Support `portable.txt`.** If a `portable.txt` next to your program makes your recomp keep
   everything in its own folder, mod installs from the launcher follow it.
-- **Check the copy, then trust it.** With `game` and `dumps`, the launcher has already checked the
+- **Check the copy, then trust it.** With `check` (and `dumps`), the launcher has already checked the
   player's copy before your program starts, so your own check can be quick.
 - **Ship a `recomplauncher.json` in every release**, and keep it in step with your settings when
   you add or rename keys. The Developer tab (below) shows the problems before players do.
