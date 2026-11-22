@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.68" date="2026-11-22">
+      <description>
+        <p>One simpler Easy Setup for every game, games that rebuild with each new release, a cleaner Downloads list, and general improvements.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.67" date="2026-11-20">
       <description>
         <p>A new update window with a changelog, cleaner game page stats, Launcher Support says where each feature comes from, starting with your PC, and fixes for a blank window and Mac games.</p>
