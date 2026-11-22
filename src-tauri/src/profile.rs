@@ -97,7 +97,7 @@ pub struct Prepare {
     #[serde(default, deserialize_with = "options_lenient", skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<PrepareOption>,
     /// Not part of the SDK anymore: every new release builds again by itself. Read only to tell,
-    /// once, whether a setup from before format 3 was current (lib.rs, setup_was_current).
+    /// once, whether a setup from before format 3 was current (lib.rs, old_setup).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
     /// Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the

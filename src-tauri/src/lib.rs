@@ -4885,41 +4885,48 @@ fn upgrade_setups(st: &App) {
     }
 }
 
+/// The release mark for a game set up by a launcher from before this one, when that setup is due a
+/// new build: not the installed release, so it builds again on the next Play, in the Finish the
+/// Update window, as after any new release.
+const SET_UP_BEFORE: &str = "before";
+
 /// A game set up by a launcher from before format 3 (library_convert keeps how in `upgrade`) gets
 /// the release it's installed on as the one it was set up on, when its setup was current then:
 /// named files set up, or a copy picked (or already where the game reads it, or built), with the
-/// `prepare.version` the manifest still has. One that was due a new build then gets nothing, and
-/// builds on the next Play. Never a build just for this launcher.
+/// `prepare.version` the manifest still has. One that was set up and due a new build then is
+/// marked as set up before (SET_UP_BEFORE), and builds again on the next Play. Never a build just
+/// for this launcher.
 fn upgrade_setup(st: &App, id: &str) {
     let Some(g) = st.lib.lock().unwrap().installed.get(id).cloned().filter(|g| g.upgrade.is_some()) else { return };
     let was = g.upgrade.clone().unwrap_or_default();
-    let current = profile_of(st, id, &g).is_some_and(|p| setup_was_current(&p, &g, &was));
+    let then = profile_of(st, id, &g).and_then(|p| old_setup(&p, &g, &was));
     let mut lib = st.lib.lock().unwrap();
     let Some(x) = lib.installed.get_mut(id).filter(|x| x.upgrade.is_some()) else { return };
     x.upgrade = None;
-    if current {
-        let tag = x.tag.clone();
-        x.set_up = tag.clone();
+    if let Some(current) = then {
+        let mark = if current { x.tag.clone() } else { SET_UP_BEFORE.to_string() };
+        x.set_up = mark.clone();
         for sub in &was.games_ready {
-            x.games.entry(sub.clone()).or_default().set_up = tag.clone();
+            x.games.entry(sub.clone()).or_default().set_up = mark.clone();
         }
-        trail::note(format!("Setup {id}: set up by an older launcher, kept as set up on {tag}"));
+        let how = if current { format!("kept as set up on {mark}") } else { "due a new build, which the next Play makes".to_string() };
+        trail::note(format!("Setup {id}: set up by an older launcher, {how}"));
     }
     drop(lib);
     st.save();
 }
 
-/// Whether a game's setup from before format 3 was current: what that launcher's Play said.
-fn setup_was_current(p: &profile::Profile, g: &Installed, was: &library::SetupUpgrade) -> bool {
-    let version = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or("");
-    if p.prepare.is_some() && version != was.prepare_version {
-        return false;
-    }
+/// How a game was set up by a launcher from before format 3: None, not set up; Some(true), set up
+/// and current (what that launcher's Play said); Some(false), set up and due a new build (another
+/// `prepare.version` than the manifest has now).
+fn old_setup(p: &profile::Profile, g: &Installed, was: &library::SetupUpgrade) -> Option<bool> {
     let lifted_only = p.inputs.iter().all(|i| i.lifted || !i.picked());
-    if !lifted_only {
-        return was.inputs_ready || !was.games_ready.is_empty();
+    let set_up = if lifted_only { inputs::main_path(p, g).is_some() || p.build_done(&g.path) == Some(true) } else { was.inputs_ready || !was.games_ready.is_empty() };
+    if !set_up {
+        return None;
     }
-    inputs::main_path(p, g).is_some() || p.build_done(&g.path) == Some(true)
+    let version = p.prepare.as_ref().map(|pr| pr.version.as_str()).unwrap_or("");
+    Some(p.prepare.is_none() || version == was.prepare_version)
 }
 
 /// Every installed recomp that carries several games, with them: the Library's tiles.
@@ -11250,13 +11257,16 @@ mod set_up_marks_tests {
         let dir = std::env::temp_dir();
         let g = Installed { path: dir.clone(), ..Default::default() };
         let set = library::SetupUpgrade { inputs_ready: true, ..Default::default() };
-        assert!(setup_was_current(&whole, &g, &set));
+        assert_eq!(old_setup(&whole, &g, &set), Some(true));
         // Not set up then: nothing now.
-        assert!(!setup_was_current(&whole, &g, &library::SetupUpgrade::default()));
-        // Built with another prepare.version than the manifest has: due a build then, so now too.
+        assert_eq!(old_setup(&whole, &g, &library::SetupUpgrade::default()), None);
+        // Built with another prepare.version than the manifest has: set up, and due a build then, so
+        // now too (in the Finish the Update window).
         let mut bumped = whole.clone();
         bumped.prepare.as_mut().unwrap().version = "2".into();
-        assert!(!setup_was_current(&bumped, &g, &set));
+        assert_eq!(old_setup(&bumped, &g, &set), Some(false));
+        let marked = Installed { tag: "v1".into(), set_up: SET_UP_BEFORE.into(), ..g.clone() };
+        assert_ne!(marked.set_up, marked.tag);
     }
 }
 
