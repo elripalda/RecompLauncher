@@ -44,6 +44,9 @@ pub struct Facts<'a> {
     pub rows: &'a [Row],
     /// The release its last setup that worked finished on: `Installed::set_up`, or one game's own.
     pub set_up: &'a str,
+    /// Its last build was cut short (`Installed::build_cut`, or one game's own): not finished,
+    /// whatever files it left.
+    pub cut: bool,
     /// The program the player picked (Set Game Executable) starts instead of the profile's.
     pub own_program: bool,
     /// Easy Setup is skipped for this game.
@@ -118,7 +121,8 @@ pub fn of(f: &Facts) -> Status {
         };
     }
     let run = needs_run(p);
-    let finished = p.build_done(&g.path) != Some(false);
+    // A build cut short may have left every file `prepare.done` lists, half written.
+    let finished = !f.cut && p.build_done(&g.path) != Some(false);
     let here = run && set_up_on_this_release(f);
     let changed = run && !f.set_up.is_empty() && f.set_up != g.tag;
     // Set up on this release and its build is all there: only the files its start reads are needed.
@@ -183,7 +187,7 @@ mod tests {
     /// The answer for a game as Play and the page get it: its rows read from what's picked.
     fn answer(p: &Profile, g: &Installed, own_program: bool, skipped: bool) -> Status {
         let rows = crate::inputs::rows(p, g, &g.path).unwrap();
-        of(&Facts { profile: p, game: g, rows: &rows, set_up: &g.set_up, own_program, skipped })
+        of(&Facts { profile: p, game: g, rows: &rows, set_up: &g.set_up, cut: g.build_cut, own_program, skipped })
     }
 
     fn status(p: &Profile, g: &Installed) -> Status {
@@ -246,6 +250,30 @@ mod tests {
         // (changed: a new release, so Play says it's finishing the update)
         assert_eq!(status(&built_from_copy(), &g), needs_after_update("rebuild", ""));
         assert!(g.setup_inputs.contains_key("game"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// Built on this release, then built again (Set Up Again) and stopped partway: the files its
+    /// build lists are all there, half written.
+    #[test]
+    fn a_build_cut_short_on_the_same_release_builds_again() {
+        let d = dir("cut");
+        let mut g = set_up(&d);
+        let mut p = built_from_copy();
+        p.prepare.as_mut().unwrap().done = vec!["{install}/Hookshot/image.bin".into()];
+        fs::write(d.join("Hookshot").join("image.bin"), b"half").unwrap();
+        g.build_cut = true;
+        assert_eq!(status(&p, &g), needs("rebuild", ""));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_build_cut_short_after_an_update_still_finishes_the_update() {
+        let d = dir("cut-update");
+        let mut g = set_up(&d);
+        g.tag = "v3".into();
+        g.build_cut = true;
+        assert_eq!(status(&built_from_copy(), &g), needs_after_update("rebuild", ""));
         let _ = fs::remove_dir_all(&d);
     }
 

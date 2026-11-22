@@ -852,6 +852,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         // What was set up, and on which release, stays through an update: a new release is told
         // apart from the one it was set up on, and builds again on the next Play.
         set_up: prev.as_ref().map(|p| p.set_up.clone()).unwrap_or_default(),
+        // A build cut short before the update still has to be built again after it.
+        build_cut: prev.as_ref().is_some_and(|p| p.build_cut),
         upgrade: prev.as_ref().and_then(|p| p.upgrade.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
         unpacked_from: prev.as_ref().map(|p| p.unpacked_from.clone()).unwrap_or_default(),
@@ -3847,6 +3849,12 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     if stopped() {
         return Err("Stopped.".into());
     }
+    // From here it writes over the last build. Until all of it has worked, the game is marked as
+    // cut short (saved first), so a Stop, the launcher closing or the PC going off partway leaves
+    // a game that builds again, instead of one that plays half a build.
+    if setup_state::needs_run(p) {
+        mark_cut(&st, job, true);
+    }
     let checked = if said.is_empty() { "Files selected.".to_string() } else { said.clone() };
     emit(SetupEv { step: "verify".into(), pct: 1.0, text: checked, verified: verified.clone(), ..Default::default() });
     // 2. A disc for a recomp that reads the disc's files: unpacked where it reads them.
@@ -3891,8 +3899,15 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     x.unpacked_from = g.unpacked_from.clone();
     let tag = x.tag.clone();
     match job.sub {
-        Some(s) => x.games.entry(s.to_string()).or_default().set_up = tag,
-        None => x.set_up = tag,
+        Some(s) => {
+            let own = x.games.entry(s.to_string()).or_default();
+            own.set_up = tag;
+            own.build_cut = false;
+        }
+        None => {
+            x.set_up = tag;
+            x.build_cut = false;
+        }
     }
     x.mode = library::SetupMode::Easy;
     drop(l);
@@ -3904,6 +3919,17 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
         (true, false) => "Your files are set up.".to_string(),
     };
     Ok((verified, text))
+}
+
+/// Marks the game's build as cut short (or not), saved straight away.
+fn mark_cut(st: &App, job: &SetupJob, cut: bool) {
+    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(job.rid) {
+        match job.sub {
+            Some(s) => x.games.entry(s.to_string()).or_default().build_cut = cut,
+            None => x.build_cut = cut,
+        }
+    }
+    st.save();
 }
 
 /// Where one file is among several read whole: its label ("Disc 2", empty when it's the only
@@ -4946,6 +4972,12 @@ fn mark_of<'a>(g: &'a Installed, sub: Option<&str>) -> &'a str {
     own.unwrap_or(&g.set_up)
 }
 
+/// Whether a game's last build was cut short: one game of several's own, or the whole recomp's.
+fn cut_of(g: &Installed, sub: Option<&str>) -> bool {
+    let own = sub.and_then(|s| g.games.get(s)).is_some_and(|x| x.build_cut);
+    own || g.build_cut
+}
+
 /// Set up, or why not, as Play gives it (`p` scoped to one game of several when it's that game's,
 /// `sub` naming it): from what the library has picked. A setup from an older launcher is read
 /// first, so the answer never comes before it.
@@ -4959,7 +4991,7 @@ fn game_status(st: &App, g: &Installed, p: &profile::Profile, sub: Option<&str>)
         g
     };
     let rows = inputs::rows(p, g, &st.dir).unwrap_or_default();
-    let facts = setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, sub), own_program: false, skipped: false };
+    let facts = setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, sub), cut: cut_of(g, sub), own_program: false, skipped: false };
     setup_state::of(&facts)
 }
 
@@ -5147,7 +5179,7 @@ fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, sub: Opt
     let skipped = player_sets_up(st, id);
     if own_program || skipped {
         let rows: Vec<inputs::Row> = vec![];
-        return setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: "", own_program, skipped });
+        return setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: "", cut: false, own_program, skipped });
     }
     game_status(st, g, p, sub)
 }
@@ -10638,7 +10670,7 @@ mod tests {
         let mut g = Installed { id: "combo".into(), path: game, tag: "v1".into(), set_up: "v1".into(), ..Default::default() };
         g.setup_inputs.insert("game".into(), copy);
         let rows = crate::inputs::rows(&p, &g, &d).unwrap();
-        let facts = crate::setup_state::Facts { profile: &p, game: &g, rows: &rows, set_up: &g.set_up, own_program: false, skipped: false };
+        let facts = crate::setup_state::Facts { profile: &p, game: &g, rows: &rows, set_up: &g.set_up, cut: false, own_program: false, skipped: false };
         let status = crate::setup_state::of(&facts);
         assert!(status.ready, "{status:?}");
         let _ = std::fs::remove_dir_all(&d);
@@ -11388,7 +11420,7 @@ mod set_up_marks_tests {
 
     fn status(p: &profile::Profile, g: &Installed, sub: &str, dir: &Path) -> setup_state::Status {
         let rows = inputs::rows(p, g, dir).unwrap();
-        setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, Some(sub)), own_program: false, skipped: false })
+        setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, Some(sub)), cut: cut_of(g, Some(sub)), own_program: false, skipped: false })
     }
 
     #[test]
