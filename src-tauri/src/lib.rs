@@ -3861,7 +3861,7 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     let copy = if job.from_kept { None } else { inputs::main_path(p, g) };
     if let Some(pr) = &p.prepare {
         emit(SetupEv { step: "extras".into(), text: pr.label.clone(), ..Default::default() });
-        let pr = pr.with_inputs(&inputs::available(p, g, job.dir));
+        let pr = pr.with_inputs(&inputs::available(p, g, job.dir), pr.through_proton(&g.path));
         let extra = prepare_extra(job.dir, &pr, &g.prepare_opts);
         let handed = p.handed(copy.as_deref());
         let report = |pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() });
@@ -4236,18 +4236,29 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     let temp = setup_temp::SetupTemp::make(install)?;
     let data = profile::data_dir(install);
     let _ = std::fs::create_dir_all(&data);
+    // A Windows step on Linux (a Windows-only game's builder): through the same Proton the game
+    // plays with, its paths given the way Windows programs read them there (Z:\home\...).
+    let wine = pr.through_proton(install);
+    let _w = profile::WineFill::new(wine);
+    let as_given = |p: &Path| if wine { profile::wine_path(&p.to_string_lossy()) } else { p.to_string_lossy().to_string() };
     let args = prepare_args(pr, install, copy, extra);
-    let mut c = std::process::Command::new(&exe);
+    let mut c = if wine {
+        let r = proton::runner().ok_or("This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.")?;
+        let shared = proton::data_dir().ok_or("Couldn't find the launcher's Proton prefix.")?;
+        proton::std_command(&r, &shared, &exe)
+    } else {
+        std::process::Command::new(&exe)
+    };
     sysenv::clean_std(&mut c);
     // As for Play: the step can tell it was started from here (so it never updates itself), and
     // where to write.
-    c.env("RECOMPLAUNCHER", "1").env("RECOMPLAUNCHER_VERSION", env!("CARGO_PKG_VERSION")).env("RECOMPLAUNCHER_DATA", &data);
+    c.env("RECOMPLAUNCHER", "1").env("RECOMPLAUNCHER_VERSION", env!("CARGO_PKG_VERSION")).env("RECOMPLAUNCHER_DATA", as_given(&data));
     for (k, v) in pr.env_vars(install, copy) {
         c.env(k, v);
     }
     // After the step's own: the temp folder is the launcher's to give.
     for (k, v) in temp.env() {
-        c.env(k, v);
+        c.env(k, as_given(v));
     }
     // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
     if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {

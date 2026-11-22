@@ -719,6 +719,10 @@ settings are written. It runs again whenever the player changes their copy.
   only scratch files there. The game itself, when Play starts it, gets the system's own temp folder.
 - The step starts only with at least 1 GB free on the game's drive; otherwise the player is asked
   to free some up first.
+- On Linux and the Steam Deck, a Windows program (`.exe`, `.bat`) runs through the same Proton the
+  game plays with, so a Windows-only release can be set up there too. The paths it gets for the
+  player's files (`{game}`, `{input:...}`, `RECOMPLAUNCHER_DATA`, the temp folder) are Windows paths
+  (`Z:\home\...`).
 - On Windows, if what you print says a path was too long (a `PathTooLongException`, "The filename
   or extension is too long"), the player is told to use a library folder with a shorter path or to
   turn on Windows' long paths setting. The launcher never changes that setting.

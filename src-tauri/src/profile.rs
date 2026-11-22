@@ -224,13 +224,20 @@ impl Prepare {
     }
 
     /// The step with the player's named inputs in its arguments and environment.
-    pub fn with_inputs(&self, inputs: &BTreeMap<String, PathBuf>) -> Prepare {
+    /// `wine`: a Windows step run through Proton or Wine on Linux, given the paths as it reads them.
+    pub fn with_inputs(&self, inputs: &BTreeMap<String, PathBuf>, wine: bool) -> Prepare {
         let mut pr = self.clone();
         // Omit an argument containing an absent optional/conditional token. Put flags in the same
         // argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
-        pr.args = crate::inputs::arguments(&self.args, inputs, false);
-        pr.env = self.env.iter().map(|(k, v)| (k.clone(), crate::inputs::expand(v, inputs, false))).collect();
+        pr.args = crate::inputs::arguments(&self.args, inputs, wine);
+        pr.env = self.env.iter().map(|(k, v)| (k.clone(), crate::inputs::expand(v, inputs, wine))).collect();
         pr
+    }
+
+    /// Whether it's a Windows program that runs through Proton or Wine here (on Linux), as the
+    /// game's own Windows build does.
+    pub fn through_proton(&self, install: &Path) -> bool {
+        !cfg!(windows) && self.program_in(install).is_some_and(|e| crate::proton::is_windows_program(&e))
     }
 
     /// Its program in the game's folder: a name it gives, or on Linux and Mac the native build by
@@ -1197,9 +1204,9 @@ pub fn wine_path(p: &str) -> String {
 }
 
 /// While it's alive, filling in is for a Windows program under Proton (when `on`).
-struct WineFill(bool);
+pub struct WineFill(bool);
 impl WineFill {
-    fn new(on: bool) -> Self {
+    pub fn new(on: bool) -> Self {
         WineFill(WINE.with(|w| w.replace(on)))
     }
 }
@@ -4120,7 +4127,7 @@ mod tests {
     fn prepare_env_takes_named_inputs_and_drops_a_missing_one() {
         let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"env":{"PATCH":"{input:patch}","DLC":"{input:dlc}"}}}"#).unwrap();
         let given = BTreeMap::from([("patch".to_string(), PathBuf::from("/files/patch.zip"))]);
-        let pr = p.prepare.unwrap().with_inputs(&given);
+        let pr = p.prepare.unwrap().with_inputs(&given, false);
         let e = pr.env_vars(Path::new("/games/x"), None);
         assert_eq!(e, vec![("PATCH".to_string(), "/files/patch.zip".to_string())]);
     }
@@ -4391,3 +4398,26 @@ mod dead_link_tests {
     }
 }
 
+/// A Windows-only game's setup step on Linux runs through Proton, as its game does.
+#[cfg(all(test, not(windows)))]
+mod proton_step_tests {
+    use super::*;
+
+    #[test]
+    fn a_windows_setup_program_runs_through_proton_with_windows_paths() {
+        let d = std::env::temp_dir().join(format!("rl-proton-step-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Builder.exe"), b"MZ").unwrap();
+        std::fs::write(d.join("builder.sh"), b"#!/bin/sh").unwrap();
+        let step = |program: &str| Prepare { program: vec![program.into()], args: vec!["--disc={input:disc}".into()], ..Default::default() };
+        assert!(step("Builder.exe").through_proton(&d));
+        assert!(!step("builder.sh").through_proton(&d));
+        // Not in the release: nothing to run through anything.
+        assert!(!step("Missing.exe").through_proton(&d));
+        let paths = BTreeMap::from([("disc".to_string(), PathBuf::from("/home/me/Games/disc.iso"))]);
+        assert_eq!(step("Builder.exe").with_inputs(&paths, true).args, [r"--disc=Z:\home\me\Games\disc.iso"]);
+        assert_eq!(step("builder.sh").with_inputs(&paths, false).args, ["--disc=/home/me/Games/disc.iso"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
