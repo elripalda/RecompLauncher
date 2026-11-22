@@ -58,6 +58,78 @@ fn game_in(dir: &Path, raw: Option<&Value>, name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// The manifest in today's SDK, for the developer to copy into their release: `game` (and its
+/// `update`) as the inputs `game` and `update`, first in the list, `{game}` written as
+/// `{input:game}`, and what's ignored now left out (`prepare.version`, `prepare.timeout`,
+/// `requires`, `min`). None when it's in today's SDK already.
+pub fn converted(raw: &Value) -> Option<Value> {
+    let mut v = raw.clone();
+    let o = v.as_object_mut()?;
+    let mut changed = false;
+    for k in IGNORED_KEYS {
+        changed |= o.remove(*k).is_some();
+    }
+    if let Some(pr) = o.get_mut("prepare").and_then(Value::as_object_mut) {
+        for k in ["version", "timeout"] {
+            changed |= pr.remove(k).is_some();
+        }
+    }
+    let Some(game) = o.remove("game") else { return changed.then_some(v) };
+    let g: profile::GameCopy = serde_json::from_value(game).ok()?;
+    let mut lifted = vec![crate::inputs::Input::from_copy(&g)];
+    if let Some(up) = g.update.as_ref() {
+        lifted.push(crate::inputs::Input::from_extra(up));
+    }
+    let own: Vec<Value> = o.get("inputs").and_then(Value::as_array).cloned().unwrap_or_default();
+    let taken = |id: &str| own.iter().any(|i| i.get("id").and_then(Value::as_str) == Some(id));
+    let mut list: Vec<Value> = lifted.iter().filter(|i| !taken(&i.id)).map(input_json).collect();
+    list.extend(own);
+    for (k, x) in o.iter_mut() {
+        name_main_input(k, x);
+    }
+    o.insert("inputs".into(), Value::Array(list));
+    Some(v)
+}
+
+/// An input as a developer writes it: what isn't its default left out.
+fn input_json(i: &crate::inputs::Input) -> Value {
+    let mut v = serde_json::to_value(i).unwrap_or(Value::Null);
+    let Some(o) = v.as_object_mut() else { return v };
+    let default = |k: &str, x: &Value| match x {
+        Value::Null => true,
+        Value::Bool(b) => !b,
+        Value::String(s) => s.is_empty() || (k == "role" && s == "game"),
+        Value::Array(a) => a.is_empty(),
+        Value::Object(m) => m.is_empty(),
+        _ => false,
+    };
+    // Its check as written: only what it checks.
+    if let Some(c) = o.get_mut("check").and_then(Value::as_object_mut) {
+        c.retain(|k, x| !default(k, x));
+    }
+    o.retain(|k, x| k == "id" || k == "label" || !default(k, x));
+    // Formats as written: `extensions` and `requires` only when they say something.
+    if let Some(list) = o.get_mut("formats").and_then(Value::as_array_mut) {
+        for f in list.iter_mut().filter_map(Value::as_object_mut) {
+            f.retain(|_, x| !x.as_array().is_some_and(|a| a.is_empty()));
+        }
+    }
+    v
+}
+
+/// `{game}` in every text but the inputs, as `{input:game}`: the same file, by its input's name.
+fn name_main_input(key: &str, v: &mut Value) {
+    if key == "inputs" {
+        return;
+    }
+    match v {
+        Value::String(s) if s.contains("{game}") => *s = s.replace("{game}", "{input:game}"),
+        Value::Array(list) => list.iter_mut().for_each(|x| name_main_input("", x)),
+        Value::Object(m) => m.iter_mut().for_each(|(k, x)| name_main_input(k, x)),
+        _ => {}
+    }
+}
+
 fn read_raw(dir: &Path) -> Option<Value> {
     profile::release_profile(dir).map(|p| p.raw)
         .or_else(|| std::fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()))
@@ -228,6 +300,9 @@ pub struct Report {
     /// file), "saves" (says where it saves).
     caps: Vec<&'static str>,
     items: Vec<Item>,
+    /// The file in today's SDK, when it isn't yet (see `converted`), to copy into the release.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    converted: Option<String>,
 }
 
 /// The setup's flow and what it can do, read from the profile as it is (no new fields needed).
@@ -269,6 +344,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     let embedded = profile::release_profile(&dir).filter(|p| p.embedded);
     let mut items = vec![];
     let mut error = String::new();
+    let mut conv: Option<String> = None;
     let mut prof: Option<profile::Profile> = None;
     let has_file = file.is_file() || embedded.is_some();
     if has_file {
@@ -278,6 +354,10 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
             Ok(text) => match serde_json::from_str::<Value>(&text) {
                 Err(e) => error = format!("It isn't valid JSON: {e}."),
                 Ok(v) => {
+                    conv = converted(&v).and_then(|c| serde_json::to_string_pretty(&c).ok());
+                    if v.get("game").is_some() {
+                        items.push(warn("\"game\" is read as the input \"game\"", "Named inputs are the one way to ask for files now, with every option game had. Your file in today's format is below: use it in your next release."));
+                    }
                     if let Some(o) = v.as_object() {
                         let unknown: Vec<&String> = o.keys().filter(|k| !TOP_KEYS.contains(&k.as_str()) && !IGNORED_KEYS.contains(&k.as_str())).collect();
                         let old: Vec<&String> = o.keys().filter(|k| IGNORED_KEYS.contains(&k.as_str())).collect();
@@ -349,7 +429,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     }
     let location = embedded.map(|p| p.location).unwrap_or_else(|| file.display().to_string());
     let (flow, caps) = prof.as_ref().filter(|p| p.format == 1).or(used.as_ref()).map(summary).unwrap_or(("", vec![]));
-    Ok(Report { source, file: location, has_file, error, level, flow, caps, items })
+    Ok(Report { source, file: location, has_file, error, level, flow, caps, items, converted: conv })
 }
 
 /// What "game.check" lets the launcher do with the player's copy.
@@ -626,16 +706,12 @@ fn keeps_copy_items(p: &profile::Profile, dir: &Path) -> Vec<Item> {
     out
 }
 
-/// prepare.version: changing it is how a json asks players who set up already to run it again.
+/// prepare.version: ignored now. Every new release builds again by itself.
 fn version_item(v: &str) -> Option<Item> {
     if v.is_empty() {
         return None;
     }
-    Some(if v.trim() != v {
-        warn(format!("\"prepare.version\" is \"{v}\" with spaces around it"), "Spaces count too: take them out so it doesn't change by accident.")
-    } else {
-        ok(format!("Setup step version: {v}. Changing it asks everyone who set up already to run setup again"))
-    })
+    Some(warn("Ignored: \"prepare.version\"", "Every new release of your game builds again by itself, so there's nothing to bump. You can delete it."))
 }
 
 /// What's wrong with a setup step's options (prepare.options), in plain words, or what's fine.
@@ -841,10 +917,64 @@ mod tests {
     }
 
     #[test]
-    fn the_setup_steps_version_is_named_in_the_check() {
+    fn the_setup_steps_version_is_said_to_be_ignored() {
         assert!(super::version_item("").is_none());
-        assert!(super::version_item("2").unwrap().text.contains("run setup again"));
-        assert!(super::version_item(" 2").unwrap().text.contains("spaces"));
+        let item = super::version_item("2").unwrap();
+        assert_eq!(item.level, "warn");
+        assert!(item.text.contains("Ignored"));
+    }
+
+    /// Every developer manifest (`RL_CORPUS`, kept out of the repository), converted, reads as the
+    /// same profile: the same inputs with the same rules, and the same start and setup step.
+    #[test]
+    fn the_corpus_converts_to_the_same_profile() {
+        let Some(root) = std::env::var_os("RL_CORPUS").map(PathBuf::from) else { return };
+        let mut n = 0;
+        for e in std::fs::read_dir(root.join("manifests")).unwrap().flatten() {
+            let what = e.file_name().to_string_lossy().to_string();
+            let Ok(raw) = serde_json::from_slice::<Value>(&std::fs::read(e.path()).unwrap()) else { continue };
+            let Ok(mut before) = serde_json::from_value::<profile::Profile>(raw.clone()) else { continue };
+            let Some(v) = super::converted(&raw) else { continue };
+            let after: profile::Profile = serde_json::from_value(v).unwrap_or_else(|e| panic!("{what}: {e}"));
+            before.lift_game();
+            assert!(after.game.is_none(), "{what}");
+            let rules = |p: &profile::Profile| p.inputs.iter().map(|i| serde_json::json!([i.id, serde_json::to_value(i.as_copy()).unwrap(), serde_json::to_value(i.as_extra()).unwrap()])).collect::<Vec<_>>();
+            assert_eq!(rules(&after), rules(&before), "{what}: the inputs changed");
+            let start = |p: &profile::Profile| serde_json::to_string(&p.start).unwrap().replace("{game}", "{input:game}");
+            assert_eq!(start(&after), start(&before), "{what}: start changed");
+            let args = |p: &profile::Profile| p.prepare.as_ref().map(|x| x.args.join(" ").replace("{game}", "{input:game}"));
+            assert_eq!(args(&after), args(&before), "{what}: the setup step changed");
+            assert_eq!(crate::inputs::validate(&after).is_ok(), crate::inputs::validate(&before).is_ok(), "{what}");
+            n += 1;
+        }
+        assert!(n >= 170, "only {n} converted");
+    }
+
+    #[test]
+    fn game_is_converted_to_inputs_for_the_developer() {
+        let raw = serde_json::json!({
+            "format": 1, "requires": ["start"], "min": "0.90.0-beta.27",
+            "game": { "kind": "iso_or_folder", "label": "Your disc", "check": { "iso9660": "SLUS_206.51" }, "update": { "into": "update", "label": "The update", "optional": true } },
+            "inputs": [{ "id": "dlc", "label": "DLC", "role": "dlc", "optional": true, "formats": [{ "type": "file" }] }],
+            "prepare": { "program": ["b.exe"], "args": ["--game={game}"], "version": "3", "timeout": 600 },
+            "start": { "program": ["g.exe"], "args": ["--rom", "{game}"] }
+        });
+        let v = super::converted(&raw).unwrap();
+        for gone in ["game", "requires", "min"] {
+            assert!(v.get(gone).is_none(), "{gone}");
+        }
+        assert!(v["prepare"].get("version").is_none() && v["prepare"].get("timeout").is_none());
+        assert_eq!(v["prepare"]["args"], serde_json::json!(["--game={input:game}"]));
+        assert_eq!(v["start"]["args"], serde_json::json!(["--rom", "{input:game}"]));
+        let ids: Vec<&str> = v["inputs"].as_array().unwrap().iter().filter_map(|i| i["id"].as_str()).collect();
+        assert_eq!(ids, ["game", "update", "dlc"]);
+        assert_eq!(v["inputs"][0], serde_json::json!({ "id": "game", "label": "Your disc", "formats": [{ "type": "file" }, { "type": "folder" }], "check": { "iso9660": "SLUS_206.51" } }));
+        assert_eq!(v["inputs"][1], serde_json::json!({ "id": "update", "label": "The update", "role": "update", "optional": true, "formats": [{ "type": "file" }], "into": "update" }));
+        // It reads as a profile that checks out.
+        let p: profile::Profile = serde_json::from_value(v).unwrap();
+        assert!(crate::inputs::validate(&p).is_ok());
+        // Already in today's SDK: nothing to suggest.
+        assert!(super::converted(&serde_json::json!({ "format": 1, "start": { "program": ["g"] } })).is_none());
     }
 
     use super::*;
