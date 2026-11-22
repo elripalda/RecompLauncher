@@ -367,7 +367,7 @@
         },
         "options": {
           "type": "array",
-          "description": "Ticks shown on the setup screen before the step runs. Each one adds its args when it's on. For a vendor's SDK your builder downloads, like NVIDIA's DLSS SDK: the player accepts its license by ticking it.",
+          "description": "Ticks shown on the setup screen before the step runs. Each one adds its args when it's on. For a vendor's SDK your setup step downloads, like NVIDIA's DLSS SDK: the player accepts its license by ticking it.",
           "items": {
             "type": "object",
             "required": [
@@ -436,7 +436,7 @@
               "required": {
                 "type": "boolean",
                 "default": false,
-                "description": "Setup can't start until it's ticked, on the PCs it's shown on (os and gpu still decide that). For terms the build can't run without, like a compiler's license: with a license it still starts off, and the player accepts it by ticking it. Launchers older than 0.90.0-beta.64 ignore it, so keep your builder's own check too until your min is that version."
+                "description": "Setup can't start until it's ticked, on the PCs it's shown on (os and gpu still decide that). For terms the build can't run without, like a compiler's license: with a license it still starts off, and the player accepts it by ticking it. Launchers older than 0.90.0-beta.64 ignore it, so keep your setup step's own check too until your min is that version."
               }
             },
             "additionalProperties": false
