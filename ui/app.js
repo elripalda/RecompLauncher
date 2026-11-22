@@ -3554,11 +3554,16 @@ function noteBuilt(id) {
   const built = Object.assign({}, (S.settings.ui || {}).built_after, { [pid]: tag });
   saveUi({ built_after: built }, true);
 }
+// A build started or ended: Downloads (the desktop's and Big Picture's) and the sidebar's count.
+function buildsChanged() {
+  renderSide();
+  if (S.view === 'downloads') render(true);
+  if (window.tvRedraw) window.tvRedraw();
+}
 // A build ended (or failed): it leaves the Downloads list and the sidebar's count.
 function buildLeft(id) {
   if (S.building === id) S.building = null;
-  renderSide();
-  if (S.view === 'downloads') render(true);
+  buildsChanged();
 }
 // Waiting in the queue, or building now.
 const buildWaits = (id) => S.building === id || S.buildQ.includes(id);
@@ -3709,7 +3714,7 @@ T.event.listen('setup', ({ payload: p }) => {
     paintSetupProgress(p.id);
     paintBuildRow(p.id);
     // A new build: a row on Downloads and one more in the sidebar's count.
-    if (started) { renderSide(); if (S.view === 'downloads') render(true); }
+    if (started) buildsChanged();
   }
   if (SU.el && p.id === SU.id && SU.stage === 'run') {
     SU.q.push(p);
@@ -4464,8 +4469,13 @@ function buildPct(id) {
 // Setup's Set Up, Finish the Update's Build Now), watched in its window or hidden. Downloads lists
 // them and the sidebar counts them. A game still downloading shows as its download.
 function buildsNow() {
-  const ids = [S.building, ...Object.keys(S.setupJobs || {})];
-  return [...new Set(ids)].filter((id) => id && !S.jobs[id]);
+  const jobs = S.setupJobs || {};
+  // Downloads shows downloads and builds only: a setup with no build step of its own (it reads and
+  // checks the copy, and sets the game up) stays off it. A build after an update that hasn't sent
+  // its first step yet counts.
+  const isBuild = (id) => !jobs[id] || !!jobs[id].extras;
+  const ids = [S.building, ...Object.keys(jobs)];
+  return [...new Set(ids)].filter((id) => id && !S.jobs[id] && isBuild(id));
 }
 // The Downloading list's title says what's moving now: Downloading, Building, or both. A row waiting
 // its turn doesn't change it; with nothing moving (all waiting or paused), what waits says it.
@@ -4479,19 +4489,23 @@ function dlTitle(builds, buildsWaiting) {
   return building ? t('Building') : t('Downloading');
 }
 function buildLine(id) {
-  // Easy Setup checks the whole copy before the game's own build step, and that's the long part.
-  if (((S.setupJobs || {})[id] || {}).step === 'verify') return t('Checking your copy');
   const p = buildPct(id);
   return p ? tf('Building the game · {pct}%', { pct: p }) : t('Building the game');
 }
+// The build's row on Downloads, the desktop's and Big Picture's both (one may be drawn but hidden).
 function paintBuildRow(id) {
-  const line = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
-  if (line) line.textContent = buildLine(id);
-  const tr = document.querySelector(`[data-build-prog="${CSS.escape(id)}"] .track`);
-  if (!tr) return;
+  const key = CSS.escape(id);
   const p = buildPct(id);
-  tr.classList.toggle('busy', !p);
-  tr.querySelector('i').style.width = p + '%';
+  for (const line of $$(`[data-build-line="${key}"]`)) line.textContent = buildLine(id);
+  for (const tr of $$(`[data-build-prog="${key}"] .track`)) {
+    tr.classList.toggle('busy', !p);
+    tr.querySelector('i').style.width = p + '%';
+  }
+}
+// A build's bar in Big Picture's Downloads, its line under it like a download's.
+function buildBar(id) {
+  const p = buildPct(id);
+  return `<div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div><div class="lbl"><span data-build-line="${esc(id)}">${esc(buildLine(id))}</span><span></span></div></div>`;
 }
 function dlPhase(id) {
   const j = S.jobs[id] || (S.paused || {})[id] || {};
@@ -4611,7 +4625,7 @@ function pageDownloads() {
   // A build for an update has the pill of the version it builds; a first Easy Setup has none.
   const buildTag = (id) => (id === S.building || updateBuildDue(id) ? (S.library[id] || {}).tag : '');
   const buildRow = (id) => { const p = buildPct(id);
-    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, buildTag(id))}<span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, buildTag(id))}<span class="dl-phase" data-build-line="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
   const quietRow = (id, sub, act) => { const a = appOf(id);
     return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${sub}</span>${pillOf(id, nextTag(id))}</span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
   // An update held back for the build before it says so; any other waiting download says what

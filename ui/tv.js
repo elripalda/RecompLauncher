@@ -1192,7 +1192,11 @@
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
     const lu = S.launcherUpd;
     const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
-    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    // Builds, as on the desktop: the ones running with their bar, then the ones waiting their turn.
+    const builds = buildsNow();
+    const buildsWaiting = S.buildQ.filter((id) => !S.jobs[id] && !builds.includes(id));
+    const buildItems = builds.map((id) => item(id, '', 'b:' + id, buildBar(id))).concat(buildsWaiting.map((id) => item(id, esc(t('Waiting to build')), 'b:' + id)));
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id))), buildItems).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
