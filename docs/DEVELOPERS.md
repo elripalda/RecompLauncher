@@ -306,8 +306,11 @@ Which input for which file:
     it both formats, file and folder.
   - `ids`: the IDs your game reads, as on the copy: a GameCube or Wii disc's (`"GZ2E01"`, or
     `"GZ2"` for every region), an N64 cartridge's game code, a PlayStation or PS2 disc's serial,
-    or an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`). Another
-    game's copy is refused with the ID it has. For a PS4 game, list every region's title ID next
+    an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`), or an Xbox
+    360 game's title ID (`"4D5307FA"`), read from the `default.xex` in a disc image or an extracted
+    folder, and from a DLC or Games on Demand package. Another game's copy is refused with the ID it
+    has. For an Xbox 360 game, use this rather than `file: "default.xex"`: every Xbox 360 disc has
+    that file, so only the ID tells the games apart. For a PS4 game, list every region's title ID next
     to `file: "eboot.bin"`: every PS4 game has an `eboot.bin`, and a game's own title often has an
     edition or subtitle your catalog name doesn't, so the ID is how the launcher finds the
     player's folder. The developer check warns when a check by `eboot.bin` or `param.sfo` lists

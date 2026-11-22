@@ -951,7 +951,7 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9._-]{3,16}$"
           },
-          "description": "The disc or cartridge IDs it reads, as on the copy: a GameCube or Wii disc's (GZ2E01, or GZ2 for every region), an N64 cartridge's game code, a PlayStation disc's serial, an extracted PS3, PS4 or PS5 game's title ID from its param.sfo (CUSA00242). Another game's copy is refused, and the player's copies are recognised by it, even when the game's own title has an edition or subtitle the catalog name doesn't."
+          "description": "The disc or cartridge IDs it reads, as on the copy: a GameCube or Wii disc's (GZ2E01, or GZ2 for every region), an N64 cartridge's game code, a PlayStation disc's serial, an extracted PS3, PS4 or PS5 game's title ID from its param.sfo (CUSA00242), or an Xbox 360 game's title ID (4D5307FA) from the default.xex in a disc image or folder, or from a DLC or Games on Demand package. Another game's copy is refused, and the player's copies are recognised by it, even when the game's own title has an edition or subtitle the catalog name doesn't."
         }
       },
       "additionalProperties": false
