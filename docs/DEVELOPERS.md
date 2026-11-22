@@ -794,6 +794,14 @@ settings are written. It runs again whenever the player changes their copy.
   game when it's done. Players can turn on Build Again After Updates in the game's Manage tab to
   have it built in the background right after the update downloads. Reinstalling the same release
   doesn't build again.
+- **Every new release runs your setup step again**, so make it check before it builds. Keep a build
+  version of your own (your recompiler's version, or a number you bump when what the build makes
+  changes). If the game in your folder has the same build version, built from the same copy and
+  options, print `progress 1 Already built` and exit with 0. Write that version only once the build
+  has finished, and remove it before you start writing, so a build that was cut short never looks
+  finished.
+- **Don't tag a release for changes players don't get**, like docs, the README or CI. Each release
+  is a download for every player and a new run of your setup step.
 - To build into the player's install folder instead of their home folder, pass it to your setup step
   (`"args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"]`) and have the
   same program start the game from there (`"start": {"program": ["YourGame.exe"], "args": ["--play", "{install}/YourGame"]}`,
