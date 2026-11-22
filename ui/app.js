@@ -3576,7 +3576,10 @@ function queueBuild(id) {
 // The next one in the queue, when nothing else is setting up. A game whose build isn't due any
 // more (built from Play meanwhile), or that now needs the player, leaves the queue.
 async function pumpBuilds() {
-  if (S.building || S.pumping || Object.keys(S.setupJobs || {}).length || SU.stage === 'run') return;
+  // The setup window counts only while it's open: one hidden mid-build keeps its 'run' stage after
+  // that build ends, and the builds queued behind it would wait for good.
+  const windowRuns = !!SU.el && SU.stage === 'run';
+  if (S.building || S.pumping || Object.keys(S.setupJobs || {}).length || windowRuns) return;
   // One pass at a time: while it reads the next game's setup, a second update landing (Update
   // All) would otherwise find nothing building yet and start its own build beside it.
   S.pumping = true;
