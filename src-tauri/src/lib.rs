@@ -3849,18 +3849,18 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     if stopped() {
         return Err("Stopped.".into());
     }
-    // From here it writes over the last build. Until all of it has worked, the game is marked as
-    // cut short (saved first), so a Stop, the launcher closing or the PC going off partway leaves
-    // a game that builds again, instead of one that plays half a build.
-    if setup_state::needs_run(p) {
-        mark_cut(&st, job, true);
-    }
+    // Right before the build is written over (a disc unpacked, the setup step started), and not
+    // before: the game is marked as cut short (saved first) until all of it has worked, so a
+    // Stop, the launcher closing or the PC going off partway leaves a game that builds again
+    // instead of one that plays half a build. A setup that fails before then (no room, its
+    // program missing) leaves the last build playable.
+    let writing = || mark_cut(&st, job, true);
     let checked = if said.is_empty() { "Files selected.".to_string() } else { said.clone() };
     emit(SetupEv { step: "verify".into(), pct: 1.0, text: checked, verified: verified.clone(), ..Default::default() });
     // 2. A disc for a recomp that reads the disc's files: unpacked where it reads them.
     for i in p.inputs.iter().filter(|i| i.picked() && !i.extract.is_empty()) {
         let Some(image) = inputs::picked(g, &i.id).filter(|x| x.is_file()) else { continue };
-        let dest = unpack_disc(i, &image, &g.path, emit, stopped)?;
+        let dest = unpack_disc(i, &image, &g.path, emit, stopped, &writing)?;
         g.setup_inputs.insert(i.id.clone(), dest);
         g.unpacked_from.insert(i.id.clone(), image);
     }
@@ -3882,7 +3882,7 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
         let extra = prepare_extra(job.dir, &pr, &g.prepare_opts);
         let handed = p.handed(copy.as_deref());
         let report = |pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() });
-        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped);
+        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped, &writing);
         // Built from what it kept and that didn't work: the player's copy builds it.
         done.map_err(|e| if job.from_kept { kept_failed(&e) } else { e })?;
     }
@@ -4051,8 +4051,9 @@ fn remember_check(st: &App, rid: &str, input: &str, path: &Path, crc32: &str) {
 }
 
 /// A disc image unpacked for a recomp that reads the disc's files (`extract`): into its `into`
-/// folder (or game-files), checked for the file it must have. Gives back that folder.
-fn unpack_disc(i: &inputs::Input, image: &Path, install: &Path, emit: &dyn Fn(SetupEv), stopped: &dyn Fn() -> bool) -> Result<PathBuf, String> {
+/// folder (or game-files), checked for the file it must have. Gives back that folder. `writing`
+/// is called once its checks pass, right before it writes.
+fn unpack_disc(i: &inputs::Input, image: &Path, install: &Path, emit: &dyn Fn(SetupEv), stopped: &dyn Fn() -> bool, writing: &dyn Fn()) -> Result<PathBuf, String> {
     let into = i.into.trim().trim_matches(['/', '\\']).to_string();
     let dest = if into == "." {
         install.to_path_buf()
@@ -4070,6 +4071,7 @@ fn unpack_disc(i: &inputs::Input, image: &Path, install: &Path, emit: &dyn Fn(Se
         }
     }
     let progress = |d: u64, t: u64| emit(SetupEv { step: "extras".into(), pct: d as f32 / t.max(1) as f32, done: d, total: t, text: say.into(), ..Default::default() });
+    writing();
     if let Err(e) = extract::unpack(image, &i.extract, &dest, &progress, stopped) {
         return Err(if stopped() { "Stopped.".into() } else { format!("Couldn't unpack the disc: {e}") });
     }
@@ -4449,7 +4451,10 @@ mod win_job {
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
-fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
+/// Runs the recomp's setup step. `writing` is called once the step has started, when it can
+/// write over the last build; a step that can't start (its program missing, no room, no Proton)
+/// never calls it.
+fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn()) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
     // On Linux an AppImage is never run, its setup step included: Play unpacks the game first.
@@ -4509,6 +4514,9 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     #[cfg(target_os = "linux")]
     die_with_launcher(&mut c);
     let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
+    // Started: from here it can write over the last build. (Not before: a step Windows Security
+    // blocked never ran.)
+    writing();
     // On Windows the same, through a job that ends the step (and what it started) when the
     // launcher is gone. Held until the step is.
     #[cfg(windows)]
@@ -11447,6 +11455,7 @@ mod tests {
                 }
                 stopped.load(std::sync::atomic::Ordering::Relaxed)
             },
+            &|| {},
         );
 
         assert_eq!(res.unwrap_err(), "Stopped.");
@@ -11489,13 +11498,41 @@ mod prepare_env_tests {
         PathBuf::from(std::fs::read_to_string(dir.join(file)).unwrap().trim())
     }
 
+    /// Set Up Again whose step can't start (its program missing): the last build isn't marked
+    /// as cut short, so the game still plays.
+    #[test]
+    fn a_step_that_cant_start_leaves_the_build_unmarked() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-nostart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = profile::Prepare { program: vec!["missing-builder".into()], ..Default::default() };
+        let marked = std::cell::Cell::new(0);
+        let res = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1));
+        assert!(res.is_err());
+        assert_eq!(marked.get(), 0, "nothing was written");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A step that starts is marked once, as it starts.
+    #[test]
+    fn a_step_that_starts_marks_the_build() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-marks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = tattler(&dir);
+        let marked = std::cell::Cell::new(0);
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1)).unwrap();
+        assert_eq!(marked.get(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_setup_step_gets_its_own_temp_folder_and_the_data_folder() {
         let dir = std::env::temp_dir().join(format!("rl-prep-env-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let pr = tattler(&dir);
-        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false).unwrap();
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap();
         let temp = dir.join(setup_temp::FOLDER);
         assert_eq!(said(&dir, "temp.txt"), temp);
         assert_eq!(said(&dir, "tmp.txt"), temp);
@@ -11515,7 +11552,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(dir.join(setup_temp::FOLDER)).unwrap();
         std::fs::write(dir.join(setup_temp::FOLDER).join("release.txt"), b"theirs").unwrap();
         let pr = tattler(&dir);
-        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false).unwrap_err();
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap_err();
         assert_eq!(e, setup_temp::NOT_OURS);
         assert!(!dir.join("temp.txt").exists(), "the step didn't run");
         assert!(dir.join(setup_temp::FOLDER).join("release.txt").is_file());
