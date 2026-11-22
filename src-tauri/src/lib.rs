@@ -4364,22 +4364,32 @@ fn die_with_launcher(c: &mut std::process::Command) {
     }
 }
 
-/// A process put in a job of its own that Windows ends when the job's last handle closes: when
-/// this is dropped, or when the launcher is killed or crashes and Windows closes its handles.
-/// Processes it starts are in the job too.
+/// A process put in a job of its own that Windows ends, with what it started, when the job's
+/// last handle closes without being let go: when the launcher is killed or crashes and Windows
+/// closes its handles. Dropped while the launcher runs (the step ended or was stopped), the job
+/// is let go first, so what the step left running on purpose (a runtime installer it started
+/// without waiting, a helper) goes on as it did before.
 #[cfg(windows)]
 mod win_job {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE};
+    use windows::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE};
 
     pub struct Job(HANDLE);
 
     impl Drop for Job {
         fn drop(&mut self) {
             unsafe {
+                let _ = set_limits(self.0, JOB_OBJECT_LIMIT(0));
                 let _ = CloseHandle(self.0);
             }
         }
+    }
+
+    unsafe fn set_limits(job: HANDLE, flags: JOB_OBJECT_LIMIT) -> windows::core::Result<()> {
+        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = flags;
+        let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as *const std::ffi::c_void, size)
     }
 
     /// None when Windows won't make the job: the process then runs as it did before, outside one.
@@ -4387,10 +4397,7 @@ mod win_job {
         use std::os::windows::io::AsRawHandle;
         unsafe {
             let job = Job(CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?);
-            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
-            SetInformationJobObject(job.0, JobObjectExtendedLimitInformation, &info as *const _ as *const std::ffi::c_void, size).ok()?;
+            set_limits(job.0, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE).ok()?;
             AssignProcessToJobObject(job.0, HANDLE(child.as_raw_handle())).ok()?;
             Some(job)
         }
@@ -4398,19 +4405,42 @@ mod win_job {
 
     #[cfg(test)]
     mod tests {
-        /// The launcher gone (its handle to the job closed): the step ends, and what it started.
-        #[test]
-        fn a_step_ends_when_its_job_is_dropped() {
-            let mut step = std::process::Command::new("cmd").args(["/c", "ping -n 60 127.0.0.1 > nul"]).spawn().unwrap();
-            let job = super::kill_on_close(&step).expect("a job");
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            assert!(step.try_wait().unwrap().is_none(), "still running while the job is held");
-            drop(job);
+        fn ping() -> std::process::Child {
+            std::process::Command::new("cmd").args(["/c", "ping -n 30 127.0.0.1 > nul"]).spawn().unwrap()
+        }
+
+        fn ended(step: &mut std::process::Child) -> bool {
             let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while step.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            assert!(step.try_wait().unwrap().is_some(), "ended with its job");
+            step.try_wait().unwrap().is_some()
+        }
+
+        /// The launcher gone (Windows closes its handle to the job, nothing let go): the step ends.
+        #[test]
+        fn a_step_ends_when_the_launcher_is_gone() {
+            let mut step = ping();
+            let job = super::kill_on_close(&step).expect("a job");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(step.try_wait().unwrap().is_none(), "still running while the job is held");
+            let handle = job.0;
+            std::mem::forget(job);
+            unsafe {
+                let _ = windows::Win32::Foundation::CloseHandle(handle);
+            }
+            assert!(ended(&mut step), "ended with the launcher");
+        }
+
+        /// The job dropped while the launcher runs: what's still in it goes on.
+        #[test]
+        fn a_dropped_job_leaves_what_runs_in_it() {
+            let mut step = ping();
+            let job = super::kill_on_close(&step).expect("a job");
+            drop(job);
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            assert!(step.try_wait().unwrap().is_none(), "still running after the drop");
+            let _ = step.kill();
         }
     }
 }
