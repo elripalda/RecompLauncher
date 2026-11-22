@@ -740,6 +740,8 @@ const CA = {
   pc: CA_SVG('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
   any: CA_SVG('<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 19h19"/>'),
   cloud: CA_SVG('<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="M12 15.5v-5m-2.2 2.2L12 10.5l2.2 2.2"/>', 40),
+  all: CA_SVG('<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2 2 3.2-3.6"/>', 26),
+  pick: CA_SVG('<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/>', 26),
   chev: CA_SVG('<path d="m9 6 6 6-6 6"/>', 18),
 };
 const CLOUD_ALL_LEAD = N_('After you play, a game\'s saves can go to your account, ready on any PC. A copy always stays on this PC.');
@@ -764,8 +766,8 @@ function noModal() {
 // The two answers, the same words on the desktop and in Big Picture mode.
 function cloudAllChoices() {
   return [
-    { v: true, tvIcon: 'cloud', label: t('Every game'), tag: t('Recommended'), sub: t('Backed up after you play. Turn it off for one game in its Manage tab.') },
-    { v: false, tvIcon: 'desk', label: t('Only games I pick'), sub: t('Saves stay on this PC. Turn cloud saves on for a game in its Manage tab.') },
+    { v: true, icon: CA.all, tvIcon: 'cloud', label: t('Every game'), tag: t('Recommended'), sub: t('Backed up after you play. Turn it off for one game in its Manage tab.') },
+    { v: false, icon: CA.pick, tvIcon: 'desk', label: t('Only games I pick'), sub: t('Saves stay on this PC. Turn cloud saves on for a game in its Manage tab.') },
   ];
 }
 
@@ -778,7 +780,7 @@ async function pickCloudAll() {
   // Games switched one by one before this was asked keep that.
   const kept = Object.values(S.library).some((g) => g.cloud != null);
   const foot = (kept ? t('Games you already set keep their setting.') + ' ' : '') + t('You can change this any time in Settings → Account.');
-  const row = (c, i) => `<button type="button" class="ca-pick${c.tag ? ' rec' : ''}" data-x="c${i}"><span class="k"><b>${esc(c.label)}${c.tag ? `<em>${esc(c.tag)}</em>` : ''}</b><span>${esc(c.sub)}</span></span>${CA.chev}</button>`;
+  const row = (c, i) => `<button type="button" class="ca-pick${c.tag ? ' rec' : ''}" data-x="c${i}"><span class="ic">${c.icon}</span><span class="k"><b>${esc(c.label)}${c.tag ? `<em>${esc(c.tag)}</em>` : ''}</b><span>${esc(c.sub)}</span></span>${CA.chev}</button>`;
   const art = `<div class="ca-art" aria-hidden="true"><span class="dev">${CA.pc}<small>${esc(t('This PC'))}</small></span><i class="ln"></i><span class="cl">${CA.cloud}</span><i class="ln"></i><span class="dev">${CA.any}<small>${esc(t('Any PC'))}</small></span></div>`;
   return new Promise((res) => {
     let picked = null;
