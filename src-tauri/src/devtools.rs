@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 const FILE: &str = "recomplauncher.json";
-const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves", "inputs", "requires", "min", "games", "system"];
+const TOP_KEYS: &[&str] = &["$schema", "format", "name", "repo", "game", "start", "config", "folders", "exit_codes", "settings", "groups", "actions", "prepare", "looks", "mods", "saves", "inputs", "games", "system"];
+/// Written by manifests from before, and ignored: what a release's own manifest describes is the
+/// release, so it never has to tell an older launcher what to leave out.
+const IGNORED_KEYS: &[&str] = &["requires", "min"];
 
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
@@ -276,7 +279,14 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
                 Err(e) => error = format!("It isn't valid JSON: {e}."),
                 Ok(v) => {
                     if let Some(o) = v.as_object() {
-                        let unknown: Vec<&String> = o.keys().filter(|k| !TOP_KEYS.contains(&k.as_str())).collect();
+                        let unknown: Vec<&String> = o.keys().filter(|k| !TOP_KEYS.contains(&k.as_str()) && !IGNORED_KEYS.contains(&k.as_str())).collect();
+                        let old: Vec<&String> = o.keys().filter(|k| IGNORED_KEYS.contains(&k.as_str())).collect();
+                        if !old.is_empty() {
+                            items.push(warn(
+                                format!("Ignored: {}", old.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", ")),
+                                "The launcher reads the recomplauncher.json in your release, so it never has to say which launcher it needs. You can delete them.",
+                            ));
+                        }
                         if !unknown.is_empty() {
                             items.push(warn(
                                 format!("Not part of the format: {}", unknown.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", ")),
@@ -877,11 +887,15 @@ mod tests {
     }
 
     #[test]
-    fn the_launchers_features_are_the_schemas() {
+    fn requires_and_min_are_the_stores_not_the_sdks() {
+        // boot::FEATURES stays for the store's catalog profiles (boot::fit); a developer's manifest
+        // ships in its own release, so it never says which launcher it needs.
         let s = schema();
-        let listed: std::collections::BTreeSet<&str> = s["definitions"]["launcherFeature"]["enum"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
-        let ours: std::collections::BTreeSet<&str> = crate::boot::FEATURES.iter().copied().collect();
-        assert_eq!(listed, ours, "boot.rs FEATURES and the schema's launcherFeature differ");
+        for k in IGNORED_KEYS {
+            assert!(s["properties"].get(*k).is_none(), "{k} is still in the schema");
+            assert!(!TOP_KEYS.contains(k));
+        }
+        assert!(s["definitions"].get("launcherFeature").is_none());
     }
 
     #[test]
