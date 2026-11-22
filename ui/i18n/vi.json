@@ -1909,7 +1909,6 @@
  "Install It": "Cài đặt",
  "Its Linux build needs a newer Linux": "Bản dựng Linux cần Linux mới hơn",
  "It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game's page, or update your system.": "Nó được dựng cho thư viện hệ thống (glibc) mới hơn bản có trên Linux này. Bản Windows của nó thường chạy tốt qua Proton: hãy chuyển sang bản đó từ trang của trò chơi, hoặc cập nhật hệ thống.",
- "It needs to be told where your game files are": "Cần cho nó biết tệp trò chơi của bạn ở đâu",
  "That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup.": "Đó là ảnh đĩa hoặc ROM của trò chơi, không phải chương trình khởi chạy nó. Hãy chọn chương trình riêng của recomp (thường là tệp .exe trong thư mục của nó); bản sao trò chơi của bạn được chọn trong phần thiết lập của nó.",
  "That's a compressed file, not a program. Unpack it first, then pick the program inside.": "Đó là tệp nén, không phải chương trình. Hãy giải nén trước, rồi chọn chương trình bên trong.",
  "That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage).": "Đó không phải chương trình. Hãy chọn chương trình khởi chạy trò chơi (thường là tệp .exe, hoặc trên Linux là tệp không có đuôi hay tệp .AppImage).",

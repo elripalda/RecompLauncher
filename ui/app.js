@@ -8500,8 +8500,6 @@ const TS_TEXT = [
   N_('The GE-Proton download didn\'t have Proton in it.'),
   N_('Its Linux build needs a newer Linux'),
   N_('It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game\'s page, or update your system.'),
-  N_('It needs to be told where your game files are'),
-  N_('This recomp reads your extracted game from a folder given to it when it starts, and its page doesn\'t set that up yet. Add --game_data_root and the folder with your game\'s files (the one with default.xex) to its launch options in its Manage menu.'),
   N_('That\'s your game\'s disc image or ROM, not the program that starts it. Pick the recomp\'s own program (usually an .exe in its folder); your copy of the game goes in its setup.'),
   N_('That\'s a compressed file, not a program. Unpack it first, then pick the program inside.'),
   N_('That isn\'t a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage).'),

@@ -1909,7 +1909,6 @@
  "Install It": "تثبيته",
  "Its Linux build needs a newer Linux": "نسخة Linux منها تحتاج إلى Linux أحدث",
  "It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game's page, or update your system.": "صُنعت لمكتبة نظام (glibc) أحدث من الموجودة في Linux هذا. نسخة Windows منها تعمل عادةً بشكل جيد عبر Proton: انتقل إليها من صفحة اللعبة، أو حدّث نظامك.",
- "It needs to be told where your game files are": "يجب إخبارها بمكان ملفات اللعبة لديك",
  "That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup.": "هذه صورة قرص لعبتك أو ملف ROM الخاص بها، وليست البرنامج الذي يشغّلها. اختر برنامج اللعبة المعاد تجميعها نفسه (عادةً ملف .exe في مجلدها)؛ أما نسختك من اللعبة فمكانها في إعدادها.",
  "That's a compressed file, not a program. Unpack it first, then pick the program inside.": "هذا ملف مضغوط، وليس برنامجًا. فك ضغطه أولًا، ثم اختر البرنامج الذي بداخله.",
  "That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage).": "هذا ليس برنامجًا. اختر البرنامج الذي يشغّل اللعبة (عادةً ملف .exe، أو على Linux الملف الذي بلا امتداد أو ملف .AppImage).",

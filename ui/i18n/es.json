@@ -1909,7 +1909,6 @@
  "Install It": "Instalarlo",
  "Its Linux build needs a newer Linux": "Su versión para Linux necesita un Linux más reciente",
  "It was built for a newer system library (glibc) than this Linux has. Its Windows version usually runs fine through Proton: switch to it from the game's page, or update your system.": "Se hizo para una biblioteca del sistema (glibc) más nueva que la que tiene este Linux. Su versión para Windows suele funcionar bien con Proton: cambia a ella desde la página del juego o actualiza tu sistema.",
- "It needs to be told where your game files are": "Hay que decirle dónde están tus archivos del juego",
  "That's your game's disc image or ROM, not the program that starts it. Pick the recomp's own program (usually an .exe in its folder); your copy of the game goes in its setup.": "Esa es la imagen de disco o la ROM de tu juego, no el programa que lo inicia. Elige el programa de la propia recomp (normalmente un .exe en su carpeta); tu copia del juego va en su configuración.",
  "That's a compressed file, not a program. Unpack it first, then pick the program inside.": "Es un archivo comprimido, no un programa. Descomprímelo primero y luego elige el programa que hay dentro.",
  "That isn't a program. Pick the one that starts the game (usually an .exe, or on Linux the file without an extension or an .AppImage).": "Eso no es un programa. Elige el que inicia el juego (normalmente un .exe o, en Linux, el archivo sin extensión o un .AppImage).",
