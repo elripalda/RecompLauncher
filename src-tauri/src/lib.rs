@@ -4108,6 +4108,20 @@ fn setup_cancel(id: String) {
     // holds its lock until it has actually stopped.
 }
 
+/// The launcher is closing: every setup stops, its setup step and what that started with it.
+/// Left running, a builder goes on writing the game's files with no launcher to see it end, and
+/// can still be at it when the next build of the same game starts. Waits a moment (a step is
+/// checked on every 60 ms) for them to be gone.
+fn stop_setups() {
+    if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
+        m.clear();
+    }
+    let until = Instant::now() + std::time::Duration::from_secs(3);
+    while !INPUT_WORKERS.lock().unwrap().is_empty() && Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+}
+
 #[tauri::command]
 fn setup_status() -> HashMap<String, SetupEv> {
     SETUP_STATUS.lock().unwrap().as_ref().cloned().unwrap_or_default()
@@ -4329,6 +4343,27 @@ fn prepare_args(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extr
     named.map(|a| profile::fill(a, install, copy)).collect()
 }
 
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn prctl(option: std::ffi::c_int, arg2: std::ffi::c_ulong, arg3: std::ffi::c_ulong, arg4: std::ffi::c_ulong, arg5: std::ffi::c_ulong) -> std::ffi::c_int;
+}
+
+/// The setup step is sent SIGKILL when the thread that started it ends, the launcher killed
+/// with it. (That thread waits for the step, so it never ends first otherwise.) prctl is
+/// async-signal-safe, as pre_exec requires.
+#[cfg(target_os = "linux")]
+fn die_with_launcher(c: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    const PR_SET_PDEATHSIG: std::ffi::c_int = 1;
+    const SIGKILL: std::ffi::c_ulong = 9;
+    unsafe {
+        c.pre_exec(|| {
+            prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+            Ok(())
+        });
+    }
+}
+
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
@@ -4388,6 +4423,9 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         use std::os::unix::process::CommandExt;
         c.process_group(0);
     }
+    // The launcher killed or crashing (no Exit to stop it): on Linux the step goes with it.
+    #[cfg(target_os = "linux")]
+    die_with_launcher(&mut c);
     let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     if let Some(o) = child.stdout.take() {
@@ -10137,6 +10175,7 @@ pub fn run() {
                 // on its way then leaves the launcher closed (see update_launcher).
                 tauri::RunEvent::ExitRequested { .. } => update_launch::note_quitting(),
                 tauri::RunEvent::Exit => {
+                    stop_setups();
                     pads::stop();
                     ping::close(app);
                 }
