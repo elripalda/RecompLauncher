@@ -3458,6 +3458,14 @@ T.event.listen('convert', ({ payload: p }) => {
   if (bar) bar.style.width = pc + '%';
   if (txt) txt.textContent = tf('{done} of {total}', { done: fmtB(SU.conv.done), total: fmtB(SU.conv.total) });
 });
+// The "Checking your copy" line: its result once there is one; while several files are read whole
+// (a game on discs), the one it's on ("Disc 2 · 2.1 GB of 7.1 GB"); else how far it got, or `idle`.
+function verifyLine(v, idle) {
+  if (v && v.text) return v.text;
+  if (!v || !v.total) return idle;
+  const far = tf('{done} of {total}', { done: fmtB(v.done), total: fmtB(v.total) });
+  return v.part ? tf('{part} · {progress}', { part: v.part, progress: far }) : far;
+}
 async function suBegin(path, anyway) {
   // A copy dropped or found while a required option is unticked waits on the pick screen.
   // Its hint above the buttons already says why.
@@ -3701,10 +3709,12 @@ function suDraw() {
     const st = SU.steps;
     const sub = {
       read: st.read && st.read.text ? st.read.text : baseName(SU.path),
-      verify: st.verify && st.verify.text ? st.verify.text : st.verify && st.verify.total ? tf('{done} of {total}', { done: fmtB(st.verify.done), total: fmtB(st.verify.total) }) : t('Reading all of it, to make sure it\'s complete'),
+      verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
       extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
       setup: t('Its settings, your controller and where your copy is'),
     };
+    // Under the title: the file it's reading now (Disc 3's, while it checks the discs), else the copy.
+    const reading = SU.step === 'verify' && st.verify && st.verify.file && !st.verify.text ? st.verify.file : SU.path;
     const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Setting it up') };
     const weight = { read: 5, verify: SU.extras ? 70 : 80, extras: 15, setup: 10 };
     let total = 0, have = 0;
@@ -3714,10 +3724,12 @@ function suDraw() {
     if (box.dataset.stage === 'run' && box.dataset.step === SU.step + order.length && $('.steps', box)) {
       $$('.step', box).forEach((el, i) => { const s = $('.k span', el); if (s) s.textContent = sub[order[i]]; });
       $('.su-bar i', box).style.width = barW + '%';
+      const now = $('.su-now', box);
+      if (now) now.textContent = reading;
       return;
     }
     box.dataset.step = SU.step + order.length;
-    right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2><p style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(SU.path)}</p>
+    right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2><p class="su-now" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(reading)}</p>
       <div class="steps">${order.map((k) => { const i = order.indexOf(k), cur = order.indexOf(SU.step); const done = i < cur, now = i === cur; return `<div class="step${!done && !now ? ' wait' : ''}">${done ? `<span class="ok">${CHECK}</span>` : now ? '<span class="spinr"></span>' : '<span class="todo"></span>'}<div class="k"><b>${esc(names[k])}</b><span>${esc(sub[k])}</span></div></div>`; }).join('')}</div>
       <div class="su-bar"><i style="width:${barW}%"></i></div>`;
   } else if (SU.stage === 'ready') {

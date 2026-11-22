@@ -3713,6 +3713,12 @@ struct SetupEv {
     verified: String,
     /// Whether this setup has its own step (the recomp's prepare program).
     extras: bool,
+    /// While several files are read whole (a game on discs): the one it's on, by its label
+    /// ("Disc 2"), and that file's name. `pct` is then for all of them together.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    part: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    file: String,
 }
 
 /// Easy Setup's one run, for every game: each file with known good dumps is read whole (the
@@ -3823,18 +3829,21 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     let (p, st) = (job.p, job.app.state::<App>());
     let kept_text = if job.from_kept { "What it kept from your copy" } else { "" };
     emit(SetupEv { step: "read".into(), text: kept_text.into(), ..Default::default() });
-    // 1. Each file with known good dumps, read whole and compared with them.
-    let (mut verified, mut said) = (String::new(), String::new());
-    for i in p.inputs.iter().filter(|i| i.picked() && !i.dumps.is_empty()) {
-        let Some(path) = inputs::picked(g, &i.id).filter(|x| x.is_file()) else { continue };
-        let (crc, total) = read_whole(&st, job.rid, i, &path, g, emit, stopped)?;
+    // 1. Each file with known good dumps, read whole and compared with them. A game on several
+    // discs: one bar for all of them, each line naming the disc it's on, and a result for every disc.
+    let to_read: Vec<(&inputs::Input, PathBuf)> = p.inputs.iter().filter(|i| i.picked() && !i.dumps.is_empty()).filter_map(|i| inputs::picked(g, &i.id).filter(|x| x.is_file()).map(|x| (i, x))).collect();
+    let all: u64 = to_read.iter().map(|(_, x)| std::fs::metadata(x).map(|m| m.len()).unwrap_or(0)).sum();
+    let several = to_read.len() > 1;
+    let mut before = 0u64;
+    let mut results: Vec<(String, Option<String>)> = vec![];
+    for (i, path) in &to_read {
+        let part = ReadPart { label: if several { i.label.clone() } else { String::new() }, before, all };
+        let (crc, total) = read_whole(&st, job.rid, i, path, g, &part, emit, stopped)?;
+        before += total;
         let known = i.dumps.iter().find(|d| d.crc32.eq_ignore_ascii_case(&crc) && (d.size == 0 || d.size == total));
-        said = match known {
-            Some(d) => format!("Matches the verified {} disc", d.name),
-            None => "Read it all, no errors. It isn't a known clean dump, but it may still work.".into(),
-        };
-        verified = known.map(|d| d.name.clone()).unwrap_or_default();
+        results.push((i.label.clone(), known.map(|d| d.name.clone())));
     }
+    let (verified, said) = dumps_said(&results);
     if stopped() {
         return Err("Stopped.".into());
     }
@@ -3897,16 +3906,89 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     Ok((verified, text))
 }
 
+/// Where one file is among several read whole: its label ("Disc 2", empty when it's the only
+/// one), and the bytes read before it out of all of them, so the bar fills once.
+struct ReadPart {
+    label: String,
+    before: u64,
+    all: u64,
+}
+
+/// What the check of the known dumps says: the dump all of them matched ("USA", else empty), and
+/// the line the setup shows. `results`: each file's label and the dump it matched, in order.
+fn dumps_said(results: &[(String, Option<String>)]) -> (String, String) {
+    let Some(name) = results.iter().find_map(|(_, m)| m.clone()) else {
+        let said = match results.len() {
+            0 => String::new(),
+            1 => "Read it all, no errors. It isn't a known clean dump, but it may still work.".into(),
+            n => format!("Read all {n}, no errors. None is a known clean dump, but they may still work."),
+        };
+        return (String::new(), said);
+    };
+    if results.len() == 1 {
+        return (name.clone(), format!("Matches the verified {name} disc"));
+    }
+    let off: Vec<&str> = results.iter().filter(|(_, m)| m.is_none()).map(|(l, _)| l.as_str()).collect();
+    if off.is_empty() {
+        return (name.clone(), format!("All {} discs match the verified {name} dumps", results.len()));
+    }
+    let on: Vec<&str> = results.iter().filter(|(_, m)| m.is_some()).map(|(l, _)| l.as_str()).collect();
+    let bad = if off.len() == 1 { format!("{} isn't a known clean dump.", discs_named(&off)) } else { format!("{} aren't known clean dumps.", discs_named(&off)) };
+    let good = if on.len() == 1 { format!("{} matches the {name} dump.", discs_named(&on)) } else { format!("{} match the {name} dumps.", discs_named(&on)) };
+    (String::new(), format!("{bad} {good}"))
+}
+
+/// Files named for a line: "Disc 1", "Discs 2–4", "Discs 1 and 3" when they're all "Disc N";
+/// else their labels ("Disc A, Disc B and the update").
+fn discs_named(labels: &[&str]) -> String {
+    let numbers: Vec<u32> = labels.iter().filter_map(|l| l.strip_prefix("Disc ").and_then(|n| n.trim().parse().ok())).collect();
+    if numbers.len() != labels.len() {
+        return and_list(&labels.iter().map(|l| l.to_string()).collect::<Vec<_>>());
+    }
+    if numbers.len() == 1 {
+        return format!("Disc {}", numbers[0]);
+    }
+    // Runs of discs in a row read as a range: 2, 3, 4 is "2–4".
+    let mut runs: Vec<String> = vec![];
+    let mut at = 0;
+    while at < numbers.len() {
+        let mut end = at;
+        while end + 1 < numbers.len() && numbers[end + 1] == numbers[end] + 1 {
+            end += 1;
+        }
+        // Three or more in a row are a range; one or two are listed on their own.
+        if end - at >= 2 {
+            runs.push(format!("{}–{}", numbers[at], numbers[end]));
+        } else {
+            runs.extend(numbers[at..=end].iter().map(|n| n.to_string()));
+        }
+        at = end + 1;
+    }
+    format!("Discs {}", and_list(&runs))
+}
+
+/// "a", "a and b", "a, b and c".
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// A file read whole to check it's all there, its CRC32 for the known dumps: the one read before,
 /// unchanged since (Set Up Again for a new option, say), isn't read again. What was read is kept
 /// straight away: it's a fact about the file, not a choice a failed setup takes back.
-fn read_whole(st: &App, rid: &str, i: &inputs::Input, path: &Path, g: &Installed, emit: &dyn Fn(SetupEv), stopped: &dyn Fn() -> bool) -> Result<(String, u64), String> {
+fn read_whole(st: &App, rid: &str, i: &inputs::Input, path: &Path, g: &Installed, part: &ReadPart, emit: &dyn Fn(SetupEv), stopped: &dyn Fn() -> bool) -> Result<(String, u64), String> {
     let total = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let file = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // Which disc couldn't be read, when there are several.
+    let which = if part.label.is_empty() { String::new() } else { format!("{}: ", part.label) };
     if let Some(crc) = g.input_checks.get(&i.id).and_then(|c| c.still(path)) {
         trail::note(format!("Set up {rid}: {} is the one read whole before, unchanged; not read again", i.id));
         return Ok((crc.to_string(), total));
     }
-    let mut f = std::fs::File::open(path).map_err(|_| "Couldn't open it.".to_string())?;
+    let mut f = std::fs::File::open(path).map_err(|_| format!("{which}Couldn't open it."))?;
     let mut h = crc32fast::Hasher::new();
     let mut buf = vec![0u8; 4 << 20];
     let (mut done, mut last) = (0u64, Instant::now());
@@ -3917,13 +3999,15 @@ fn read_whole(st: &App, rid: &str, i: &inputs::Input, path: &Path, g: &Installed
         let n = match std::io::Read::read(&mut f, &mut buf) {
             Ok(0) => break,
             Ok(n) => n,
-            Err(e) => return Err(format!("Part of it couldn't be read ({e}). The copy may be damaged.")),
+            Err(e) => return Err(format!("{which}Part of it couldn't be read ({e}). The copy may be damaged.")),
         };
         h.update(&buf[..n]);
         done += n as u64;
         if last.elapsed().as_millis() >= 80 {
             last = Instant::now();
-            emit(SetupEv { step: "verify".into(), pct: done as f32 / total.max(1) as f32, done, total, ..Default::default() });
+            // The bar is for every file read whole; done and total are this one's.
+            let pct = (part.before + done) as f32 / part.all.max(total).max(1) as f32;
+            emit(SetupEv { step: "verify".into(), pct, done, total, part: part.label.clone(), file: file.clone(), ..Default::default() });
         }
     }
     let crc = format!("{:08x}", h.finalize());
@@ -10042,6 +10126,42 @@ mod tests {
         }))
         .unwrap();
         (p, crate::library::Installed::default())
+    }
+
+    fn checked(list: &[(&str, Option<&str>)]) -> (String, String) {
+        let results: Vec<(String, Option<String>)> = list.iter().map(|(l, m)| (l.to_string(), m.map(str::to_string))).collect();
+        super::dumps_said(&results)
+    }
+
+    #[test]
+    fn one_disc_says_what_it_matched_as_before() {
+        assert_eq!(checked(&[("Disc 1", Some("USA"))]), ("USA".into(), "Matches the verified USA disc".into()));
+        assert_eq!(checked(&[("Disc 1", None)]).0, "");
+    }
+
+    #[test]
+    fn several_discs_are_verified_only_when_every_one_matched() {
+        let all = [("Disc 1", Some("USA")), ("Disc 2", Some("USA")), ("Disc 3", Some("USA")), ("Disc 4", Some("USA"))];
+        assert_eq!(checked(&all), ("USA".into(), "All 4 discs match the verified USA dumps".into()));
+    }
+
+    #[test]
+    fn a_bad_first_disc_is_named_even_when_the_last_one_matched() {
+        let first_bad = [("Disc 1", None), ("Disc 2", Some("USA")), ("Disc 3", Some("USA")), ("Disc 4", Some("USA"))];
+        assert_eq!(checked(&first_bad), ("".into(), "Disc 1 isn't a known clean dump. Discs 2–4 match the USA dumps.".into()));
+    }
+
+    #[test]
+    fn a_bad_last_disc_is_named() {
+        let last_bad = [("Disc 1", Some("USA")), ("Disc 2", Some("USA")), ("Disc 3", Some("USA")), ("Disc 4", None)];
+        assert_eq!(checked(&last_bad).1, "Disc 4 isn't a known clean dump. Discs 1–3 match the USA dumps.");
+    }
+
+    #[test]
+    fn discs_out_of_a_row_and_other_labels_are_listed() {
+        assert_eq!(super::discs_named(&["Disc 1", "Disc 3"]), "Discs 1 and 3");
+        assert_eq!(super::discs_named(&["Disc 1", "Disc 2", "Disc 4"]), "Discs 1, 2 and 4");
+        assert_eq!(super::discs_named(&["Disc A", "The update"]), "Disc A and The update");
     }
 
     #[test]

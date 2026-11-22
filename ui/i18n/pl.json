@@ -1679,6 +1679,7 @@
  "{console} files": "Pliki {console}",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} z {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "Na {drive} jest {free} wolnego miejsca",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. Gry często nie mogą zapisywać ani się konfigurować w chronionych folderach, takich jak Program Files.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} nie ma w tym folderze ani w folderach w nim. Wybierz folder z twoją kopią gry.",
