@@ -82,6 +82,12 @@ See [the complete example](examples/multidisc-inputs.json). Declare one input fo
 extensions without a leading dot; an empty list accepts any regular file. A `folder` format accepts
 a selected existing folder and cannot declare extensions or an installation destination.
 
+**One file per input, one argument per file.** Each disc image and each DLC package is an input of
+its own and reaches the game through an argument of its own: `--disc1={input:disc1}`,
+`--disc2={input:disc2}`, `--dlc1={input:dlc1}`. Never ask for a folder of discs or DLC and pass the
+folder. A `folder` format is only for a copy that is a folder: an extracted PS3 game, or a Switch
+game's `exefs` and `romfs`.
+
 You can pass every selected path to `prepare.args`, `start.args`, `start.env`, or a game's
 `games[].args` using `{input:id}`.
 Paths remain separate command arguments (no shell string concatenation). For optional or

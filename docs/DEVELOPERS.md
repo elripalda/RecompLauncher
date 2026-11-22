@@ -297,6 +297,22 @@ discs, DLC, keys) are rows under it. [SETUP-INPUTS.md](SETUP-INPUTS.md) has all 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found. A copy is checked when the player picks it, never again on Play.
 
+**One file per input, one argument per file.** Each disc image, DLC package or update is an input
+of its own, and your game gets each one through an argument of its own, the flag and the file
+together: `--disc1={input:disc1}`, `--disc2={input:disc2}`, `--dlc1={input:dlc1}`. Don't ask for a
+folder of discs or DLC and pass that folder. A folder input is only for a copy that is a folder: an
+extracted PS3 game, or a Switch game's `exefs` and `romfs`. With the flag and the file in one
+argument, an optional file the player didn't pick leaves its whole argument out.
+
+```json
+"inputs": [
+  { "id": "disc1", "label": "Disc 1 (.iso)", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }] },
+  { "id": "disc2", "label": "Disc 2 (.iso)", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }] },
+  { "id": "dlc1", "label": "The Lost Levels DLC (.pkg)", "role": "dlc", "optional": true, "formats": [{ "type": "file" }] }
+],
+"start": { "program": ["game.exe"], "args": ["--disc1={input:disc1}", "--disc2={input:disc2}", "--dlc1={input:dlc1}"] }
+```
+
 **CD games kept as several files.** The launcher finds a `.cue` (with its `.bin` tracks), a `.gdi`
 or an `.m3u` as one copy. If your game reads that sheet, name it in `label`, and `{input:game}` is the
 sheet. Otherwise `{input:game}` is the disc's first data track, the `.bin`, so a game that reads single

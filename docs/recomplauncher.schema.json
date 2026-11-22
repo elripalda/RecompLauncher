@@ -11,7 +11,7 @@
     "inputs": {
       "type": "array",
       "maxItems": 32,
-      "description": "Named game/disc/DLC inputs, explicit shared-key requirements and NVIDIA DLSS (a file the launcher downloads from NVIDIA). See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
+      "description": "Named game/disc/DLC inputs, explicit shared-key requirements and NVIDIA DLSS (a file the launcher downloads from NVIDIA). One file per input, passed by one argument with its flag (--disc1={input:disc1}, --dlc1={input:dlc1}); a folder only for a copy that is a folder (an extracted PS3 game, a Switch game's exefs and romfs), never a folder of discs or DLC. See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
       "items": {
         "type": "object",
         "required": [
