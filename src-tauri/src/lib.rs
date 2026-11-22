@@ -4451,7 +4451,8 @@ mod win_job {
             drop(job);
             std::thread::sleep(std::time::Duration::from_millis(500));
             assert!(step.try_wait().unwrap().is_none(), "still running after the drop");
-            let _ = step.kill();
+            // The whole tree, ping too: it's out of the job now, so nothing else would end it.
+            crate::kill_process_tree(&mut step);
         }
     }
 }
