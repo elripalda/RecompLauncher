@@ -3563,6 +3563,13 @@ function buildLeft() {
 const buildWaits = (id) => S.building === id || S.buildQ.includes(id);
 function queueBuild(id) {
   if (buildWaits(id)) return;
+  // Its build already started another way (Finish the Update, Build Now on its page): that one is
+  // the build after the update, shown building on Downloads, not queued behind itself.
+  if ((S.setupJobs || {})[id]) {
+    if (!S.building) S.building = id;
+    if (S.view === 'downloads') render(true);
+    return;
+  }
   S.buildQ.push(id);
   pumpBuilds();
 }
@@ -4583,8 +4590,10 @@ function pageDownloads() {
   const waitingRow = (id) => { const sub = S.jobs[id].held ? `${dlTarget(id)} · ${esc(t('Waiting for the build before it'))}` : dlTarget(id);
     return quietRow(id, sub, 'cancel'); };
   const waits = (id) => !!S.jobs[id] && S.jobs[id].phase === 'queued';
-  const building = S.building && !S.jobs[S.building] ? [S.building] : [];
-  const buildWaiting = S.buildQ.filter((id) => !S.jobs[id]);
+  // A queued game whose build is already running (started from its page) shows as building.
+  const runningBuild = (id) => !!(S.setupJobs || {})[id];
+  const building = [...new Set([S.building, ...S.buildQ.filter(runningBuild)])].filter((id) => id && !S.jobs[id]);
+  const buildWaiting = S.buildQ.filter((id) => !S.jobs[id] && !runningBuild(id));
   const dlRows = act.filter((id) => !waits(id)).map(movingRow).concat(building.map(buildRow), act.filter(waits).map(waitingRow), buildWaiting.map((id) => quietRow(id, esc(t('Waiting to build')), 'build-cancel'))).join('');
   const dlCount = act.length + building.length + buildWaiting.length;
   const pauseBtn = Object.keys(S.jobs).some(canPause) ? `<button type="button" class="btn sm" data-act="dl-pause-all">${esc(t('Pause all'))}</button>` : '';
