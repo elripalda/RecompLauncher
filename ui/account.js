@@ -767,7 +767,7 @@ function noModal() {
 function cloudAllChoices() {
   return [
     { v: true, icon: CA.all, tvIcon: 'cloud', label: t('Every game'), tag: t('Recommended'), sub: t('Backed up after you play. Turn it off for one game in its Manage tab.') },
-    { v: false, icon: CA.pick, tvIcon: 'desk', label: t('Only games I pick'), sub: t('Saves stay on this PC. Turn cloud saves on for a game in its Manage tab.') },
+    { v: false, icon: CA.pick, tvIcon: 'picklist', label: t('Only games I pick'), sub: t('Saves stay on this PC. Turn cloud saves on for a game in its Manage tab.') },
   ];
 }
 
