@@ -141,7 +141,8 @@
         // like How Will You Play. Every game is marked until they pick: Continue keeps it.
         const all = (S.settings.ui || {}).cloud_all !== false;
         const [every, mine] = window.cloudAllChoices();
-        const pick = (c, icon, on) => `<button type="button" role="radio" aria-checked="${on}" class="oob-pick" data-o="cloud" data-v="${c.v}">${icon}<b>${esc(c.label)}</b><span>${esc(c.sub)}</span></button>`;
+        const tag = (c) => (c.tag ? `<em class="oob-rec">${esc(c.tag)}</em>` : '');
+        const pick = (c, icon, on) => `<button type="button" role="radio" aria-checked="${on}" class="oob-pick" data-o="cloud" data-v="${c.v}">${icon}<b>${esc(c.label)}${tag(c)}</b><span>${esc(c.sub)}</span></button>`;
         return `<h1>${esc(t('Back up your saves?'))}</h1><p class="oob-lead">${esc(t('After you play, a game\'s saves can go to your account, ready on any PC. A copy always stays on this PC.'))}</p>
           <div class="oob-two" role="radiogroup" aria-label="${esc(t('Back up your saves?'))}">${pick(every, ICON.all, all)}${pick(mine, ICON.pick, !all)}</div>`;
       }
