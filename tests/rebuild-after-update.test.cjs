@@ -13,7 +13,7 @@ function harness(library, setup, due) {
   const S = { library, setup, setupJobs: {}, running: new Set() };
   const SU = { stage: 'steps' };
   const names = ['S', 'SU', 'loadSetup', 'updateBuildDue', 'prepBlocked', 'newPrepOpts', 'invoke', 'toast', 'tf', 't', 'esc', 'cleanMsg', 'byId', 'render', 'updateBuildModal'];
-  const make = new Function(...names, `${block}; return { queueBuild, pumpBuilds, buildNow, afterUpdate, buildWaits };`);
+  const make = new Function(...names, `${block}; return { queueBuild, pumpBuilds, afterUpdate, buildWaits };`);
   const api = make(S, SU, async () => {}, (id) => due.has(id), () => false, (su) => (su.prepare_options || []).filter((o) => o.new),
     (cmd, args) => { log.runs.push([cmd, args.id]); return Promise.resolve(); }, (msg, bad, html) => log.toasts.push(html || msg),
     (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => o[k]), (x) => x, (x) => x, (x) => x, () => null, () => {}, (id) => log.windows.push(id));
@@ -27,11 +27,11 @@ test('a game with Build Again After Updates on builds right after its update', a
   assert.deepEqual(log.runs, [['setup_copy', 'hopper']]);
 });
 
-test('with it off, the updated toast offers Build Now and nothing builds', async () => {
+test('with it off, nothing builds now: Play builds it, and the toast offers nothing', async () => {
   const { api, log } = harness({ hopper: {} }, { hopper: copy('/g/hopper') }, new Set(['hopper']));
   await api.afterUpdate('hopper', 'Hopper');
   assert.deepEqual(log.runs, []);
-  assert.match(log.toasts[0], /data-act="build-now" data-id="hopper"/);
+  assert.deepEqual(log.toasts, ['Hopper is updated.']);
 });
 
 test('a game not due a build after its update is only said to be updated', async () => {
@@ -65,16 +65,15 @@ test('a queued build waits while another setup runs', async () => {
   assert.deepEqual(log.runs, [['setup_copy', 'a']]);
 });
 
-test('Build Now opens Finish the Update when something has to be asked', async () => {
+test('with it on, a game that has to ask something first waits for Play', async () => {
   const asks = { copy: '/g/a', inputs: [], prepare_options: [{ id: 'fsr', new: true }] };
-  const { api, log } = harness({ a: {} }, { a: asks }, new Set(['a']));
-  await api.buildNow('a');
+  const { api, log } = harness({ a: { rebuild_after_update: true } }, { a: asks }, new Set(['a']));
+  await api.afterUpdate('a', 'A');
   assert.deepEqual(log.runs, []);
-  assert.deepEqual(log.windows, ['a']);
-  // Its files gone and nothing kept: asked too.
-  const gone = harness({ b: {} }, { b: { copy: null, kept: false, inputs: [] } }, new Set(['b']));
-  await gone.api.buildNow('b');
-  assert.deepEqual(gone.log.windows, ['b']);
+  assert.deepEqual(log.windows, []);
+  const gone = harness({ b: { rebuild_after_update: true } }, { b: { copy: null, kept: false, inputs: [] } }, new Set(['b']));
+  await gone.api.afterUpdate('b', 'B');
+  assert.deepEqual(gone.log.runs, []);
 });
 
 test('the switch is per game, in its Manage tab, and Settings has none', () => {
@@ -82,5 +81,5 @@ test('the switch is per game, in its Manage tab, and Settings has none', () => {
   assert.match(app, /aria-checked="\$\{!!inst\.rebuild_after_update\}"/);
   assert.doesNotMatch(app, /sw\('rebuild_after_update'/);
   assert.match(app, /else if \(S\.easy\.has\(id\) && wasInstalled\) afterUpdate\(id, name\);/);
-  assert.match(app, /act: 'build-now', id, label: t\('Build Now'\)/);
+  assert.doesNotMatch(app, /build-now|buildNow/);
 });

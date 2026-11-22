@@ -2866,7 +2866,7 @@ function manageUpdateRows(id, inst) {
   return [
     `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${what}</span></div><button type="button" class="btn" data-act="build" data-id="${esc(id)}">${esc(t('Change Build…'))}</button></div>`,
     `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(autoSub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${autoUpdates(id)}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`,
-    ...(S.easy.has(id) && (S.setup[id] || {}).rebuilds ? [`<div class="set-row"><div class="k"><b>${esc(t('Build Again After Updates'))}</b><span>${esc(t('A new release has to be built again before it plays. On: it builds right after an automatic update, in the background, when its files are still there. Off: it builds when you press Play.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.rebuild_after_update}" aria-label="${esc(t('Build Again After Updates'))}" data-act="rebuild-up" data-id="${esc(id)}"></button></div>`] : []),
+    ...(S.easy.has(id) && (S.setup[id] || {}).rebuilds ? [`<div class="set-row"><div class="k"><b>${esc(t('Build Again After Updates'))}</b><span>${esc(t('A new release has to be built again before it plays. On: it builds right after the update downloads, with its progress on the Downloads page, when its files are still there. Off: it builds when you press Play.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.rebuild_after_update}" aria-label="${esc(t('Build Again After Updates'))}" data-act="rebuild-up" data-id="${esc(id)}"></button></div>`] : []),
     `<div class="set-row"><div class="k"><b>${esc(t('Pause Updates'))}</b><span>${esc(t('It stays on the version it has until you turn this off.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${held}" aria-label="${esc(t('Pause Updates'))}" data-act="hold-up" data-id="${esc(id)}"></button></div>`,
     project,
   ];
@@ -3481,8 +3481,8 @@ async function suBegin(path, anyway) {
 // Builds after an update: a game whose new release builds again. Each one waits in a queue and
 // builds in the background, one at a time (two builds at once would fight over the drive and the
 // processor), when nothing has to be asked: its files are still there (or it builds from what it
-// kept), and the update added no option to answer. Anything else opens Play's Finish the Update
-// window, where those are asked.
+// kept), and the update added no option to answer. Any other game builds on the next Play, in its
+// Finish the Update window. A build that starts this way shows on the Downloads page.
 S.buildQ = [];
 S.building = null;
 // Built in the background as it is: nothing to ask the player first.
@@ -3520,25 +3520,14 @@ async function pumpBuilds() {
     return;
   }
 }
-// Build Now (the updated toast, the game's menu): queued when nothing has to be asked, else the
-// Finish the Update window asks it.
-async function buildNow(id) {
-  await loadSetup(id);
-  if (!buildsQuietly(id)) return updateBuildModal(id);
-  queueBuild(id);
-  const name = (byId(id) || S.library[id] || { name: id }).name;
-  toast(S.building === id ? tf('Building {name}.', { name }) : tf('{name} builds after the one building now.', { name }));
-  render(true);
-}
-// Right after an update: a game due a new build builds by itself when its Build Again After Updates
-// is on; otherwise the toast offers Build Now.
+// Right after an update: a game whose Build Again After Updates is on starts its new build straight
+// away (its progress is on the Downloads page), when nothing has to be asked. Any other game builds
+// when the player next presses Play.
 async function afterUpdate(id, name) {
+  toast(tf('{name} is updated.', { name }));
+  if (!(S.library[id] || {}).rebuild_after_update) return;
   await loadSetup(id);
-  if (!updateBuildDue(id)) return toast(tf('{name} is updated.', { name }));
-  const g = S.library[id] || {};
-  if (g.rebuild_after_update && buildsQuietly(id)) return queueBuild(id);
-  const msg = tf('{name} is updated. It needs a new build before it plays.', { name });
-  toast(msg, false, `<span>${esc(msg)}</span> <button type="button" class="btn sm" data-act="build-now" data-id="${esc(id)}">${esc(t('Build Now'))}</button>`, 9000);
+  if (buildsQuietly(id)) queueBuild(id);
 }
 async function toggleRebuildAfterUpdate(id) {
   const on = !(S.library[id] || {}).rebuild_after_update;
@@ -6422,8 +6411,6 @@ function gameMenu(id) {
     ...(g ? ['-',
       { act: 'customize', id, label: t('Edit Name and Artwork…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
-      // A new release that has to be built again: built now (queued), not on the next Play.
-      ...(updateBuildDue(id) && !buildWaits(id) ? [{ act: 'build-now', id, label: t('Build Now'), icon: 'disc' }] : []),
       ...(canSetUpAgain(id) ? [{ act: 'setup', id, label: t('Setup Options…'), icon: 'disc', dot: newOpts }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
         // Not on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
@@ -8836,7 +8823,6 @@ async function act(el, e) {
     case 'free-space': return freeUpSpace(id);
     case 'auto-up': return toggleAutoUpdate(id);
     case 'rebuild-up': return toggleRebuildAfterUpdate(id);
-    case 'build-now': return buildNow(id);
     case 'launch-opts': return launchOptions(id);
     case 'rename': return renameModal(id);
     case 'troubleshoot': return troubleshootModal(id);
