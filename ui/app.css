@@ -1249,6 +1249,38 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .pick-card{display:flex;flex-direction:column;gap:3px;padding:14px 16px;border-radius:14px;background:var(--fill2);border:1px solid var(--line)}
 .pick-card b{font-size:15px;margin-bottom:2px}.pick-card span{color:var(--muted);font-size:13px}
 .oob-cloud svg{color:var(--cyan);stroke:currentColor}
+/* Cloud saves for every game? (account.js pickCloudAll), asked once after signing in. On top, this
+   PC and any PC with the account between them, a save flowing along the dotted lines; then the two
+   answers as rows to click, the recommended one in cyan. */
+.modal.ca{width:min(500px,92vw);padding:0;gap:0;overflow:hidden;position:relative}
+.ca-art{position:relative;height:156px;display:flex;align-items:center;justify-content:center;gap:14px;background:var(--noise),radial-gradient(55% 110% at 50% 0%,rgba(52,242,232,.2),transparent 72%),linear-gradient(180deg,rgba(55,123,182,.16),transparent);border-bottom:1px solid var(--line)}
+.ca-art .dev{display:flex;flex-direction:column;align-items:center;gap:7px;color:var(--muted)}
+.ca-art .dev svg{width:52px;height:52px;padding:14px;border-radius:16px;background:var(--fill2);border:1px solid var(--line2);box-sizing:border-box}
+.ca-art .dev small{font-size:11.5px;font-weight:700;color:var(--dim)}
+.ca-art .cl{width:84px;height:84px;border-radius:26px;display:grid;place-items:center;color:#04161b;background:var(--grad);box-shadow:0 18px 50px -12px rgba(52,242,232,.6),inset 0 1px 0 rgba(255,255,255,.35);margin-bottom:18px}
+.ca-art .ln{width:44px;height:2px;margin-bottom:18px;background:repeating-linear-gradient(90deg,var(--cyan) 0 5px,transparent 5px 10px);opacity:.65;animation:caFlow 1s linear infinite}
+@keyframes caFlow{from{background-position:0 0}to{background-position:10px 0}}
+.ca-body{padding:22px 26px 24px;display:flex;flex-direction:column;gap:12px}
+.ca-body h2{font-size:24px;text-align:center}
+.ca-body>p{margin:0;color:var(--muted);text-align:center}
+.ca-picks{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.ca-pick{display:flex;align-items:center;gap:14px;padding:14px 14px 14px 16px;border-radius:16px;background:var(--fill2);border:1px solid var(--line2);text-align:left;transition:border-color .15s,background .15s,transform .12s}
+.ca-pick:hover{border-color:var(--line3);background:var(--fill3)}
+.ca-pick:active{transform:scale(.99)}
+.ca-pick:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.ca-pick .ic{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;flex:none;background:var(--fill3);color:var(--muted)}
+.ca-pick .k{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ca-pick b{font-size:15.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ca-pick em{font-style:normal;font-size:11px;font-weight:800;letter-spacing:.02em;color:#3ee08f;background:rgba(62,224,143,.1);border:1px solid rgba(62,224,143,.32);border-radius:7px;padding:1px 7px}
+.ca-pick .k>span{color:var(--muted);font-size:13px;line-height:1.4}
+.ca-pick>svg{flex:none;color:var(--dim);transition:transform .15s}
+.ca-pick:hover>svg{transform:translateX(2px)}
+.ca-pick.rec{border-color:rgba(52,242,232,.42);background:var(--noise),linear-gradient(90deg,rgba(52,242,232,.11),rgba(52,242,232,.03))}
+.ca-pick.rec:hover{border-color:rgba(52,242,232,.7)}
+.ca-pick.rec .ic{background:rgba(52,242,232,.14);color:var(--cyan)}
+.ca-pick.rec>svg{color:var(--cyan)}
+.ca-foot{margin:4px 0 0;text-align:center;color:var(--dim);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){.ca-art .ln{animation:none}}
 .set-ctl2{display:flex;align-items:center;gap:14px;flex:none}
 .set-ctl2 a{font-size:13px;color:var(--muted);white-space:nowrap}
 .set-ctl2 a:hover{color:var(--ink)}
