@@ -752,8 +752,9 @@ settings are written. It runs again whenever the player changes their copy.
   page keeps its Play button, with "Needs a new build after the update" under it, and the next Play
   opens a small Finish the Update window: Build Now builds it again (from what the step kept, with
   `keeps_copy`, or from the player's files), asks about any option the update added, and starts the
-  game when it's done. Players can turn on Build Games Again After Updates to have it done right
-  after an automatic update. Reinstalling the same release doesn't build again.
+  game when it's done. Players can turn on Build Again After Updates in the game's Manage tab to
+  have it built in the background right after the update downloads. Reinstalling the same release
+  doesn't build again.
 - To build into the player's install folder instead of their home folder, pass it to your builder
   (`"args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"]`) and start
   from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).

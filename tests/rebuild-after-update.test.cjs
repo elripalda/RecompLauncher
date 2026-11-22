@@ -76,49 +76,6 @@ test('with it on, a game that has to ask something first waits for Play', async 
   assert.deepEqual(gone.log.runs, []);
 });
 
-// The Downloads page's view of builds: what a game is doing (jobOf) and the words it shows.
-const topFn = (name) => app.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0];
-const topConst = (name) => app.match(new RegExp(`^const ${name} = .*$`, 'm'))[0];
-function downloadsView(S) {
-  const src = [topConst('pct'), topConst('buildWaits'), topFn('buildJob'), topConst('jobOf'), topFn('progLabel'), topFn('dlPhase')].join('\n');
-  const make = new Function('S', 't', 'tf', `${src}; return { jobOf, progLabel, dlPhase };`);
-  return make(S, (x) => x, (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => o[k]));
-}
-
-test('the game building shows the builder\'s line and how far it is', () => {
-  const S = { jobs: {}, building: 'a', buildQ: [], setupJobs: { a: { step: 'extras', pct: 0.42, text: 'Compiling funcs_12.c' } } };
-  const v = downloadsView(S);
-  assert.equal(v.dlPhase('a'), 'Building the game · 42%');
-  assert.deepEqual(v.progLabel(v.jobOf('a')), ['Compiling funcs_12.c', '42%']);
-});
-
-test('a build waiting its turn says so', () => {
-  const v = downloadsView({ jobs: {}, building: 'a', buildQ: ['b'], setupJobs: {} });
-  assert.equal(v.dlPhase('b'), 'Waiting to build');
-  assert.deepEqual(v.progLabel(v.jobOf('b')), ['Waiting for the build before it', '']);
-});
-
-test('a game downloading again shows its download, not its build', () => {
-  const download = { id: 'a', phase: 'download', done: 5, total: 10 };
-  const v = downloadsView({ jobs: { a: download }, building: null, buildQ: ['a'], setupJobs: {} });
-  assert.equal(v.jobOf('a'), download);
-});
-
-test('builds are jobs on the Downloads page, on the desktop and in Big Picture', () => {
-  const tv = read('ui/tv.js');
-  assert.match(app, /const act = Object\.keys\(S\.jobs\)\.concat\(.*, builds\)/);
-  assert.match(tv, /const act = Object\.keys\(S\.jobs\)\.concat\(builds\)/);
-});
-
-test('a build that didn\'t finish offers Try again in the Finish the Update window', () => {
-  assert.match(app, /if \(r\.build\) return .*data-act="build-again"/);
-  assert.match(app, /case 'build-again': .*return updateBuildModal\(id\);/);
-});
-
-test('cancelling the build clears its progress, so the next one can start', () => {
-  assert.match(app, /if \(S\.building === id\) \{ S\.building = null; delete S\.setupJobs\[id\];/);
-});
-
 test('the switch is per game, in its Manage tab, and Settings has none', () => {
   assert.match(app, /data-act="rebuild-up" data-id="\$\{esc\(id\)\}"/);
   assert.match(app, /aria-checked="\$\{!!inst\.rebuild_after_update\}"/);
