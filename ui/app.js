@@ -1267,7 +1267,7 @@ const MORE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor
 const PAUSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/></svg>';
 const XS = '<svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m1.5 1.5 9 9m0-9-9 9" stroke="currentColor" stroke-width="1.6"/></svg>';
 // Only a game's own download can pause (and carry on later): not unpacking, setting up or a plugin.
-const canPause = (id) => { const j = S.jobs[id]; return !!j && !j.plug && (j.phase === 'download' || j.phase === 'queued'); };
+const canPause = (id) => { const j = S.jobs[id]; return !!j && !j.plug && !j.held && (j.phase === 'download' || j.phase === 'queued'); };
 
 // Play on the game's page, with the line of an update still to build hung under it: it takes no
 // room, so the buttons stay where they are (updateBuildDue).
@@ -3485,6 +3485,45 @@ async function suBegin(path, anyway) {
 // Finish the Update window.
 S.buildQ = [];
 S.building = null;
+// Their downloads take turns the same way: the next such update starts downloading only once the
+// one before it has built (or turned out to need the player). Games that build on Play download
+// as before.
+S.updQ = [];
+S.updStarting = new Set();
+S.afterUpd = new Set();
+const buildsAfterUpdate = (id) => !!(S.library[parentId(id)] || {}).rebuild_after_update;
+// An update that builds after it downloads is on its way: starting, downloading, just in, or building.
+function updateChainBusy() {
+  const downloading = Object.values(S.jobs).some((j) => !j.held && buildsAfterUpdate(j.id));
+  const building = !!S.building || !!S.pumping || S.buildQ.length > 0;
+  return downloading || building || S.updStarting.size > 0 || S.afterUpd.size > 0;
+}
+// Waiting its turn: shown with the downloads waiting in Up Next, and the core isn't asked yet.
+function holdUpdate(id) {
+  if (S.updQ.includes(id)) return;
+  S.updQ.push(id);
+  S.jobs[id] = { id, phase: 'queued', held: true, done: 0, total: 0, at: Date.now() };
+  render(true);
+}
+function pumpUpdates() {
+  if (updateChainBusy()) return;
+  const id = S.updQ.shift();
+  if (!id) return;
+  delete S.jobs[id];
+  updateGame(id);
+}
+// Cancel on a download: one waiting its turn here leaves the line; the rest the core stops.
+function cancelDownload(id) {
+  if ((S.jobs[id] || {}).held) {
+    S.updQ = S.updQ.filter((x) => x !== id);
+    delete S.jobs[id];
+    render(true);
+    if (window.tvRedraw) window.tvRedraw();
+    return Promise.resolve();
+  }
+  if ((S.paused || {})[id]) { delete S.paused[id]; render(true); }
+  return invoke('cancel', { id });
+}
 // Built in the background as it is: nothing to ask the player first.
 function buildsQuietly(id) {
   const su = S.setup[id];
@@ -3502,7 +3541,13 @@ function queueBuild(id) {
 // The next one in the queue, when nothing else is setting up. A game whose build isn't due any
 // more (built from Play meanwhile), or that now needs the player, leaves the queue.
 async function pumpBuilds() {
-  if (S.building || Object.keys(S.setupJobs || {}).length || SU.stage === 'run') return;
+  if (S.building || S.pumping || Object.keys(S.setupJobs || {}).length || SU.stage === 'run') return;
+  // One pass at a time: while it reads the next game's setup, a second update landing (Update
+  // All) would otherwise find nothing building yet and start its own build beside it.
+  S.pumping = true;
+  try { await startNextBuild(); } finally { S.pumping = false; pumpUpdates(); }
+}
+async function startNextBuild() {
   while (S.buildQ.length) {
     const id = S.buildQ.shift();
     await loadSetup(id);
@@ -3526,8 +3571,20 @@ async function pumpBuilds() {
 async function afterUpdate(id, name) {
   toast(tf('{name} is updated.', { name }));
   if (!(S.library[id] || {}).rebuild_after_update) return;
-  await loadSetup(id);
-  if (buildsQuietly(id)) queueBuild(id);
+  // Still its turn while it's read: the next update's download waits for its build.
+  S.afterUpd.add(id);
+  try {
+    await loadSetup(id);
+    if (buildsQuietly(id)) queueBuild(id);
+  } finally {
+    S.afterUpd.delete(id);
+    pumpUpdates();
+  }
+}
+// A setup ended: the next build, and then the next update's download.
+function nextInLine() {
+  pumpBuilds();
+  pumpUpdates();
 }
 async function toggleRebuildAfterUpdate(id) {
   const on = !(S.library[id] || {}).rebuild_after_update;
@@ -3591,12 +3648,12 @@ T.event.listen('setup', ({ payload: p }) => {
   if (p.step === 'done') {
     delete S.setupJobs[p.id];
     if (p.id === S.building) S.building = null;
-    setTimeout(pumpBuilds, 0);
+    setTimeout(nextInLine, 0);
     onSetupFinished(p.id, !!(SU.el && SU.id === p.id) || !!document.querySelector('.tv-setup:not(.out)'));
   } else if (p.step === 'error') {
     delete S.setupJobs[p.id];
     if (p.id === S.building) S.building = null;
-    setTimeout(pumpBuilds, 0);
+    setTimeout(nextInLine, 0);
     if (!SU.el || SU.id !== p.id) {
       toast(p.text || t("Setup didn't finish."), true);
       render(true);
@@ -5483,7 +5540,7 @@ async function refreshState() {
   // The core's list of jobs is the truth: one it no longer has is over (unless it was only just
   // started here), and one that just ended here isn't brought back by an answer sent a moment before.
   const live = new Set(st.jobs || []), now = Date.now();
-  for (const id of Object.keys(S.jobs)) if (!live.has(id) && now - (S.jobs[id].at || 0) > 5000) delete S.jobs[id];
+  for (const id of Object.keys(S.jobs)) if (!live.has(id) && !S.jobs[id].held && now - (S.jobs[id].at || 0) > 5000) delete S.jobs[id];
   for (const id of live) if (!S.jobs[id] && !(now - (ENDED[id] || 0) < 5000)) S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: now };
   // Setups running in the background come with the state, so this is one call, not two.
   S.setupJobs = st.setupJobs || {};
@@ -6707,9 +6764,21 @@ async function startInstall(id, dir, tag, anyway) {
   try { await invoke('install', { id, dir: dir || null, tag: tag || null }); } catch (err) { delete S.jobs[id]; fail(err); render(true); }
 }
 // An update to the version the update check found (S.updates), by name: an install with no
-// version goes to the one the store let out, which isn't always it (#393).
+// version goes to the one the store let out, which isn't always it (#393). One that builds right
+// after it downloads waits while another such update downloads or builds (pumpUpdates).
 function updateGame(id) {
-  return startInstall(id, undefined, S.updates[parentId(id)] || undefined);
+  const go = () => startInstall(id, undefined, S.updates[parentId(id)] || undefined);
+  if (!buildsAfterUpdate(id) || S.jobs[id]) return go();
+  if (updateChainBusy()) {
+    holdUpdate(id);
+    return Promise.resolve();
+  }
+  // Its turn from now: asked about first (a crashing release), then its download shows as a job.
+  S.updStarting.add(id);
+  return go().finally(() => {
+    S.updStarting.delete(id);
+    pumpUpdates();
+  });
 }
 // What each download was started with, so Resume carries on with the same version and folder.
 function dlArgs(id, args) { (S.dlArgs = S.dlArgs || {})[id] = args; }
@@ -8937,7 +9006,7 @@ async function act(el, e) {
     case 'wine-tools': return wineTools();
     case 'have-it': return haveIt(id);
     case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) updateGame(u); return;
-    case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; render(true); } return invoke('cancel', { id });
+    case 'cancel': return cancelDownload(id);
     case 'dl-pause': return invoke('pause', { id });
     case 'dl-resume': return resumeDl(id);
     case 'play': return playGame(id);
@@ -9609,6 +9678,8 @@ T.event.listen('install', ({ payload: p }) => {
     delete S.jobs[id];
     delete DLSPD[id];
     ENDED[id] = Date.now();
+    // Over, one way or another: an update waiting its turn may go now.
+    setTimeout(pumpUpdates, 0);
     S.recent = [p].concat(S.recent.filter((r) => r.id !== id)).slice(0, 20);
     if (p.phase === 'done') S.dlHist = null;
     const name = byId(id)?.name || id;

@@ -567,7 +567,7 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
-      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
+      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelDownload(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
       case 'installed': {
@@ -2918,7 +2918,7 @@
     switch (act) {
       case 'play': sfx('select'); return playGame(id);
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
-      case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
+      case 'cancel': return cancelDownload(id).then(() => draw(true));
       case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'selfupdate': sfx('select'); return selfUpdate();
       case 'install': sfx('select'); return startInstall(id).then(() => draw(true));

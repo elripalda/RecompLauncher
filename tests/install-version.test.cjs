@@ -28,7 +28,8 @@ const nightlies = [{ tag_name: 'nightly-681' }, { tag_name: 'nightly-680' }, { t
 
 test('an update installs the version on offer by name', () => {
   const asked = [];
-  const c = context({ startInstall: (...args) => { asked.push(args); return Promise.resolve(); } });
+  // (A game that builds on Play: its update starts at once, without waiting its turn.)
+  const c = context({ startInstall: (...args) => { asked.push(args); return Promise.resolve(); }, buildsAfterUpdate: () => false });
   vm.runInContext(fn('updateGame'), c);
   c.S.updates.longshot = 'nightly-681';
   c.updateGame('longshot');
