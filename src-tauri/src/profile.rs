@@ -415,6 +415,11 @@ impl Extra {
             if empty_dir(&to) {
                 let _ = std::fs::remove_dir(&to);
             }
+            // A link to a dump the player moved or deleted points nowhere: placed again. What's
+            // really there stays.
+            if dead_link(&to) {
+                remove_link(&to)?;
+            }
             if to.symlink_metadata().is_ok() {
                 continue;
             }
@@ -1466,7 +1471,8 @@ pub fn missing_in(g: &GameCopy, install: &Path) -> Vec<String> {
     }
     let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
     // An empty folder doesn't count: a release can come with the folders the player's files go in.
-    let there = |e: &std::fs::DirEntry| !empty_dir(&e.path());
+    // Nor does a link to a dump the player moved or deleted.
+    let there = |e: &std::fs::DirEntry| !empty_dir(&e.path()) && !dead_link(&e.path());
     let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(there).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
     g.contains
         .iter()
@@ -1634,6 +1640,11 @@ impl Profile {
             // something already there.
             if empty_dir(&to) {
                 let _ = std::fs::remove_dir(&to);
+            }
+            // A link to a dump the player moved or deleted points nowhere: placed again. What's
+            // really there stays.
+            if dead_link(&to) {
+                remove_link(&to)?;
             }
             if to.symlink_metadata().is_ok() {
                 continue;
@@ -2358,6 +2369,31 @@ fn xdvdfs_has(path: &Path, name: &str) -> bool {
 }
 
 /// A link to a folder: a junction on Windows (no administrator rights needed), a symlink elsewhere.
+/// A link (a junction on Windows, a symlink elsewhere: the dump folders `place` links in) whose
+/// target is gone. A hard-linked or copied file is a real file, never dead.
+pub fn dead_link(p: &Path) -> bool {
+    let link = p.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) || is_junction(p);
+    link && std::fs::metadata(p).is_err()
+}
+
+#[cfg(windows)]
+fn is_junction(p: &Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    // FILE_ATTRIBUTE_REPARSE_POINT: a junction link_dir made.
+    p.symlink_metadata().is_ok_and(|m| m.file_attributes() & 0x400 != 0)
+}
+
+#[cfg(not(windows))]
+fn is_junction(_: &Path) -> bool {
+    false
+}
+
+/// Takes a link away, never what it points to: a symlink as a file, a junction as an empty
+/// folder. Never remove_dir_all, which would follow it into the player's dump.
+fn remove_link(p: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(p).or_else(|_| std::fs::remove_dir(p))
+}
+
 fn link_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
@@ -4273,3 +4309,85 @@ mod lift_tests {
         assert_eq!(p.main_input().unwrap().id, "disc");
     }
 }
+
+/// A dump the player moved or deleted leaves a link in the game's folder that points nowhere: it
+/// counts as missing, and the next place puts the copy picked now there instead.
+#[cfg(test)]
+mod dead_link_tests {
+    use super::*;
+
+    fn dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-dead-link-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn folder_copy() -> Profile {
+        let input = serde_json::json!({ "id": "game", "label": "Your copy", "formats": [{ "type": "folder" }], "into": "data", "contains": ["Media"] });
+        serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [input], "start": { "program": ["g"] } })).unwrap()
+    }
+
+    /// A dump with its Media folder, linked into the game's data folder as place does.
+    fn linked(d: &Path, name: &str) -> PathBuf {
+        let dump = d.join(name);
+        std::fs::create_dir_all(dump.join("Media")).unwrap();
+        std::fs::write(dump.join("Media").join("a.bin"), name).unwrap();
+        dump
+    }
+
+    #[test]
+    fn a_link_to_a_dump_that_is_gone_counts_as_missing_and_is_placed_again() {
+        let d = dir("gone");
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let p = folder_copy();
+        let old = linked(&d, "old-dump");
+        p.place(&install, Some(&old)).unwrap();
+        assert!(p.missing_after_place(&install).is_empty());
+        std::fs::remove_dir_all(&old).unwrap();
+        let media = install.join("data").join("Media");
+        assert!(dead_link(&media));
+        assert_eq!(p.missing_after_place(&install), vec!["Media".to_string()]);
+        assert!(p.already_in_place(&install).is_none());
+        // Picked again from where it is now: placed, not skipped.
+        let new = linked(&d, "new-dump");
+        p.place(&install, Some(&new)).unwrap();
+        assert!(p.missing_after_place(&install).is_empty());
+        assert_eq!(std::fs::read(media.join("a.bin")).unwrap(), b"new-dump");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_working_link_and_a_folder_the_launcher_didnt_place_stay() {
+        let d = dir("stay");
+        let install = d.join("game");
+        let own = install.join("data").join("Media");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(own.join("mine.bin"), b"the player's").unwrap();
+        let p = folder_copy();
+        let dump = linked(&d, "dump");
+        p.place(&install, Some(&dump)).unwrap();
+        // Not a link: never taken away, whatever's picked.
+        assert!(!dead_link(&own));
+        assert_eq!(std::fs::read(own.join("mine.bin")).unwrap(), b"the player's");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn taking_a_dead_link_away_leaves_what_it_pointed_to() {
+        let d = dir("remove");
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let p = folder_copy();
+        let dump = linked(&d, "dump");
+        p.place(&install, Some(&dump)).unwrap();
+        let media = install.join("data").join("Media");
+        // A link that still works is no dead link, and the dump is left as it is.
+        assert!(!dead_link(&media));
+        remove_link(&media).unwrap();
+        assert!(dump.join("Media").join("a.bin").is_file());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
