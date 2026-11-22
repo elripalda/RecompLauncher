@@ -2242,17 +2242,6 @@
           toast(tf('Setup for {name} was cancelled.', { name: a.name }));
         } }
       ];
-    } else if (TS.stage === 'update') {
-      const pickU = async (folder) => {
-        const p = await pickFile(folder ? { title: t('The update\'s folder'), directory: true } : { title: t('The game\'s update'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] }).catch(fail);
-        if (!p) return tsDraw();
-        try { await invoke('set_update_copy', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { TS.uerr = String(e && e.message ? e.message : e); sfx('back'); return tsDraw(); }
-        delete S.setup[id];
-        try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; }
-        TS.uerr = ''; TS.stage = 'ready'; TS.result = TS.result || { text: t('Checked') }; sfx('select'); tsDraw();
-      };
-      body = `${med('is-done')}<div class="tt"><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')}</p>${TS.uerr ? `<p class="err">${esc(t(TS.uerr))}</p>` : ''}</div>
-        <div class="opts">${su.update_file ? it(t('Choose the Update File'), t('The file, as it came'), () => pickU(false), 'main') : ''}${su.update_folder ? it(t('Choose the Update Folder'), t('A folder with its files'), () => pickU(true), su.update_file ? '' : 'main') : ''}${su.update_optional ? it(t('Skip for Now'), '', () => { TS.stage = 'ready'; setTimeout(tsDraw, 0); }) : ''}</div>`;
     } else if (TS.stage === 'ready' && TS.upd) {
       // The update's build is done: the game starts, as Play asked.
       closeSheet();
@@ -2393,8 +2382,7 @@
         const sid = TS.id;
         invoke('game_setup', { id: sid }).then((x) => { S.setup[sid] = x; }).catch(() => {}).finally(() => {
           if (TS.id !== sid) return;
-          const su = S.setup[sid];
-          TS.stage = su && su.update && !su.update_copy ? 'update' : 'ready';
+          TS.stage = 'ready';
           sfx('select'); tsDraw();
         });
         return;

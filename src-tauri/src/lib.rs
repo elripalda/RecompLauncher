@@ -5164,6 +5164,8 @@ struct Setup {
     needs: Option<String>,
     /// "iso", "folder" or "iso_or_folder": what the main file can be.
     kind: String,
+    /// The extensions the main file's formats name, for the file picker.
+    copy_extensions: Vec<String>,
     copy: Option<PathBuf>,
     settings: Vec<SetupOption>,
     actions: Vec<SetupAction>,
@@ -5286,6 +5288,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         own_program: player_program(&st, &id, &g),
         needs: main.as_ref().map(|m| m.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: main.as_ref().map(|m| m.as_copy().kind).unwrap_or_default(),
+        copy_extensions: main.as_ref().map(|m| m.formats.iter().flat_map(|f| f.extensions.clone()).collect()).unwrap_or_default(),
         copy,
         settings: p
             .settings

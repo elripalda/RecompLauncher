@@ -1523,15 +1523,18 @@ function copyLine(id) {
 }
 const pickBtn = (id) => `<button type="button" class="btn sm" data-act="found-fix" data-id="${esc(id)}">${esc(t('Choose Your Copy'))}</button>`;
 // The player's copy as Before you play shows it: the file it's set up with (none yet: '') and the
-// formats to ask for. A game set up through named inputs goes by its own inputs: the install
-// records one copy only, and only for a required input, so a game of a recomp that carries several
-// (or one whose inputs are all optional) would otherwise always look not set up.
+// formats to ask for. The copy is the game's main input (`copy`); its other files are rows of their
+// own (otherFileRows).
 function copyState(id, su) {
-  if (!su.inputs?.length) return { file: su.copy || '', exts: copyFormats(id).exts };
-  // The game's own files: not shared keys, nor a file the launcher fetches itself.
-  const mine = su.inputs.filter((r) => !r.runtime && !r.shared);
-  const file = su.inputs_ready ? ((mine.find((r) => r.path) || {}).path || '') : '';
-  return { file, exts: [...new Set(mine.flatMap((r) => r.extensions || []))] };
+  const file = su.inputs_ready ? (su.copy || '') : '';
+  return { file, exts: (su.copy_extensions || []).length ? su.copy_extensions : copyFormats(id).exts };
+}
+// The game's other files on Before you play, each as Easy Setup lists it: its update, more discs,
+// keys. Optional ones (DLC) and the ones the launcher fetches itself aren't asked for here.
+function otherFileRows(id, su) {
+  return (su.inputs || []).filter((r) => r.active && !r.optional && !r.runtime).map((r) => ({ k: r.label, v: r.path ? true : null,
+    d: r.path ? tf('Set up with {file}', { file: baseName(r.path) }) : '',
+    fix: r.path ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` }));
 }
 function readyRows(a) {
   const id = a.id, g = S.library[id], pc = S.pc || {}, rows = [];
@@ -1554,9 +1557,7 @@ function readyRows(a) {
   else if (a.needs && !selfRun) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
     d: own ? '' : g && g.last_played ? t('Set up the first time you played') : t('Not found'), html: own ? copyLine(id) : '',
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
-  if (su && su.needs && su.update && !selfRun) rows.push({ k: t('The game\'s update'), v: su.update_copy ? true : su.update_optional ? true : null,
-    d: su.update_copy ? tf('Set up with {file}', { file: baseName(su.update_copy) }) : su.update,
-    fix: su.update_copy || su.update_optional ? '' : `<button type="button" class="btn sm main" data-act="setupdate" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` });
+  if (su && su.needs && !selfRun) rows.push(...otherFileRows(id, su));
   rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
@@ -3145,15 +3146,6 @@ function needsCopySetup(g) {
   if (su && su !== 'loading' && su.status) return S.easy.has(g.id) && !su.status.ready;
   return S.easy.has(g.id) && !Object.keys(g.setup_inputs || {}).length;
 }
-function needUpdate(su) { return !!(su && ((su.inputs?.length && !su.inputs_ready) || su.inputs_error || (su.update && !su.update_copy && !su.update_optional))); }
-async function pickUpdate(id, folder) {
-  const p = await pickFile(folder ? { title: t('The update\'s folder'), directory: true } : { title: t('The game\'s update'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] }).catch(fail);
-  if (!p) return null;
-  try { await invoke('set_update_copy', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return String(e && e.message ? e.message : e); }
-  delete S.setup[id];
-  try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; }
-  return '';
-}
 // ---------- setting a game up with the player's copy ----------
 const SU = { id: null, el: null, stage: 'steps', step: '', ev: {}, steps: {}, q: [], at: 0, path: '', extras: false, result: null, err: '' };
 const suDrive = createSetupDriveLight();
@@ -3344,14 +3336,6 @@ async function suAct(b) {
     case 'anyway': return suBegin(SU.path, true);
     case 'convert': return suConvert();
     case 'convert-stop': invoke('convert_cancel').catch(() => {}); return;
-    case 'ufile': case 'ufolder': {
-      const why = await pickUpdate(id, b.dataset.su === 'ufolder');
-      if (why === null) return;
-      if (why) { SU.uerr = why; return suDraw(); }
-      SU.uerr = ''; SU.stage = 'ready'; SU.result = SU.result || { text: t('Checked') };
-      return suDraw();
-    }
-    case 'uskip': SU.stage = 'ready'; return suDraw();
     case 'play': closeSetup(); return playGame(id);
     case 'settings': closeSetup(); if (S.view === 'game' && S.arg === id) return showTab('settings'); S.nextTab = 'settings'; return go('game', id);
   }
@@ -3511,14 +3495,6 @@ const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
 async function onSetupFinished(id, watching) {
   try { S.setup[id] = await invoke('game_setup', { id }); } catch (_) {}
   const a = byId(id) || { name: (S.library[id] || {}).name || id };
-  // Its update is still to pick: it isn't ready yet, and the setup window asks for it.
-  const su = S.setup[id];
-  if (su && su.update && !su.update_copy && !su.update_optional) {
-    await refreshState(); render(true);
-    if (S.view === 'game') refreshGame();
-    if (!watching) toast(tf('{name} needs its update next.', { name: a.name }));
-    return;
-  }
   const curSaved = saved();
   const curOk = (S.settings.ui || {}).setup_ok || {};
   const patch = {};
@@ -3544,8 +3520,7 @@ async function suAfterCopy() {
   const id = SU.id;
   try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { /* keeps the one it has */ }
   if (!SU.el || SU.id !== id) return;
-  const su = S.setup[id];
-  SU.stage = su && su.update && !su.update_copy ? 'update' : 'ready';
+  SU.stage = 'ready';
   suDraw();
 }
 // Steps that finish quickly still show for a moment, so each one can be seen.
@@ -3641,12 +3616,6 @@ function suDraw() {
     right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2><p style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(SU.path)}</p>
       <div class="steps">${order.map((k) => { const i = order.indexOf(k), cur = order.indexOf(SU.step); const done = i < cur, now = i === cur; return `<div class="step${!done && !now ? ' wait' : ''}">${done ? `<span class="ok">${CHECK}</span>` : now ? '<span class="spinr"></span>' : '<span class="todo"></span>'}<div class="k"><b>${esc(names[k])}</b><span>${esc(sub[k])}</span></div></div>`; }).join('')}</div>
       <div class="su-bar"><i style="width:${barW}%"></i></div>`;
-  } else if (SU.stage === 'update') {
-    const picks = [su.update_file ? `<button type="button" class="pick" data-su="ufile"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5V7.5z"/><path d="M14 3v4.5h4.5"/></svg><b>${esc(t('Update File'))}</b><span>${esc(t('The file, as it came'))}</span></button>` : '', su.update_folder ? `<button type="button" class="pick" data-su="ufolder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg><b>${esc(t('Update Folder'))}</b><span>${esc(t('A folder with its files'))}</span></button>` : ''].filter(Boolean);
-    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')} ${esc(t('It goes in with your copy, once.'))}</p>
-      ${SU.uerr ? `<p class="su-err">${esc(t(SU.uerr))}</p>` : ''}
-      ${pickChoices(picks)}
-      ${su.update_optional ? `<button type="button" class="btn" data-su="uskip" style="margin-top:12px">${esc(t('Skip for Now'))}</button>` : ''}`;
   } else if (SU.stage === 'ready') {
     const r = SU.result || {};
     right = `<span class="su-ok${r.verified ? '' : ' plain'}">${CHECK}${esc(r.text || t('Checked'))}</span><h2 style="font-size:32px">${esc(t('Ready to play'))}</h2>
@@ -3715,7 +3684,6 @@ function settingsTab(a) {
       const label = su.copy ? ((su.prepare_options || []).length ? t('Setup Options') : t('Change')) : gone ? t('Change') : t('Insert it');
       return `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('Your copy of the game'))}</b><span>${esc(sub)}</span></div><button type="button" class="btn${have ? '' : ' main'}" data-act="setup" data-id="${esc(id)}">${esc(label)}</button></div>${spareRow(id, su)}</div>`;
     })() : ''}
-    ${su.update ? `<div class="card"><div class="set-row"><div class="k"><b>${esc(t('The game\'s update'))}</b><span>${su.update_copy ? esc(su.update_copy) : esc(su.update)}</span></div><button type="button" class="btn${su.update_copy || su.update_optional ? '' : ' main'}" data-act="setupdate" data-id="${esc(id)}">${esc(su.update_copy ? t('Change') : t('Choose It'))}</button></div></div>` : ''}
     ${su.settings.length ? `<div class="card"><div class="card-h"><h3>${esc(t('How it runs'))}</h3><span>${esc(su.waiting ? t('Play it once first, then change them here.') : t('Saved in the game\'s own settings'))}</span></div>
       ${gameSettingRows(id, su, seg)}</div>` : ''}
     ${su.actions.length ? `<div class="card">${su.actions.map((x) => `<div class="set-row"><div class="k"><b>${esc(x.label)}</b><span>${esc(x.help)}</span></div><button type="button" class="btn${x.kind === 'clear' ? ' danger' : ''}" data-act="gaction" data-id="${esc(id)}" data-k="${esc(x.id)}">${esc(x.kind === 'clear' ? t('Clear') : t('Open'))}</button></div>`).join('')}</div>` : ''}
@@ -8833,15 +8801,6 @@ async function act(el, e) {
       if (S.view === 'game') refreshGame();
       const a = byId(id) || { name: (S.library[id] || {}).name || id };
       toast(tf('Setup for {name} was cancelled.', { name: a.name }));
-      return;
-    }
-    case 'setupdate': {
-      const su = S.setup[id] || {};
-      const why = await pickUpdate(id, !!su.update_folder && !su.update_file);
-      if (why === null) return;
-      if (why) return fail(why);
-      toast(t('Got it. Press Play.'));
-      if (S.view === 'game' && S.arg === id && $('#g-body')) showTab(S.tab); else render(true);
       return;
     }
     case 'setupreq': return setupReqModal(id);

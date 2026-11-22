@@ -20,8 +20,8 @@ function mediaState(m, state) {
 }
 function namedInputRows(su) {
   const rows = (su.inputs || []).filter((r) => r.active);
-  if (su.kind) rows.unshift({ id: 'game', legacy: true, label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: [] });
-  if (su.update) rows.push({ id: 'legacy-update', legacy: true, label: su.update, role: 'update', optional: su.update_optional, path: su.update_copy, file: su.update_file, folder: su.update_folder, extensions: [] });
+  // The game's main file (the copy): the big box. Its update, discs and keys are the rows after it.
+  if (su.kind) rows.unshift({ id: 'game', legacy: true, label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: su.copy_extensions || [] });
   return rows;
 }
 // Fetches DLSS for a setup that wants it and hasn't got it yet: once per setup window, and again
@@ -59,9 +59,8 @@ async function namedInputsAction(id, act, input, ns) {
       const picked = await pickFile(options);
       if (!picked) return;
       const path = typeof picked === 'string' ? picked : picked.path;
-      // Only the single-copy rows go to the old commands; a profile's own input may be named "game" too.
       // Picked in Easy Setup's window: it waits there until a setup with it works.
-      await invoke(!row.legacy ? 'setup_input_set' : row.id === 'game' ? 'set_game_copy' : 'set_update_copy', { id, input, path, pending: true });
+      await invoke(row.legacy ? 'set_game_copy' : 'setup_input_set', { id, input, path, pending: true });
     }
     S.setup[id] = await invoke('game_setup', { id });
     await refreshState();

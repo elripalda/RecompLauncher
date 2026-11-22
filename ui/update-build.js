@@ -62,9 +62,8 @@ function updDraw() {
   const a = byId(id) || { name: (S.library[id] || {}).name || id };
   const g = S.library[id] || {};
   const su = S.setup[id] || {};
-  // Built: the game starts, as Play asked. Its update still to pick (rare) goes to Easy Setup.
+  // Built: the game starts, as Play asked.
   if (SU.stage === 'ready') { closeSetup(true); return playGame(id); }
-  if (SU.stage === 'update') { closeSetup(true); return setupModal(id); }
   const busy = SU.stage === 'run';
   const ver = busy || !g.prev_tag ? verText(g.tag) : `${verText(g.prev_tag)} → ${verText(g.tag)}`;
   const head = `<button type="button" class="su-x" data-up="close" aria-label="${esc(busy ? t('Hide') : t('Close'))}">${XMARK}</button>
@@ -127,7 +126,7 @@ async function updateBuildModal(id) {
   // The options its update added start as their developer set them (on, unless they say otherwise
   // or have a license to accept), as in Easy Setup.
   const updOpts = Object.fromEntries(newPrepOpts(su).map((o) => [o.id, !!o.on]));
-  Object.assign(SU, { id, upd: true, updOpts, stage: 'confirm', named: {}, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', kept: !!su.kept, extras: false, result: null, err: '', uerr: '', note: '' });
+  Object.assign(SU, { id, upd: true, updOpts, stage: 'confirm', named: {}, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', kept: !!su.kept, extras: false, result: null, err: '', note: '' });
   // Its build still running in the background (it was hidden): that build, not a second one.
   const job = S.setupJobs && S.setupJobs[id];
   if (job) {
