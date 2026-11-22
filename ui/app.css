@@ -1382,9 +1382,6 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .stats>div{padding:15px 18px;border-radius:18px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
 .stats span{font-size:12px;font-weight:600;color:var(--dim)}
 .stats b{font-size:16px}
-.dl-top{display:flex;align-items:center;gap:10px;min-width:0}
-.dl-top b{font-size:16px}
-.dl-top .tag{height:24px;font-size:11.5px;padding:0 9px}
 .dl-list{display:flex;flex-direction:column;border-radius:20px;background:var(--card);border:1px solid var(--line);overflow:hidden}
 .dl-row{display:flex;align-items:center;gap:16px;padding:11px 16px 11px 12px;border-top:1px solid var(--line);transition:background-color .15s}
 .dl-row:first-child{border-top:0}
@@ -1396,8 +1393,29 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .dl-row .cap.cov img{position:absolute;inset:0;width:100%;height:100%;border-radius:0;object-fit:cover;object-position:50% 30%}
 .dl-row .cap.plug-ph{display:grid;place-items:center;color:var(--dim)}
 .dl-row .mid .prog{margin-top:4px}
-.dl-q>.tag{height:24px;font-size:11.5px;padding:0 9px;flex:none}
-.dl-q .acts{display:flex;gap:8px;flex:none}
+/* Downloads: the download that is moving, then the ones waiting their turn, in one list */
+.dl-moving{background:linear-gradient(90deg,rgba(52,242,232,.07),transparent 70%)}
+.dl-moving .mid{gap:3px}
+.dl-moving .prog{margin-top:4px;gap:0;min-width:0}
+.dl-moving .prog .track{height:4px}
+.dl-moving .prog .lbl{display:none}
+/* Downloads is a calm list, as in its mockup: small section titles; the moving row a bit bigger */
+.dl-page{gap:20px}
+.dl-page .shelf{gap:10px}
+.dl-page .shelf-h h2{font-size:16px}
+.dl-page .dl-moving .cap{width:140px;height:66px;border-radius:11px}
+.dl-page .dl-moving .mid b{font-size:15.5px}
+.dl-page .dl-moving .dl-phase{font-size:13px}
+.dl-state{flex:none;color:var(--muted);font-size:12.5px;font-weight:600}
+/* The version an update goes to, in the game page's update blue (.gs-new) */
+.dl-row .mid .gs-new{color:var(--cyan)}
+/* A moving row's name with the store's pill beside it */
+.dl-name{display:flex;align-items:center;gap:8px;min-width:0}
+/* Built: the build after that update finished. Violet, apart from the store's green Safe */
+.scan-pill.built{gap:5px;padding:0 9px 0 7px;color:#B9A4FF!important;border-color:rgba(155,124,255,.4);background:rgba(155,124,255,.1);cursor:help}
+.scan-pill.built svg{flex:none}
+body.light .scan-pill.built{color:#5b3fd1!important}
+.dl-row .btn.sq.sm{width:34px;height:34px;border-radius:10px}
 .dl-sub{display:flex!important;align-items:center;gap:10px;min-width:0}
 .dl-sub>span:first-child{flex:none}
 .dl-check{color:var(--dim)}
@@ -1417,21 +1435,7 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 button.dl-notes:hover{background:var(--fill2);color:var(--ink)}
 .dl-n{font:600 15px Figtree,sans-serif;color:var(--dim);margin-left:9px;letter-spacing:0}
 /* The download that's moving: its art, its progress and its speed, side by side */
-.dl-hero{display:grid;grid-template-columns:240px minmax(0,1fr) 300px;gap:22px;align-items:stretch;padding:16px;border-radius:22px;background:var(--noise),linear-gradient(160deg,var(--card2),var(--card) 70%);border:1px solid rgba(52,242,232,.22)}
-.dl-hero-art{border-radius:14px;overflow:hidden;background:var(--card3);min-height:136px;position:relative}
-.dl-hero-art img,.dl-hero-art .cap{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:0}
-.dl-hero-main{display:flex;flex-direction:column;justify-content:center;gap:10px;min-width:0}
-.dl-hero-main h2{font-size:22px;margin:0}
-.dl-hero-main .acts{display:flex;gap:10px;margin-top:2px}
-.dl-phase{color:var(--muted);font-size:13px;font-weight:700}
-.dl-graph{display:flex;flex-direction:column;gap:10px;min-width:0;padding:10px 12px 12px;border-radius:14px;background:rgba(0,0,0,.22);border:1px solid var(--line)}
-.dl-graph svg{width:100%;height:78px;display:block}
-.dl-graph .gl{stroke:rgba(255,255,255,.07);stroke-width:1;vector-effect:non-scaling-stroke}
-.dl-graph .ln{fill:none;stroke:#34F2E8;stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
-.dl-gstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.dl-gstats>div{display:flex;flex-direction:column;gap:1px;min-width:0}
-.dl-gstats span{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
-.dl-gstats b{font-size:14px}
+.dl-phase{color:var(--dim);font-size:12px;font-weight:600}
 /* RecompLauncher's own update, first thing on the page */
 .dl-row .mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .dl-row .mid b{font-size:14.5px}
@@ -1441,7 +1445,6 @@ button.dl-notes:hover{background:var(--fill2);color:var(--ink)}
 .dl-row .icon-btn svg{width:16px;height:16px}
 .dl-row .btn{flex:none}
 .shelf-h .btn svg{width:15px;height:15px}
-@media (max-width:1100px){.dl-hero{grid-template-columns:200px minmax(0,1fr)}.dl-graph{grid-column:1/-1}}
 @media (max-width:900px){.dl-row .cap{width:84px;height:40px}.dl-time{display:none}}
 
 .dc-btn{color:#8f9cff}.dc-btn:hover{color:#a9b3ff}.dc-btn svg{width:24px;height:24px}
@@ -1644,18 +1647,11 @@ body.sliding main{overflow-x:hidden}
 .dev-me b{display:flex;align-items:center;gap:6px;font-size:15px}.dev-me b .vtick{color:var(--cyan)}
 .dev-me small{color:var(--muted);font-size:13px}
 
-/* Downloads: Recent, one row per game under its day, its earlier downloads folded under it */
+/* Downloads: Recent, one row per game under its day */
 .dl-day{padding:14px 16px 4px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .dl-day:not(:first-child){border-top:1px solid var(--line)}
 .dl-day+.dl-row{border-top:0}
 .dl-time{flex:none;min-width:72px;text-align:right;color:var(--muted);font-size:12.5px;font-weight:600;white-space:nowrap}
-.dl-earlier-btn{display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:12px;font-weight:700;border-radius:6px}
-.dl-earlier-btn:hover{color:var(--ink)}
-.dl-earlier-btn[aria-expanded="true"] .upd-chev{transform:rotate(180deg)}
-.dl-earlier{display:flex;flex-direction:column;gap:6px;padding:2px 66px 12px 140px}
-.dl-earlier div{display:flex;gap:12px;align-items:baseline;font-size:12.5px;color:var(--dim)}
-.dl-earlier small{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
-.dl-totals{margin-top:6px!important;color:var(--dim);font-size:13px}
 .tabs button .tab-n{font-size:12px;font-weight:800;opacity:.75;margin-left:4px}
 .upd-chev{flex:none;color:var(--muted);transition:transform .25s var(--ease)}
 
