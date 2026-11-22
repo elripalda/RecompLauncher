@@ -451,10 +451,8 @@
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
-        if (sj) {
-          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-          return btn(key, 'setup-reopen', esc(tf('Setting up {pct}%', { pct: p })), { cls: 'main', id, g: 'a' });
-        }
+        // Said as on the desktop's game page and Downloads: "Building the game · 42%".
+        if (sj) return btn(key, 'setup-reopen', esc(setupLine(sj)), { cls: 'main', id, g: 'a' });
         return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
       }
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
@@ -577,11 +575,9 @@
       }
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
-        if (sj) {
-          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-          return { label: t('Setting up'), sub: `${p}%`, icon: 'disc', run: () => tvSetup(id) };
-        }
-        return null;
+        if (!sj) return null;
+        const sp = setupProg(sj);
+        return { label: sp.label, sub: sp.pct ? `${sp.pct}%` : '', icon: 'disc', run: () => tvSetup(id) };
       }
       case 'soon': case 'nobuild': return null;
       default: return isSaved(id) ? { label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) } : { label: t('Add to Library'), sub: t('Install it whenever you like'), icon: 'plus', run: () => addToLibrary(id).then(() => draw(true)) };
@@ -595,11 +591,7 @@
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
     if (st === 'settingup') {
       const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
-      if (sj) {
-        const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-        return tf('Setting up {pct}%', { pct: p });
-      }
-      return t('Its setup is open');
+      return sj ? setupLine(sj) : t('Its setup is open');
     }
     const m = mainItem(a);
     return m ? m.label : t('Game page');

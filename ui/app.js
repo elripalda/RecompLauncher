@@ -1289,10 +1289,9 @@ function actions(a, size = 'big') {
     case 'settingup': {
       const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
       if (sj) {
-        const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-        const stageName = sj.step === 'read' ? t('Reading') : sj.step === 'verify' ? t('Checking') : sj.step === 'extras' ? t('Extras') : sj.step === 'setup' ? t('Setting up') : t('Setting up');
+        const sp = setupProg(sj);
         const canCancel = `<button type="button" class="${sq}" data-act="setup-cancel" data-id="${id}" aria-label="${esc(t('Cancel Setup'))}" title="${esc(t('Cancel Setup'))}">${XS}</button>`;
-        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Show its setup'))}"><div class="track busy"><i style="width:${p}%"></i></div><div class="lbl"><span>${esc(stageName)}</span><span>${p}%</span></div></button>` + canCancel + more;
+        return `<button type="button" class="prog su-prog" data-act="reopen-setup" data-id="${id}" data-su-prog="${id}" title="${esc(t('Show its setup'))}"><div class="track${sp.pct ? '' : ' busy'}"><i style="width:${sp.pct}%"></i></div><div class="lbl"><span>${esc(sp.label)}</span><span>${sp.pct ? sp.pct + '%' : ''}</span></div></button>` + canCancel + more;
       }
       return `<button type="button" class="btn ${size}" disabled>${esc(t('Its setup is open'))}</button>` + more;
     }
@@ -4488,6 +4487,18 @@ function dlTitle(builds, buildsWaiting) {
   if (downloads && building) return t('Downloading and building');
   return building ? t('Building') : t('Downloading');
 }
+// A running setup on the game's page and Big Picture's button, said as Downloads says it: a build is
+// Building the game, with its % once the build step runs; a setup with no build step of its own is
+// Setting up. Before the build step the bar only moves (pct 0).
+function setupProg(ev) {
+  const pct = ev.step === 'extras' ? Math.min(100, Math.max(0, Math.round((ev.pct || 0) * 100))) : 0;
+  return { label: ev.extras ? t('Building the game') : t('Setting up'), pct };
+}
+// The same in one line: "Building the game · 42%".
+function setupLine(ev) {
+  const sp = setupProg(ev);
+  return sp.pct ? tf('Building the game · {pct}%', { pct: sp.pct }) : sp.label;
+}
 function buildLine(id) {
   const p = buildPct(id);
   return p ? tf('Building the game · {pct}%', { pct: p }) : t('Building the game');
@@ -5633,16 +5644,14 @@ function paintProgress(id) {
 function paintSetupProgress(id) {
   const ev = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
   if (!ev) return;
-  const p = Math.min(100, Math.max(0, Math.round((ev.pct || 0) * 100)));
-  const stageName = ev.step === 'read' ? t('Reading') : ev.step === 'verify' ? t('Checking') : ev.step === 'extras' ? t('Extras') : ev.step === 'setup' ? t('Setting up') : t('Setting up');
+  const sp = setupProg(ev);
   for (const el of $$(`[data-su-prog="${CSS.escape(id)}"]`)) {
     const tr = $('.track', el);
-    if (tr) $('i', tr).style.width = p + '%';
+    if (tr) { tr.classList.toggle('busy', !sp.pct); $('i', tr).style.width = sp.pct + '%'; }
     const s = $$('.lbl span', el);
-    if (s && s.length >= 2) {
-      s[0].textContent = stageName;
-      s[1].textContent = p + '%';
-    }
+    if (s.length < 2) continue;
+    s[0].textContent = sp.label;
+    s[1].textContent = sp.pct ? sp.pct + '%' : '';
   }
 }
 
