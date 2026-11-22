@@ -150,7 +150,7 @@ function accountSection(group, row) {
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
       <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Back Up Every Game'), t('On: every game\'s saves go to your account after you play. Off: only the games you turn it on for. A game you switched in its Manage tab keeps that.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_all === true}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
+      + row(t('Back Up Every Game'), t('On: every game\'s saves go to your account after you play. Off: only the games you turn on in their Manage tab. Changing this changes every game.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_all === true}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
       + deviceNameRow())
     + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
@@ -734,7 +734,8 @@ window.loadSavesAll = loadSavesAll;
 // Asked once: right after signing in (first-run setup asks on a step of its own instead), and on
 // the first start after the update for players who were signed in already. ui.cloud_all: true,
 // every game's saves go up; false, only the games switched on in their Manage tab; not set, not
-// asked yet (off). A game switched in its Manage tab keeps that whatever is picked here.
+// asked yet (off). A game either follows this or was switched in its Manage tab since it was
+// picked: picking again (here or in Settings, Account) makes every game follow it.
 const CA_SVG = (paths, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 const CA = {
   pc: CA_SVG('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
@@ -748,6 +749,8 @@ const CLOUD_ALL_LEAD = N_('After you play, a game\'s saves can go to your accoun
 let cloudAsked = false;
 
 async function setCloudAll(on) {
+  try { await invoke('saves_cloud_follow_all'); } catch (e) { return fail(e); }
+  for (const g of Object.values(S.library)) g.cloud = null;
   await saveUi({ cloud_all: on }, true);
   // Each game's Saves tab and badge knew the old answer.
   S.saves = {}; S.savesAll = null; forgetSaveStatus();
@@ -777,9 +780,7 @@ async function pickCloudAll() {
   const name = (S.account.user && S.account.user.username) || '';
   const lead = `${tf('Signed in as {name}.', { name })} ${t(CLOUD_ALL_LEAD)}`;
   if (inTV() && window.tvCloudAll) return window.tvCloudAll(t('Back up your saves?'), lead, choices);
-  // Games switched one by one before this was asked keep that.
-  const kept = Object.values(S.library).some((g) => g.cloud != null);
-  const foot = (kept ? t('Games you already set keep their setting.') + ' ' : '') + t('You can change this any time in Settings → Account.');
+  const foot = t('You can change this any time in Settings → Account.');
   const row = (c, i) => `<button type="button" class="ca-pick${c.tag ? ' rec' : ''}" data-x="c${i}"><span class="ic">${c.icon}</span><span class="k"><b>${esc(c.label)}${c.tag ? `<em>${esc(c.tag)}</em>` : ''}</b><span>${esc(c.sub)}</span></span>${CA.chev}</button>`;
   const art = `<div class="ca-art" aria-hidden="true"><span class="dev">${CA.pc}<small>${esc(t('This PC'))}</small></span><i class="ln"></i><span class="cl">${CA.cloud}</span><i class="ln"></i><span class="dev">${CA.any}<small>${esc(t('Any PC'))}</small></span></div>`;
   return new Promise((res) => {
@@ -798,8 +799,6 @@ async function askCloudAll() {
   if (cloudAsked || ui.cloud_all != null || !S.settings.setup_done) return;
   if (!(S.account && S.account.signedIn) || document.body.classList.contains('first-run')) return;
   cloudAsked = true;
-  // "Don't Ask Again" to the old question, asked game by game: only the games they pick, unasked.
-  if (ui.cloud_ask === false) return setCloudAll(false);
   await noModal();
   if ((S.settings.ui || {}).cloud_all != null) return;
   const v = await pickCloudAll();

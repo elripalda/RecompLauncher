@@ -5,7 +5,7 @@ const test = require('node:test');
 const { runInNewContext } = require('node:vm');
 
 // Cloud saves are picked once for every game (account.js askCloudAll), not asked game by game
-// before Play. A game switched in its Manage tab keeps that.
+// before Play. A game switched in its Manage tab keeps that until every game is picked for again.
 const account = readFileSync(join(__dirname, '../ui/account.js'), 'utf8');
 const app = readFileSync(join(__dirname, '../ui/app.js'), 'utf8');
 const between = (src, from, to) => src.slice(src.indexOf(from), src.indexOf(to));
@@ -66,10 +66,27 @@ test('nobody is asked when signed out, during setup, or after answering', async 
   }
 });
 
-test('Don\'t Ask Again to the old question means only the games they pick', async () => {
-  const { calls, ask } = asker({ ui: { cloud_ask: false } });
+test('players who said Don\'t Ask Again to the old question are asked too', async () => {
+  const { calls, ask } = asker({ ui: { cloud_ask: false }, answer: true });
   await ask();
-  assert.deepEqual(calls, [['set', false]]);
+  assert.deepEqual(calls, ['asked', ['set', true]]);
+});
+
+test('picking for every game makes every game follow it again', async () => {
+  const invoked = [];
+  const S = { library: { a: { cloud: false }, b: { cloud: true }, c: { cloud: null } }, settings: { ui: {} } };
+  const context = {
+    S,
+    invoke: async (c) => { invoked.push(c); },
+    saveUi: async (patch) => { S.settings.ui = Object.assign({}, S.settings.ui, patch); },
+    forgetSaveStatus() {},
+    fail: assert.fail,
+  };
+  const set = runInNewContext(between(account, 'async function setCloudAll(', '// Waits until nothing else covers') + '\nsetCloudAll', context);
+  await set(true);
+  assert.deepEqual(invoked, ['saves_cloud_follow_all']);
+  assert.deepEqual(Object.values(S.library).map((g) => g.cloud), [null, null, null]);
+  assert.equal(S.settings.ui.cloud_all, true);
 });
 
 test('Play asks nothing about cloud saves for a game never switched', async () => {
