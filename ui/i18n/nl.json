@@ -1678,6 +1678,7 @@
  "{console} files": "{console}-bestanden",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} van {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} heeft {free} vrij",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. Games kunnen vaak niet opslaan of zich installeren in beveiligde mappen zoals Program Files.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} staat niet in die map of de mappen daarin. Kies de map met je kopie van de game.",

@@ -34,7 +34,7 @@ function updRun(a, su) {
   const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Building the game'), setup: t('Setting it up') };
   const sub = {
     read: st.read && st.read.text ? st.read.text : baseName(SU.path),
-    verify: st.verify && st.verify.total ? tf('{done} of {total}', { done: fmtB(st.verify.done), total: fmtB(st.verify.total) }) : (st.verify && st.verify.text) || '',
+    verify: verifyLine(st.verify, ''),
     // The builder's own line (Compiling, 112 of 611 files changed): what it's doing right now.
     extras: (st.extras && st.extras.text) || '',
     setup: (st.setup && st.setup.text) || '',
@@ -45,7 +45,7 @@ function updRun(a, su) {
   for (const k of order) {
     total += weight[k];
     const s = st[k], i = order.indexOf(k);
-    have += i < cur || (s && s.done) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0;
+    have += i < cur || (s && s.over) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0;
   }
   const pc = Math.round((have / total) * 100);
   const rows = order.map((k, i) => {

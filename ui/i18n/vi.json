@@ -1678,6 +1678,7 @@
  "{console} files": "Tệp {console}",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} / {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} còn trống {free}",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. Trò chơi thường không lưu hoặc thiết lập được trong các thư mục được bảo vệ như Program Files.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} không có trong thư mục đó hay các thư mục bên trong. Hãy chọn thư mục chứa bản game của bạn.",

@@ -1678,6 +1678,7 @@
  "{console} files": "File {console}",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} dari {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} punya {free} kosong",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. Game sering tidak bisa menyimpan atau melakukan penyiapan di folder yang dilindungi seperti Program Files.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} tidak ada di folder itu atau folder di dalamnya. Pilih folder salinan game-mu.",

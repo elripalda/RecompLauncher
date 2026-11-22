@@ -1678,6 +1678,7 @@
  "{console} files": "{console} 파일",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done}/{total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive}에 {free} 남음",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. 게임은 Program Files 같은 보호된 폴더에서 저장하거나 설정하지 못하는 경우가 많습니다.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file}이(가) 그 폴더나 하위 폴더에 없습니다. 게임 사본이 있는 폴더를 고르세요.",

@@ -1678,6 +1678,7 @@
  "{console} files": "{console} dosyaları",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} / {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} sürücüsünde {free} boş",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. Oyunlar, Program Files gibi korumalı klasörlerde çoğu zaman kayıt yapamaz veya kurulamaz.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} bu klasörde ya da içindeki klasörlerde yok. Oyun kopyanın olduğu klasörü seç.",

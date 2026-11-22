@@ -1678,6 +1678,7 @@
  "{console} files": "ไฟล์ {console}",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} จาก {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} ว่าง {free}",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error} เกมมักบันทึกหรือตั้งค่าไม่ได้ในโฟลเดอร์ที่ถูกป้องกัน เช่น Program Files",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "ไม่มี {file} ในโฟลเดอร์นั้นหรือโฟลเดอร์ด้านใน เลือกโฟลเดอร์ที่มีสำเนาเกมของคุณ",

@@ -1678,6 +1678,7 @@
  "{console} files": "{console} のファイル",
  "{day}: {time}": "{day}：{time}",
  "{done} of {total}": "{done} / {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} の空き容量：{free}",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}。Program Files のような保護されたフォルダーでは、ゲームがセーブやセットアップをできないことがよくあります。",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} はそのフォルダーにも中のフォルダーにもありません。ゲームのコピーがあるフォルダーを選んでください。",

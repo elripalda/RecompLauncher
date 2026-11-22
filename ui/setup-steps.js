@@ -13,6 +13,14 @@
 const SS_FOLDER = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>';
 const SS_WARN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.5"/></svg>';
 
+// A game on several discs: the copy box holds the first one (the box always says role `game`), so
+// it counts as a disc with the rest. A game with no disc rows has none.
+function discRows(own) {
+  const discs = own.filter((r) => r.role === 'disc');
+  const copy = own.find((r) => r.legacy && r.id === 'game');
+  return discs.length && copy ? [copy, ...discs] : discs;
+}
+
 // The rows, with where each one's file came from (how): 'found' (the folder scan), 'prev' (kept
 // from before this window opened), 'shared' (keys kept on this PC), or '' (picked just now).
 function stepsRows(id, su, ns) {
@@ -43,7 +51,7 @@ function stepsModel(id, su, ns) {
   const reqOff = prepBlocked(su);
   // Options its project added since the player set it up: the Extras step has a dot.
   const fresh = opts.filter((o) => o.new && (su.copy || su.inputs_ready));
-  const steps = [{ id: 'game', name: own.filter((r) => r.role === 'disc').length > 1 ? t('Discs') : t('Game') }];
+  const steps = [{ id: 'game', name: discRows(own).length > 1 ? t('Discs') : t('Game') }];
   if (addons.length) steps.push({ id: 'addons', name: t('Add-ons') });
   if (opts.length || runtime.length) steps.push({ id: 'extras', name: t('Extras') });
   const at = Math.max(0, Math.min(ns.at || 0, steps.length - 1));
@@ -126,7 +134,7 @@ function stepsView(id, su, ns, game) {
   const rail = m.steps.length > 1 ? `<div class="ss-rail">${m.steps.map((s, i) => `${i ? '<span class="bar"></span>' : ''}<span class="s${i === m.at ? ' now' : i < m.at ? ' done' : ''}${s.id === 'extras' && m.reqOff ? ' req' : ''}${s.id === 'extras' && m.fresh.length ? ' new' : ''}"><i>${i < m.at ? CHECK : i + 1}</i>${esc(s.name)}</span>`).join('')}</div>` : '';
   let head = '', lead = '', body = '', status = '';
   if (m.cur.id === 'game') {
-    head = m.own.filter((r) => r.role === 'disc').length > 1 ? t('Insert your discs') : t('Insert your copy');
+    head = discRows(m.own).length > 1 ? t('Insert your discs') : t('Insert your copy');
     lead = t('Checked once when it\'s set up. After that, you just press Play.');
     // Built again from what its setup step kept: the copy's box stays, for building from it instead.
     const copyRow = m.own.find((r) => r.legacy && r.id === 'game');
@@ -194,7 +202,7 @@ function ssSummary(su, ns, m) {
 function stepsShell(id, su, ns, game, tv) {
   const m = stepsModel(id, su, ns);
   const any = m.own.some((r) => r.path);
-  const discs = m.own.filter((r) => r.role === 'disc');
+  const discs = discRows(m.own);
   const sum = discs.length > 1 ? `<p class="ni-disc-summary" role="status">${esc(tf('{ready} of {total} discs selected', { ready: discs.filter((r) => r.path).length, total: discs.length }))}</p>` : '';
   const art = gameMediaHtml(game, any ? '' : 'ghost');
   if (tv) return `<div class="ni-tv-layout"><div class="ni-tv-art"><div class="tv-media" aria-hidden="true">${art}</div>${sum}</div><div class="ni-tv su-r ss">${stepsView(id, su, ns, game)}</div></div>`;

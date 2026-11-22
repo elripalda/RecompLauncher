@@ -10,9 +10,26 @@ shows there with a tag saying so. The disc artwork and two-column layout are kep
 windows the artwork sits above. Preparation starts only from Set Up, once every required input is
 selected. Desktop and Big Picture draw the same steps (`ui/setup-steps.js`).
 
-Named inputs are the one way to ask for files: the player's copy of the game is the first input
-with role `game` (call it `game`), shown as the big box, and everything else is a row under it.
-Pass each one with `{input:id}`. Names refer to input IDs, not shared-resource names.
+Named inputs are the one way to ask for files. **The top-level `game` field is deprecated** (still
+read until RecompLauncher 1.0, as the input `game`); **the input named `game` is the new way.** The
+player's copy is shown as the big box, and everything else is a row under it. Pass each one with
+`{input:id}`. Names refer to input IDs, not shared-resource names.
+
+Which input for which file:
+
+1. **A game that is one file (or one folder):** one input, `"id": "game"`, `"role": "game"` (the
+   default), passed as `{input:game}`.
+2. **A game on several discs:** every disc has `"role": "disc"`, ids `disc1` to `discN`, labels
+   `Disc 1` to `Disc N`, and no input has role `game`. The launcher makes Disc 1 the copy box by
+   itself. Give every disc a `check`. Not every disc as role `game`: only the first would be the
+   copy box, and the Discs step, the "Insert your discs" heading and the "N of N discs selected"
+   count all go by role `disc`.
+3. **DLC:** `"role": "dlc"`, `"optional": true`, one input per package (`dlc1`, `dlc2`, ...).
+4. **An update:** `"role": "update"`, usually with `into` and `name`.
+5. **Keys:** a `shared` input (`switch.prod-keys` ...), never a file of the game's own the player picks.
+6. **A folder input only when the copy is a folder** (an extracted PS3 game, a Switch game's
+   `exefs` and `romfs`); never a folder of discs or DLC. One file per input, one argument per
+   file, the flag and the file together (`--disc2={input:disc2}`).
 
 ## Scope constraint for maintainers and coding agents
 
@@ -81,6 +98,12 @@ See [the complete example](examples/multidisc-inputs.json). Declare one input fo
 `label` should say exactly which disc/version/content to choose. A `file` format may list accepted
 extensions without a leading dot; an empty list accepts any regular file. A `folder` format accepts
 a selected existing folder and cannot declare extensions or an installation destination.
+
+**One file per input, one argument per file.** Each disc image and each DLC package is an input of
+its own and reaches the game through an argument of its own: `--disc1={input:disc1}`,
+`--disc2={input:disc2}`, `--dlc1={input:dlc1}`. Never ask for a folder of discs or DLC and pass the
+folder. A `folder` format is only for a copy that is a folder: an extracted PS3 game, or a Switch
+game's `exefs` and `romfs`.
 
 You can pass every selected path to `prepare.args`, `start.args`, `start.env`, or a game's
 `games[].args` using `{input:id}`.

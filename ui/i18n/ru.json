@@ -1678,6 +1678,7 @@
  "{console} files": "Файлы {console}",
  "{day}: {time}": "{day}: {time}",
  "{done} of {total}": "{done} из {total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "На {drive} свободно {free}",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}. Игры часто не могут сохраняться или настраиваться в защищённых папках вроде Program Files.",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} нет ни в этой папке, ни во вложенных. Выберите папку с вашей копией игры.",

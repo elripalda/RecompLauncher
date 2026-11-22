@@ -1678,6 +1678,7 @@
  "{console} files": "{console} 檔案",
  "{day}: {time}": "{day}：{time}",
  "{done} of {total}": "{done}/{total}",
+ "{part} · {progress}": "{part} · {progress}",
  "{drive} has {free} free": "{drive} 剩餘 {free}",
  "{error}. Games often can't save or set up in protected folders like Program Files.": "{error}。遊戲通常無法在 Program Files 這類受保護的資料夾中存檔或完成設定。",
  "{file} isn't in that folder or the ones inside it. Pick the folder with your copy of the game.": "{file} 不在那個資料夾或其中的子資料夾裡。請選擇存放您遊戲副本的資料夾。",
