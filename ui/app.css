@@ -1399,14 +1399,13 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .dl-moving .prog{margin-top:4px;gap:0;min-width:0}
 .dl-moving .prog .track{height:4px}
 .dl-moving .prog .lbl{display:none}
-/* Downloads is a calm list, as in its mockup: small art, tight rows, small section titles */
+/* Downloads is a calm list, as in its mockup: small section titles; the moving row a bit bigger */
 .dl-page{gap:20px}
 .dl-page .shelf{gap:10px}
 .dl-page .shelf-h h2{font-size:16px}
-.dl-page .dl-row{gap:12px;padding:7px 12px}
-.dl-page .dl-row .cap{width:72px;height:34px;border-radius:7px}
-.dl-page .dl-row .mid b{font-size:13.5px}
-.dl-page .dl-row .mid span{font-size:12px}
+.dl-page .dl-moving .cap{width:140px;height:66px;border-radius:11px}
+.dl-page .dl-moving .mid b{font-size:15.5px}
+.dl-page .dl-moving .dl-phase{font-size:13px}
 .dl-state{flex:none;color:var(--muted);font-size:12.5px;font-weight:600}
 .dl-row .btn.sq.sm{width:34px;height:34px;border-radius:10px}
 .dl-sub{display:flex!important;align-items:center;gap:10px;min-width:0}
@@ -1648,7 +1647,7 @@ body.sliding main{overflow-x:hidden}
 .dl-earlier-btn{display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:12px;font-weight:700;border-radius:6px}
 .dl-earlier-btn:hover{color:var(--ink)}
 .dl-earlier-btn[aria-expanded="true"] .upd-chev{transform:rotate(180deg)}
-.dl-earlier{display:flex;flex-direction:column;gap:6px;padding:2px 60px 10px 96px}
+.dl-earlier{display:flex;flex-direction:column;gap:6px;padding:2px 66px 12px 140px}
 .dl-earlier div{display:flex;gap:12px;align-items:baseline;font-size:12.5px;color:var(--dim)}
 .dl-earlier small{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
 .tabs button .tab-n{font-size:12px;font-weight:800;opacity:.75;margin-left:4px}

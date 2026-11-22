@@ -9725,7 +9725,8 @@ T.event.listen('install', ({ payload: p }) => {
     // Over, one way or another: an update waiting its turn may go now.
     setTimeout(pumpUpdates, 0);
     S.recent = [p].concat(S.recent.filter((r) => r.id !== id)).slice(0, 20);
-    if (p.phase === 'done') S.dlHist = null;
+    // Read again, keeping the old list until the new one is in, so Recent doesn't blink away.
+    if (p.phase === 'done') loadDlHist();
     const name = byId(id)?.name || id;
     // The library isn't refreshed yet, so this still says whether it was here before this download.
     const wasInstalled = !!S.library[id];
