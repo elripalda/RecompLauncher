@@ -1,5 +1,5 @@
-// Finishing an update that needs a new build: the game's update changed how it's built (a new
-// prepare.version, the setup status's `changed`), so it's built again before it plays. Play stays
+// Finishing an update that needs a new build: a game set up on an older release builds again (the
+// setup status's `changed`), so it's built again before it plays. Play stays
 // Play: its first press opens this small window instead of Easy Setup, which is for setting a game
 // up, not for updating one that's set up. It runs the same setup as Easy Setup (suBegin and the
 // `setup` events in app.js) and only draws it smaller: the build, then the game starts.

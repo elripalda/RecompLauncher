@@ -22,5 +22,6 @@ test('prepare.version is in the schema, the developer guide and the profile', ()
 });
 
 test("an update doesn't open the game's setup by itself", () => {
-  assert.match(read('ui/app.js'), /else if \(S\.easy\.has\(id\) && wasInstalled\) toast\(tf\('\{name\} is updated\.'/);
+  // (Build Games Again After Updates builds in the background; it never opens a window.)
+  assert.match(read('ui/app.js'), /else if \(S\.easy\.has\(id\) && wasInstalled\) \{ toast\(tf\('\{name\} is updated\.'/);
 });

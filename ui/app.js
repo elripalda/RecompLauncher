@@ -3492,6 +3492,21 @@ async function suBegin(path, anyway) {
   const run = named ? invoke('setup_inputs_run', { id: SU.id, copy: path || null }) : invoke('setup_copy', { id: SU.id, path });
   try { await run; } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
 }
+// Build Games Again After Updates (Settings → Updates, off unless the player turns it on): a game
+// whose new release builds again does it right after the update, in the background, when nothing
+// has to be asked: its files are still there (or it builds from what it kept), and the update added
+// no option to answer. Anything else waits for Play's Finish the Update window.
+async function rebuildAfterUpdate(id) {
+  if (!(S.settings.ui || {}).rebuild_after_update) return;
+  await loadSetup(id);
+  const su = S.setup[id];
+  if (!su || su === 'loading' || !updateBuildDue(id) || prepBlocked(su) || newPrepOpts(su).length) return;
+  const missing = (su.inputs || []).some((r) => r.active && !r.optional && !r.runtime && !r.path);
+  if (missing || (!su.kept && !su.copy)) return;
+  const named = (su.inputs || []).length > 0;
+  const run = named ? invoke('setup_inputs_run', { id, copy: null }) : invoke('setup_copy', { id, path: su.kept ? '' : su.copy });
+  run.catch((e) => toast(tf('{name}: {msg}', { name: (byId(id) || { name: id }).name, msg: cleanMsg(String(e && e.message ? e.message : e)) }), true));
+}
 const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
 async function onSetupFinished(id, watching) {
   try { S.setup[id] = await invoke('game_setup', { id }); } catch (_) {}
@@ -4739,6 +4754,7 @@ function pageSettings() {
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
+          + row(t('Build Games Again After Updates'), t('A game whose new release has to be built again does it right away, in the background, when its files are still there. Off: it\'s built when you next press Play.'), sw('rebuild_after_update', ui.rebuild_after_update, t('Build Games Again After Updates'), 'ui-toggle'))
           + row(t('Auto-Install'), t('When an Easy Setup game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
@@ -9602,7 +9618,7 @@ T.event.listen('install', ({ payload: p }) => {
         // Only an installer: its Set Up opens to run it (an update's too).
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
-        else if (S.easy.has(id) && wasInstalled) toast(tf('{name} is updated.', { name }));
+        else if (S.easy.has(id) && wasInstalled) { toast(tf('{name} is updated.', { name })); rebuildAfterUpdate(id); }
         else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) await setupModal(id); else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));
