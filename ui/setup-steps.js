@@ -234,7 +234,7 @@ async function stepsDrop(id, path, ns) {
   const empty = m.own.find((r) => !r.path) || m.addons.find((r) => !r.path);
   if (!empty) return;
   try {
-    await invoke('setup_input_set', { id, input: empty.id, path });
+    await invoke('setup_input_set', { id, input: empty.id, path, pending: true });
     S.setup[id] = await invoke('game_setup', { id });
     ns.picked = Object.assign({}, ns.picked, { [empty.id]: true });
   } catch (e) { ns.error = String(e && e.message ? e.message : e); }

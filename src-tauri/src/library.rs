@@ -94,14 +94,16 @@ pub struct Installed {
     /// Each time it was played: [started, seconds]. The newest 500.
     #[serde(default)]
     pub sessions: Vec<[u64; 2]>,
-    /// The player's copy of the game (disc image or folder), for recomps the launcher sets up.
-    #[serde(default)]
-    pub game_copy: Option<PathBuf>,
-    /// The `prepare.version` the launcher last built `game_copy` with. A manifest that changes it
-    /// asks the player to build again. Empty also for setups from before it was kept, which is
-    /// the same as a manifest with no version, so nobody rebuilds just for a launcher update.
+    /// The release (its tag) the last Easy Setup that worked finished on. Empty: never set up.
+    /// A game whose setup does something Play doesn't (a setup step, a disc to unpack) is set up
+    /// while this is the installed `tag`; a new release builds it again. Picking other files
+    /// clears it. One game of several keeps its own in `games`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub prepare_version: String,
+    pub set_up: String,
+    /// Read once from a library saved before named inputs were the one way (format 3), to tell
+    /// which games were set up then: see `SetupUpgrade`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgrade: Option<SetupUpgrade>,
     /// Brought into the Library from a folder where it already plays: its game files are there, so
     /// Easy Setup doesn't ask for the player's copy.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -109,14 +111,14 @@ pub struct Installed {
     /// Who sets this game up.
     #[serde(default, skip_serializing_if = "SetupMode::is_easy")]
     pub mode: SetupMode,
-    /// The game's update the player picked, for recomps that need one beside their copy.
-    #[serde(default)]
-    pub update_copy: Option<PathBuf>,
-    /// Named Easy Setup selections; shared keys are kept separately.
+    /// The files the player picked for Easy Setup, by input id: `game` for their copy of the game,
+    /// `update` for its update, and the rest by the manifest's ids. Shared keys are kept apart.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub setup_inputs: BTreeMap<String, PathBuf>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub inputs_ready: String,
+    /// The disc image a picked file was unpacked from (`extract`), by input id: the game reads the
+    /// unpacked folder (in `setup_inputs`), so Free Up Space can offer the image.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unpacked_from: BTreeMap<String, PathBuf>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input_staged: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -233,73 +235,27 @@ pub struct Installed {
     /// one from the catalog is applied on the next Play.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub boot_hash: String,
-    /// How the game was set up when its Easy Setup window opened: put back when the window closes
-    /// without a setup that worked (or at the next start, after the launcher closed mid-setup), so
-    /// picks made there and a setup that's cancelled or fails never leave it half set up.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub setup_before: Option<Box<SetupChoices>>,
-    /// The last copy Easy Setup read whole, and what it read: Set Up Again with the same file,
-    /// unchanged since, doesn't read it all again (a Switch 2 package is over 20 GB).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub copy_check: Option<CopyCheck>,
+    /// The files Easy Setup read whole, by input id, and what it read: Set Up Again with the same
+    /// file, unchanged since, doesn't read it all again (a Switch 2 package is over 20 GB).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub input_checks: BTreeMap<String, CopyCheck>,
 }
 
-/// What Easy Setup changes about a game, kept while its window is open: see `setup_before`.
+/// How a game was set up in a library from before format 3, kept until the launcher has read it
+/// once with the game's profile (lib.rs, `upgrade_setups`): a setup current then is marked as set
+/// up on the installed release, so nobody builds again just for this launcher. One that was due a
+/// new build then gets no mark and builds on the next Play.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct SetupChoices {
-    #[serde(default)]
-    pub game_copy: Option<PathBuf>,
-    #[serde(default)]
-    pub update_copy: Option<PathBuf>,
-    #[serde(default)]
-    pub setup_inputs: BTreeMap<String, PathBuf>,
-    #[serde(default)]
-    pub inputs_ready: String,
-    /// Each game's own fingerprint, for a recomp that carries several.
-    #[serde(default)]
-    pub games_ready: BTreeMap<String, String>,
-    #[serde(default)]
+pub struct SetupUpgrade {
+    /// It had named inputs set up (an old fingerprint was kept).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inputs_ready: bool,
+    /// The `prepare.version` it was last built with.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prepare_version: String,
-    #[serde(default)]
-    pub prepare_opts: BTreeMap<String, bool>,
-    #[serde(default)]
-    pub runtime_off: std::collections::BTreeSet<String>,
-    /// Who sets it up: a switch made while the window is open goes back with the rest when it
-    /// closes without a setup that worked.
-    #[serde(default)]
-    pub mode: SetupMode,
-}
-
-impl SetupChoices {
-    pub fn of(g: &Installed) -> Self {
-        let games_ready = g.games.iter().map(|(k, x)| (k.clone(), x.inputs_ready.clone())).collect();
-        SetupChoices {
-            game_copy: g.game_copy.clone(),
-            update_copy: g.update_copy.clone(),
-            setup_inputs: g.setup_inputs.clone(),
-            inputs_ready: g.inputs_ready.clone(),
-            games_ready,
-            prepare_version: g.prepare_version.clone(),
-            prepare_opts: g.prepare_opts.clone(),
-            runtime_off: g.runtime_off.clone(),
-            mode: g.mode,
-        }
-    }
-
-    /// Puts them back on `g`. Play time and everything else stay as they are now.
-    pub fn restore(self, g: &mut Installed) {
-        g.game_copy = self.game_copy;
-        g.update_copy = self.update_copy;
-        g.setup_inputs = self.setup_inputs;
-        g.inputs_ready = self.inputs_ready;
-        for (k, x) in g.games.iter_mut() {
-            x.inputs_ready = self.games_ready.get(k).cloned().unwrap_or_default();
-        }
-        g.prepare_version = self.prepare_version;
-        g.prepare_opts = self.prepare_opts;
-        g.runtime_off = self.runtime_off;
-        g.mode = self.mode;
-    }
+    /// One game of several whose own inputs were set up, by id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub games_ready: Vec<String>,
 }
 
 impl Installed {
@@ -694,7 +650,7 @@ impl Library {
         history.recomp.sessions = g.sessions.clone();
         for (sub, played) in &g.games {
             let mut played = played.clone();
-            played.inputs_ready.clear();
+            played.set_up.clear();
             if played != crate::games::Played::default() {
                 history.games.insert(sub.clone(), played);
             }
@@ -984,7 +940,7 @@ mod tests {
         let mut l = Library::default();
         let mut g = Installed { id: "series".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
         g.games.insert("first".into(), crate::games::Played {
-            played_secs: 90, last_played: 200, sessions: vec![[110, 90]], inputs_ready: "old setup".into(),
+            played_secs: 90, last_played: 200, sessions: vec![[110, 90]], set_up: "v1".into(),
         });
         l.put("series", g);
         l.forget("series").unwrap();
@@ -998,7 +954,7 @@ mod tests {
         assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
         let game = &g.games["first"];
         assert_eq!((game.played_secs, game.last_played, game.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
-        assert!(game.inputs_ready.is_empty());
+        assert!(game.set_up.is_empty());
         assert!(l.removed_play_history.is_empty());
     }
 
@@ -1215,16 +1171,6 @@ mod mode_tests {
         let g = Installed::default();
         assert!(g.player_sets_up(true));
         assert_eq!(g.mode, SetupMode::Easy);
-    }
-
-    #[test]
-    fn a_window_closed_without_a_setup_puts_the_mode_back() {
-        let mut g = picked();
-        g.mode = SetupMode::Own;
-        let before = SetupChoices::of(&g);
-        g.mode = SetupMode::Easy;
-        before.restore(&mut g);
-        assert_eq!(g.mode, SetupMode::Own);
     }
 
     #[test]

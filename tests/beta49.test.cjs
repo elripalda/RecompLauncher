@@ -5,15 +5,12 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
-test("setup's fingerprint is made from the player's files, never the serialized profile", () => {
+test("no fingerprint: a game is set up on the release its last setup finished on", () => {
   const src = read('src-tauri/src/inputs.rs');
-  const body = src.match(/^pub fn signature\([^]*?^}/m)[0];
-  assert.doesNotMatch(body, /serde_json::to_vec/);
-  assert.doesNotMatch(body, /format!\("\{:\?\}"/);
-  assert.match(body, /Ok\(format!\("v2:\{\}"/);
-  // Older fingerprints are only checked, as two variants, and rewritten as v2.
-  assert.match(src, /\[true, false\]\.into_iter\(\)\.any\(\|o\| signature_legacy\(/);
-  assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| \{\n\s*let st = h\.state::<App>\(\);\n\s*upgrade_fingerprints\(&st, None\);/);
+  assert.doesNotMatch(src, /pub fn signature/);
+  assert.match(read('src-tauri/src/setup_state.rs'), /f\.set_up == g\.tag/);
+  // A setup from an older launcher is read once, at start.
+  assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| \{\n\s*let st = h\.state::<App>\(\);\n\s*upgrade_setups\(&st\);/);
 });
 
 test('prepare.version is in the schema, the developer guide and the profile', () => {

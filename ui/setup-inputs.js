@@ -52,7 +52,7 @@ async function namedInputsAction(id, act, input, ns) {
     } else if (act === 'remove-confirm') {
       await invoke('setup_key_remove', { id, input }); ns.confirm = '';
     } else if (act === 'clear') {
-      await invoke('setup_input_set', { id, input, path: null });
+      await invoke('setup_input_set', { id, input, path: null, pending: true });
     } else if (row && (act === 'file' || act === 'folder')) {
       const options = { title: row.label, directory: act === 'folder', multiple: false };
       if (!options.directory && row.extensions?.length) options.filters = [{ name: row.label, extensions: row.extensions }];
@@ -60,7 +60,8 @@ async function namedInputsAction(id, act, input, ns) {
       if (!picked) return;
       const path = typeof picked === 'string' ? picked : picked.path;
       // Only the single-copy rows go to the old commands; a profile's own input may be named "game" too.
-      await invoke(!row.legacy ? 'setup_input_set' : row.id === 'game' ? 'set_game_copy' : 'set_update_copy', { id, input, path });
+      // Picked in Easy Setup's window: it waits there until a setup with it works.
+      await invoke(!row.legacy ? 'setup_input_set' : row.id === 'game' ? 'set_game_copy' : 'set_update_copy', { id, input, path, pending: true });
     }
     S.setup[id] = await invoke('game_setup', { id });
     await refreshState();

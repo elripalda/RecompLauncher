@@ -818,6 +818,7 @@ const BUILT_IN: &[&str] = &[
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     let mut p = find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))?;
+    p.lift_game();
     to_apprun(&mut p, game_dir);
     Some(p)
 }
@@ -1464,11 +1465,42 @@ pub fn path_value(format: &str, p: &Path) -> String {
     }
 }
 
+/// What the folder a copy goes in (`into`) is still missing of what it must hold (empty: all there).
+pub fn missing_in(g: &GameCopy, install: &Path) -> Vec<String> {
+    let into = g.into.trim().trim_matches(['/', '\\']);
+    if into.is_empty() || into.contains("..") || g.contains.is_empty() {
+        return vec![];
+    }
+    let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
+    // An empty folder doesn't count: a release can come with the folders the player's files go in.
+    let there = |e: &std::fs::DirEntry| !empty_dir(&e.path());
+    let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(there).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
+    g.contains
+        .iter()
+        .filter(|c| !c.contains(['*', '/', '\\']))
+        .filter(|c| !names.contains(&c.to_lowercase()))
+        .cloned()
+        .collect()
+}
+
+/// The copy's files already where the game reads them (put there by the player, or placed before):
+/// the folder they're in. Then no copy has to be picked.
+pub fn in_place(g: &GameCopy, install: &Path) -> Option<PathBuf> {
+    let into = g.into.trim().trim_matches(['/', '\\']);
+    if into.is_empty() || into.contains("..") || !g.contains.iter().any(|c| !c.contains(['*', '/', '\\'])) {
+        return None;
+    }
+    if !missing_in(g, install).is_empty() {
+        return None;
+    }
+    Some(if into == "." { install.to_path_buf() } else { install.join(into) })
+}
+
 impl Profile {
     /// `game` (and its `update`) as named inputs, first in the list: `game` and `update`, with every
     /// rule they had. Named inputs are the one way to ask for files; a manifest written with `game`
     /// reads the same as one written with inputs. `{game}` keeps filling in with the main input.
-    /// After this `game` is None; `main_copy` gives its rules back.
+    /// After this `game` is None; `main_copy` gives its rules back, read from the input.
     pub fn lift_game(&mut self) {
         let Some(g) = self.game.take() else { return };
         let mut lifted = vec![crate::inputs::Input::from_copy(&g)];
@@ -1478,6 +1510,12 @@ impl Profile {
         // An input of the same id the manifest declares itself is the developer's: theirs stays.
         lifted.retain(|l| !self.inputs.iter().any(|i| i.id == l.id));
         self.inputs.splice(0..0, lifted);
+    }
+
+    /// The rules of the player's copy: the main input's, as `GameCopy` (a profile not lifted yet,
+    /// in a test, has them in `game`).
+    pub fn main_copy(&self) -> Option<GameCopy> {
+        self.game.clone().or_else(|| self.main_input().filter(|i| i.role != "runtime").map(crate::inputs::Input::as_copy))
     }
 
     /// The input the game's big copy box is for: the first one the player picks with role game,
@@ -1490,7 +1528,7 @@ impl Profile {
     /// Easy Setup, the same rule as the website's: it starts a program and takes the player's copy
     /// of the game, or it asks for the game or its disc as a required input.
     pub fn easy_setup(&self) -> bool {
-        (self.start.is_some() && self.game.is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
+        (self.start.is_some() && self.main_copy().is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
     }
 
     pub fn config_file(&self, id: &str, install: &Path) -> Option<File> {
@@ -1521,7 +1559,7 @@ impl Profile {
     /// The file the game is given for the player's copy, by its `game` (`GameCopy::file_for`).
     pub fn handed(&self, game: Option<&Path>) -> Option<PathBuf> {
         let copy = game?;
-        Some(self.game.as_ref().map(|g| g.file_for(copy)).unwrap_or_else(|| copy.to_path_buf()))
+        Some(self.main_copy().map(|g| g.file_for(copy)).unwrap_or_else(|| copy.to_path_buf()))
     }
 
     pub fn prepare(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
@@ -1563,7 +1601,7 @@ impl Profile {
     /// files and folders go in as links (junctions on Windows), a disc image as a hard link, or a
     /// copy when it's on another drive. What's already there stays.
     pub fn place(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
-        let (Some(g), Some(copy)) = (&self.game, game) else { return Ok(()) };
+        let (Some(g), Some(copy)) = (self.main_copy(), game) else { return Ok(()) };
         let into = g.into.trim().trim_matches(['/', '\\']);
         if into.is_empty() || into.contains("..") {
             return Ok(());
@@ -1620,20 +1658,7 @@ impl Profile {
 
     /// After `place`: what the game's folder is still missing of what it must hold (empty: all there).
     pub fn missing_after_place(&self, install: &Path) -> Vec<String> {
-        let Some(g) = &self.game else { return vec![] };
-        let into = g.into.trim().trim_matches(['/', '\\']);
-        if into.is_empty() || into.contains("..") || g.contains.is_empty() {
-            return vec![];
-        }
-        let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
-        // An empty folder doesn't count: a release can come with the folders the player's files go in.
-        let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(|e| !empty_dir(&e.path())).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
-        g.contains
-            .iter()
-            .filter(|c| !c.contains(['*', '/', '\\']))
-            .filter(|c| !names.contains(&c.to_lowercase()))
-            .cloned()
-            .collect()
+        self.main_copy().map(|g| missing_in(&g, install)).unwrap_or_default()
     }
 
     /// The game's files already where it reads them (put there by the player): the folder they're
@@ -1651,7 +1676,9 @@ impl Profile {
     /// Whether starting the game hands it the player's copy ({game} in its arguments or
     /// variables). When it doesn't, a finished build is all it needs.
     pub fn start_uses_game(&self) -> bool {
-        self.start.as_ref().is_some_and(|s| s.args.iter().chain(s.env.values()).any(|a| a.contains("{game}")))
+        let main = self.main_input().map(|i| format!("{{input:{}}}", i.id));
+        let names = |a: &String| a.contains("{game}") || main.as_ref().is_some_and(|m| a.contains(m.as_str()));
+        self.start.as_ref().is_some_and(|s| s.args.iter().chain(s.env.values()).any(names))
     }
 
     /// The game's own folder (the first `folders.game`) when it has a setup step and nothing says
@@ -1685,15 +1712,7 @@ impl Profile {
     }
 
     pub fn already_in_place(&self, install: &Path) -> Option<PathBuf> {
-        let g = self.game.as_ref()?;
-        let into = g.into.trim().trim_matches(['/', '\\']);
-        if into.is_empty() || into.contains("..") || !g.contains.iter().any(|c| !c.contains(['*', '/', '\\'])) {
-            return None;
-        }
-        if !self.missing_after_place(install).is_empty() {
-            return None;
-        }
-        Some(if into == "." { install.to_path_buf() } else { install.join(into) })
+        in_place(&self.main_copy()?, install)
     }
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
@@ -3563,7 +3582,7 @@ mod tests {
         let f = find(Path::new("/nope"), "HossEz/fifa-world-cup-2014-recompiled", &Value::Null).unwrap();
         assert!(f.settings.iter().any(|s| s.id == "resolution"));
         let s = find(Path::new("/nope"), "luckvj/streetball-revival", &Value::Null).unwrap();
-        assert_eq!(s.game.unwrap().check.iso9660, "SLUS_206.51");
+        assert_eq!(s.main_copy().unwrap().check.iso9660, "SLUS_206.51");
     }
 
     #[test]
@@ -3582,7 +3601,7 @@ mod tests {
         let disc = install.join("Twilight Princess.rvz");
         std::fs::write(&disc, b"").unwrap();
         let profile = find(&install, "twilitrealm/dusklight", &Value::Null).unwrap();
-        check_copy(profile.game.as_ref().unwrap(), &disc).unwrap();
+        check_copy(&profile.main_copy().unwrap(), &disc).unwrap();
         let picks = BTreeMap::new();
         let (exe, args) = profile.command(&install, Some(&disc), &picks).unwrap();
         assert_eq!(exe, executable);

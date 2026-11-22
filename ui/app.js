@@ -2874,8 +2874,9 @@ function manageStartRows(id, inst) {
   const rows = [easyRow(id), programRow(id, inst)];
   rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>`);
   if (S.easy.has(id)) {
-    const copy = typeof inst.game_copy === 'string' ? inst.game_copy : t('Easy Setup builds the game from it.');
-    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Your Copy'))}</b><span>${esc(copy)}</span></div><div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(inst.game_copy ? t('Change') : t('Add'))}</button></div></div>`);
+    const picked = (inst.setup_inputs || {}).game;
+    const copy = typeof picked === 'string' ? picked : t('Easy Setup builds the game from it.');
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Your Copy'))}</b><span>${esc(copy)}</span></div><div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(picked ? t('Change') : t('Add'))}</button></div></div>`);
   }
   if (S.os === 'linux' && inst.proton) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn" data-act="wine-tools">${esc(t('Open'))}</button></div>`);
   return rows;
@@ -3139,9 +3140,10 @@ function needsCopySetup(g) {
   if (g._sub && g.ready === false) return true;
   // Brought in from a folder where it already plays, or played a while already: its files are there.
   if (g.files_in_place || (g.sessions || []).some((x) => Array.isArray(x) && x[1] >= 120)) return false;
+  // Its setup read: not set up yet. Not read yet: nothing picked for it.
   const su = S.setup[g.id];
-  const named = su && su !== 'loading' && su.inputs?.length ? !su.inputs_ready : Object.keys(g.setup_inputs || {}).length > 0 && !g.inputs_ready;
-  return S.easy.has(g.id) && (!g.game_copy || named);
+  if (su && su !== 'loading' && su.status) return S.easy.has(g.id) && !su.status.ready;
+  return S.easy.has(g.id) && !Object.keys(g.setup_inputs || {}).length;
 }
 function needUpdate(su) { return !!(su && ((su.inputs?.length && !su.inputs_ready) || su.inputs_error || (su.update && !su.update_copy && !su.update_optional))); }
 async function pickUpdate(id, folder) {

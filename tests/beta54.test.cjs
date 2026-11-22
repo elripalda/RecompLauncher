@@ -65,9 +65,10 @@ test('Free Up Space: on the Your Copy card when the game plays without the copy,
   assert.match(html, /data-act="free-space" data-id="hopper"/);
   assert.match(html, /Recycle Bin frees 9 B/);
   assert.match(rust, /fn spare_copy\(g: &Installed, p: &profile::Profile, others: &\[Installed\]\) -> Option<SpareCopy>/);
-  // Only a build that starts without it, or a disc image unpacked into the game's folder.
-  assert.match(rust, /p\.build_done\(&g\.path\) == Some\(true\) && !p\.start_uses_game\(\)/);
-  assert.match(rust, /!need\.extract\.is_empty\(\) && copy\.is_file\(\) && p\.already_in_place\(&g\.path\)\.is_some\(\)/);
+  // Only when a new release builds it again without them: a step that keeps what it needs, built
+  // on the release installed, or a disc image unpacked into the game's folder.
+  assert.match(rust, /keeps && g\.set_up == g\.tag && p\.build_done\(&g\.path\) == Some\(true\)/);
+  assert.match(rust, /g\.unpacked_from\.iter\(\)/);
   assert.match(read('src-tauri/src/files.rs'), /FOF_WANTNUKEWARNING/);
 });
 

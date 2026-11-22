@@ -404,7 +404,7 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
                 items.push(warn(format!("The \"{}\" dump needs both \"size\" and \"crc32\"", d.name), "Take them from Redump."));
             }
         }
-        match g.game_copy.as_ref() {
+        match g.setup_inputs.get("game") {
             Some(c) => items.push(ok(format!("Your copy: {}", c.display()))),
             None => items.push(warn("No copy set up yet", "Use Set up from the game's page to try the setup screen with your own disc.")),
         }
