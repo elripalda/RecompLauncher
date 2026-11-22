@@ -148,7 +148,7 @@ function accountSection(group, row) {
   const used = a.used || 0, quota = a.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
   // Back Up Every Game says what it does now, like a game's own switch in its Manage tab.
   const all = (S.settings.ui || {}).cloud_all === true;
-  const allNow = all ? t('On. Every game\'s saves go to your account after you play. Turning it off changes every game.') : t('Off. Only the games you turn on in their Manage tab go to your account. Turning it on changes every game.');
+  const allNow = all ? t('On. Cloud saves are activated for all games. Turning it off disables cloud saves for every game. Saves stay intact.') : t('Off. Cloud saves are only active for the games you turn on in their Manage tab. Turning it on activates them for every game.');
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
