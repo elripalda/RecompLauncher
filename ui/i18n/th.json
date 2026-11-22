@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "รอให้รายการก่อนหน้าสร้างเสร็จ",
  "Update to {tag}": "อัปเดตเป็น {tag}",
  "Building the game": "กำลังสร้างเกม",
+ "Built": "สร้างแล้ว",
+ "Built again after this update, so it's ready to play.": "สร้างใหม่หลังอัปเดตนี้แล้ว พร้อมเล่นได้เลย",
  "This Update Looks Wrong": "อัปเดตนี้ดูเหมือนจะมีปัญหา",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} ติดตั้งไม่สำเร็จสองครั้ง ไฟล์อัปเดตจึงดูเหมือนจะมีปัญหา จะไม่มีการเสนออัปเดตนี้อีก และเวอร์ชันที่แก้ไขแล้วจะปรากฏขึ้นเองเมื่อออก ไม่ต้องเปลี่ยนอะไรบนพีซีของคุณ",
  "OK": "ตกลง",

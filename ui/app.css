@@ -1409,6 +1409,12 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .dl-state{flex:none;color:var(--muted);font-size:12.5px;font-weight:600}
 /* The version an update goes to, in the game page's update blue (.gs-new) */
 .dl-row .mid .gs-new{color:var(--cyan)}
+/* A moving row's name with the store's pill beside it */
+.dl-name{display:flex;align-items:center;gap:8px;min-width:0}
+/* Built: the build after that update finished. Violet, apart from the store's green Safe */
+.scan-pill.built{gap:5px;padding:0 9px 0 7px;color:#B9A4FF!important;border-color:rgba(155,124,255,.4);background:rgba(155,124,255,.1);cursor:help}
+.scan-pill.built svg{flex:none}
+body.light .scan-pill.built{color:#5b3fd1!important}
 .dl-row .btn.sq.sm{width:34px;height:34px;border-radius:10px}
 .dl-sub{display:flex!important;align-items:center;gap:10px;min-width:0}
 .dl-sub>span:first-child{flex:none}

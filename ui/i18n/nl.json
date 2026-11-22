@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "Wacht op de build ervoor",
  "Update to {tag}": "Bijwerken naar {tag}",
  "Building the game": "Game wordt gebouwd",
+ "Built": "Gebouwd",
+ "Built again after this update, so it's ready to play.": "Opnieuw gebouwd na deze update, dus klaar om te spelen.",
  "This Update Looks Wrong": "Deze update lijkt niet in orde",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} is twee keer niet geïnstalleerd, dus het updatebestand lijkt niet in orde. Het wordt niet opnieuw aangeboden, en een gerepareerde versie verschijnt vanzelf zodra die uit is. Op je pc hoeft niets te veranderen.",
  "OK": "OK",

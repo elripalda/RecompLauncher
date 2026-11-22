@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "Wartet auf den vorherigen Build",
  "Update to {tag}": "Update auf {tag}",
  "Building the game": "Spiel wird gebaut",
+ "Built": "Gebaut",
+ "Built again after this update, so it's ready to play.": "Nach diesem Update neu gebaut, also spielbereit.",
  "This Update Looks Wrong": "Dieses Update scheint fehlerhaft",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} ließ sich zweimal nicht installieren, die Updatedatei scheint also fehlerhaft zu sein. Sie wird nicht noch einmal angeboten, und eine korrigierte erscheint von selbst, sobald sie da ist. An deinem PC musst du nichts ändern.",
  "OK": "OK",

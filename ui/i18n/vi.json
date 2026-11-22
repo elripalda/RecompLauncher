@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "Đang chờ bản dựng trước nó",
  "Update to {tag}": "Cập nhật lên {tag}",
  "Building the game": "Đang dựng trò chơi",
+ "Built": "Đã dựng",
+ "Built again after this update, so it's ready to play.": "Đã dựng lại sau bản cập nhật này nên có thể chơi ngay.",
  "This Update Looks Wrong": "Bản cập nhật này có vẻ bị lỗi",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} đã hai lần không cài được, nên tệp cập nhật có vẻ bị lỗi. Bản này sẽ không được đề xuất nữa, và bản đã sửa sẽ tự xuất hiện khi phát hành. Bạn không cần thay đổi gì trên PC.",
  "OK": "OK",

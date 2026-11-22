@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "Menunggu pembuatan sebelumnya",
  "Update to {tag}": "Perbarui ke {tag}",
  "Building the game": "Membangun game",
+ "Built": "Dibangun",
+ "Built again after this update, so it's ready to play.": "Dibangun ulang setelah pembaruan ini, jadi siap dimainkan.",
  "This Update Looks Wrong": "Pembaruan ini tampaknya bermasalah",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} dua kali gagal terpasang, jadi file pembaruannya tampaknya bermasalah. Pembaruan ini tidak akan ditawarkan lagi, dan versi yang sudah diperbaiki akan muncul sendiri begitu dirilis. Tidak ada yang perlu diubah di PC-mu.",
  "OK": "OK",

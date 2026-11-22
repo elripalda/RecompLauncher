@@ -3538,6 +3538,14 @@ function buildsQuietly(id) {
   const missing = (su.inputs || []).some((r) => r.active && !r.optional && !r.runtime && !r.path);
   return !missing && !!(su.kept || su.copy);
 }
+// A build after an update finished: remembered per game with the version it built, so its row
+// in Recent says Built.
+function noteBuilt(id) {
+  const pid = parentId(id), tag = (S.library[pid] || {}).tag;
+  if (!tag) return;
+  const built = Object.assign({}, (S.settings.ui || {}).built_after, { [pid]: tag });
+  saveUi({ built_after: built }, true);
+}
 // A build after an update ended (or failed): it leaves the Downloads list.
 function buildLeft() {
   S.building = null;
@@ -3659,6 +3667,9 @@ function suPump() {
 T.event.listen('setup', ({ payload: p }) => {
   if (!S.setupJobs) S.setupJobs = {};
   if (p.step === 'done') {
+    // A build after an update: building in the background, or one that was due (its setup isn't
+    // read again yet, so it still says so).
+    if (p.id === S.building || updateBuildDue(p.id)) noteBuilt(p.id);
     delete S.setupJobs[p.id];
     if (p.id === S.building) buildLeft();
     setTimeout(nextInLine, 0);
@@ -4495,6 +4506,10 @@ function scanPill(h) {
 }
 // A Completed row's way to its patch notes: a quiet "i", so the list stays calm.
 const INFO_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg>';
+// Recent's Built pill: the build after that update finished (Build Again After Updates, or Finish
+// the Update). Its own colour, apart from the store's Safe pill.
+const BUILT_I = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
+const BUILT_TIP = N_("Built again after this update, so it's ready to play.");
 // Each game's newest download only (the history is newest first), like Steam: installing the same
 // game three times is one row. Its older downloads fold under it on Downloads.
 function latestPerGame(hist) {
@@ -4538,13 +4553,18 @@ function pageDownloads() {
   // update), then everything waiting its turn as a quiet row. Cancel is the ✕ on each row.
   const xBtn = (id, act = 'cancel') => { const j = S.jobs[id] || {};
     return `<button type="button" class="btn sm sq" data-act="${act}" data-id="${esc(id)}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}"${j.phase === 'unpack' ? ' disabled' : ''}>${XS}</button>`; };
-  const movingRow = (id) => { const a = appOf(id), held = !S.jobs[id];
+  // The store's check of the version a row is getting (an update's new one; a build's, the one it
+  // just downloaded), as on Updates ready. A first install doesn't know its version here yet.
+  const pillOf = (id, tag) => (tag ? scanPill({ id, tag, update: true }) : '');
+  const nameLine = (id, tag) => `<div class="dl-name"><b>${esc(appOf(id).name)}</b>${pillOf(id, tag)}</div>`;
+  const nextTag = (id) => (S.library[id] ? S.updates[id] : '');
+  const movingRow = (id) => { const held = !S.jobs[id];
     const two = held ? `<button type="button" class="btn main sm" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) ? `<button type="button" class="btn sm" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
-    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${dlLine(id)}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
-  const buildRow = (id) => { const a = appOf(id), p = buildPct(id);
-    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, nextTag(id))}<span class="dl-phase" data-dl-phase="${esc(id)}">${dlLine(id)}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
+  const buildRow = (id) => { const p = buildPct(id);
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid">${nameLine(id, (S.library[id] || {}).tag)}<span class="dl-phase" data-dl-phase="${esc(id)}">${esc(buildLine(id))}</span><div class="prog" data-build-prog="${esc(id)}"><div class="track${p ? '' : ' busy'}"><i style="width:${p}%"></i></div></div></div>${xBtn(id, 'build-cancel')}</div>`; };
   const quietRow = (id, sub, act) => { const a = appOf(id);
-    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${sub}</span></span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
+    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${sub}</span>${pillOf(id, nextTag(id))}</span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id, act)}</div>`; };
   // An update held back for the build before it says so; any other waiting download says what
   // it'll be.
   const waitingRow = (id) => { const sub = S.jobs[id].held ? `${dlTarget(id)} · ${esc(t('Waiting for the build before it'))}` : dlTarget(id);
@@ -4566,6 +4586,8 @@ function pageDownloads() {
   const ui = S.settings.ui || {};
   const kept = hist.filter((h) => (h.when || 0) > (ui.dl_cleared || 0));
   const shown = latestPerGame(kept).slice(0, 40);
+  const builtAfter = ui.built_after || {};
+  const builtPill = (h) => (h.update && builtAfter[h.id] === h.tag ? `<span class="scan-pill built" title="${esc(t(BUILT_TIP))}">${BUILT_I}${esc(t('Built'))}</span>` : '');
   const recentRow = (h) => {
     const a = appOf(h.id), inst = S.library[h.id];
     // Patch Notes opens the game's Updates tab, where the newest release's notes start open. A
@@ -4575,7 +4597,7 @@ function pageDownloads() {
     const link = byId(h.id) || inst ? ` link" data-act="open" data-id="${esc(h.id)}` : '';
     // Only the store's Safe pill: every download is checked against its checksum, so saying so on
     // each row is noise.
-    return `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${didWhat(h)}</span>${scanPill({ ...h, verified: false })}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
+    return `<div class="dl-row${link}">${wide(h.id)}<div class="mid"><b>${esc(a.name || h.name)}</b><span class="dl-sub"><span>${didWhat(h)}</span>${scanPill({ ...h, verified: false })}${builtPill(h)}</span></div><span class="dl-time">${esc(clockOf(h.when))}</span>${notes}</div>`;
   };
   let day = '';
   const recentRows = shown.map((h) => {

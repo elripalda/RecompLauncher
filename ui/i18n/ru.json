@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "Ждёт предыдущей сборки",
  "Update to {tag}": "Обновление до {tag}",
  "Building the game": "Сборка игры",
+ "Built": "Собрано",
+ "Built again after this update, so it's ready to play.": "Собрано заново после этого обновления, можно играть.",
  "This Update Looks Wrong": "Похоже, это обновление повреждено",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} дважды не удалось установить, поэтому файл обновления, похоже, повреждён. Его больше не будут предлагать, а исправленный появится сам, как только выйдет. На вашем компьютере ничего менять не нужно.",
  "OK": "ОК",

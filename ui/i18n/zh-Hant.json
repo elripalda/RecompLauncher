@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "等待前一個建置完成",
  "Update to {tag}": "更新到 {tag}",
  "Building the game": "正在建置遊戲",
+ "Built": "已建置",
+ "Built again after this update, so it's ready to play.": "此更新後已重新建置，可以直接玩了。",
  "This Update Looks Wrong": "此更新似乎有問題",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} 兩次都未能安裝，因此它的更新檔案似乎有問題。它不會再次提供，修正後的版本一推出就會自動出現。您的電腦無需做任何變更。",
  "OK": "確定",

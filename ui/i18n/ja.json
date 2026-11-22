@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "前のビルドを待っています",
  "Update to {tag}": "{tag} にアップデート",
  "Building the game": "ゲームをビルド中",
+ "Built": "ビルド済み",
+ "Built again after this update, so it's ready to play.": "このアップデートの後に再ビルドしたので、すぐに遊べます。",
  "This Update Looks Wrong": "このアップデートに問題があるようです",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} のインストールに 2 回失敗したため、アップデートファイルに問題があるようです。このアップデートは今後表示されず、修正版が出ると自動で表示されます。お使いの PC で変更が必要なことはありません。",
  "OK": "OK",

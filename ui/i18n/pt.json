@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "À espera da compilação anterior",
  "Update to {tag}": "Atualizar para {tag}",
  "Building the game": "A compilar o jogo",
+ "Built": "Compilado",
+ "Built again after this update, so it's ready to play.": "Compilado de novo após esta atualização, por isso está pronto a jogar.",
  "This Update Looks Wrong": "Esta atualização parece defeituosa",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "O RecompLauncher {to} não se instalou duas vezes, por isso o ficheiro de atualização parece defeituoso. Não voltará a ser proposto, e um corrigido aparece sozinho assim que sair. Não precisas de mudar nada no teu PC.",
  "OK": "OK",

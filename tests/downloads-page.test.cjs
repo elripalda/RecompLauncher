@@ -91,10 +91,10 @@ function desktopPage(hist, library, more = {}) {
   const c = vm.createContext({
     ...helpers,
     S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, building: null, buildQ: [], setupJobs: {}, ...more },
-    fmtB: String, byId: (id) => CATALOG[id], scanPill: () => '', pic: () => '', thumbOf: String,
+    fmtB: String, byId: (id) => CATALOG[id], scanPill: (h) => (h.update ? `[safe ${h.tag}]` : ''), pic: () => '', thumbOf: String, N_: (s) => s,
     pct: () => 0, DOWN: '', dlLine: (id) => `line of ${id}`, dlTarget: () => 'Update to v2', buildLine: () => 'Building the game · 3%', buildPct: () => 3,
   });
-  const consts = ['INFO_I', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
+  const consts = ['INFO_I', 'BUILT_I', 'BUILT_TIP', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
   const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
   vm.runInContext(code, c);
   return c.pageDownloads();
@@ -146,7 +146,7 @@ test('every download is one Downloading list, with no Up Next', () => {
 
 test('the download that is moving comes first, with its line and progress', () => {
   const html = desktopPage([], {}, { jobs: MOVING });
-  assert.match(html, /<div class="dl-list"><div class="dl-row dl-moving">.*?<b>Lost Odyssey<\/b><span class="dl-phase" data-dl-phase="lostodyssey">line of lostodyssey<\/span><div class="prog" data-prog="lostodyssey">/);
+  assert.match(html, /<div class="dl-list"><div class="dl-row dl-moving">.*?<div class="dl-name"><b>Lost Odyssey<\/b><\/div><span class="dl-phase" data-dl-phase="lostodyssey">line of lostodyssey<\/span><div class="prog" data-prog="lostodyssey">/);
 });
 
 test('a download waiting its turn is a quiet row that says what it will be, Queued, and a cancel cross', () => {
@@ -212,4 +212,40 @@ test('before its bytes come, the line says what the download is doing', () => {
 test('an Updates ready row shows the version it goes to in the update blue', () => {
   const html = desktopPage([], { lostodyssey: { tag: 'v1.1.0' } }, { updates: { lostodyssey: 'v1.2.0' } });
   assert.match(html, /<span>v1\.1\.0 → <span class="gs-new">v1\.2\.0<\/span><\/span>/);
+});
+
+test("a moving update shows the store's pill for the version it's getting, beside its name", () => {
+  const html = desktopPage([], { lostodyssey: { tag: 'v1' } }, { jobs: { lostodyssey: MOVING.lostodyssey }, updates: { lostodyssey: 'v2' } });
+  assert.match(html, /<div class="dl-name"><b>Lost Odyssey<\/b>\[safe v2\]<\/div>/);
+});
+
+test("a queued update shows the store's pill after what it will be", () => {
+  const html = desktopPage([], { odyssey: { tag: 'v1' } }, { jobs: { odyssey: MOVING.odyssey }, updates: { odyssey: 'v3' } });
+  assert.match(html, /<span>Update to v2<\/span>\[safe v3\]<\/span>/);
+});
+
+test("a build shows the store's pill for the version it just downloaded", () => {
+  const html = desktopPage([], { odyssey: { tag: 'v3' } }, { building: 'odyssey' });
+  assert.match(html, /<div class="dl-name"><b>Odyssey Recomp<\/b>\[safe v3\]<\/div>/);
+});
+
+test('a first install has no pill while it downloads: its version is not known yet', () => {
+  const html = desktopPage([], {}, { jobs: { lostodyssey: MOVING.lostodyssey } });
+  assert.match(html, /<div class="dl-name"><b>Lost Odyssey<\/b><\/div>/);
+});
+
+const BUILT_HIST = [{ id: 'lostodyssey', tag: 'v1.2.0', from: 'v1.1.0', update: true, when: at(0, 10, 1) }];
+
+test('an update whose build finished says Built in Recent, explained on hover', () => {
+  const html = desktopPage(BUILT_HIST, {}, { settings: { ui: { built_after: { lostodyssey: 'v1.2.0' } } } });
+  assert.match(html, /<span class="scan-pill built" title="Built again after this update, so it's ready to play\.">.*?Built<\/span>/);
+});
+
+test('no Built pill when the build was for another version', () => {
+  const html = desktopPage(BUILT_HIST, {}, { settings: { ui: { built_after: { lostodyssey: 'v1.1.0' } } } });
+  assert.doesNotMatch(html, /scan-pill built/);
+});
+
+test('no Built pill on a game that never built after an update', () => {
+  assert.doesNotMatch(desktopPage(BUILT_HIST, {}), /scan-pill built/);
 });

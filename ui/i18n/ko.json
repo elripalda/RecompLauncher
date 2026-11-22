@@ -2646,6 +2646,8 @@
  "Waiting for the build before it": "앞의 빌드를 기다리는 중",
  "Update to {tag}": "{tag}(으)로 업데이트",
  "Building the game": "게임 빌드 중",
+ "Built": "빌드됨",
+ "Built again after this update, so it's ready to play.": "이 업데이트 후 다시 빌드되어 바로 플레이할 수 있습니다.",
  "This Update Looks Wrong": "이 업데이트에 문제가 있는 것 같습니다",
  "RecompLauncher {to} didn't install twice, so its update file looks wrong. It won't be offered again, and a fixed one shows up on its own once it's out. Nothing on your PC needs changing.": "RecompLauncher {to} 설치가 두 번 실패해서 업데이트 파일에 문제가 있는 것 같습니다. 이 업데이트는 다시 제공되지 않으며, 수정된 버전이 나오면 저절로 표시됩니다. PC에서 바꿀 것은 없습니다.",
  "OK": "확인",
