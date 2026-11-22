@@ -5104,10 +5104,12 @@ fn mark_of<'a>(g: &'a Installed, sub: Option<&str>) -> &'a str {
     own.unwrap_or(&g.set_up)
 }
 
-/// Whether a game's last build was cut short: one game of several's own, or the whole recomp's.
+/// Whether a game's last build was cut short, read as mark_of reads its release: one game of
+/// several's own once it has its own build (or its own cut short), else the whole recomp's. So a
+/// game's own build that worked counts, whatever the recomp's says.
 fn cut_of(g: &Installed, sub: Option<&str>) -> bool {
-    let own = sub.and_then(|s| g.games.get(s)).is_some_and(|x| x.build_cut);
-    own || g.build_cut
+    let own = sub.and_then(|s| g.games.get(s)).filter(|x| !x.set_up.is_empty() || x.build_cut);
+    own.map_or(g.build_cut, |x| x.build_cut)
 }
 
 /// Set up, or why not, as Play gives it (`p` scoped to one game of several when it's that game's,
@@ -11617,6 +11619,29 @@ mod set_up_marks_tests {
         own.games.entry("ga".into()).or_default().set_up = "v0".into();
         assert_eq!(mark_of(&own, Some("ga")), "v0");
         assert_eq!(mark_of(&own, None), "v1");
+    }
+
+    /// The whole recomp's build was cut short, then game A was built on its own and that worked:
+    /// A plays, and B (no build of its own) still builds again.
+    #[test]
+    fn a_game_of_several_built_after_the_recomps_cut_build_plays() {
+        let mut g = Installed { set_up: "v1".into(), build_cut: true, ..Default::default() };
+        let a = g.games.entry("ga".into()).or_default();
+        a.set_up = "v1".into();
+        a.build_cut = false;
+        assert!(!cut_of(&g, Some("ga")));
+        assert!(cut_of(&g, Some("gb")));
+        assert!(cut_of(&g, None));
+    }
+
+    /// Game A's own build cut short before it had one that worked: A builds again, the recomp's
+    /// other games don't.
+    #[test]
+    fn a_game_of_several_cut_short_on_its_first_own_build_builds_again() {
+        let mut g = Installed { set_up: "v1".into(), ..Default::default() };
+        g.games.entry("ga".into()).or_default().build_cut = true;
+        assert!(cut_of(&g, Some("ga")));
+        assert!(!cut_of(&g, Some("gb")));
     }
 
     #[test]
