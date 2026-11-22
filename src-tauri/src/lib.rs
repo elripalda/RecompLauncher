@@ -864,6 +864,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         slider_vals: prev.as_ref().map(|p| p.slider_vals.clone()).unwrap_or_default(),
         args: prev.as_ref().map(|p| p.args.clone()).unwrap_or_default(),
         auto_update: prev.as_ref().map(|p| p.auto_update).unwrap_or(false),
+        rebuild_after_update: prev.as_ref().map(|p| p.rebuild_after_update).unwrap_or(false),
         local: false,
         look: prev.as_ref().map(|p| p.look.clone()).unwrap_or_default(),
         look_amount: prev.as_ref().map(|p| p.look_amount).unwrap_or(50),
@@ -4399,7 +4400,7 @@ fn easy_setup(st: State<'_, App>) -> Vec<String> {
 
 /// The player's own launch options and automatic updates for a game.
 #[tauri::command(async)]
-fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_update: Option<bool>) -> Res<Installed> {
+fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_update: Option<bool>, rebuild_after_update: Option<bool>) -> Res<Installed> {
     let g = {
         let mut l = st.lib.lock().unwrap();
         let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
@@ -4411,6 +4412,9 @@ fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_u
         }
         if let Some(a) = auto_update {
             g.auto_update = a;
+        }
+        if let Some(r) = rebuild_after_update {
+            g.rebuild_after_update = r;
         }
         g.clone()
     };
@@ -5173,6 +5177,9 @@ struct Setup {
     kind: String,
     /// The extensions the main file's formats name, for the file picker.
     copy_extensions: Vec<String>,
+    /// Its setup does something Play doesn't (a setup step, a disc to unpack): a new release builds
+    /// it again.
+    rebuilds: bool,
     copy: Option<PathBuf>,
     settings: Vec<SetupOption>,
     actions: Vec<SetupAction>,
@@ -5295,6 +5302,7 @@ fn game_setup(app: AppHandle, st: State<'_, App>, id: String) -> Option<Setup> {
         own_program: player_program(&st, &id, &g),
         needs: main.as_ref().map(|m| m.label.clone()).or_else(|| (!p.inputs.is_empty()).then(|| "Choose the files this game needs.".into())),
         kind: main.as_ref().map(|m| m.as_copy().kind).unwrap_or_default(),
+        rebuilds: setup_state::needs_run(&p),
         copy_extensions: main.as_ref().map(|m| m.formats.iter().flat_map(|f| f.extensions.clone()).collect()).unwrap_or_default(),
         copy,
         settings: p

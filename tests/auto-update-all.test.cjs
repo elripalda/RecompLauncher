@@ -83,12 +83,20 @@ test('a game turned off in its Manage tab waits, even with the Settings switch o
 });
 
 // The Updates card of a game's Manage tab, for a game with neither its own switch nor Pause on.
-function manageUpdates(settings) {
+function manageUpdates(settings, setup) {
   const c = switchContext(settings, { g: { repo: 'dev/hydro', tag: 'v1', auto_update: false } });
   Object.assign(c, { isLab: () => false, isSF: () => false, fmtB: String, heldIds: () => new Set() });
+  Object.assign(c.S, { easy: new Set(setup ? ['g'] : []), setup: setup ? { g: setup } : {} });
   vm.runInContext(fn(app, 'manageUpdateRows'), c);
   return c.manageUpdateRows('g', c.S.library.g).join('');
 }
+
+test('a game whose new release builds again has its own Build Again After Updates switch', () => {
+  assert.match(manageUpdates({}, { rebuilds: true }), /aria-checked="false" aria-label="Build Again After Updates" data-act="rebuild-up"/);
+  // One without a setup step plays a new release as it comes: no switch.
+  assert.doesNotMatch(manageUpdates({}, { rebuilds: false }), /rebuild-up/);
+  assert.doesNotMatch(manageUpdates({}), /rebuild-up/);
+});
 
 test('with the Settings switch on, the Manage tab shows the game\'s switch on and says why', () => {
   const html = manageUpdates({ auto_update_all: true });

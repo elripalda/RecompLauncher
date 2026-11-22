@@ -2866,6 +2866,7 @@ function manageUpdateRows(id, inst) {
   return [
     `<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${what}</span></div><button type="button" class="btn" data-act="build" data-id="${esc(id)}">${esc(t('Change Build…'))}</button></div>`,
     `<div class="set-row"><div class="k"><b>${esc(t('Update automatically'))}</b><span>${esc(autoSub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${autoUpdates(id)}" aria-label="${esc(t('Update automatically'))}" data-act="auto-up" data-id="${esc(id)}"></button></div>`,
+    ...(S.easy.has(id) && (S.setup[id] || {}).rebuilds ? [`<div class="set-row"><div class="k"><b>${esc(t('Build Again After Updates'))}</b><span>${esc(t('A new release has to be built again before it plays. On: it builds right after an automatic update, in the background, when its files are still there. Off: it builds when you press Play.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${!!inst.rebuild_after_update}" aria-label="${esc(t('Build Again After Updates'))}" data-act="rebuild-up" data-id="${esc(id)}"></button></div>`] : []),
     `<div class="set-row"><div class="k"><b>${esc(t('Pause Updates'))}</b><span>${esc(t('It stays on the version it has until you turn this off.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${held}" aria-label="${esc(t('Pause Updates'))}" data-act="hold-up" data-id="${esc(id)}"></button></div>`,
     project,
   ];
@@ -3477,20 +3478,72 @@ async function suBegin(path, anyway) {
   const run = named ? invoke('setup_inputs_run', { id: SU.id, copy: path || null }) : invoke('setup_copy', { id: SU.id, path });
   try { await run; } catch (e) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); }
 }
-// Build Games Again After Updates (Settings → Updates, off unless the player turns it on): a game
-// whose new release builds again does it right after the update, in the background, when nothing
-// has to be asked: its files are still there (or it builds from what it kept), and the update added
-// no option to answer. Anything else waits for Play's Finish the Update window.
-async function rebuildAfterUpdate(id) {
-  if (!(S.settings.ui || {}).rebuild_after_update) return;
-  await loadSetup(id);
+// Builds after an update: a game whose new release builds again. Each one waits in a queue and
+// builds in the background, one at a time (two builds at once would fight over the drive and the
+// processor), when nothing has to be asked: its files are still there (or it builds from what it
+// kept), and the update added no option to answer. Anything else opens Play's Finish the Update
+// window, where those are asked.
+S.buildQ = [];
+S.building = null;
+// Built in the background as it is: nothing to ask the player first.
+function buildsQuietly(id) {
   const su = S.setup[id];
-  if (!su || su === 'loading' || !updateBuildDue(id) || prepBlocked(su) || newPrepOpts(su).length) return;
+  if (!su || su === 'loading' || !updateBuildDue(id) || prepBlocked(su) || newPrepOpts(su).length) return false;
   const missing = (su.inputs || []).some((r) => r.active && !r.optional && !r.runtime && !r.path);
-  if (missing || (!su.kept && !su.copy)) return;
-  const named = (su.inputs || []).length > 0;
-  const run = named ? invoke('setup_inputs_run', { id, copy: null }) : invoke('setup_copy', { id, path: su.kept ? '' : su.copy });
-  run.catch((e) => toast(tf('{name}: {msg}', { name: (byId(id) || { name: id }).name, msg: cleanMsg(String(e && e.message ? e.message : e)) }), true));
+  return !missing && !!(su.kept || su.copy);
+}
+// Waiting in the queue, or building now.
+const buildWaits = (id) => S.building === id || S.buildQ.includes(id);
+function queueBuild(id) {
+  if (buildWaits(id)) return;
+  S.buildQ.push(id);
+  pumpBuilds();
+}
+// The next one in the queue, when nothing else is setting up. A game whose build isn't due any
+// more (built from Play meanwhile), or that now needs the player, leaves the queue.
+async function pumpBuilds() {
+  if (S.building || Object.keys(S.setupJobs || {}).length || SU.stage === 'run') return;
+  while (S.buildQ.length) {
+    const id = S.buildQ.shift();
+    await loadSetup(id);
+    if (S.running.has(id) || !buildsQuietly(id)) continue;
+    S.building = id;
+    const su = S.setup[id];
+    const named = (su.inputs || []).length > 0;
+    const run = named ? invoke('setup_inputs_run', { id, copy: null }) : invoke('setup_copy', { id, path: su.kept ? '' : su.copy });
+    try { await run; } catch (e) {
+      S.building = null;
+      toast(tf('{name}: {msg}', { name: (byId(id) || { name: id }).name, msg: cleanMsg(String(e && e.message ? e.message : e)) }), true);
+      continue;
+    }
+    render(true);
+    return;
+  }
+}
+// Build Now (the updated toast, the game's menu): queued when nothing has to be asked, else the
+// Finish the Update window asks it.
+async function buildNow(id) {
+  await loadSetup(id);
+  if (!buildsQuietly(id)) return updateBuildModal(id);
+  queueBuild(id);
+  const name = (byId(id) || S.library[id] || { name: id }).name;
+  toast(S.building === id ? tf('Building {name}.', { name }) : tf('{name} builds after the one building now.', { name }));
+  render(true);
+}
+// Right after an update: a game due a new build builds by itself when its Build Again After Updates
+// is on; otherwise the toast offers Build Now.
+async function afterUpdate(id, name) {
+  await loadSetup(id);
+  if (!updateBuildDue(id)) return toast(tf('{name} is updated.', { name }));
+  const g = S.library[id] || {};
+  if (g.rebuild_after_update && buildsQuietly(id)) return queueBuild(id);
+  const msg = tf('{name} is updated. It needs a new build before it plays.', { name });
+  toast(msg, false, `<span>${esc(msg)}</span> <button type="button" class="btn sm" data-act="build-now" data-id="${esc(id)}">${esc(t('Build Now'))}</button>`, 9000);
+}
+async function toggleRebuildAfterUpdate(id) {
+  const on = !(S.library[id] || {}).rebuild_after_update;
+  try { S.library[id] = await invoke('set_game_options', { id, args: null, autoUpdate: null, rebuildAfterUpdate: on }); } catch (err) { return fail(err); }
+  render(true);
 }
 const SU_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
 async function onSetupFinished(id, watching) {
@@ -3548,9 +3601,13 @@ T.event.listen('setup', ({ payload: p }) => {
   if (!S.setupJobs) S.setupJobs = {};
   if (p.step === 'done') {
     delete S.setupJobs[p.id];
+    if (p.id === S.building) S.building = null;
+    setTimeout(pumpBuilds, 0);
     onSetupFinished(p.id, !!(SU.el && SU.id === p.id) || !!document.querySelector('.tv-setup:not(.out)'));
   } else if (p.step === 'error') {
     delete S.setupJobs[p.id];
+    if (p.id === S.building) S.building = null;
+    setTimeout(pumpBuilds, 0);
     if (!SU.el || SU.id !== p.id) {
       toast(p.text || t("Setup didn't finish."), true);
       render(true);
@@ -4724,7 +4781,6 @@ function pageSettings() {
           + row(t('Look for updates when the launcher opens'), t('Asks each installed game\'s GitHub for a newer release. Turn on Update automatically for a game in its Manage tab.'), sw('check_updates', st.check_updates, t('Look for updates')))
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
-          + row(t('Build Games Again After Updates'), t('A game whose new release has to be built again does it right away, in the background, when its files are still there. Off: it\'s built when you next press Play.'), sw('rebuild_after_update', ui.rebuild_after_update, t('Build Games Again After Updates'), 'ui-toggle'))
           + row(t('Auto-Install'), t('When an Easy Setup game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
@@ -6366,6 +6422,8 @@ function gameMenu(id) {
     ...(g ? ['-',
       { act: 'customize', id, label: t('Edit Name and Artwork…'), icon: 'shot' },
       ...(x && x.custom ? [{ act: 'edit-info', id, label: t('Edit Game Info…'), icon: 'page' }] : []),
+      // A new release that has to be built again: built now (queued), not on the next Play.
+      ...(updateBuildDue(id) && !buildWaits(id) ? [{ act: 'build-now', id, label: t('Build Now'), icon: 'disc' }] : []),
       ...(canSetUpAgain(id) ? [{ act: 'setup', id, label: t('Setup Options…'), icon: 'disc', dot: newOpts }] : []),
       { label: t('Add To'), icon: 'plus', sub: [
         // Not on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
@@ -8777,6 +8835,8 @@ async function act(el, e) {
     case 'hold-up': return toggleHold(id);
     case 'free-space': return freeUpSpace(id);
     case 'auto-up': return toggleAutoUpdate(id);
+    case 'rebuild-up': return toggleRebuildAfterUpdate(id);
+    case 'build-now': return buildNow(id);
     case 'launch-opts': return launchOptions(id);
     case 'rename': return renameModal(id);
     case 'troubleshoot': return troubleshootModal(id);
@@ -9580,7 +9640,7 @@ T.event.listen('install', ({ payload: p }) => {
         // Only an installer: its Set Up opens to run it (an update's too).
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
-        else if (S.easy.has(id) && wasInstalled) { toast(tf('{name} is updated.', { name })); rebuildAfterUpdate(id); }
+        else if (S.easy.has(id) && wasInstalled) afterUpdate(id, name);
         else if (S.easy.has(id) && !busy) loadSetup(id).then(async () => { const su = S.setup[id]; if (su && su.needs && su.status && !su.status.ready && !auto) toast(tf('{name} is installed. Set it up from its page.', { name })); else if (su && su.needs && su.status && !su.status.ready) await setupModal(id); else toast(tf('{name} is ready to play.', { name })); });
         else if (S.easy.has(id)) toast(tf('{name} is installed. Set it up from its page.', { name }));
         else toast(tf('{name} is ready to play.', { name }));

@@ -23,6 +23,8 @@ test('prepare.version is out of the schema and the guide: every new release buil
 });
 
 test("an update doesn't open the game's setup by itself", () => {
-  // (Build Games Again After Updates builds in the background; it never opens a window.)
-  assert.match(read('ui/app.js'), /else if \(S\.easy\.has\(id\) && wasInstalled\) \{ toast\(tf\('\{name\} is updated\.'/);
+  // (A game's Build Again After Updates builds in the background; it never opens a window.)
+  const app = read('ui/app.js');
+  assert.match(app, /else if \(S\.easy\.has\(id\) && wasInstalled\) afterUpdate\(id, name\);/);
+  assert.doesNotMatch(app.slice(app.indexOf('async function afterUpdate'), app.indexOf('async function toggleRebuildAfterUpdate')), /setupModal|updateBuildModal/);
 });

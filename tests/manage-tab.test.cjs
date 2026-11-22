@@ -16,7 +16,7 @@ const fileRows = (inst, signedIn) => {
 const updateRows = (inst, held) => {
   const run = new Function('S', 't', 'esc', 'isLab', 'isSF', 'fmtB', 'heldIds', 'autoUpdateAll', 'autoUpdates', `${fn(app, 'manageUpdateRows')}; return manageUpdateRows;`);
   const no = () => false;
-  return run({}, same, same, no, no, String, () => new Set(held ? ['g'] : []), no, () => !!inst.auto_update)('g', inst).join('');
+  return run({ easy: new Set(), setup: {} }, same, same, no, no, String, () => new Set(held ? ['g'] : []), no, () => !!inst.auto_update)('g', inst).join('');
 };
 const GAME = { path: 'F:\\Library\\hydro', repo: 'dev/hydro', tag: 'v1.3.0' };
 

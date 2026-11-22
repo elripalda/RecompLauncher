@@ -159,6 +159,10 @@ pub struct Installed {
     /// Install updates as soon as they're found.
     #[serde(default)]
     pub auto_update: bool,
+    /// Build it again right after an automatic update to a new release, in the background, when
+    /// nothing has to be asked (the launcher queues them, one at a time). Off: Play builds it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rebuild_after_update: bool,
     /// A developer's own build, added from a folder on this PC: never updated, moved or deleted.
     #[serde(default)]
     pub local: bool,

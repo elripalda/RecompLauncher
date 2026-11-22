@@ -4,47 +4,83 @@ const fs = require('node:fs');
 const path = require('node:path');
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const app = read('ui/app.js');
-const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 
-// rebuildAfterUpdate with what it reads stubbed: the runs it starts are recorded.
-function harness(ui, su, due) {
-  const runs = [];
-  const S = { settings: { ui }, setup: { hopper: su } };
-  const body = `${fn(app, 'rebuildAfterUpdate')}; return rebuildAfterUpdate;`;
-  const make = new Function('S', 'loadSetup', 'updateBuildDue', 'prepBlocked', 'newPrepOpts', 'invoke', 'toast', 'tf', 'cleanMsg', 'byId', body);
-  const run = make(S, async () => {}, () => due, () => false, (x) => (x.prepare_options || []).filter((o) => o.new), (cmd, args) => { runs.push([cmd, args]); return Promise.resolve(); }, () => {}, (x) => x, (x) => x, () => null);
-  return { run, runs };
+// The builds-after-an-update block of app.js, with what it reads stubbed: the runs it starts, the
+// toasts it shows and the windows it opens are recorded.
+function harness(library, setup, due) {
+  const block = app.slice(app.indexOf('// Builds after an update:'), app.indexOf('async function toggleRebuildAfterUpdate'));
+  const log = { runs: [], toasts: [], windows: [] };
+  const S = { library, setup, setupJobs: {}, running: new Set() };
+  const SU = { stage: 'steps' };
+  const names = ['S', 'SU', 'loadSetup', 'updateBuildDue', 'prepBlocked', 'newPrepOpts', 'invoke', 'toast', 'tf', 't', 'esc', 'cleanMsg', 'byId', 'render', 'updateBuildModal'];
+  const make = new Function(...names, `${block}; return { queueBuild, pumpBuilds, buildNow, afterUpdate, buildWaits };`);
+  const api = make(S, SU, async () => {}, (id) => due.has(id), () => false, (su) => (su.prepare_options || []).filter((o) => o.new),
+    (cmd, args) => { log.runs.push([cmd, args.id]); return Promise.resolve(); }, (msg, bad, html) => log.toasts.push(html || msg),
+    (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => o[k]), (x) => x, (x) => x, (x) => x, () => null, () => {}, (id) => log.windows.push(id));
+  return { api, log, S };
 }
+const copy = (path) => ({ copy: path, inputs: [] });
 
-test('builds again after an update only when the setting is on', async () => {
-  const su = { copy: '/games/hopper.iso', inputs: [] };
-  const off = harness({}, su, true);
-  await off.run('hopper');
-  assert.deepEqual(off.runs, []);
-  const on = harness({ rebuild_after_update: true }, su, true);
-  await on.run('hopper');
-  assert.deepEqual(on.runs, [['setup_copy', { id: 'hopper', path: '/games/hopper.iso' }]]);
+test('a game with Build Again After Updates on builds right after its update', async () => {
+  const { api, log } = harness({ hopper: { rebuild_after_update: true } }, { hopper: copy('/g/hopper') }, new Set(['hopper']));
+  await api.afterUpdate('hopper', 'Hopper');
+  assert.deepEqual(log.runs, [['setup_copy', 'hopper']]);
 });
 
-test('never asks anything: no build without the files, or with a new option to answer', async () => {
-  const ui = { rebuild_after_update: true };
-  const gone = harness(ui, { copy: null, kept: false, inputs: [] }, true);
-  await gone.run('hopper');
-  assert.deepEqual(gone.runs, []);
-  const asked = harness(ui, { copy: '/games/hopper.iso', inputs: [], prepare_options: [{ id: 'fsr', new: true }] }, true);
-  await asked.run('hopper');
-  assert.deepEqual(asked.runs, []);
-  // Not due a build: nothing to do.
-  const current = harness(ui, { copy: '/games/hopper.iso', inputs: [] }, false);
-  await current.run('hopper');
-  assert.deepEqual(current.runs, []);
-  // Built from what it kept: no copy needed.
-  const kept = harness(ui, { copy: null, kept: true, inputs: [] }, true);
-  await kept.run('hopper');
-  assert.deepEqual(kept.runs, [['setup_copy', { id: 'hopper', path: '' }]]);
+test('with it off, the updated toast offers Build Now and nothing builds', async () => {
+  const { api, log } = harness({ hopper: {} }, { hopper: copy('/g/hopper') }, new Set(['hopper']));
+  await api.afterUpdate('hopper', 'Hopper');
+  assert.deepEqual(log.runs, []);
+  assert.match(log.toasts[0], /data-act="build-now" data-id="hopper"/);
 });
 
-test('the setting is in Settings, Updates, and off unless turned on', () => {
-  assert.match(app, /sw\('rebuild_after_update', ui\.rebuild_after_update, t\('Build Games Again After Updates'\), 'ui-toggle'\)/);
-  assert.match(app, /else if \(S\.easy\.has\(id\) && wasInstalled\) \{ toast\(tf\('\{name\} is updated\.', \{ name \}\)\); rebuildAfterUpdate\(id\); \}/);
+test('a game not due a build after its update is only said to be updated', async () => {
+  const { api, log } = harness({ hopper: { rebuild_after_update: true } }, { hopper: copy('/g/hopper') }, new Set());
+  await api.afterUpdate('hopper', 'Hopper');
+  assert.deepEqual(log.runs, []);
+  assert.deepEqual(log.toasts, ['Hopper is updated.']);
+});
+
+test('several builds wait in a queue and run one at a time', async () => {
+  const lib = { a: { rebuild_after_update: true }, b: { rebuild_after_update: true } };
+  const { api, log, S } = harness(lib, { a: copy('/g/a'), b: copy('/g/b') }, new Set(['a', 'b']));
+  await api.afterUpdate('a', 'A');
+  await api.afterUpdate('b', 'B');
+  assert.deepEqual(log.runs, [['setup_copy', 'a']]);
+  assert.ok(api.buildWaits('b'));
+  // A's build ended (the setup event clears it): B goes next.
+  S.building = null;
+  await api.pumpBuilds();
+  assert.deepEqual(log.runs, [['setup_copy', 'a'], ['setup_copy', 'b']]);
+});
+
+test('a queued build waits while another setup runs', async () => {
+  const { api, log, S } = harness({ a: {} }, { a: copy('/g/a') }, new Set(['a']));
+  S.setupJobs.other = { step: 'extras' };
+  api.queueBuild('a');
+  await api.pumpBuilds();
+  assert.deepEqual(log.runs, []);
+  delete S.setupJobs.other;
+  await api.pumpBuilds();
+  assert.deepEqual(log.runs, [['setup_copy', 'a']]);
+});
+
+test('Build Now opens Finish the Update when something has to be asked', async () => {
+  const asks = { copy: '/g/a', inputs: [], prepare_options: [{ id: 'fsr', new: true }] };
+  const { api, log } = harness({ a: {} }, { a: asks }, new Set(['a']));
+  await api.buildNow('a');
+  assert.deepEqual(log.runs, []);
+  assert.deepEqual(log.windows, ['a']);
+  // Its files gone and nothing kept: asked too.
+  const gone = harness({ b: {} }, { b: { copy: null, kept: false, inputs: [] } }, new Set(['b']));
+  await gone.api.buildNow('b');
+  assert.deepEqual(gone.log.windows, ['b']);
+});
+
+test('the switch is per game, in its Manage tab, and Settings has none', () => {
+  assert.match(app, /data-act="rebuild-up" data-id="\$\{esc\(id\)\}"/);
+  assert.match(app, /aria-checked="\$\{!!inst\.rebuild_after_update\}"/);
+  assert.doesNotMatch(app, /sw\('rebuild_after_update'/);
+  assert.match(app, /else if \(S\.easy\.has\(id\) && wasInstalled\) afterUpdate\(id, name\);/);
+  assert.match(app, /act: 'build-now', id, label: t\('Build Now'\)/);
 });
