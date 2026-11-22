@@ -24,6 +24,18 @@ test('steps with nothing in them are left out: Discs, Add-ons, Extras only when 
   assert.equal(m.missing.length, 2, 'the DLC and DLSS never hold setup back');
 });
 
+test('a game on four discs counts the copy box as disc 1', () => {
+  const c = context();
+  // (Lost Odyssey: the first disc is the copy box, the other three are disc rows)
+  const su = copy({ needs: 'Disc 1', kind: 'iso', copy: '/d/disc1.iso', inputs: [disc(2, '/d/2.iso'), disc(3, '/d/3.iso'), disc(4)] });
+  const m = c.stepsModel('g', su, {});
+  assert.equal(m.steps[0].name, 'Discs');
+  // (what the left side's "{ready} of {total} discs selected" counts)
+  const discs = c.discRows(m.own);
+  assert.equal(discs.map((r) => r.id).join(','), 'game,disc2,disc3,disc4');
+  assert.equal(discs.filter((r) => r.path).length, 3);
+});
+
 test('a copy found in the folders fills its box, tagged, and Set Up can start', () => {
   const c = context({ g: { path: '/roms/Game.iso' } });
   const m = c.stepsModel('g', copy(), {});
