@@ -314,8 +314,9 @@ disc images still gets one:
 Leave the inputs out if your recomp finds the game itself.
 
 A manifest from before may write the copy as `game` (with `kind`, `label`, `check`, `dumps` and
-`update`). It still reads, as the input `game` (and `update`), but it's no longer part of the SDK:
-the Developer tab shows your file with it moved into `inputs`, ready to copy.
+`update`). It still reads, as the input `game` (and `update`), but it's no longer part of the SDK,
+and RecompLauncher 1.0 stops reading it: move it before then. The Developer tab shows your file
+with it moved into `inputs`, ready to copy.
 
 **A second pick: the game's update.** When the game needs something beside the player's copy,
 picked on its own (a title update, or a PS4 update folder kept apart from the game), add an input

@@ -356,7 +356,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
                 Ok(v) => {
                     conv = converted(&v).and_then(|c| serde_json::to_string_pretty(&c).ok());
                     if v.get("game").is_some() {
-                        items.push(warn("\"game\" is read as the input \"game\"", "Named inputs are the one way to ask for files now, with every option game had. Your file in today's format is below: use it in your next release."));
+                        items.push(warn("\"game\" is read as the input \"game\"", "Named inputs are the one way to ask for files now, with every option game had, and RecompLauncher 1.0 stops reading game. Your file in today's format is below: use it in your next release."));
                     }
                     if let Some(o) = v.as_object() {
                         let unknown: Vec<&String> = o.keys().filter(|k| !TOP_KEYS.contains(&k.as_str()) && !IGNORED_KEYS.contains(&k.as_str())).collect();

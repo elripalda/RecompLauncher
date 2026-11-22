@@ -1507,6 +1507,8 @@ impl Profile {
     /// rule they had. Named inputs are the one way to ask for files; a manifest written with `game`
     /// reads the same as one written with inputs. `{game}` keeps filling in with the main input.
     /// After this `game` is None; `main_copy` gives its rules back, read from the input.
+    /// Beta only: removed before 1.0, when no manifest writes `game` any more (the store's boot
+    /// profiles are made as inputs by then).
     pub fn lift_game(&mut self) {
         let Some(g) = self.game.take() else { return };
         let mut lifted = vec![crate::inputs::Input::from_copy(&g)];

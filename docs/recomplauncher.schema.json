@@ -237,8 +237,8 @@
     "game": {
       "type": "object",
       "deprecated": true,
-      "deprecationMessage": "Write the player's copy as an input with id \"game\" (see inputs). This still reads, as that input.",
-      "description": "From before named inputs: the player's copy of the game. It reads as the input \"game\" (and \"update\"), with every option; write it as one of inputs instead. The Developer tab shows your file converted.",
+      "deprecationMessage": "Write the player's copy as an input with id \"game\" (see inputs). This still reads, as that input, until RecompLauncher 1.0, which drops it.",
+      "description": "From before named inputs: the player's copy of the game. It reads as the input \"game\" (and \"update\"), with every option, until RecompLauncher 1.0, which drops it: write it as one of inputs instead. The Developer tab shows your file converted.",
       "properties": {
         "kind": {
           "enum": [
