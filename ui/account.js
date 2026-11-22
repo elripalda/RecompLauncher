@@ -146,11 +146,14 @@ function accountSection(group, row) {
       + group(t('Save backups'), row(t('On this PC'), t('After every session the launcher keeps a copy of each game\'s saves, the newest ten. They\'re on each game\'s Saves tab.'), ''));
   }
   const used = a.used || 0, quota = a.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
+  // Back Up Every Game says what it does now, like a game's own switch in its Manage tab.
+  const all = (S.settings.ui || {}).cloud_all === true;
+  const allNow = all ? t('On. Every game\'s saves go to your account after you play. Turning it off changes every game.') : t('Off. Only the games you turn on in their Manage tab go to your account. Turning it on changes every game.');
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
       <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Back Up Every Game'), t('On: every game\'s saves go to your account after you play. Off: only the games you turn on in their Manage tab. Changing this changes every game.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_all === true}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
+      + row(t('Back Up Every Game'), allNow, `<button type="button" class="switch" role="switch" aria-checked="${all}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
       + deviceNameRow())
     + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
