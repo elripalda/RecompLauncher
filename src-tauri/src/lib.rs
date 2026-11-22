@@ -4364,6 +4364,57 @@ fn die_with_launcher(c: &mut std::process::Command) {
     }
 }
 
+/// A process put in a job of its own that Windows ends when the job's last handle closes: when
+/// this is dropped, or when the launcher is killed or crashes and Windows closes its handles.
+/// Processes it starts are in the job too.
+#[cfg(windows)]
+mod win_job {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE};
+
+    pub struct Job(HANDLE);
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = CloseHandle(self.0);
+            }
+        }
+    }
+
+    /// None when Windows won't make the job: the process then runs as it did before, outside one.
+    pub fn kill_on_close(child: &std::process::Child) -> Option<Job> {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let job = Job(CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?);
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+            SetInformationJobObject(job.0, JobObjectExtendedLimitInformation, &info as *const _ as *const std::ffi::c_void, size).ok()?;
+            AssignProcessToJobObject(job.0, HANDLE(child.as_raw_handle())).ok()?;
+            Some(job)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        /// The launcher gone (its handle to the job closed): the step ends, and what it started.
+        #[test]
+        fn a_step_ends_when_its_job_is_dropped() {
+            let mut step = std::process::Command::new("cmd").args(["/c", "ping -n 60 127.0.0.1 > nul"]).spawn().unwrap();
+            let job = super::kill_on_close(&step).expect("a job");
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            assert!(step.try_wait().unwrap().is_none(), "still running while the job is held");
+            drop(job);
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while step.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            assert!(step.try_wait().unwrap().is_some(), "ended with its job");
+        }
+    }
+}
+
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
@@ -4427,6 +4478,10 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     #[cfg(target_os = "linux")]
     die_with_launcher(&mut c);
     let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
+    // On Windows the same, through a job that ends the step (and what it started) when the
+    // launcher is gone. Held until the step is.
+    #[cfg(windows)]
+    let _job = win_job::kill_on_close(&child);
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     if let Some(o) = child.stdout.take() {
         let tx = tx.clone();
