@@ -2639,6 +2639,8 @@
  "Recent": "Terbaru",
  "Updated {from} → {to}": "Diperbarui {from} → {to}",
  "Downloading": "Mengunduh",
+ "Building": "Membuat",
+ "Downloading and building": "Mengunduh dan membuat",
  "Pause all": "Jeda semua",
  "Queued": "Dalam antrean",
  "{time} left": "{time} lagi",

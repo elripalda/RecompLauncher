@@ -96,7 +96,7 @@ function desktopPage(hist, library, more = {}) {
     updateBuildDue: (id) => (more.due || []).includes(id),
   });
   const consts = ['INFO_I', 'BUILT_I', 'BUILT_TIP', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
-  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('buildsNow') + topFn('pageDownloads');
+  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('buildsNow') + topFn('dlTitle') + topFn('pageDownloads');
   vm.runInContext(code, c);
   return c.pageDownloads();
 }
@@ -161,9 +161,37 @@ test('an update held back for a build says it waits for the build before it', ()
   assert.match(html, /<b>Mine<\/b><span class="dl-sub"><span>Update to v2 · Waiting for the build before it<\/span>/);
 });
 
+// The list's title says what's moving now.
+const titleOf = (more) => desktopPage([], {}, more).match(/<h2>([^<]*)<span class="dl-n">/)[1];
+const BUILDING = { setupJobs: { odyssey2: { step: 'extras' } } };
+
+test('the title says Downloading while only downloads move', () => {
+  assert.equal(titleOf({ jobs: MOVING }), 'Downloading');
+});
+
+test('the title says Building while only a build moves', () => {
+  assert.equal(titleOf(BUILDING), 'Building');
+});
+
+test('the title says Downloading and building while a download and a build both move', () => {
+  assert.equal(titleOf({ ...BUILDING, jobs: { lostodyssey: MOVING.lostodyssey } }), 'Downloading and building');
+});
+
+test('a download waiting for the build does not change the title', () => {
+  assert.equal(titleOf({ ...BUILDING, jobs: { mine: MOVING.mine } }), 'Building');
+});
+
+test('a build waiting behind a moving download does not change the title', () => {
+  assert.equal(titleOf({ jobs: { lostodyssey: MOVING.lostodyssey }, buildQ: ['odyssey2'] }), 'Downloading');
+});
+
+test('with nothing moving, the title says what waits', () => {
+  assert.equal(titleOf({ buildQ: ['odyssey2'] }), 'Building');
+});
+
 test('a build right after an update is in the list, moving, with a cross that stops the build', () => {
   const html = desktopPage([], {}, { building: 'odyssey' });
-  assert.match(html, /<h2>Downloading<span class="dl-n">1<\/span><\/h2>/);
+  assert.match(html, /<h2>Building<span class="dl-n">1<\/span><\/h2>/);
   assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-dl-phase="odyssey">Building the game · 3%<\/span><div class="prog" data-build-prog="odyssey"><div class="track"><i style="width:3%">/);
   assert.match(html, /data-act="build-cancel" data-id="odyssey"/);
 });

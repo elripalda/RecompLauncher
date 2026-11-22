@@ -4467,6 +4467,17 @@ function buildsNow() {
   const ids = [S.building, ...Object.keys(S.setupJobs || {})];
   return [...new Set(ids)].filter((id) => id && !S.jobs[id]);
 }
+// The Downloading list's title says what's moving now: Downloading, Building, or both. A row waiting
+// its turn doesn't change it; with nothing moving (all waiting or paused), what waits says it.
+function dlTitle(builds, buildsWaiting) {
+  const jobs = Object.values(S.jobs);
+  const downloading = jobs.some((j) => j.phase !== 'queued');
+  const active = downloading || builds.length > 0;
+  const downloads = active ? downloading : jobs.length > 0 || Object.keys(S.paused || {}).length > 0;
+  const building = active ? builds.length > 0 : buildsWaiting.length > 0;
+  if (downloads && building) return t('Downloading and building');
+  return building ? t('Building') : t('Downloading');
+}
 function buildLine(id) {
   // Easy Setup checks the whole copy before the game's own build step, and that's the long part.
   if (((S.setupJobs || {})[id] || {}).step === 'verify') return t('Checking your copy');
@@ -4651,7 +4662,7 @@ function pageDownloads() {
   const updateAll = ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : '';
   const clear = shown.length ? `<button type="button" class="btn sm" data-act="dl-clear" data-k="dl_cleared">${esc(t('Clear history'))}</button>` : '';
   return `<div class="page dl-page" style="max-width:1100px"><div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p></div></div>
-    ${dlRows ? shelf(t('Downloading'), dlCount, pauseBtn, dlRows) : ''}
+    ${dlRows ? shelf(dlTitle(building, buildWaiting), dlCount, pauseBtn, dlRows) : ''}
     ${upRows ? shelf(t('Updates ready'), ups.length, updateAll, upRows) : ''}
     ${failRows ? shelf(t('Didn\'t finish'), fails.length, '', failRows) : ''}
     ${shown.length ? shelf(t('Recent'), shown.length, clear, recentRows) : ''}

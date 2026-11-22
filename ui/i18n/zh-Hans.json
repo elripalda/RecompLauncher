@@ -2639,6 +2639,8 @@
  "Recent": "最近",
  "Updated {from} → {to}": "已更新 {from} → {to}",
  "Downloading": "正在下载",
+ "Building": "正在构建",
+ "Downloading and building": "正在下载和构建",
  "Pause all": "全部暂停",
  "Queued": "排队中",
  "{time} left": "剩余 {time}",

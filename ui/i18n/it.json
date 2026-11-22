@@ -2639,6 +2639,8 @@
  "Recent": "Recenti",
  "Updated {from} → {to}": "Aggiornato {from} → {to}",
  "Downloading": "In download",
+ "Building": "In compilazione",
+ "Downloading and building": "In download e in compilazione",
  "Pause all": "Metti tutto in pausa",
  "Queued": "In coda",
  "{time} left": "mancano {time}",

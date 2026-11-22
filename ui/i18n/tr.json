@@ -2639,6 +2639,8 @@
  "Recent": "Son",
  "Updated {from} → {to}": "{from} → {to} güncellendi",
  "Downloading": "İndiriliyor",
+ "Building": "Derleniyor",
+ "Downloading and building": "İndiriliyor ve derleniyor",
  "Pause all": "Tümünü duraklat",
  "Queued": "Sırada",
  "{time} left": "{time} kaldı",

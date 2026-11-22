@@ -2639,6 +2639,8 @@
  "Recent": "Recent",
  "Updated {from} → {to}": "Bijgewerkt {from} → {to}",
  "Downloading": "Bezig met downloaden",
+ "Building": "Bezig met bouwen",
+ "Downloading and building": "Bezig met downloaden en bouwen",
  "Pause all": "Alles pauzeren",
  "Queued": "In de wachtrij",
  "{time} left": "nog {time}",
