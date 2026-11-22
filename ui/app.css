@@ -457,14 +457,15 @@ body.light .known-fix b{color:#127a45}
 .gs-ring circle+circle{stroke:var(--gold,#FFC861);stroke-linecap:round}
 /* Your play time: the bars on the left, the numbers as a short list on the right. */
 .pt-card .card-h{margin-bottom:14px}
-.pt-body{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px;align-items:end}
+.pt-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,300px);gap:24px;align-items:end}
 .pt-body .bars{margin-top:0}
 .pt-body .bars i.z{height:3px!important;background:var(--fill2);opacity:1;animation:none}
 .pt-none{margin:0;font-size:14px;align-self:center}
 .pt-list{list-style:none;margin:0;padding:0 0 0 20px;border-left:1px solid var(--line);display:flex;flex-direction:column}
 .pt-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0}
 .pt-list li+li{border-top:1px solid var(--line)}
-.pt-list b{font-size:15px;white-space:nowrap}
+.pt-list b{font-size:15px;white-space:nowrap;flex:none}
+.pt-list .gs-k{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:1240px){.gstrip{grid-template-columns:repeat(2,minmax(0,1fr))}.gstrip>div:nth-child(3){border-left:0}.gstrip>div:nth-child(n+3){border-top:1px solid var(--line)}.gstrip>.gs-ver{min-width:0}.gs-v{flex-wrap:wrap}}
 @media (max-width:900px){.pt-body{grid-template-columns:1fr}.pt-list{border-left:0;padding-left:0}}
 .card-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
@@ -2683,7 +2684,13 @@ body.light .su-req{color:#8a5300}
 
 /* ---------- where to buy the original game ---------- */
 .ig-slot:empty{display:none}
-.ig-card{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.ig-card{padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+/* (Beta 68) Under the stats or under Your Play Time: one row across the column, the same width as the cards around it. */
+.ig-card.ig-wide{flex-direction:row;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px}
+.ig-card.ig-wide .ig-top{flex:1}
+.ig-card.ig-wide .ig-row{flex:none;gap:14px}
+.ig-card.ig-wide .ig-aff{flex:none;order:3}
+@media (max-width:700px){.ig-card.ig-wide{flex-direction:column;align-items:stretch}}
 .ig-top{display:flex;align-items:center;gap:10px;min-width:0}
 .ig-logo{flex:none;width:22px;height:22px;border-radius:6px}
 .ig-what{display:flex;flex-direction:column;min-width:0}
