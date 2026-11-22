@@ -171,7 +171,8 @@ const favMark = (id, cls) => (favs().includes(id) ? `<span class="${cls}" title=
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
 const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet);
 // Cloud saves for an installed game: its own switch (Manage) when it was set, otherwise what the
-// player picked for every game (account.js askCloudAll). The core decides the same way (cloud_on).
+// player picked for every game (account.js askCloudAll). Paired with Installed::cloud_on in
+// src-tauri/src/library.rs, which decides what really syncs: change both together.
 const cloudOn = (g) => (g && g.cloud != null ? g.cloud === true : (S.settings.ui || {}).cloud_all === true);
 // Download speed limits the player can pick (MB a second; 0 is none), sent to the app at start and
 // whenever they change.

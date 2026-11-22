@@ -265,6 +265,7 @@ pub struct SetupUpgrade {
 impl Installed {
     /// Cloud saves on for this game: its own switch when it was set, otherwise what the player
     /// picked for every game (`ui.cloud_all`, asked once after signing in; not asked yet is off).
+    /// Paired with `cloudOn` in ui/app.js, which shows it on the switches: change both together.
     pub fn cloud_on(&self, ui: &Value) -> bool {
         let every_game = ui.get("cloud_all").and_then(Value::as_bool).unwrap_or(false);
         self.cloud.unwrap_or(every_game)
