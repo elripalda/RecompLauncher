@@ -1582,21 +1582,32 @@ impl Profile {
             };
             let Some(path) = place(&c.file, install) else { continue };
             let mut f = File::open(path, &c.format);
+            let mut set = false;
             for (k, v) in &c.ensure {
                 if f.get(k).map(|x| x.is_empty()).unwrap_or(true) {
                     f.set(k, &fill(v, install, game));
+                    set = true;
                 }
             }
             for (k, v) in &c.always {
                 f.set(k, &fill(v, install, game));
+                set = true;
             }
             if !f.existed {
                 for (k, v) in &c.new {
                     f.set(k, &fill(v, install, game));
+                    set = true;
                 }
             }
             if let (false, Some(g)) = (c.game_path.is_empty(), game) {
                 f.set(&c.game_path, &path_value(&c.format, g));
+                set = true;
+            }
+            // A file that isn't there yet, with nothing to put in it, is left for the game: an
+            // empty one would stop a game that writes its own defaults only when it's missing
+            // (PrimeRecomp's primerecomp.ini).
+            if !f.existed && !set {
+                continue;
             }
             f.save()?;
         }
@@ -3065,6 +3076,24 @@ mod tests {
         assert_eq!(native.0, dir.join("game"));
         assert_eq!(native.1, vec![copy.to_string_lossy().to_string(), format!("--disc={}", copy.display())]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_settings_file_with_nothing_to_set_is_not_made_empty() {
+        let dir = tmp("config-nothing-to-set");
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["game.exe"]},
+            "config":[{"format":"ini","file":[{"path":"{install}/game.ini"}]}]}"#).unwrap();
+        p.prepare(&dir, None).unwrap();
+        assert!(!dir.join("game.ini").exists());
+    }
+
+    #[test]
+    fn a_settings_file_with_new_values_is_made_with_them() {
+        let dir = tmp("config-new-values");
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["game.exe"]},
+            "config":[{"format":"ini","file":[{"path":"{install}/game.ini"}],"new":{"vsync":"1"}}]}"#).unwrap();
+        p.prepare(&dir, None).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("game.ini")).unwrap().trim(), "vsync = 1");
     }
 
     #[cfg(unix)]
