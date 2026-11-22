@@ -4349,19 +4349,27 @@ fn prepare_args(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extr
 extern "C" {
     // Variadic in C, so declared as it is there.
     fn prctl(option: std::ffi::c_int, ...) -> std::ffi::c_int;
+    fn getppid() -> std::ffi::c_int;
 }
 
 /// The setup step is sent SIGKILL when the thread that started it ends, the launcher killed
-/// with it. (That thread waits for the step, so it never ends first otherwise.) prctl is
-/// async-signal-safe, as pre_exec requires.
+/// with it. (That thread waits for the step, so it never ends first otherwise.) prctl and
+/// getppid are async-signal-safe, as pre_exec requires.
 #[cfg(target_os = "linux")]
 fn die_with_launcher(c: &mut std::process::Command) {
     use std::os::unix::process::CommandExt;
     const PR_SET_PDEATHSIG: std::ffi::c_int = 1;
     const SIGKILL: std::ffi::c_ulong = 9;
+    let launcher = std::process::id() as std::ffi::c_int;
     unsafe {
-        c.pre_exec(|| {
+        c.pre_exec(move || {
             prctl(PR_SET_PDEATHSIG, SIGKILL);
+            // The launcher already gone between the fork and here (the signal only comes for a
+            // death after it's asked for): the step doesn't start. Its parent is then init (1),
+            // or the session's reaper (systemd, Flatpak, a container): either way not the launcher.
+            if getppid() != launcher {
+                return Err(std::io::Error::other("the launcher is gone"));
+            }
             Ok(())
         });
     }
