@@ -65,16 +65,16 @@ test('Free Up Space: on the Your Copy card when the game plays without the copy,
   assert.match(html, /data-act="free-space" data-id="hopper"/);
   assert.match(html, /Recycle Bin frees 9 B/);
   assert.match(rust, /fn spare_copy\(g: &Installed, p: &profile::Profile, others: &\[Installed\]\) -> Option<SpareCopy>/);
-  // Only a build that starts without it, or a disc image unpacked into the game's folder.
-  assert.match(rust, /p\.build_done\(&g\.path\) == Some\(true\) && !p\.start_uses_game\(\)/);
-  assert.match(rust, /!need\.extract\.is_empty\(\) && copy\.is_file\(\) && p\.already_in_place\(&g\.path\)\.is_some\(\)/);
+  // Only when a new release builds it again without them: a step that keeps what it needs, built
+  // on the release installed, or a disc image unpacked into the game's folder.
+  assert.match(rust, /keeps && g\.set_up == g\.tag && p\.build_done\(&g\.path\) == Some\(true\)/);
+  assert.match(rust, /g\.unpacked_from\.iter\(\)/);
   assert.match(read('src-tauri/src/files.rs'), /FOF_WANTNUKEWARNING/);
 });
 
-test('Move Build moves a build of its own folder and the game starts from there', () => {
-  assert.match(fn(app, 'manageStartRows'), /if \(su && su\.build_at\) rows\.push\([^\n]*data-act="move-build"/);
-  assert.match(fn(app, 'moveBuild'), /invoke\('move_build', \{ id, to \}\)/);
-  assert.match(rust, /x\.build_dir = \(dest != home\)\.then\(\|\| dest\.clone\(\)\);/);
+test('there is no Move Build: the build is the launcher\'s own, in the folder the manifest names', () => {
+  assert.doesNotMatch(app, /move-build|moveBuild|move_build/);
+  assert.doesNotMatch(rust, /fn move_build|build_at/);
 });
 
 test('a setup the game asks for runs, and a setup step that stops says what it said', () => {

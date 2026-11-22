@@ -377,8 +377,8 @@
   // Setup Required: a yellow badge on the cover until the player says it's set up.
   // Only on a game in the player's Library, as a to-do: nothing that reads as a warning on the rest.
   const sreqBadge = (a) => S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
-  // What a Setup Required recomp needs before it plays, as a sheet: its developer's steps, the
-  // README, its folder, and Done, Play (after which Play is back for good).
+  // What a Setup Required recomp needs on the PC, as a sheet to read: its developer's steps, the
+  // README and its folder. A note, never a gate: Play is on the game's page and just runs.
   function tvSetupReq(id) {
     const a = byId(id);
     if (!a) return;
@@ -390,8 +390,8 @@
       ${inst ? '' : `<p class="tv-sreq-p dim">${esc(t('Install it first, then come back here.'))}</p>`}`;
     const items = [readme ? { label: t('Open the README'), icon: 'page', run: () => invoke('open_url', { url: readme }).catch(fail) } : null];
     if (inst) items.push({ label: t('Open its folder'), icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
-      { label: t('Done, Play'), icon: 'play', cls: 'warn', run: async () => { await saveUi({ setup_ok: Object.assign({}, (S.settings.ui || {}).setup_ok || {}, { [id]: true }) }, true); draw(true); playGame(id); } },
-      { label: t('Not yet'), icon: 'chevL', run: () => {} });
+      { label: t('Play'), icon: 'play', run: () => playGame(id) },
+      { label: t('Close'), icon: 'chevL', run: () => {} });
     else items.push({ label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) }, { label: t('Close'), icon: 'chevL', run: () => {} });
     sheet(tf('Set up {name}', { name: a.name }), items.filter(Boolean), 'sreq', head);
   }
@@ -567,9 +567,9 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
-      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
+      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelDownload(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
-      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
+      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
         if (easyNotReady(id)) return { label: t('Easy Setup'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
@@ -1526,7 +1526,7 @@
     const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
       mainButton(a, 'g-main'),
-      !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
+      needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'openfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
@@ -2214,7 +2214,7 @@
       const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
-      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;
@@ -2242,17 +2242,6 @@
           toast(tf('Setup for {name} was cancelled.', { name: a.name }));
         } }
       ];
-    } else if (TS.stage === 'update') {
-      const pickU = async (folder) => {
-        const p = await pickFile(folder ? { title: t('The update\'s folder'), directory: true } : { title: t('The game\'s update'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] }).catch(fail);
-        if (!p) return tsDraw();
-        try { await invoke('set_update_copy', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { TS.uerr = String(e && e.message ? e.message : e); sfx('back'); return tsDraw(); }
-        delete S.setup[id];
-        try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; }
-        TS.uerr = ''; TS.stage = 'ready'; TS.result = TS.result || { text: t('Checked') }; sfx('select'); tsDraw();
-      };
-      body = `${med('is-done')}<div class="tt"><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')}</p>${TS.uerr ? `<p class="err">${esc(t(TS.uerr))}</p>` : ''}</div>
-        <div class="opts">${su.update_file ? it(t('Choose the Update File'), t('The file, as it came'), () => pickU(false), 'main') : ''}${su.update_folder ? it(t('Choose the Update Folder'), t('A folder with its files'), () => pickU(true), su.update_file ? '' : 'main') : ''}${su.update_optional ? it(t('Skip for Now'), '', () => { TS.stage = 'ready'; setTimeout(tsDraw, 0); }) : ''}</div>`;
     } else if (TS.stage === 'ready' && TS.upd) {
       // The update's build is done: the game starts, as Play asked.
       closeSheet();
@@ -2393,8 +2382,7 @@
         const sid = TS.id;
         invoke('game_setup', { id: sid }).then((x) => { S.setup[sid] = x; }).catch(() => {}).finally(() => {
           if (TS.id !== sid) return;
-          const su = S.setup[sid];
-          TS.stage = su && su.update && !su.update_copy ? 'update' : 'ready';
+          TS.stage = 'ready';
           sfx('select'); tsDraw();
         });
         return;
@@ -2410,7 +2398,8 @@
     let list = [];
     try { list = await invoke('versions', { id }); } catch (e) { return fail(e); }
     const g = S.library[id];
-    const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.newest ? null : v.tag)) }));
+    // By name, the newest too: with no version the install goes to the one the store let out (#393).
+    const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.tag)) }));
     if (!items.length) return toast(t('No other versions for this PC.'));
     sheet(t('Other versions'), items);
   }
@@ -2929,7 +2918,7 @@
     switch (act) {
       case 'play': sfx('select'); return playGame(id);
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
-      case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
+      case 'cancel': return cancelDownload(id).then(() => draw(true));
       case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'selfupdate': sfx('select'); return selfUpdate();
       case 'install': sfx('select'); return startInstall(id).then(() => draw(true));

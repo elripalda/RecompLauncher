@@ -1211,6 +1211,8 @@ body.isl-on .set-nav{max-height:calc(100vh - 248px)}
 .dev-item b{font-weight:600;font-size:14.5px;overflow-wrap:anywhere}
 .dev-item span{font-size:13px;color:var(--dim)}
 .dev-err{border-color:rgba(255,122,122,.4)}
+.dev-json{font:12.5px/1.5 ui-monospace,Consolas,monospace;background:rgba(0,0,0,.25);border-radius:10px;padding:12px 14px;margin:0 0 12px;max-height:340px;overflow:auto;white-space:pre}
+body.light .dev-json{background:rgba(0,0,0,.05)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:13.5px;margin:8px 0 0;overflow-wrap:anywhere;color:#ffc4c4}
 .dev-path{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;margin:0}
 /* A game with no art (a local build): a short banner and no empty cover. */

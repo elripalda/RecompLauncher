@@ -42,7 +42,7 @@ The Windows launcher is code-signed, and every download comes from the developer
 
 ## A game won't start
 
-1. Check the game's page. If it says **Setup Required**, follow the Set Up steps first.
+1. Check the game's page. If it says **Setup Required**, do the steps under **How to Set Up** first.
 2. Make sure your copy of the game is the version the recomp asks for. The game's page says what it needs under **Before You Play**.
 3. Update your graphics driver.
 4. Try **Reinstall** from the game's page. Your saves stay.

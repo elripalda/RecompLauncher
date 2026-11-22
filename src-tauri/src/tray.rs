@@ -112,9 +112,6 @@ fn picked(app: &AppHandle, id: &str) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let rid = crate::recomp_of(&app.state::<crate::App>(), &id);
-                if crate::setup_first(&app, &rid) {
-                    return;
-                }
                 crate::ready_look(&app, &rid).await;
                 let sync = crate::cloud::sync_quiet(&app, &id).await;
                 if let Err(e) = sync.and_then(|()| crate::start_game(&app, &id)) {
