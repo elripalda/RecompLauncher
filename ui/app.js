@@ -3498,7 +3498,7 @@ function updateChainBusy() {
   const building = !!S.building || !!S.pumping || S.buildQ.length > 0;
   return downloading || building || S.updStarting.size > 0 || S.afterUpd.size > 0;
 }
-// Waiting its turn: shown with the downloads waiting in Up Next, and the core isn't asked yet.
+// Waiting its turn: shown with the downloads waiting on Downloads, and the core isn't asked yet.
 function holdUpdate(id) {
   if (S.updQ.includes(id)) return;
   S.updQ.push(id);
@@ -3511,6 +3511,13 @@ function pumpUpdates() {
   if (!id) return;
   delete S.jobs[id];
   updateGame(id);
+}
+// Pause all on Downloads: the waiting ones first, so none of them starts when the moving one stops.
+async function pauseAll() {
+  const ids = Object.keys(S.jobs).filter(canPause);
+  const waiting = ids.filter((id) => S.jobs[id].phase === 'queued');
+  const moving = ids.filter((id) => S.jobs[id].phase !== 'queued');
+  for (const id of waiting.concat(moving)) await invoke('pause', { id }).catch(() => {});
 }
 // Cancel on a download: one waiting its turn here leaves the line; the rest the core stops.
 function cancelDownload(id) {
@@ -4342,7 +4349,7 @@ async function loadDlHist() {
   if (window.tvRedraw) window.tvRedraw();
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
-// (0.91) Each download's speed over its last minute and a half, for the graph at the top of Downloads.
+// (0.91) Each download's speed over its last minute and a half; its newest point gives the time left on Downloads.
 // A short download barely drew a line with one point a second, so the speed is worked out here from
 // the bytes each progress update brings (several a second), smoothed a little, and kept five times a
 // second: a 3-second download draws a real curve.
@@ -4364,32 +4371,19 @@ function noteSpeed(id, p) {
   if (l.length > DL_KEEP) l.splice(0, l.length - DL_KEEP);
 }
 window.dlSpeedSeed = (id, list) => { DLSPD[id] = list.slice(-DL_KEEP); DLSPD[id].slot = Math.floor(Date.now() / DL_STEP); };
-function dlGraph(id) {
-  // Fills the width from the start, then scrolls once there's a minute and a half of it.
-  const l = DLSPD[id] || [], W = 300, H = 96, n = Math.max(l.length, 2);
-  const top = Math.max(1, ...l) * 1.15;
-  const pts = l.map((v, i) => [((n - l.length + i) / (n - 1)) * W, H - (v / top) * (H - 6)]);
-  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
-  const area = pts.length > 1 ? `${line} L${W} ${H} L${pts[0][0].toFixed(1)} ${H} Z` : '';
-  return `<defs><linearGradient id="dlg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34F2E8" stop-opacity=".42"/><stop offset="1" stop-color="#34F2E8" stop-opacity="0"/></linearGradient></defs>
-    ${[0.25, 0.5, 0.75].map((f) => `<line x1="0" x2="${W}" y1="${H * f}" y2="${H * f}" class="gl"/>`).join('')}${area ? `<path d="${area}" fill="url(#dlg)"/><path d="${line}" class="ln"/>` : ''}`;
-}
-function dlGraphStats(id) {
+// The moving download's line on Downloads: what it's doing, and how long is left while it
+// downloads. The time comes from the measured speed above, which moves less than the download's.
+function dlLine(id) {
   const j = S.jobs[id] || {}, l = DLSPD[id] || [];
-  const cur = j.phase === 'download' ? j.speed || 0 : 0, peak = Math.max(0, ...l);
-  const left = cur && j.total ? Math.max(0, j.total - j.done) / cur : 0;
-  return [[t('Current'), cur ? tf('{speed}/s', { speed: fmtB(cur) }) : '—'], [t('Peak'), peak ? tf('{speed}/s', { speed: fmtB(peak) }) : '—'],
-    [t('Time Left'), left ? took(Math.round(left)) : '—']];
+  const speed = j.phase === 'download' ? l[l.length - 1] || j.speed || 0 : 0;
+  const left = speed && j.total ? Math.max(0, j.total - j.done) / speed : 0;
+  if (!left) return dlPhase(id);
+  return `${dlPhase(id)} · ${tf('{time} left', { time: took(Math.max(1, Math.round(left))) })}`;
 }
-// Only the graph and its numbers change while a download runs.
-function paintDlHero(id) {
-  const g = document.querySelector(`[data-dl-graph="${CSS.escape(id)}"]`);
-  if (!g) return;
-  g.innerHTML = dlGraph(id);
-  const v = dlGraphStats(id);
-  document.querySelectorAll(`[data-dl-gstat="${CSS.escape(id)}"] b`).forEach((b, i) => { b.textContent = v[i][1]; });
-  const ph = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
-  if (ph) ph.textContent = dlPhase(id);
+// Only that line changes while a download runs; the bar and its numbers are paintProgress's.
+function paintDlLine(id) {
+  const el = document.querySelector(`[data-dl-phase="${CSS.escape(id)}"]`);
+  if (el) el.textContent = dlLine(id);
 }
 function dlPhase(id) {
   const j = S.jobs[id] || (S.paused || {})[id] || {};
@@ -4498,18 +4492,21 @@ function pageDownloads() {
   // The one at the top: the download that's moving, else the first one there is.
   const lead = act.find((id) => S.jobs[id] && S.jobs[id].phase !== 'queued') || act[0];
   const kindTag = (id) => { const j = S.jobs[id] || {}; return j.plug ? ((plugMan(j.plugin) || {}).name || t('Plugin')) : S.library[id] ? t('Update') : t('New option'); };
-  const jobBtns = (id, small) => { const j = S.jobs[id] || {}, held = !S.jobs[id], sm = small ? ' sm' : '';
-    const two = held ? `<button type="button" class="btn main${sm}" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) && j.phase !== 'queued' ? `<button type="button" class="btn${sm}" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
-    return `${two}<button type="button" class="btn${sm}" data-act="cancel" data-id="${esc(id)}"${j.phase === 'unpack' ? ' disabled' : ''}>${esc(t('Cancel'))}</button>`; };
-  const hero = lead ? (() => { const a = appOf(lead), art = a.hero || a.cover, gs = dlGraphStats(lead);
-    return `<section class="dl-hero">
-      <div class="dl-hero-art">${art && !a.plug ? pic(thumbOf(art, 640)) : wide(lead)}</div>
-      <div class="dl-hero-main"><div class="dl-top"><span class="tag cy">${esc(kindTag(lead))}</span><span class="dl-phase" data-dl-phase="${esc(lead)}">${esc(dlPhase(lead))}</span></div>
-        <h2>${esc(a.name)}</h2>${progress(lead)}<div class="acts">${jobBtns(lead)}</div></div>
-      <div class="dl-graph"><svg viewBox="0 0 300 96" preserveAspectRatio="none" data-dl-graph="${esc(lead)}" aria-hidden="true">${dlGraph(lead)}</svg>
-        <div class="dl-gstats" data-dl-gstat="${esc(lead)}">${gs.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div></div></section>`; })() : '';
-  const queue = act.filter((id) => id !== lead).map((id) => { const a = appOf(id);
-    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b>${progress(id)}</div><span class="tag cy">${esc(kindTag(id))}</span><span class="acts">${jobBtns(id, true)}</span></div>`; }).join('');
+  // Downloading: one list. The download that's moving is on top with its progress; every one
+  // waiting is a quiet row under it. Cancel is the ✕ on each row.
+  const xBtn = (id) => { const j = S.jobs[id] || {};
+    return `<button type="button" class="btn sm sq" data-act="cancel" data-id="${esc(id)}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}"${j.phase === 'unpack' ? ' disabled' : ''}>${XS}</button>`; };
+  const movingRow = (id) => { const a = appOf(id), j = S.jobs[id] || {}, held = !S.jobs[id];
+    const two = held ? `<button type="button" class="btn main sm" data-act="dl-resume" data-id="${esc(id)}">${esc(t('Resume'))}</button>` : canPause(id) ? `<button type="button" class="btn sm" data-act="dl-pause" data-id="${esc(id)}">${esc(t('Pause'))}</button>` : '';
+    return `<div class="dl-row dl-moving">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-phase" data-dl-phase="${esc(id)}">${esc(dlLine(id))}</span>${progress(id)}</div>${two}${xBtn(id)}</div>`; };
+  const waitingRow = (id) => { const a = appOf(id), j = S.jobs[id] || {};
+    return `<div class="dl-row dl-q">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(kindTag(id))} · ${esc(progLabel(j)[0])}</span></span></div><span class="dl-state">${esc(t('Queued'))}</span>${xBtn(id)}</div>`; };
+  // Only a download that's waiting its turn is a quiet row; anything else that's going (a second
+  // download, a paused one) shows its progress like the one on top.
+  const waiting = (id) => !!S.jobs[id] && S.jobs[id].phase === 'queued';
+  const order = (lead ? [lead] : []).concat(act.filter((id) => id !== lead));
+  const dlRows = order.map((id) => (id !== lead && waiting(id) ? waitingRow(id) : movingRow(id))).join('');
+  const pauseBtn = Object.keys(S.jobs).some(canPause) ? `<button type="button" class="btn sm" data-act="dl-pause-all">${esc(t('Pause all'))}</button>` : '';
   const upRows = ups.map((id) => { const a = appOf(id);
     // The pill is the new version's check, so the player sees it before they download it.
     return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${esc(tf('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }))}</span>${scanPill({ id, tag: S.updates[id], update: true })}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
@@ -4549,8 +4546,7 @@ function pageDownloads() {
   const updateAll = ups.length > 1 ? `<button type="button" class="btn sm" data-act="update-all">${DOWN}${esc(t('Update all'))}</button>` : '';
   const clear = shown.length ? `<button type="button" class="btn sm" data-act="dl-clear" data-k="dl_cleared">${esc(t('Clear history'))}</button>` : '';
   return `<div class="page dl-page" style="max-width:1100px"><div class="head"><div><h1>${esc(t('Downloads'))}</h1><p>${esc(t('Each download is matched against GitHub\'s checksum, and the store checks releases for viruses before offering them.'))}</p><p class="dl-totals">${totals.map(esc).join(' · ')}</p></div></div>
-    ${hero}
-    ${queue ? shelf(t('Up Next'), act.length - (lead ? 1 : 0), '', queue) : ''}
+    ${dlRows ? shelf(t('Downloading'), act.length, pauseBtn, dlRows) : ''}
     ${upRows ? shelf(t('Updates ready'), ups.length, updateAll, upRows) : ''}
     ${failRows ? shelf(t('Didn\'t finish'), fails.length, '', failRows) : ''}
     ${shown.length ? shelf(t('Recent'), shown.length, clear, recentRows) : ''}
@@ -9008,6 +9004,7 @@ async function act(el, e) {
     case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) updateGame(u); return;
     case 'cancel': return cancelDownload(id);
     case 'dl-pause': return invoke('pause', { id });
+    case 'dl-pause-all': return pauseAll();
     case 'dl-resume': return resumeDl(id);
     case 'play': return playGame(id);
     case 'stop': return invoke('stop', { id });
@@ -9716,7 +9713,7 @@ T.event.listen('install', ({ payload: p }) => {
   p.at = Date.now();
   S.jobs[id] = p;
   if (p.phase === 'download') noteSpeed(id, p);
-  if (!had || had.phase !== p.phase) render(true); else { paintProgress(id); paintDlHero(id); paintIsland(); }
+  if (!had || had.phase !== p.phase) render(true); else { paintProgress(id); paintDlLine(id); paintIsland(); }
 });
 
 T.event.listen('game', ({ payload: p }) => {

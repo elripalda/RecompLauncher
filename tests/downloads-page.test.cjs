@@ -92,8 +92,10 @@ function desktopPage(hist, library, more = {}) {
     ...helpers,
     S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, ...more },
     fmtB: String, byId: (id) => CATALOG[id], scanPill: () => '', pic: () => '', thumbOf: String,
+    pct: () => 0, dlLine: (id) => `line of ${id}`,
   });
-  const code = ['INFO_I', 'CHEV_D', 'when', 'clockOf'].map(topConst).join('\n') + topFn('latestPerGame') + topFn('dayOf') + topFn('didWhat') + topFn('pageDownloads');
+  const consts = ['INFO_I', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
+  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
   vm.runInContext(code, c);
   return c.pageDownloads();
 }
@@ -138,4 +140,39 @@ test('the totals are one line above the lists', () => {
   const hist = [{ id: 'lostodyssey', tag: 'v1.1.0', update: true, size: 100, secs: 2, when: at(0, 10, 1) }];
   const html = desktopPage(hist, {});
   assert.match(html, /<p class="dl-totals">100 downloaded · 1 download · 50\/s average · 1 update installed<\/p>/);
+});
+
+// Lost Odyssey downloading, Odyssey and Bounce waiting their turn.
+const MOVING = { lostodyssey: { id: 'lostodyssey', phase: 'download', done: 50, total: 100 }, odyssey: { id: 'odyssey', phase: 'queued' }, mine: { id: 'mine', phase: 'queued', held: true } };
+
+test('every download is one Downloading list, with no Up Next', () => {
+  const html = desktopPage([], {}, { jobs: MOVING });
+  assert.match(html, /<h2>Downloading<span class="dl-n">3<\/span><\/h2>/);
+  assert.doesNotMatch(html, /Up Next|dl-hero/);
+});
+
+test('the download that is moving comes first, with its line and progress', () => {
+  const html = desktopPage([], {}, { jobs: MOVING });
+  assert.match(html, /<div class="dl-list"><div class="dl-row dl-moving">.*?<b>Lost Odyssey<\/b><span class="dl-phase" data-dl-phase="lostodyssey">line of lostodyssey<\/span><div class="prog" data-prog="lostodyssey">/);
+});
+
+test('a download waiting its turn is a quiet row that says Queued, with a cancel cross', () => {
+  const html = desktopPage([], {}, { jobs: MOVING });
+  assert.match(html, /<div class="dl-row dl-q">.*?<b>Odyssey Recomp<\/b>.*?<span class="dl-state">Queued<\/span><button type="button" class="btn sm sq" data-act="cancel" data-id="odyssey" aria-label="Cancel"/);
+  assert.doesNotMatch(html, /data-prog="odyssey"/);
+});
+
+test('Pause all shows while something can be paused', () => {
+  assert.match(desktopPage([], {}, { jobs: MOVING }), /data-act="dl-pause-all">Pause all</);
+});
+
+test('no Pause all when only updates held for a build are waiting', () => {
+  const html = desktopPage([], {}, { jobs: { mine: MOVING.mine } });
+  assert.doesNotMatch(html, /dl-pause-all/);
+});
+
+test("the moving download's line says how long is left, from the measured speed", () => {
+  const c = vm.createContext({ ...helpers, S: { jobs: { g: { phase: 'download', done: 0, total: 100, speed: 1 } } }, pct: () => 0 });
+  vm.runInContext('const DLSPD = { g: [10] };' + topConst('took') + topFn('progLabel') + topFn('dlPhase') + topFn('dlLine'), c);
+  assert.equal(c.dlLine('g'), 'Downloading · 0% · 10 sec left');
 });
