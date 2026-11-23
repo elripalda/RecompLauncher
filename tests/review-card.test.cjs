@@ -30,11 +30,18 @@ test('reviewed already, the card\'s button is Edit Your Review', () => {
   assert.match(fn(app, 'runsCard'), /\$\{myReviewBlock\(a\.id\)\}/);
 });
 
-test('a row for each answer: on the card it opens All Reviews, in that window it narrows the list', () => {
+test('the card keeps the score to one line, and the rows for each answer are in All Reviews', () => {
+  const card = fn(app, 'runsCard');
+  assert.match(card, /\$\{runsLine\(rep\)\}/);
+  assert.doesNotMatch(card, /runRows|runsSummary/);
+  assert.match(fn(app, 'runsLine'), /\$\{runBar\(sc\.r\)\}<\/div>`;/);
+  assert.match(fn(app, 'reviewsModal'), /\$\{runsSummary\(rep, pickV\)\}/);
+});
+
+test('in All Reviews a row narrows the list, and one nobody gave can\'t be picked', () => {
   const rows = fn(app, 'runRows');
-  assert.match(rows, /inWindow \? `data-x="v" data-v="\$\{k\}"` : `data-act="rep-v" data-id="\$\{esc\(id\)\}" data-v="\$\{k\}"`/);
+  assert.match(rows, /data-x="v" data-v="\$\{k\}"/);
   assert.match(rows, /\$\{r\[k\] \|\| on === k \? '' : ' disabled'\}/);
-  assert.match(app, /case 'rep-v': return reviewsModal\(id, el\.dataset\.v\);/);
   assert.match(fn(app, 'reviewsModal'), /\(!pickV \|\| x\.verdict === pickV\)/);
 });
 

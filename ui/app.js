@@ -2706,12 +2706,10 @@ function repItem(x) {
   return `<div class="rep"><div class="rep-top"><span class="rverdict v-${esc(x.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[x.verdict] || ''))}</span>${repSys(x)}${viaPx(x) ? `<span class="rep-pxtag">${esc(t('Through Proton'))}</span>` : ''}${x.version ? `<span class="rep-ver">${esc(x.version)}</span>` : ''}<small>${esc(when)}</small></div>
     ${note}${open}${pc ? `<p class="rep-pc" title="${esc(pc)}">${esc(pc)}</p>` : ''}${devReplies(x)}</div>`;
 }
-// How the reviews split, a row for each answer with its share as a bar; one nobody gave can't be
-// picked. On the card a row opens All Reviews showing only those; in that window it narrows the list
-// (and again, back to all of them).
-function runRows(id, r, on, inWindow) {
-  const pickAttrs = (k) => (inWindow ? `data-x="v" data-v="${k}"` : `data-act="rep-v" data-id="${esc(id)}" data-v="${k}"`);
-  const row = (k) => `<button type="button" class="rv-row v-${k}${on === k ? ' on' : ''}" ${pickAttrs(k)} aria-pressed="${on === k}"${r[k] || on === k ? '' : ' disabled'}><i aria-hidden="true"></i><span>${esc(t(RUN_WORD[k]))}</span><em class="rv-track" aria-hidden="true"><s style="width:${r.pct(k)}%"></s></em><b>${fmtNum(r[k])}</b></button>`;
+// In All Reviews, how the reviews split: a row for each answer with its share as a bar, which narrows
+// the list to that answer (and again, back to all of them). One nobody gave can't be picked.
+function runRows(r, on) {
+  const row = (k) => `<button type="button" class="rv-row v-${k}${on === k ? ' on' : ''}" data-x="v" data-v="${k}" aria-pressed="${on === k}"${r[k] || on === k ? '' : ' disabled'}><i aria-hidden="true"></i><span>${esc(t(RUN_WORD[k]))}</span><em class="rv-track" aria-hidden="true"><s style="width:${r.pct(k)}%"></s></em><b>${fmtNum(r[k])}</b></button>`;
   return `<div class="rv-dist">${['runs', 'issues', 'broken'].map(row).join('')}</div>`;
 }
 // The player's own review, set apart on top of everyone else's (Edit Your Review changes it).
@@ -2723,17 +2721,29 @@ function myReviewBlock(id) {
     ${m.note ? `<p class="rep-note" dir="auto">${esc(m.note)}</p>` : ''}${devReplies(m)}</div>`;
 }
 const scoreTone = (p) => (p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low');
-// The score big, in its color, with the rows beside it, and how many played through Proton.
-function runsSummary(id, rep, pickV, inWindow) {
-  const sc = scoreOf(rep.counts, rep.latest), r = sc.r, all = sc.all;
-  const sub = sc.cur ? `<p class="runs-sub">${esc(tf('All versions: {pct}%', { pct: all.pct('runs') }))}</p>`
-    : sc.v && sc.l ? `<p class="runs-sub">${esc(sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 review so far', '{n} reviews so far')}` : tf('{v}: no reviews yet', { v: sc.v }))}</p>` : '';
+// What the score is of, and the other score beside it: every version's when it's this version's,
+// else how far this version has got.
+function scoreSub(sc) {
+  if (sc.cur) return tf('All versions: {pct}%', { pct: sc.all.pct('runs') });
+  if (!(sc.v && sc.l)) return '';
+  return sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 review so far', '{n} reviews so far')}` : tf('{v}: no reviews yet', { v: sc.v });
+}
+const scoreOfWhat = (sc) => (sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great'));
+// On the game page the score takes one line: the number in its color, what it's of, and one bar
+// split by answer. The rows for each answer are in All Reviews.
+function runsLine(rep) {
+  const sc = scoreOf(rep.counts, rep.latest), p = sc.r.pct('runs'), sub = scoreSub(sc);
+  return `<div class="rv-line"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><div class="rv-what"><span>${esc(scoreOfWhat(sc))}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>${runBar(sc.r)}</div>`;
+}
+// In All Reviews: the score big, in its color, with the rows beside it, and how many played through Proton.
+function runsSummary(rep, pickV) {
+  const sc = scoreOf(rep.counts, rep.latest), r = sc.r, sub = scoreSub(sc);
   // Reviews from Linux or a Steam Deck on a Windows build: played through Proton.
   const pxc = rep.proton_counts || (rep.items || []).filter(viaPx).reduce((c, x) => Object.assign(c, { [x.verdict]: (c[x.verdict] || 0) + 1 }), {});
   const px = runTally(pxc);
   const pxLine = px.n ? `<p class="rep-px">${esc(tf('Through Proton: {great} of {all} say it plays great', { great: fmtNum(px.runs), all: fmtNum(px.n) }))}</p>` : '';
   const p = r.pct('runs');
-  return `<div class="rv-sum"><div class="rv-score"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><span>${esc(sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great'))}</span>${sub}</div>${runRows(id, r, pickV, inWindow)}</div>${pxLine}`;
+  return `<div class="rv-sum"><div class="rv-score"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><span>${esc(scoreOfWhat(sc))}</span>${sub ? `<p class="runs-sub">${esc(sub)}</p>` : ''}</div>${runRows(r, pickV)}</div>${pxLine}`;
 }
 function runsCard(a) {
   if (a.soon || (S.library[a.id] && S.library[a.id].local)) return '';
@@ -2756,7 +2766,7 @@ function runsCard(a) {
   // The three newest; the rest, and narrowing them down, are in All Reviews.
   const newest = items.slice(0, 3).map(repItem).join('');
   return `<div class="card runs">${head(tn(all.n, '1 review', '{n} reviews'))}
-    ${runsSummary(a.id, rep, '', false)}${myReviewBlock(a.id)}${newest ? `<div class="reps">${newest}</div>` : ''}${acts}</div>`;
+    ${runsLine(rep)}${myReviewBlock(a.id)}${newest ? `<div class="reps">${newest}</div>` : ''}${acts}</div>`;
 }
 // All Reviews: every review the launcher gets for a project (the site sends the newest 60), in a
 // window over its page, with the rows and This Version to narrow them and the player's own on top.
@@ -2778,14 +2788,14 @@ function reviewsModal(id, verdict) {
   const site = SITE + '/game/' + encodeURIComponent(id);
   const restNote = all.n > items.length ? `<p class="rva-rest">${esc(tf('The newest {n} are here. The rest are on recomplauncher.com.', { n: fmtNum(items.length) }))}</p>` : '';
   const html = `<div class="rva-h"><div><small>${esc(tn(all.n, '1 review', '{n} reviews'))}</small><h2>${esc(name)}</h2></div><button type="button" class="rva-x" data-x="no" aria-label="${esc(t('Close'))}">${XMARK}</button></div>
-    <div class="rva-top">${runsSummary(id, rep, pickV, true)}${myReviewBlock(id)}<div class="rva-chips">${chips()}</div></div>
+    <div class="rva-top">${runsSummary(rep, pickV)}${myReviewBlock(id)}<div class="rva-chips">${chips()}</div></div>
     <div class="rva-list reps">${list()}</div>
     <div class="rva-foot">${restNote}<button type="button" class="btn" data-url="${esc(site)}">${esc(t('On recomplauncher.com'))}</button></div>`;
   const s = modal(html, (x) => {
     if (x.dataset.x === 'v') pickV = pickV === x.dataset.v ? '' : x.dataset.v;
     else if (x.dataset.x === 'only') only = !!x.dataset.on;
     else return;
-    $('.rv-dist', s).outerHTML = runRows(id, sc.r, pickV, true);
+    $('.rv-dist', s).outerHTML = runRows(sc.r, pickV);
     $('.rva-chips', s).innerHTML = chips();
     const box = $('.rva-list', s);
     box.innerHTML = list();
@@ -9168,9 +9178,8 @@ async function act(el, e) {
     case 'gh-add': return githubModal();
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
-    // The Reviews card: All Reviews (from a row, showing only that answer), and a long note opened in place.
+    // The Reviews card: All Reviews, and a long note opened in place.
     case 'rep-all': return reviewsModal(id);
-    case 'rep-v': return reviewsModal(id, el.dataset.v);
     case 'rep-open': {
       const note = el.previousElementSibling;
       const open = note.classList.toggle('open');

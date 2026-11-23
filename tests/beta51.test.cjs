@@ -45,7 +45,7 @@ test('the score follows the release out now once 3 of its players said, like an 
   // The site's scores give the counts flat.
   assert.equal(c.scoreOf(all, { version: 'version 2', runs: 3, issues: 1, broken: 0 }).cur, true);
   assert.equal(c.verNorm('v0.1.1'), c.verNorm('0.1.1'));
-  assert.match(fn(app, 'runsSummary'), /tf\('All versions: \{pct\}%'/);
+  assert.match(fn(app, 'scoreSub'), /tf\('All versions: \{pct\}%'/);
   assert.match(fn(app, 'reviewsModal'), /data-x="only"/);
 });
 

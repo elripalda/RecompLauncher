@@ -1599,6 +1599,13 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 /* The Reviews card: the score big on the left in its own color, and a row for each answer with its
    share as a bar (a row shows only those reviews). The player's own review sits apart in cyan, and
    each review says where it was played. */
+/* The game page's score in one line: number, what it's of, one bar split by answer. */
+.rv-line{display:flex;align-items:center;gap:16px}
+.rv-line .runs-pct{font-size:36px;flex:none}
+.rv-what{display:flex;flex-direction:column;gap:2px;flex:none;max-width:45%}
+.rv-what span{color:var(--muted);font-size:14px;font-weight:600}
+.rv-what small{color:var(--dim);font-size:12px}
+.rv-line .rbar{flex:1;min-width:80px}
 .rv-sum{display:grid;grid-template-columns:minmax(150px,auto) minmax(0,1fr);gap:24px;align-items:center}
 .rv-score{display:flex;flex-direction:column;gap:5px;min-width:0}
 .rv-score>span{color:var(--muted);font-size:14px;font-weight:600}
@@ -1632,7 +1639,7 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 .rep-pc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* All Reviews (app.js reviewsModal): the project's name on top, the score and rows to narrow the
    list, the player's own review, then every review scrolling under them and the site in the footer. */
-.modal.rvall{width:min(760px,94vw);height:min(840px,88vh);padding:0;gap:0;overflow:hidden;display:flex;flex-direction:column}
+.modal.rvall{width:min(1180px,95vw);height:92vh;padding:0;gap:0;overflow:hidden;display:flex;flex-direction:column}
 .modal.rvall:focus{outline:none}
 .rva-h{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 26px 14px}
 .rva-h small{color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.04em}
