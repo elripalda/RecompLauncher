@@ -17,8 +17,21 @@ test('What\'s New gets a TV-sized window in TV mode', () => {
   assert.match(tvCss, /body\.tv-on \.modal:has\(\.whatsnew\)\{width:min\(1040px,88vw\)\}/);
 });
 
-test('up and down on the controller scroll an open dialog', () => {
-  assert.match(tvJs, /if \(name === 'up' \|\| name === 'down'\) \{ dialogScroll\(dlg/);
+test('up and down on the controller scroll an open dialog\'s long text', () => {
+  assert.match(tvJs, /if \(dir && dialogReads\(dlg, dir\)\) return dialogScroll\(dlg, dir\);/);
+});
+
+test('the d-pad moves between a desktop dialog\'s choices in Big Picture', () => {
+  assert.match(tvJs, /window\.deskPad\(name\);/);
+  assert.match(tvJs, /const dir = \{ up: -1, down: 1, left: 0, right: 0 \}\[name\];/);
+});
+
+test('A on a dialog with nothing lit still presses its main button at once', () => {
+  assert.match(tvJs, /if \(!lit\) \{\n {6}window\.deskPad\('down'\);\n {6}if \(name !== 'a'\) return;/);
+});
+
+test('the controller answers the newest dialog when one opened another', () => {
+  assert.match(tvJs, /const dlg = \[\.\.\.document\.querySelectorAll\('\.scrim'\)\]\.pop\(\);/);
 });
 
 test('the way out on Home offers Quit RecompLauncher', () => {
