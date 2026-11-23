@@ -68,3 +68,40 @@ test('turning it off with the controller takes its highlight away', () => {
 test('Big Picture settings have the switch too, on unless turned off', () => {
   assert.match(tv, /sw\('pad_desktop', t\('Use the Controller Outside Big Picture'\), t\('[^']+'\), S\.settings\.pad_desktop !== false\)/);
 });
+
+// The desktop view's controller code from app.js, run as tests/desktop-pad.test.cjs runs it.
+function desktopView() {
+  const start = app.indexOf('// ---------- a controller on the desktop view ----------');
+  const end = app.indexOf('// The window has no system title bar', start);
+  const classes = () => { const v = new Set(); return { add: (x) => v.add(x), remove: (x) => v.delete(x), contains: (x) => v.has(x) }; };
+  const body = { classList: classes() };
+  const document = { body, activeElement: body, querySelectorAll: () => [], addEventListener: () => {} };
+  const button = {
+    id: 'switch', tagName: 'BUTTON', dataset: {}, classList: classes(), isConnected: true,
+    getAttribute: () => null, closest: () => null, contains: (el) => el === button,
+    matches: (s) => s === '.btn.main' || s.includes('[aria-selected'),
+    getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40 }),
+    focus: () => { document.activeElement = button; }, blur: () => { document.activeElement = body; },
+  };
+  const root = { id: 'app', querySelectorAll: () => [button], contains: (el) => el === button };
+  const main = { contains: (el) => el === button, getBoundingClientRect: () => ({ top: 0, bottom: 500 }) };
+  const window = {};
+  const c = vm.createContext({
+    window, document, SU: {}, S: { back: [], view: 'settings' },
+    $: (s) => (s === '#app' ? root : s === '#main' ? main : null), $$: () => [], MutationObserver: class { observe() {} },
+    getComputedStyle: () => ({ visibility: 'visible' }), performance: { now: () => 1000 },
+    calm: () => true, setTimeout: () => {}, requestAnimationFrame: () => {},
+  });
+  vm.runInContext(app.slice(start, end), c);
+  return { c, window, document, body, button };
+}
+
+test('turning it off leaves nothing highlighted or focused on the desktop view', () => {
+  const d = desktopView();
+  d.window.deskPad('down');
+  assert.equal(d.document.activeElement, d.button);
+  d.c.padLetGo();
+  assert.equal(d.button.classList.contains('pad-focus'), false);
+  assert.equal(d.body.classList.contains('pad-nav'), false);
+  assert.equal(d.document.activeElement, d.body);
+});

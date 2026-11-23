@@ -9821,11 +9821,15 @@ window.deskPad = (b) => {
   return false;
 };
 // The controller no longer moves around the desktop view (Settings → Controllers): no highlight.
+// The page drawn again after the switch gives it back its focus, and without the controller's
+// own highlight that focus shows the browser's ring, so the focus goes too.
 function padLetGo() {
   PAD.armed = false;
   document.body.classList.remove('pad-nav');
   if (PAD.el) PAD.el.classList.remove('pad-focus');
   PAD.el = null;
+  const held = document.activeElement;
+  if (held && held !== document.body) held.blur();
 }
 // The mouse moving again: no highlight.
 document.addEventListener('mousemove', (e) => {
