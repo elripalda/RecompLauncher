@@ -1313,7 +1313,7 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .rv-pick:hover{border-color:rgba(var(--c),.7);background:linear-gradient(180deg,rgba(var(--c),.16),rgba(var(--c),.04));box-shadow:0 14px 34px -18px rgba(var(--c),.7)}
 .rv-pick:active{transform:scale(.98)}
 .rv-pick:focus-visible{outline:2px solid rgb(var(--c));outline-offset:2px}
-.rv-ic{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:rgb(var(--c));background:rgba(var(--c),.13);margin-bottom:4px}
+.rv-ic{display:grid;place-items:center;color:rgb(var(--c));margin-bottom:2px}
 .rv-pick b{font-size:15px}
 .rv-pick>span:last-child{font-size:12.5px;line-height:1.35;color:var(--muted)}
 .rv-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:2px}
