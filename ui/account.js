@@ -64,7 +64,7 @@ function renderAccountBits() {
     b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your report'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
     b.title = a.signedIn ? t('Account') : t('Sign in');
   }
-  if (S.view === 'settings' && S.setTab === 'account' && window.setSection) window.setSection('account', false);
+  if (S.view === 'settings' && ['account', 'reviews'].includes(S.setTab) && window.setSection) window.setSection(S.setTab, false);
   // A game's page (its Saves tab, the cloud card) and the Saves page show it straight away.
   if (S.view === 'game') refreshGame();
   if (S.view === 'saves' || S.view === 'achievements') render(true);
@@ -155,8 +155,15 @@ function accountSection(group, row) {
       <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
       + row(t('Back Up Every Game'), allNow, `<button type="button" class="switch" role="switch" aria-checked="${all}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
       + deviceNameRow())
-    + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
+}
+// ---------- Settings > Reviews ----------
+// The player's own reviews have their own section, so they're found without looking under Account.
+// Signed out there are none to show: what signing in is for, and the button.
+function reviewsSection(group, row) {
+  if (S.account && S.account.signedIn) return myReportsGroup(group, row);
+  const signIn = `<button type="button" class="btn sm main" data-act="acc-signin">${esc(t('Sign in'))}</button>`;
+  return group(t('Your Reports'), row(t('Sign In to Send Reports'), t('Sign in to your RecompLauncher account to send a report. Your name isn\'t shown with it.'), signIn));
 }
 // The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
 // computer's own name. Only copies made after a change carry the new name.
@@ -957,7 +964,8 @@ window.accountAct = async (act, el) => {
       await saveUi({ device_name: v });
       return toast(v ? t('Saved. New saves from this PC carry that name.') : t('Back to the computer\'s own name.'));
     }
-    case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
+    // The dot on the account button is a developer's answer: it opens Reviews, where the answer is.
+    case 'acc-btn': if (S.account && S.account.signedIn) { const unread = reportsUnread(); S.setTab = unread ? 'reviews' : 'account'; if (unread) loadMyReports(); return go('settings'); } return signIn(false);
     case 'myrep-load': return loadMyReports();
     case 'myrep-send': {
       const ta = $(`textarea[data-myrep="${CSS.escape(String(id))}"]`);
