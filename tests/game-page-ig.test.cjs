@@ -8,7 +8,7 @@ const same = (x) => x;
 
 // igCard and igSlot with a stand-in entry placed where the site says.
 const cardAt = (at) => {
-  const run = new Function('igEntry', 'esc', 't', 'fmtNum', 'media', 'SITE', `const IG_PLACES = ['side', 'strip', 'play']; const igPlace = (e) => (IG_PLACES.includes(e && e.at) ? e.at : 'side'); ${fn(app, 'igCard')}; ${fn(app, 'igSlot')}; return { igCard, igSlot };`);
+  const run = new Function('igEntry', 'esc', 't', 'fmtNum', 'media', 'SITE', `${app.match(/^const IG_PLACES = .*$/m)[0]} ${app.match(/^const igPlace = .*$/m)[0]} ${fn(app, 'igCard')}; ${fn(app, 'igSlot')}; return { igCard, igSlot };`);
   return run(() => ({ t: 'Game', p: 'Switch', price: '$10', at }), same, same, String, same, '');
 };
 
@@ -30,6 +30,15 @@ test('each place shows the card only where the site put it', () => {
   assert.equal(play.igCard(g, 'strip', false), '');
   // Anything else the site sends: the right column.
   assert.match(cardAt('beside-play').igCard(g, 'side'), /ig-card/);
+});
+
+test('the top place sits above Ready to Play, in the narrow right column', () => {
+  const g = { id: 'g' };
+  const top = cardAt('top');
+  assert.match(top.igCard(g, 'top'), /class="ig-card"/);
+  assert.equal(top.igCard(g, 'side'), '');
+  assert.equal(cardAt('side').igCard(g, 'top'), '');
+  assert.match(app, /igSlot\(a, 'top'\) \+ readyCard\(a\) \+ igSlot\(a, 'side'\)/);
 });
 
 test('play times are short in English', () => {
