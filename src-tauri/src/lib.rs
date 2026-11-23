@@ -7472,7 +7472,7 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
     }
     let r = catalog::latest_for(rels, &g.tag)?;
     let known = rels.iter().any(|x| same_tag(&x.tag_name, &g.tag));
-    (r.tag_name != g.tag && (known || newer_than_gone(r, g)) && builds(r)).then(|| r.tag_name.clone())
+    (!same_tag(&r.tag_name, &g.tag) && (known || newer_than_gone(r, g)) && builds(r)).then(|| r.tag_name.clone())
 }
 
 /// Whether `r` is newer than the installed release when that one isn't in the list anymore (a
@@ -10411,6 +10411,25 @@ mod tests {
         use super::{listed_repo, Installed};
         let g = Installed { id: "mine".into(), repo: "someone/own-recomp".into(), ..Default::default() };
         assert_eq!(listed_repo(&g, None), "someone/own-recomp");
+    }
+
+    fn tagged_release(tag: &str, prerelease: bool) -> super::Release {
+        let file = serde_json::json!({ "name": "game-linux-x64-windows-macos-arm64.zip", "browser_download_url": "https://github.com/a/b/releases/download/t/game.zip", "size": 10 });
+        serde_json::from_value(serde_json::json!({ "tag_name": tag, "prerelease": prerelease, "published_at": "2026-11-01T00:00:00Z", "assets": [file] })).unwrap()
+    }
+
+    #[test]
+    fn the_same_version_with_a_v_isnt_an_update() {
+        let g = super::Installed { id: "g".into(), tag: "1.0.0".into(), ..Default::default() };
+        let rels = vec![tagged_release("v1.0.0", false)];
+        assert_eq!(super::offered_update(&g, None, &rels), None);
+    }
+
+    #[test]
+    fn a_prerelease_tag_without_its_v_isnt_sent_back_to_stable() {
+        let g = super::Installed { id: "g".into(), tag: "2.0.0-beta.1".into(), ..Default::default() };
+        let rels = vec![tagged_release("v2.0.0-beta.1", true), tagged_release("v1.9.0", false)];
+        assert_eq!(super::offered_update(&g, None, &rels), None);
     }
 
     #[test]
