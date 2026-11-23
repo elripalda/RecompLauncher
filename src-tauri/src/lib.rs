@@ -33,6 +33,7 @@ pub mod ingame;
 pub mod install;
 pub mod library;
 pub mod library_convert;
+pub mod logs_zip;
 pub mod looks;
 pub mod mac_update;
 pub mod manage;
@@ -6241,7 +6242,7 @@ fn run_file(id: &str) -> String {
 }
 
 /// What `note_run` wrote down for the game's last start.
-fn last_run(dir: &Path, id: &str) -> Option<String> {
+pub(crate) fn last_run(dir: &Path, id: &str) -> Option<String> {
     std::fs::read_to_string(dir.join("cache/runs").join(format!("{}.txt", run_file(id)))).ok()
 }
 
@@ -8324,6 +8325,45 @@ fn run_program(st: State<'_, App>, id: String, rel: String) -> Res<()> {
     Ok(())
 }
 
+/// The PC, the installed games and a few settings, as launcher-and-pc.txt: in a report with
+/// "Include my PC and launcher info" on, and in the logs zip.
+pub(crate) fn launcher_and_pc(st: &App, pc: &usage::PcInfo) -> String {
+    // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
+    let drawing = if cfg!(target_os = "linux") {
+        let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
+        let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
+        format!(
+            "Graphics mode: {}{}{}\n",
+            if mode.is_empty() { "auto" } else { &mode },
+            if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
+            if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
+        )
+    } else {
+        String::new()
+    };
+    let mut txt = format!(
+        "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
+        env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
+    );
+    {
+        let lib = st.lib.lock().unwrap();
+        for (id, g) in lib.installed.iter().take(80) {
+            txt.push_str(&format!("- {id} {}{}\n", g.tag, if g.local { " (local build)" } else { "" }));
+        }
+        if lib.installed.is_empty() {
+            txt.push_str("(none)\n");
+        }
+        let s = &lib.settings;
+        txt.push_str(&format!("\nSettings: big picture at start {}, updates check {}, backups before updates {}, keep downloads {}\n", s.start_in_tv, s.check_updates, s.backup_before_update, s.keep_downloads));
+    }
+    if let Ok(h) = std::fs::read_to_string(st.dir.join("downloads.json")) {
+        let tail: String = h.chars().rev().take(6000).collect::<Vec<_>>().into_iter().rev().collect();
+        txt.push_str("\nRecent downloads (end of downloads.json):\n");
+        txt.push_str(&tail);
+    }
+    txt
+}
+
 /// Beta feedback from Settings > Beta: what it's about, what kind of note it is, how the beta is
 /// going, the player's words and, if they tick it, a short file about this PC and their games.
 /// It lands in the admin's Inbox with the other logs, under the app "launcher".
@@ -8376,41 +8416,8 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     if attach {
         let dir = st.dir.clone();
         let pc = tokio::task::spawn_blocking(move || usage::pc_info(&dir)).await.unwrap_or_default();
-        // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
-        let drawing = if cfg!(target_os = "linux") {
-            let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
-            let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
-            format!(
-                "Graphics mode: {}{}{}\n",
-                if mode.is_empty() { "auto" } else { &mode },
-                if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
-                if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
-            )
-        } else {
-            String::new()
-        };
-        let mut txt = format!(
-            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
-            env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
-        );
-        {
-            let lib = st.lib.lock().unwrap();
-            for (id, g) in lib.installed.iter().take(80) {
-                txt.push_str(&format!("- {id} {}{}\n", g.tag, if g.local { " (local build)" } else { "" }));
-            }
-            if lib.installed.is_empty() {
-                txt.push_str("(none)\n");
-            }
-            let s = &lib.settings;
-            txt.push_str(&format!("\nSettings: big picture at start {}, updates check {}, backups before updates {}, keep downloads {}\n", s.start_in_tv, s.check_updates, s.backup_before_update, s.keep_downloads));
-        }
-        if let Ok(h) = std::fs::read_to_string(st.dir.join("downloads.json")) {
-            let tail: String = h.chars().rev().take(6000).collect::<Vec<_>>().into_iter().rev().collect();
-            txt.push_str("\nRecent downloads (end of downloads.json):\n");
-            txt.push_str(&tail);
-        }
         form.push(("name[]".into(), "launcher-and-pc.txt".into()));
-        form.push(("text[]".into(), txt));
+        form.push(("text[]".into(), launcher_and_pc(&st, &pc)));
         if let Some(t) = game.as_ref().map(|g| trail::tail_for(&g.id, 24_000)).unwrap_or_else(|| trail::tail(24_000)) {
             form.push(("name[]".into(), "launcher-trail.txt".into()));
             form.push(("text[]".into(), t));
@@ -10256,7 +10263,7 @@ pub fn run() {
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::spons_mine, cloud::spons_seen, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
