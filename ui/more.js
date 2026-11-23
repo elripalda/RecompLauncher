@@ -197,20 +197,20 @@ window.moreAct = async (act, el) => {
 };
 
 // ---------- How did it run? ----------
-// Reports need an account (names never show with them). Signed out, the site's words and a Sign In
-// button, instead of a failure.
-const SIGNIN_TEXT = N_('Sign in to your RecompLauncher account to send a report. Your name isn\'t shown with it.');
+// Reviews need an account (names never show with them). Signed out, a Sign In button instead of a
+// failure. The launcher's own words, not the site's: the site still calls them reports.
+const SIGNIN_TEXT = N_('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.');
 const signedIn = () => !!(S.account && S.account.signedIn);
-async function signInToReport(text) {
-  const msg = text ? t(text) : t(SIGNIN_TEXT);
+async function signInToReport() {
+  const msg = t(SIGNIN_TEXT);
   if (tvOn() && window.tvAsk) {
     const i = await window.tvAsk(msg, [{ label: t('Sign In'), icon: 'check' }, { label: t('Not now'), icon: 'chevL' }]);
     if (i === 0 && window.signIn) window.signIn(false);
     return;
   }
-  modal(`<h2>${esc(t('Sign In to Send Reports'))}</h2><p>${esc(msg)}</p><div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="in">${esc(t('Sign In'))}</button></div>`, (x, close) => {
+  modal(`<h2>${esc(t('Sign In to Write Reviews'))}</h2><p>${esc(msg)}</p><div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Not Now'))}</button><button type="button" class="btn main" data-x="in">${esc(t('Sign In'))}</button></div>`, (x, close) => {
     if (x.dataset.x === 'in') { close(); if (window.signIn) window.signIn(false); }
-  }, t('Sign In to Send Reports'));
+  }, t('Sign In to Write Reviews'));
 }
 const needSignIn = (e) => { const m = String(e && e.message ? e.message : e); return m.startsWith('NEED_SIGNIN|') ? m.slice(12) : null; };
 window.signInToReport = signInToReport;
@@ -253,10 +253,10 @@ async function askRun(id, secs, asked_for) {
     const i = await window.tvAsk(tf('How did {name} run?', { name: g.name }), VERDICT.map(([, n]) => ({ label: t(n), sub: t('Shows on its page, with your PC\'s graphics card'), icon: 'check' })).concat([{ label: t('Not now'), icon: 'chevL' }]));
     if (i == null || i < 0 || i > 2) return;
     const verdict = VERDICT[i][0];
-    const sent = (p) => p.catch((e) => { const s = needSignIn(e); return s != null ? signInToReport(s) : fail(e); });
+    const sent = (p) => p.catch((e) => { const s = needSignIn(e); return s != null ? signInToReport() : fail(e); });
     if (verdict === 'runs') return sent(send(verdict));
     // A problem: what happened, typed with the controller, and the game's log along with it.
-    const more = `<p class="tv-kb-note">${esc(t('Your name isn\'t shown with your report.'))}</p>${specsLine ? `<p class="tv-kb-note">${esc(t('This goes with your report'))}: ${esc(specsLine)}</p>` : ''}${pre && pre.log ? `<p class="tv-kb-note">${esc(t('The game\'s log goes too. Only the game\'s developer sees it.'))}</p>` : ''}`;
+    const more = `<p class="tv-kb-note">${esc(t('Your name isn\'t shown with your review.'))}</p>${specsLine ? `<p class="tv-kb-note">${esc(t('This goes with your review'))}: ${esc(specsLine)}</p>` : ''}${pre && pre.log ? `<p class="tv-kb-note">${esc(t('The game\'s log goes too. Only the game\'s developer sees it.'))}</p>` : ''}`;
     const note = window.tvType ? await window.tvType({ title: t('What happened?'), hint: t('What happened, and when?'), min: 15, more }) : null;
     if (note == null) return;
     return sent(send(verdict, note, !!(pre && pre.log)));
@@ -282,11 +282,11 @@ async function askRun(id, secs, asked_for) {
     box.innerHTML = `<button type="button" class="ask-x" aria-label="${esc(t('Close'))}">×</button><b>${esc(bad ? t('What happened?') : t('Anything others should know?'))}</b>
       <textarea rows="3" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}></textarea>
       ${pre && pre.log ? `<label class="ask-log"><input type="checkbox" data-log${bad ? ' checked' : ''}><span>${esc(t('Attach the Game\'s Log'))}<small>${esc(t('Only the game\'s developer sees the log.'))}</small></span></label>` : ''}
-      ${specsLine ? `<small class="ask-specs">${esc(t('This goes with your report'))}: ${esc(specsLine)}</small>` : ''}
+      ${specsLine ? `<small class="ask-specs">${esc(t('This goes with your review'))}: ${esc(specsLine)}</small>` : ''}
       ${howTo ? `<button type="button" class="linkbtn ask-how" data-s="how">${esc(t('How to Report Bugs for This Game'))}</button>` : ''}
       <p class="ask-err" hidden></p>
       <div class="acts grid2">${bad ? `<button type="button" class="btn" data-s="cancel">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-s="note" disabled>${esc(t('Send'))}</button>` : `<button type="button" class="btn" data-s="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-s="note">${esc(t('Send'))}</button>`}</div>
-      <small class="ask-anon">${esc(t('Your name isn\'t shown with your report.'))}</small>`;
+      <small class="ask-anon">${esc(t('Your name isn\'t shown with your review.'))}</small>`;
     const ta = $('textarea', box), go2 = $('[data-s="note"]', box), err = $('.ask-err', box);
     ta.focus();
     if (bad) ta.addEventListener('input', () => { go2.disabled = [...ta.value.trim()].length < 15; });
@@ -306,7 +306,7 @@ async function askRun(id, secs, asked_for) {
         close();
       } catch (ex) {
         const s = needSignIn(ex);
-        if (s != null) { close(); return signInToReport(s); }
+        if (s != null) { close(); return signInToReport(); }
         // The site's own words when it turns the report down.
         busy = false;
         err.textContent = String(ex && ex.message ? ex.message : ex);

@@ -61,7 +61,7 @@ function renderAccountBits() {
   const b = $('#acc-btn');
   if (b) {
     const a = S.account || {};
-    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your report'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
+    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your review'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
     b.title = a.signedIn ? t('Account') : t('Sign in');
   }
   if (S.view === 'settings' && ['account', 'reviews'].includes(S.setTab) && window.setSection) window.setSection(S.setTab, false);
@@ -163,7 +163,7 @@ function accountSection(group, row) {
 function reviewsSection(group, row) {
   if (S.account && S.account.signedIn) return myReportsGroup(group, row);
   const signIn = `<button type="button" class="btn sm main" data-act="acc-signin">${esc(t('Sign in'))}</button>`;
-  return group(t('Your Reviews'), row(t('Sign In to Send Reports'), t('Sign in to your RecompLauncher account to send a report. Your name isn\'t shown with it.'), signIn));
+  return group(t('Your Reviews'), row(t('Sign In to Write Reviews'), t('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.'), signIn));
 }
 // The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
 // computer's own name. Only copies made after a change carry the new name.
@@ -179,8 +179,8 @@ function deviceNameRow() {
 function myReportsGroup(group, row) {
   const m = S.myReports;
   if (!m || (!m.list && m.loading)) return group(t('Your Reviews'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
-  if (!m.list) return group(t('Your Reviews'), row(t('Your reports couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
-  if (!m.list.length) return group(t('Your Reviews'), row(t('No reports yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
+  if (!m.list) return group(t('Your Reviews'), row(t('Your reviews couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
+  if (!m.list.length) return group(t('Your Reviews'), row(t('No reviews yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
   setTimeout(markReportsSeen, 0);
   const seen = repSeen();
   const when = (w) => { const ts = Date.parse(w) / 1000; return ts ? ago(ts) : ''; };

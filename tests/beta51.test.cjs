@@ -52,8 +52,8 @@ test('the score follows the release out now once 3 of its players said, like an 
 test('reports need an account: signed out, the sign-in prompt instead of a question or an error', () => {
   const ask = fn(more, 'askRun');
   assert.match(ask, /if \(!signedIn\(\)\) return asked_for \? signInToReport\(\) : undefined;/);
-  assert.match(ask, /const s = needSignIn\(ex\);\n\s*if \(s != null\) \{ close\(\); return signInToReport\(s\); \}/);
-  assert.match(ask, /Your name isn\\'t shown with your report\./);
+  assert.match(ask, /const s = needSignIn\(ex\);\n\s*if \(s != null\) \{ close\(\); return signInToReport\(\); \}/);
+  assert.match(ask, /Your name isn\\'t shown with your review\./);
   const c = vm.createContext({});
   vm.runInContext(more.match(/^const needSignIn = .*$/m)[0] + '\nglobalThis.needSignIn = needSignIn;', c);
   assert.equal(c.needSignIn(new Error('NEED_SIGNIN|Sign in first.')), 'Sign in first.');
