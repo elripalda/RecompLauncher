@@ -45,6 +45,10 @@ test('in All Reviews a row narrows the list, and one nobody gave can\'t be picke
   assert.match(fn(app, 'reviewsModal'), /\(!pickV \|\| x\.verdict === pickV\)/);
 });
 
+test('the player\'s own review is on the card only, not in All Reviews', () => {
+  assert.doesNotMatch(fn(app, 'reviewsModal'), /myReviewBlock/);
+});
+
 test('the card shows the three newest, and All Reviews has the rest in the launcher', () => {
   const card = fn(app, 'runsCard');
   assert.match(card, /const newest = items\.slice\(0, 3\)\.map\(repItem\)\.join\(''\);/);

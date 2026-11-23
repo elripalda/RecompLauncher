@@ -2769,7 +2769,8 @@ function runsCard(a) {
     ${runsLine(rep)}${myReviewBlock(a.id)}${newest ? `<div class="reps">${newest}</div>` : ''}${acts}</div>`;
 }
 // All Reviews: every review the launcher gets for a project (the site sends the newest 60), in a
-// window over its page, with the rows and This Version to narrow them and the player's own on top.
+// window over its page, with the rows and This Version to narrow them (the player's own review
+// stays on the card).
 // When the project has more, the rest are on its page on recomplauncher.com.
 function reviewsModal(id, verdict) {
   const rep = S.reports[id];
@@ -2788,7 +2789,7 @@ function reviewsModal(id, verdict) {
   const site = SITE + '/game/' + encodeURIComponent(id);
   const restNote = all.n > items.length ? `<p class="rva-rest">${esc(tf('The newest {n} are here. The rest are on recomplauncher.com.', { n: fmtNum(items.length) }))}</p>` : '';
   const html = `<div class="rva-h"><div><small>${esc(tn(all.n, '1 review', '{n} reviews'))}</small><h2>${esc(name)}</h2></div><button type="button" class="rva-x" data-x="no" aria-label="${esc(t('Close'))}">${XMARK}</button></div>
-    <div class="rva-top">${runsSummary(rep, pickV)}${myReviewBlock(id)}<div class="rva-chips">${chips()}</div></div>
+    <div class="rva-top">${runsSummary(rep, pickV)}<div class="rva-chips">${chips()}</div></div>
     <div class="rva-list reps">${list()}</div>
     <div class="rva-foot">${restNote}<button type="button" class="btn" data-url="${esc(site)}">${esc(t('On recomplauncher.com'))}</button></div>`;
   const s = modal(html, (x) => {
