@@ -1267,6 +1267,7 @@
           ${clockRow()}
           ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
+          ${sw('pad_desktop', t('Use the Controller Outside Big Picture'), t('Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.'), S.settings.pad_desktop !== false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
           ${S.canStartAtLogin ? sw('start_at_login', t('Start with your PC'), startAtLoginNote()) : ''}

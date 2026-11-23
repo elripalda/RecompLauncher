@@ -2800,6 +2800,7 @@
  "Move with the left stick": "التنقل بالعصا اليسرى",
  "Use the Controller Outside Big Picture": "استخدام وحدة التحكم خارج Big Picture",
  "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "أزرار الاتجاه وA وB وX وLB وRB تتنقل في هذا العرض أيضًا. أوقفه إذا كنت تستخدم وحدة التحكم كفأرة، حتى لا تضغط أزرارها على أشياء هنا أيضًا. الضغط المطوّل على Menu يفتح وضع Big Picture كما هو.",
+ "Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.": "أوقفه إذا كنت تستخدم وحدة التحكم كفأرة في عرض سطح المكتب. يعمل وضع Big Picture معها دائمًا.",
  "Moving Around": "التنقل",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|أكمل اختيار ملفات هذه اللعبة في الإعداد السهل.",
  "No save yet": "لا يوجد ملف حفظ بعد",

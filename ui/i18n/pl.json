@@ -2800,6 +2800,7 @@
  "Move with the left stick": "Poruszaj się lewą gałką",
  "Use the Controller Outside Big Picture": "Używaj kontrolera poza Big Picture",
  "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "Krzyżak, A, B, X, LB i RB poruszają się też po tym widoku. Wyłącz to, jeśli używasz kontrolera jak myszy, żeby jego przyciski nie naciskały tu także różnych rzeczy. Przytrzymanie Menu nadal otwiera tryb Big Picture.",
+ "Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.": "Wyłącz to, jeśli w widoku pulpitu używasz kontrolera jak myszy. Tryb Big Picture zawsze z nim działa.",
  "Moving Around": "Poruszanie się",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Dokończ wybieranie plików tej gry w Łatwej konfiguracji.",
  "No save yet": "Brak zapisu",

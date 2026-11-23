@@ -2800,6 +2800,7 @@
  "Move with the left stick": "Bergerak dengan stik kiri",
  "Use the Controller Outside Big Picture": "Pakai kontroler di luar Big Picture",
  "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "D-pad, A, B, X, LB, dan RB juga bergerak di tampilan ini. Matikan jika kamu memakai kontroler sebagai mouse, agar tombolnya tidak ikut menekan sesuatu di sini. Menahan Menu tetap membuka Mode Big Picture.",
+ "Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.": "Matikan jika kamu memakai kontroler sebagai mouse di tampilan desktop. Mode Big Picture selalu bisa dipakai dengannya.",
  "Moving Around": "Navigasi",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Selesaikan pemilihan file game ini di Penyiapan mudah.",
  "No save yet": "Belum ada save",

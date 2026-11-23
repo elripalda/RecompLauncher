@@ -2800,6 +2800,7 @@
  "Move with the left stick": "用左摇杆移动",
  "Use the Controller Outside Big Picture": "在大屏幕模式之外使用手柄",
  "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "方向键、A、B、X、LB 和 RB 也能在此视图中移动。如果你把手柄当鼠标用，请关闭此项，以免它的按键在这里也误按。按住 Menu 仍可打开大屏幕模式。",
+ "Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.": "如果你在桌面视图中把手柄当鼠标用，请关闭此项。大屏幕模式始终可以使用手柄。",
  "Moving Around": "移动",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|请在轻松配置中完成选择这款游戏的文件。",
  "No save yet": "还没有存档",

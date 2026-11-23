@@ -2800,6 +2800,7 @@
  "Move with the left stick": "왼쪽 스틱으로 이동",
  "Use the Controller Outside Big Picture": "Big Picture 밖에서도 컨트롤러 사용",
  "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "방향 패드, A, B, X, LB, RB로 이 화면에서도 이동합니다. 컨트롤러를 마우스처럼 쓴다면 끄세요. 그러면 버튼이 여기서 다른 것을 함께 누르지 않습니다. Menu를 길게 누르면 계속 Big Picture 모드가 열립니다.",
+ "Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.": "데스크톱 화면에서 컨트롤러를 마우스처럼 쓴다면 끄세요. Big Picture 모드에서는 항상 사용할 수 있습니다.",
  "Moving Around": "이동",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|간편 설정에서 이 게임의 파일 선택을 마치세요.",
  "No save yet": "아직 저장 데이터 없음",

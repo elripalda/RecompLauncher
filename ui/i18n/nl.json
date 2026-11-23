@@ -2800,6 +2800,7 @@
  "Move with the left stick": "Bewegen met de linkerstick",
  "Use the Controller Outside Big Picture": "Controller buiten Big Picture gebruiken",
  "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "De d-pad, A, B, X, LB en RB bewegen ook door deze weergave. Zet het uit als je je controller als muis gebruikt, zodat de knoppen hier niet ook iets indrukken. Menu ingedrukt houden opent nog steeds de Big Picture-modus.",
+ "Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.": "Zet het uit als je je controller in de bureaubladweergave als muis gebruikt. De Big Picture-modus werkt er altijd mee.",
  "Moving Around": "Navigeren",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Kies de bestanden van deze game af in Eenvoudig instellen.",
  "No save yet": "Nog geen opgeslagen game",

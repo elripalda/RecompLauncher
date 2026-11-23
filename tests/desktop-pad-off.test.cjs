@@ -64,3 +64,7 @@ test('Settings → Controllers has the switch, on unless turned off', () => {
 test('turning it off with the controller takes its highlight away', () => {
   assert.match(app, /if \(k === 'pad_desktop'\) \{ await saveSettings\(\{ pad_desktop: S\.settings\.pad_desktop === false \}\); if \(S\.settings\.pad_desktop === false\) padLetGo\(\); return; \}/);
 });
+
+test('Big Picture settings have the switch too, on unless turned off', () => {
+  assert.match(tv, /sw\('pad_desktop', t\('Use the Controller Outside Big Picture'\), t\('[^']+'\), S\.settings\.pad_desktop !== false\)/);
+});
