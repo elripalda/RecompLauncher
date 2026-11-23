@@ -97,7 +97,8 @@ goes along; what it writes anywhere else is left behind. So:
   out, so a shader cache never fills a player's save copies.
 - **Temp is temp.** Your setup step gets a temp folder of its own (see [`prepare`](#prepare-your-own-setup-step)),
   emptied after every run. Nothing you need later goes there.
-- **Name both programs.** `start.program` and `prepare.program` say which file runs. Don't copy
+- **Name the program in both.** `start.program` and `prepare.program` say which file runs. Make it
+  the one program you ship, with a flag for the setup step (see [Ship one program](#releases)). Don't copy
   yourself somewhere else and run from there (bootstrapping): the launcher updates the copy in the
   game's folder, so the other one goes stale.
 - **Don't depend on `$APPIMAGE`.** On Linux the launcher always unpacks your AppImage and runs it
@@ -763,7 +764,7 @@ settings are written. It runs again whenever the player changes their copy.
 
   ```json
   "prepare": {
-    "program": ["MyRecompBuilder.exe"],
+    "program": ["MyRecomp.exe"],
     "args": ["--prepare", "--game", "{input:game}"],
     "env": { "MYRECOMP_CACHE": "{data}/cache" }
   }
@@ -793,9 +794,18 @@ settings are written. It runs again whenever the player changes their copy.
   game when it's done. Players can turn on Build Again After Updates in the game's Manage tab to
   have it built in the background right after the update downloads. Reinstalling the same release
   doesn't build again.
-- To build into the player's install folder instead of their home folder, pass it to your builder
-  (`"args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"]`) and start
-  from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
+- **Every new release runs your setup step again**, so make it check before it builds. Keep a build
+  version of your own (your recompiler's version, or a number you bump when what the build makes
+  changes). If the game in your folder has the same build version, built from the same copy and
+  options, print `progress 1 Already built` and exit with 0. Write that version only once the build
+  has finished, and remove it before you start writing, so a build that was cut short never looks
+  finished.
+- **Don't tag a release for changes players don't get**, like docs, the README or CI. Each release
+  is a download for every player and a new run of your setup step.
+- To build into the player's install folder instead of their home folder, pass it to your setup step
+  (`"args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"]`) and have the
+  same program start the game from there (`"start": {"program": ["YourGame.exe"], "args": ["--play", "{install}/YourGame"]}`,
+  and `folders.game`).
   When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like
   `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game plays without asking
@@ -813,10 +823,11 @@ settings are written. It runs again whenever the player changes their copy.
   or the run fails, the player is asked for their copy and the game is built from that.
 
   ```json
+  "start": { "program": ["YourGame.exe"], "args": ["--play", "{install}/YourGame"] },
   "prepare": {
-    "program": ["YourGameBuilder.exe"],
+    "program": ["YourGame.exe"],
     "args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"],
-    "done": ["{install}/YourGame/yourgame.exe"],
+    "done": ["{install}/YourGame/game.pak"],
     "keeps_copy": true
   },
   "folders": { "game": [{ "path": "{install}/YourGame" }] }
@@ -846,7 +857,7 @@ when it's on its `args` are added after the step's own:
 
 ```json
 "prepare": {
-  "program": ["LongshotBuilder.exe"],
+  "program": ["Longshot.exe"],
   "args": ["--cli", "--prepare", "--game", "{input:game}"],
   "options": [
     {
@@ -871,8 +882,8 @@ when it's on its `args` are added after the step's own:
 - `"required": true` is for something the build can't run without. The setup screen's buttons
   stay off, with a line saying why, until it's ticked, and the launcher refuses to start the step
   without it. Only the PCs it's shown on count: an option `os` or `gpu` hides is never required
-  there. With a `license` it still starts off: only the player accepts it. Keep your builder's own
-  check too (exit with a code and say why), for a player who runs it by hand:
+  there. With a `license` it still starts off: only the player accepts it. Keep your setup step's
+  own check too (exit with a code and say why), for a player who runs it by hand:
 
   ```json
   "options": [
@@ -887,7 +898,7 @@ when it's on its `args` are added after the step's own:
     }
   ]
   ```
-- Your builder gets these args added to its own, with the step's usual environment. Where to put
+- Your setup step gets these args added to its own, with the step's usual environment. Where to put
   the SDK and its runtime files: [Vendor SDKs the build needs](#vendor-sdks-the-build-needs).
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
   player sees "Its setup step stopped with code N", so put the reason in your own log.
@@ -899,17 +910,17 @@ when it's on its `args` are added after the step's own:
 #### Vendor SDKs the build needs
 
 Some features can't be built without a vendor's SDK, like NVIDIA's DLSS (NGX). You can't ship it,
-and the launcher can't add it from outside. Have your builder fetch it on the player's PC, after
+and the launcher can't add it from outside. Have your setup step fetch it on the player's PC, after
 the player agrees to the vendor's license:
 
-1. Give the builder a flag that downloads the SDK from the vendor, and a second flag that says
+1. Give your program a flag that downloads the SDK from the vendor, and a second flag that says
    the license was accepted. Without the second, it downloads nothing and stops.
 2. Add a `prepare.options` tick, as above, with both flags in `args`, a `license`, and `gpu`
    (`nvidia` for DLSS). Ticking it is the player accepting the license.
 3. Download the SDK to the step's temp folder (`TEMP`, `TMP`, `TMPDIR`), which is emptied after
    every run, or to `{data}/cache` to reuse it on the next one. The step gets
    `RECOMPLAUNCHER_DATA` and whatever you set in `prepare.env`, and nothing else of yours: a
-   variable from your own setup can't be required. Check it by running the builder exactly as the
+   variable from your own setup can't be required. Check it by running the step exactly as the
    launcher does, with the arguments above and that environment.
 4. Put the vendor's runtime files where the game looks for them, never in your release. For
    DLSS, that is `nvngx_dlss.dll`, and `nvngx_dlssg.dll` for frame generation, in an `ngx` folder
@@ -1032,6 +1043,7 @@ CHD is the format most disc-based backups come in, and the one players ask for m
 ### Releases
 
 - **Tag every release with a version** (`v1.2.0`) and attach the builds to the GitHub release, not just to the README or Actions.
+- **Ship one program, and keep it the one players start.** Don't ship a builder that makes the game's program. If the game has to be built on the player's PC, the program you ship (`MyRecomp.exe`) builds it and then runs it, and the player never sees the built binary. Don't name it "builder", "compiler" or the like, and never change what the player starts after the build: `start.program`, their shortcut and their Steam entry stay on the program you shipped. [LostOdysseyRecomp](https://github.com/freefrank/LostOdysseyRecomp/blob/main/recomplauncher.json) works this way: `LostOdysseyRecomp.exe --prepare-content` is its setup step, and the same `LostOdysseyRecomp.exe` is the game.
 - **Name every file for what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.tar.gz` and `-linux-x86_64.AppImage`, `-macos-arm64.zip`. [Releases that install cleanly](#releases-that-install-cleanly) has the rest: the words a launcher picks a file by, one portable Linux build packed both ways, `source` in a source archive's name, and staying out of Program Files.
 - **Build for Linux and Mac too** when you can. A lot of players are on Steam Deck.
 - **Say what changed** in the release notes, even in one line.
