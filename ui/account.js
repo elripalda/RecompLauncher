@@ -9,7 +9,7 @@ const CLOUD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" 
 const SITE = 'https://recomplauncher.com';
 S.account = { signedIn: false };
 S.saves = {};
-// The signed-in player's reports (Settings > Account > Your Reports), with developers' answers.
+// The signed-in player's reports (Settings > Reviews > Your Reviews), with developers' answers.
 S.myReports = null;
 
 const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), timeOpts({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : '');
@@ -163,7 +163,7 @@ function accountSection(group, row) {
 function reviewsSection(group, row) {
   if (S.account && S.account.signedIn) return myReportsGroup(group, row);
   const signIn = `<button type="button" class="btn sm main" data-act="acc-signin">${esc(t('Sign in'))}</button>`;
-  return group(t('Your Reports'), row(t('Sign In to Send Reports'), t('Sign in to your RecompLauncher account to send a report. Your name isn\'t shown with it.'), signIn));
+  return group(t('Your Reviews'), row(t('Sign In to Send Reports'), t('Sign in to your RecompLauncher account to send a report. Your name isn\'t shown with it.'), signIn));
 }
 // The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
 // computer's own name. Only copies made after a change carry the new name.
@@ -174,13 +174,13 @@ function deviceNameRow() {
   const field = `<input class="field sm" id="device-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(name)}" placeholder="${esc(t('Computer name'))}" aria-label="${esc(label)}">`;
   return `<div class="set-row"><div class="k"><b>${esc(label)}</b><span>${esc(help)}</span></div><span class="acts">${field}<button type="button" class="btn sm" data-act="acc-device-save">${esc(t('Save'))}</button></span></div>`;
 }
-// Your Reports: what you said about each game, and what its developer answered. Looking at it
+// Your Reviews: what you said about each game, and what its developer answered. Looking at it
 // counts as having seen the answers.
 function myReportsGroup(group, row) {
   const m = S.myReports;
-  if (!m || (!m.list && m.loading)) return group(t('Your Reports'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
-  if (!m.list) return group(t('Your Reports'), row(t('Your reports couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
-  if (!m.list.length) return group(t('Your Reports'), row(t('No reports yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
+  if (!m || (!m.list && m.loading)) return group(t('Your Reviews'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
+  if (!m.list) return group(t('Your Reviews'), row(t('Your reports couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
+  if (!m.list.length) return group(t('Your Reviews'), row(t('No reports yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
   setTimeout(markReportsSeen, 0);
   const seen = repSeen();
   const when = (w) => { const ts = Date.parse(w) / 1000; return ts ? ago(ts) : ''; };
@@ -191,7 +191,7 @@ function myReportsGroup(group, row) {
     return `<div class="myrep${fresh ? ' fresh' : ''}"><div class="myrep-h"><b>${esc(r.name || r.app)}</b><span class="rverdict v-${esc(r.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[r.verdict] || ''))}</span><small>${esc([r.version, when(r.when)].filter(Boolean).join(' · '))}</small></div>
       ${r.note ? `<p class="rep-note" dir="auto">${esc(r.note)}</p>` : ''}${replies ? `<div class="rep-replies">${replies}</div>` : ''}${answer}</div>`;
   };
-  return group(t('Your Reports'), `<p class="set-note" style="margin:0 0 6px">${esc(t('What you said about each game, and what its developer answered.'))}</p>${m.list.slice(0, 30).map(item).join('')}`);
+  return group(t('Your Reviews'), `<p class="set-note" style="margin:0 0 6px">${esc(t('What you said about each game, and what its developer answered.'))}</p>${m.list.slice(0, 30).map(item).join('')}`);
 }
 
 // ---------- a game's Saves tab ----------
