@@ -602,6 +602,13 @@ async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
 
 const SYNC_CONFLICT: &str = "Both save copies changed. Choose one in Saves → Sync Now.";
 
+/// Before Play, the cloud's newer save couldn't be put in place (a save folder that's read-only
+/// on this PC, say). The game still starts; why goes on the line under it.
+const NOT_RESTORED: &str = "Your cloud save couldn't be put in place, so the game starts with this PC's save. Choose which save to keep in Saves → Sync Now.";
+
+/// The cloud save downloaded, but it couldn't be kept in the folder of the game's save copies.
+const CLOUD_NOT_KEPT: &str = "The cloud save couldn't be kept on this PC.";
+
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
 /// name, so the window can translate it: the player just pressed Play on that game.
 const SYNC_PAUSED: &str = "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.";
@@ -1015,9 +1022,10 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     }
     let bytes = r.bytes().await.map_err(net)?;
     let d = copies_dir(&st, id);
-    tokio::fs::create_dir_all(&d).await?;
+    let not_kept = |path: &Path, e: std::io::Error| Error::Msg(format!("{CLOUD_NOT_KEPT}\n{}: {e}", path.display()));
+    tokio::fs::create_dir_all(&d).await.map_err(|e| not_kept(&d, e))?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
-    tokio::fs::write(&tmp, &bytes).await?;
+    tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
     let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
@@ -1179,7 +1187,12 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        let n = take_cloud(&app, &id, top).await?;
+        let taken = take_cloud(&app, &id, top).await;
+        // Sync Now says why. Before Play the game starts anyway, with this PC's save.
+        if let (Err(e), false) = (&taken, manual) {
+            return Ok(not_restored(&st.dir, &id, top, e));
+        }
+        let n = taken?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
     }
     if top.hash == s.synced_hash {
@@ -1200,6 +1213,26 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
 }
 
+/// The cloud's newer save couldn't be put in place before Play: noted, and the answer that lets
+/// the game start with this PC's save.
+fn not_restored(dir: &Path, id: &str, top: &CloudCopy, e: &Error) -> Value {
+    let why = e.to_string();
+    crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place, so it plays with this PC's: {}", why.replace('\n', " ")));
+    let mut s = saves::state(dir, id);
+    hold_for_pick(&mut s, &top.v, &why);
+    saves::set_state(dir, id, &s);
+    json!({"action": "not-restored", "why": why, "cloud": top})
+}
+
+/// The save this session makes mustn't go up over the cloud's newer one, which never reached this
+/// PC: with no sync remembered, the upload after the session stops as a conflict, and the player
+/// picks one. The reason stays on the game's page until then.
+fn hold_for_pick(s: &mut saves::State, cloud_v: &str, why: &str) {
+    s.synced_hash.clear();
+    s.conflict = Some(cloud_v.to_string());
+    s.problem = Some(saves::Problem { kind: "error".into(), text: why.to_string(), at: crate::library::now() });
+}
+
 /// A shortcut or tray launch has no conflict prompt, so let the player resolve it in the launcher.
 pub async fn sync_quiet(app: &AppHandle, id: &str) -> Res<()> {
     let st = app.state::<App>();
@@ -1207,6 +1240,11 @@ pub async fn sync_quiet(app: &AppHandle, id: &str) -> Res<()> {
     let result = saves_check(app.clone(), save_id, None).await?;
     if result["action"] == "conflict" {
         return Err(Error::Msg(SYNC_CONFLICT.into()));
+    }
+    // The game starts all the same; the window says why its cloud save isn't there.
+    if result["action"] == "not-restored" {
+        let _ = app.emit("toast", NOT_RESTORED);
+        let _ = app.emit("toast", result["why"].as_str().unwrap_or_default());
     }
     Ok(())
 }
@@ -2110,7 +2148,7 @@ mod play_id_tests {
 
 #[cfg(test)]
 mod sync_tests {
-    use super::{first_time_paused, incoming, should_restore, CloudCopy};
+    use super::{first_time_paused, hold_for_pick, incoming, should_restore, CloudCopy};
     use crate::saves::State;
 
     fn cloud(v: &str, hash: &str) -> CloudCopy {
@@ -2197,6 +2235,30 @@ mod sync_tests {
     fn missing_local_saves_restore_even_when_the_cloud_has_not_changed() {
         // The game was reset/reinstalled, but the launcher still remembers its last sync.
         assert!(should_restore("", "last-save", "last-save", true));
+    }
+
+    #[test]
+    fn a_cloud_save_not_put_in_place_is_not_uploaded_over_after_the_session() {
+        // Reinstalled on a PC that synced the cloud's save before, whose save folder is read-only now.
+        let mut s = agreed_on("progress");
+        hold_for_pick(&mut s, "v7", "The save couldn't be written to its folder.");
+        // The upload after the session goes up only when the cloud's save is the one last synced.
+        assert_ne!(s.synced_hash, "progress");
+    }
+
+    #[test]
+    fn a_cloud_save_not_put_in_place_asks_the_player_to_pick() {
+        let mut s = agreed_on("progress");
+        hold_for_pick(&mut s, "v7", "The save couldn't be written to its folder.");
+        assert_eq!(s.conflict.as_deref(), Some("v7"));
+        assert_eq!(s.sync_state(true, true), "conflict");
+    }
+
+    #[test]
+    fn a_cloud_save_not_put_in_place_keeps_why_for_the_games_page() {
+        let mut s = agreed_on("progress");
+        hold_for_pick(&mut s, "v7", "The save couldn't be written to its folder.");
+        assert_eq!(s.problem.map(|p| p.text).as_deref(), Some("The save couldn't be written to its folder."));
     }
 
     #[test]

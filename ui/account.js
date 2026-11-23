@@ -875,6 +875,9 @@ async function beforeCloudPlay(id) {
   try { r = await invoke('saves_check', { id }); } catch (e) { fail(e); return false; }
   if (r.action === 'restored') toast(tf('Your newer save from {device} is in place.', { device: r.cloud.device || t('another PC') }));
   else if (r.action === 'offline') toast(t('Cloud saves can\'t be reached right now. Playing with this PC\'s save.'), true);
+  // Its cloud save couldn't be written here (a read-only folder, say): the game starts anyway,
+  // and the toast names the folder. Long enough to read a path.
+  else if (r.action === 'not-restored') toast(`${t('Your cloud save couldn\'t be put in place, so the game starts with this PC\'s save. Choose which save to keep in Saves → Sync Now.')} ${t(r.why)}`, true, null, 15000);
   else if (r.action === 'conflict') {
     try { if (!(await pickCloudSave(id, r))) return false; } catch (e) { fail(e); return false; }
   }
