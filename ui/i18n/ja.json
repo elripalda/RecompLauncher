@@ -2641,6 +2641,8 @@
  "Recent": "最近",
  "Updated {from} → {to}": "{from} → {to} に更新",
  "Downloading": "ダウンロード中",
+ "Building": "ビルド中",
+ "Downloading and building": "ダウンロード・ビルド中",
  "Pause all": "すべて一時停止",
  "Queued": "待機中",
  "{time} left": "残り {time}",

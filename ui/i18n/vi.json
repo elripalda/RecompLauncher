@@ -2641,6 +2641,8 @@
  "Recent": "Gần đây",
  "Updated {from} → {to}": "Đã cập nhật {from} → {to}",
  "Downloading": "Đang tải xuống",
+ "Building": "Đang dựng",
+ "Downloading and building": "Đang tải xuống và dựng",
  "Pause all": "Tạm dừng tất cả",
  "Queued": "Đang chờ",
  "{time} left": "còn {time}",

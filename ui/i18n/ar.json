@@ -2641,6 +2641,8 @@
  "Recent": "الأخيرة",
  "Updated {from} → {to}": "تم التحديث {from} → {to}",
  "Downloading": "قيد التنزيل",
+ "Building": "قيد البناء",
+ "Downloading and building": "قيد التنزيل والبناء",
  "Pause all": "إيقاف الكل مؤقتًا",
  "Queued": "في الانتظار",
  "{time} left": "متبقٍ {time}",

@@ -2641,6 +2641,8 @@
  "Recent": "Нещодавні",
  "Updated {from} → {to}": "Оновлено {from} → {to}",
  "Downloading": "Завантаження",
+ "Building": "Збирання",
+ "Downloading and building": "Завантаження і збирання",
  "Pause all": "Призупинити все",
  "Queued": "У черзі",
  "{time} left": "залишилося {time}",

@@ -2641,6 +2641,8 @@
  "Recent": "ล่าสุด",
  "Updated {from} → {to}": "อัปเดต {from} → {to}",
  "Downloading": "กำลังดาวน์โหลด",
+ "Building": "กำลังสร้าง",
+ "Downloading and building": "กำลังดาวน์โหลดและสร้าง",
  "Pause all": "หยุดชั่วคราวทั้งหมด",
  "Queued": "อยู่ในคิว",
  "{time} left": "เหลือ {time}",

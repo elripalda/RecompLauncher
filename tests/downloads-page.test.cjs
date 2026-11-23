@@ -65,19 +65,38 @@ test('a fresh install says the version it installed', () => {
   assert.equal(appContext().didWhat({ update: false, tag: 'v1.1.0' }), 'Installed v1.1.0');
 });
 
-test('Big Picture lists a game installed three times once', () => {
+// Big Picture's Downloads page, drawn for real with plain stand-ins for its helpers.
+function tvPage(more = {}) {
   const c = vm.createContext({
     ...helpers,
-    S: { jobs: {}, recent: [], updates: {}, library: {}, dlHist: [], launcherUpd: null, version: '0.90.0-beta.67' },
+    S: { jobs: {}, recent: [], updates: {}, library: {}, dlHist: [], launcherUpd: null, version: '0.90.0-beta.67', building: null, buildQ: [], setupJobs: {}, ...more },
     verName: (v) => v, thumbOf: String,
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s, hints: () => '',
     libAppOf: (id) => ({ id, name: id }), media: String, SCAN_TIP: '', progress: () => '', cleanMsg: String,
     scanInfo: () => ({ cls: 'ok', ic: '✓', text: 'Safe' }),
   });
-  vm.runInContext(topFn('latestPerGame') + tvFn('scanTag') + tvFn('pageDownloads'), c);
-  c.S.dlHist = [1, 2, 3].map((n) => ({ id: 'lostodyssey', tag: 'v1.1.0', when: n }));
-  const html = c.pageDownloads();
+  vm.runInContext(topFn('latestPerGame') + topFn('buildsNow') + topFn('buildPct') + topFn('buildLine') + topFn('buildBar') + tvFn('scanTag') + tvFn('pageDownloads'), c);
+  return c.pageDownloads();
+}
+
+test('Big Picture lists a game installed three times once', () => {
+  const html = tvPage({ dlHist: [1, 2, 3].map((n) => ({ id: 'lostodyssey', tag: 'v1.1.0', when: n })) });
   assert.equal(html.match(/data-key="scan:lostodyssey@v1\.1\.0"/g).length, 1);
+});
+
+test("Big Picture's Downloads shows a running build with its bar", () => {
+  const html = tvPage({ setupJobs: { banjo: { step: 'extras', pct: 0.42, extras: true } } });
+  assert.match(html, /data-key="b:banjo".*?<span data-build-line="banjo">Building the game · 42%<\/span>/);
+});
+
+test("Big Picture's Downloads shows a build waiting its turn", () => {
+  const html = tvPage({ buildQ: ['zelda'] });
+  assert.match(html, /data-key="b:zelda".*?<small>Waiting to build<\/small>/);
+});
+
+test("Big Picture's Downloads leaves out a setup with no build step", () => {
+  const html = tvPage({ setupJobs: { banjo: { step: 'verify', pct: 0.4, extras: false } } });
+  assert.doesNotMatch(html, /b:banjo/);
 });
 
 const CATALOG = {
@@ -93,9 +112,10 @@ function desktopPage(hist, library, more = {}) {
     S: { jobs: {}, paused: {}, recent: [], updates: {}, library, dlHist: hist, settings: { ui: {} }, launcherUpd: null, building: null, buildQ: [], setupJobs: {}, ...more },
     fmtB: String, byId: (id) => CATALOG[id], scanPill: (h) => (h.update ? `[safe ${h.tag}]` : ''), pic: () => '', thumbOf: String, N_: (s) => s,
     pct: () => 0, DOWN: '', dlLine: (id) => `line of ${id}`, dlTarget: () => 'Update to v2', buildLine: () => 'Building the game · 3%', buildPct: () => 3,
+    updateBuildDue: (id) => (more.due || []).includes(id),
   });
   const consts = ['INFO_I', 'BUILT_I', 'BUILT_TIP', 'CHEV_D', 'XS', 'when', 'clockOf', 'canPause'].map(topConst).join('\n');
-  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('pageDownloads');
+  const code = consts + topFn('latestPerGame') + topFn('dayOf') + topFn('withNewVer') + topFn('didWhat') + topFn('progLabel') + topFn('progress') + topFn('buildsNow') + topFn('dlTitle') + topFn('pageDownloads');
   vm.runInContext(code, c);
   return c.pageDownloads();
 }
@@ -160,11 +180,100 @@ test('an update held back for a build says it waits for the build before it', ()
   assert.match(html, /<b>Mine<\/b><span class="dl-sub"><span>Update to v2 · Waiting for the build before it<\/span>/);
 });
 
+// The list's title says what's moving now.
+const titleOf = (more) => desktopPage([], {}, more).match(/<h2>([^<]*)<span class="dl-n">/)[1];
+const BUILDING = { setupJobs: { odyssey2: { step: 'extras', extras: true } } };
+
+test('the title says Downloading while only downloads move', () => {
+  assert.equal(titleOf({ jobs: MOVING }), 'Downloading');
+});
+
+test('the title says Building while only a build moves', () => {
+  assert.equal(titleOf(BUILDING), 'Building');
+});
+
+test('the title says Downloading and building while a download and a build both move', () => {
+  assert.equal(titleOf({ ...BUILDING, jobs: { lostodyssey: MOVING.lostodyssey } }), 'Downloading and building');
+});
+
+test('a download waiting for the build does not change the title', () => {
+  assert.equal(titleOf({ ...BUILDING, jobs: { mine: MOVING.mine } }), 'Building');
+});
+
+test('a build waiting behind a moving download does not change the title', () => {
+  assert.equal(titleOf({ jobs: { lostodyssey: MOVING.lostodyssey }, buildQ: ['odyssey2'] }), 'Downloading');
+});
+
+test('with nothing moving, the title says what waits', () => {
+  assert.equal(titleOf({ buildQ: ['odyssey2'] }), 'Building');
+});
+
 test('a build right after an update is in the list, moving, with a cross that stops the build', () => {
   const html = desktopPage([], {}, { building: 'odyssey' });
-  assert.match(html, /<h2>Downloading<span class="dl-n">1<\/span><\/h2>/);
-  assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-dl-phase="odyssey">Building the game · 3%<\/span><div class="prog" data-build-prog="odyssey"><div class="track"><i style="width:3%">/);
+  assert.match(html, /<h2>Building<span class="dl-n">1<\/span><\/h2>/);
+  assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-build-line="odyssey">Building the game · 3%<\/span><div class="prog" data-build-prog="odyssey"><div class="track"><i style="width:3%">/);
   assert.match(html, /data-act="build-cancel" data-id="odyssey"/);
+});
+
+test("a build started from its game's page is in the list, moving, with a cross that stops it", () => {
+  const html = desktopPage([], {}, { setupJobs: { odyssey: { step: 'extras', extras: true } } });
+  assert.match(html, /<div class="dl-row dl-moving">.*?<span class="dl-phase" data-build-line="odyssey">Building the game · 3%<\/span>/);
+  assert.match(html, /data-act="build-cancel" data-id="odyssey"/);
+});
+
+test("a first Easy Setup build has no pill: it isn't an update", () => {
+  const html = desktopPage([], { odyssey: { tag: 'v3' } }, { setupJobs: { odyssey: { step: 'extras', extras: true } } });
+  assert.match(html, /<div class="dl-name"><b>Odyssey Recomp<\/b><\/div>/);
+});
+
+test("Finish the Update's build has the pill of the version it builds", () => {
+  const html = desktopPage([], { odyssey: { tag: 'v3' } }, { setupJobs: { odyssey: { step: 'extras', extras: true } }, due: ['odyssey'] });
+  assert.match(html, /<div class="dl-name"><b>Odyssey Recomp<\/b>\[safe v3\]<\/div>/);
+});
+
+test('a game queued to build whose build already runs shows once, building', () => {
+  const html = desktopPage([], {}, { buildQ: ['odyssey'], setupJobs: { odyssey: { step: 'extras', extras: true } } });
+  assert.equal(html.match(/data-id="odyssey"/g).length, 1);
+  assert.doesNotMatch(html, /Waiting to build/);
+});
+
+// The builds running now, with the real helper.
+function buildsNowOf(more) {
+  const c = vm.createContext({ S: { jobs: {}, building: null, setupJobs: {}, ...more } });
+  vm.runInContext(topFn('buildsNow'), c);
+  // Copied into this realm's array, so deepEqual compares the items, not the Array types.
+  return [...vm.runInContext('buildsNow()', c)];
+}
+
+test('the builds running now count each game once: after an update, or from its page', () => {
+  assert.deepEqual(buildsNowOf({ building: 'a', setupJobs: { a: { extras: true }, b: { extras: true } } }), ['a', 'b']);
+});
+
+test("a game still downloading isn't counted as building", () => {
+  assert.deepEqual(buildsNowOf({ jobs: { a: {} }, setupJobs: { a: { extras: true } } }), []);
+});
+
+// A build row's line, with the real helpers.
+function buildLineOf(ev) {
+  const c = vm.createContext({ ...helpers, S: { setupJobs: { g: ev } } });
+  vm.runInContext(topFn('buildPct') + topFn('buildLine'), c);
+  return vm.runInContext("buildLine('g')", c);
+}
+
+test('before its build step, a build says Building the game, with no percentage', () => {
+  assert.equal(buildLineOf({ step: 'verify', pct: 0.4, extras: true }), 'Building the game');
+});
+
+test('a setup with no build step is not on Downloads', () => {
+  assert.deepEqual(buildsNowOf({ setupJobs: { a: { step: 'verify', extras: false } } }), []);
+});
+
+test('a build after an update counts before its first step comes in', () => {
+  assert.deepEqual(buildsNowOf({ building: 'a' }), ['a']);
+});
+
+test("the game's own build step says how far it is", () => {
+  assert.equal(buildLineOf({ step: 'extras', pct: 0.42 }), 'Building the game · 42%');
 });
 
 test('the build comes after the downloads that are moving and before the ones waiting', () => {

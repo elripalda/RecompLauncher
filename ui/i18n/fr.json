@@ -2641,6 +2641,8 @@
  "Recent": "Récents",
  "Updated {from} → {to}": "Mis à jour {from} → {to}",
  "Downloading": "Téléchargements",
+ "Building": "Compilation",
+ "Downloading and building": "Téléchargements et compilation",
  "Pause all": "Tout mettre en pause",
  "Queued": "En attente",
  "{time} left": "{time} restantes",

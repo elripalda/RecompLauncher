@@ -2641,6 +2641,8 @@
  "Recent": "Recentes",
  "Updated {from} → {to}": "Atualizado {from} → {to}",
  "Downloading": "A transferir",
+ "Building": "A compilar",
+ "Downloading and building": "A transferir e a compilar",
  "Pause all": "Pausar tudo",
  "Queued": "Na fila",
  "{time} left": "faltam {time}",

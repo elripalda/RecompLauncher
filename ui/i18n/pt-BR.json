@@ -2638,6 +2638,8 @@
  "Recent": "Recentes",
  "Updated {from} → {to}": "Atualizado {from} → {to}",
  "Downloading": "Baixando",
+ "Building": "Compilando",
+ "Downloading and building": "Baixando e compilando",
  "Pause all": "Pausar tudo",
  "Queued": "Na fila",
  "{time} left": "faltam {time}",

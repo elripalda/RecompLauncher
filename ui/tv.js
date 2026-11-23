@@ -451,10 +451,8 @@
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
-        if (sj) {
-          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-          return btn(key, 'setup-reopen', esc(tf('Setting up {pct}%', { pct: p })), { cls: 'main', id, g: 'a' });
-        }
+        // Said as on the desktop's game page and Downloads: "Building the game · 42%".
+        if (sj) return btn(key, 'setup-reopen', esc(setupLine(sj)), { cls: 'main', id, g: 'a' });
         return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
       }
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
@@ -577,11 +575,9 @@
       }
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
-        if (sj) {
-          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-          return { label: t('Setting up'), sub: `${p}%`, icon: 'disc', run: () => tvSetup(id) };
-        }
-        return null;
+        if (!sj) return null;
+        const sp = setupProg(sj);
+        return { label: sp.label, sub: sp.pct ? `${sp.pct}%` : '', icon: 'disc', run: () => tvSetup(id) };
       }
       case 'soon': case 'nobuild': return null;
       default: return isSaved(id) ? { label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) } : { label: t('Add to Library'), sub: t('Install it whenever you like'), icon: 'plus', run: () => addToLibrary(id).then(() => draw(true)) };
@@ -595,11 +591,7 @@
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
     if (st === 'settingup') {
       const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
-      if (sj) {
-        const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-        return tf('Setting up {pct}%', { pct: p });
-      }
-      return t('Its setup is open');
+      return sj ? setupLine(sj) : t('Its setup is open');
     }
     const m = mainItem(a);
     return m ? m.label : t('Game page');
@@ -1192,7 +1184,11 @@
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
     const lu = S.launcherUpd;
     const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
-    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    // Builds, as on the desktop: the ones running with their bar, then the ones waiting their turn.
+    const builds = buildsNow();
+    const buildsWaiting = S.buildQ.filter((id) => !S.jobs[id] && !builds.includes(id));
+    const buildItems = builds.map((id) => item(id, '', 'b:' + id, buildBar(id))).concat(buildsWaiting.map((id) => item(id, esc(t('Waiting to build')), 'b:' + id)));
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id))), buildItems).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>

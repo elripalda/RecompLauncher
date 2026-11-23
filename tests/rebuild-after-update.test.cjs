@@ -25,7 +25,7 @@ function harness(library, setup, due) {
   api.landed = async (id) => { delete S.jobs[id]; await api.afterUpdate(id, id); };
   // Its build is over: as the setup event does.
   api.built = (id) => { S.building = null; delete S.setupJobs[id]; api.nextInLine(); };
-  return { api, log, S };
+  return { api, log, S, SU };
 }
 const settle = () => new Promise((ok) => setTimeout(ok, 0));
 const copy = (path) => ({ copy: path, inputs: [] });
@@ -135,6 +135,23 @@ test('a queued build waits while another setup runs', async () => {
   delete S.setupJobs.other;
   await api.pumpBuilds();
   assert.deepEqual(log.runs, [['setup_copy', 'a']]);
+});
+
+test('a queued build starts after a build that was hidden mid-run, once that one is over', async () => {
+  const { api, log, SU } = harness({ a: {} }, { a: copy('/g/a') }, new Set(['a']));
+  // Run in Background: the window is gone, and its stage still says it was running.
+  Object.assign(SU, { stage: 'run', el: null });
+  api.queueBuild('a');
+  await api.pumpBuilds();
+  assert.deepEqual(log.runs, [['setup_copy', 'a']]);
+});
+
+test('a queued build waits while the setup window runs a build', async () => {
+  const { api, log, SU } = harness({ a: {} }, { a: copy('/g/a') }, new Set(['a']));
+  Object.assign(SU, { stage: 'run', el: {} });
+  api.queueBuild('a');
+  await api.pumpBuilds();
+  assert.deepEqual(log.runs, []);
 });
 
 test('with it on, a game that has to ask something first waits for Play', async () => {

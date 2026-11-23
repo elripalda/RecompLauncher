@@ -2641,6 +2641,8 @@
  "Recent": "Zuletzt",
  "Updated {from} → {to}": "Aktualisiert {from} → {to}",
  "Downloading": "Wird heruntergeladen",
+ "Building": "Wird gebaut",
+ "Downloading and building": "Wird heruntergeladen und gebaut",
  "Pause all": "Alle pausieren",
  "Queued": "In der Warteschlange",
  "{time} left": "noch {time}",

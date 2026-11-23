@@ -9,7 +9,9 @@ const fn = (src, name) => src.match(new RegExp(`^  (?:async )?function ${name}\\
 
 function downloadsContext(launcherUpd) {
   const c = vm.createContext({
-    S: { jobs: {}, recent: [], updates: {}, library: {}, dlHist: [], launcherUpd, version: '0.90.0-beta.39' },
+    S: { jobs: {}, recent: [], updates: {}, library: {}, dlHist: [], launcherUpd, version: '0.90.0-beta.39', buildQ: [] },
+    // No builds here: these tests are about downloads and the launcher's own update.
+    buildsNow: () => [], buildBar: () => '',
     TV: {},
     t: (s) => s, esc: String,
     tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),

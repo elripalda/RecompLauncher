@@ -2641,6 +2641,8 @@
  "Recent": "최근",
  "Updated {from} → {to}": "{from} → {to} 업데이트됨",
  "Downloading": "다운로드 중",
+ "Building": "빌드 중",
+ "Downloading and building": "다운로드 및 빌드 중",
  "Pause all": "모두 일시 정지",
  "Queued": "대기 중",
  "{time} left": "{time} 남음",
