@@ -29,3 +29,7 @@ test('the quit command is registered with the window', () => {
   const lib = fs.readFileSync(path.join(__dirname, '../src-tauri/src/lib.rs'), 'utf8');
   assert.match(lib, /tray::quit_launcher/);
 });
+
+test('a game\'s buttons go on to a second line instead of under the panel beside them', () => {
+  assert.match(tvCss, /\.tv-acts\{display:flex;flex-wrap:wrap;/);
+});
