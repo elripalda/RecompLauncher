@@ -375,7 +375,11 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
         } else if p.is_dir() {
             // The game's own folder: only what the release didn't put there.
             let rel_of_install = s.template.starts_with("{install}");
-            let skip = if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none };
+            // "{install}/" is the same folder as "{install}", so its release files aren't saves either.
+            let place = lower(&p);
+            let install = lower(&g.path);
+            let is_install = place.trim_end_matches(['/', '\\']) == install.trim_end_matches(['/', '\\']);
+            let skip = if rel_of_install && is_install { &release } else { &none };
             if !walk(&p, &mut found, skip, SPOT_MAX, WALK_SECS, false) {
                 too_big.push(i);
                 found.clear();
@@ -1408,6 +1412,17 @@ mod tests {
         let s = vec![Spot { template: "{install}".into(), from: "player" }];
         let got: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
         assert_eq!(got, vec!["slot1.sav"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_game_folder_written_with_a_slash_still_skips_release_files() {
+        let d = tmp("install-slash");
+        fs::write(d.join("level.dat"), b"release").unwrap();
+        fs::write(d.join("slot.sav"), b"save").unwrap();
+        let g = Installed { files: vec![PathBuf::from("level.dat")], ..game(&d) };
+        let s = vec![Spot { template: "{install}/".into(), from: "developer" }];
+        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("slot.sav")]);
         let _ = fs::remove_dir_all(&d);
     }
 
