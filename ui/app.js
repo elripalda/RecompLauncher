@@ -8815,6 +8815,8 @@ const TS_TEXT = [
   N_('Sign in to answer.'),
   N_('Your reports couldn\'t be loaded. Try again later.'),
   N_('Your answer didn\'t go through. Try again later.'),
+  N_('Sign in to delete your review.'),
+  N_('Your review couldn\'t be deleted. Try again later.'),
   N_('Your report is in, but the log couldn\'t be kept.'),
   N_('Logs can be 2 MB at most.'),
   N_('Send the log as a text file, like a .txt or .log.'),

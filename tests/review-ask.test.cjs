@@ -38,7 +38,7 @@ test('a review sent for one version keeps the game from being asked about in the
 });
 
 test('only the question after a session has Don\'t Ask Me Again', () => {
-  assert.match(fn(more, 'reviewDialog'), /const never = auto \? `<label class="rv-never">/);
+  assert.match(fn(more, 'reviewDialog'), /const left = auto \? `<label class="rv-never">/);
   assert.match(fn(more, 'askRun'), /if \(!asked_for\) items\.push\(\{ label: t\('Don\\'t Ask Me Again'\)/);
 });
 

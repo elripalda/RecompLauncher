@@ -1320,6 +1320,8 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .rv-pick b{font-size:15px}
 .rv-pick>span:last-child{font-size:12.5px;line-height:1.35;color:var(--muted)}
 .rv-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:2px}
+.btn.main.bad{background:var(--bad);border-color:var(--bad);color:#1a0505}
+.btn.main.bad:hover{filter:brightness(1.08)}
 .modal .rv-never{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13.5px;font-weight:600}
 .rv-never span{display:flex;flex-direction:column;gap:1px}
 .rv-never small{font-size:12px;font-weight:500;color:var(--dim)}

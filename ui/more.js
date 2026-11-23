@@ -290,6 +290,17 @@ async function askRun(id, secs, asked_for) {
 // cards, then (in the same window) a few words and what goes with them. Asked after a session, it
 // also has Don't Ask Me Again, which turns asking off for every game until Settings > Reviews turns
 // it back on. While the player is writing, a click outside or Escape doesn't throw the words away.
+// Takes the player's review back: off the project's page and out of Your Reviews. The launcher still
+// doesn't ask about the game after a session (it was reviewed once; ran[id] keeps sent).
+async function deleteReview(id) {
+  await invoke('review_delete', { id });
+  if (S.myReports && S.myReports.list) S.myReports.list = S.myReports.list.filter((x) => x.app !== id);
+  delete S.reports[id];
+  toast(t('Your review is deleted.'));
+  if (S.view === 'game' && S.arg === id) loadReports(id, true);
+  if (S.view === 'settings') render(true);
+  if (window.loadMyReports) setTimeout(() => window.loadMyReports(true), 1500);
+}
 // A review is about the project (the recomp), so the question names it, not the game: the catalog's
 // own name, which Show Game Names keeps aside while the game's shows on the page.
 function reviewName(id, g) {
@@ -305,12 +316,14 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
   const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
   const session = secs >= 60 ? `<small class="rv-when">${esc(tf('{time} this session', { time: fmtTime(secs) }))}</small>` : '';
   const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: reviewName(id, g) }))}</h2></div></div>`;
-  const never = auto ? `<label class="rv-never"><button type="button" class="switch" role="switch" aria-checked="${!reviewAskOn()}" data-x="never"></button><span>${esc(t('Don\'t Ask Me Again'))}<small>${esc(t('Turn it back on in Settings, Reviews.'))}</small></span></label>` : '<span></span>';
+  const left = auto ? `<label class="rv-never"><button type="button" class="switch" role="switch" aria-checked="${!reviewAskOn()}" data-x="never"></button><span>${esc(t('Don\'t Ask Me Again'))}<small>${esc(t('Turn it back on in Settings, Reviews.'))}</small></span></label>`
+    // Changing a review already sent: it can be taken back too (never offered right after a session).
+    : prev ? `<button type="button" class="btn danger rv-del" data-x="del">${esc(t('Delete Review'))}</button>` : '<span></span>';
   const was = (k) => !!prev && prev.verdict === k;
   const pick = ([k, n]) => `<button type="button" class="rv-pick v-${k}${was(k) ? ' was' : ''}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span>${was(k) ? `<em class="rv-was">${esc(t('Your Last Answer'))}</em>` : ''}<b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></button>`;
   const first = () => `<div class="rv-body"><p class="rv-lead">${esc(t('It helps others, and shows on its page with your PC\'s graphics card and Windows version.'))}</p>
     <div class="rv-picks">${VERDICT.map(pick).join('')}</div>
-    <div class="rv-foot">${never}<button type="button" class="btn" data-x="no">${esc(auto ? t('Not Now') : t('Cancel'))}</button></div></div>`;
+    <div class="rv-foot">${left}<button type="button" class="btn" data-x="no">${esc(auto ? t('Not Now') : t('Cancel'))}</button></div></div>`;
   // A few words: needed for a problem (what happened, and when), up to them for Plays great.
   const second = (verdict) => {
     const bad = verdict !== 'runs';
@@ -325,6 +338,11 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
       <div class="acts grid2">${bad ? `<button type="button" class="btn" data-x="back">${esc(t('Back'))}</button><button type="button" class="btn main" data-x="send" disabled>${esc(t('Send'))}</button>` : `<button type="button" class="btn" data-x="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-x="send">${esc(t('Send'))}</button>`}</div>
       <small class="ask-anon">${esc(t('Your name isn\'t shown with your review.'))}</small></div>`;
   };
+  // Deleting asks once more, in the same window, saying what goes.
+  const confirmDel = () => `<div class="rv-body rv-two"><b class="rv-q">${esc(t('Delete your review?'))}</b>
+      <p class="rv-lead">${esc(tf('Your review of {name} comes off its page and out of Your Reviews, with any answers on it. This can\'t be undone.', { name: reviewName(id, g) }))}</p>
+      <p class="ask-err" hidden></p>
+      <div class="acts grid2"><button type="button" class="btn" data-x="back">${esc(t('Cancel'))}</button><button type="button" class="btn main bad" data-x="del-yes">${esc(t('Delete Review'))}</button></div></div>`;
   let verdict = null, busy = false;
   const s = modal(`${art}${first()}`, async (x, close) => {
     const box = $('.modal', s);
@@ -354,6 +372,24 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
       body().outerHTML = first();
       const f = $(`[data-v="${verdict}"]`, box);
       return f && f.focus();
+    }
+    if (act === 'del') { body().outerHTML = confirmDel(); return; }
+    if (act === 'del-yes') {
+      if (busy) return;
+      busy = true;
+      $$('.acts .btn', box).forEach((b) => { b.disabled = true; });
+      try {
+        await deleteReview(id);
+        close();
+      } catch (ex) {
+        if (needSignIn(ex) != null) { close(); return signInToReport(); }
+        busy = false;
+        const err = $('.ask-err', box);
+        err.textContent = t(String(ex && ex.message ? ex.message : ex));
+        err.hidden = false;
+        $$('.acts .btn', box).forEach((b) => { b.disabled = false; });
+      }
+      return;
     }
     if (act === 'how') return invoke('open_url', { url: howTo }).catch(fail);
     if (act !== 'send' && act !== 'skip') return;

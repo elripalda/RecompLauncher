@@ -85,3 +85,21 @@ test('changing a review starts the dialog from the answer and note given before'
   assert.match(dialog, /t\('Your Last Answer'\)/);
   assert.match(dialog, />\$\{prev && prev\.note \? esc\(prev\.note\) : ''\}<\/textarea>/);
 });
+
+test('Delete Review shows only when changing a review already sent, never right after a session', () => {
+  const dialog = fn(more, 'reviewDialog');
+  assert.match(dialog, /const left = auto \? `<label class="rv-never">/);
+  assert.match(dialog, /: prev \? `<button type="button" class="btn danger rv-del" data-x="del">\$\{esc\(t\('Delete Review'\)\)\}<\/button>` : '<span><\/span>';/);
+  assert.match(dialog, /if \(act === 'del'\) \{ body\(\)\.outerHTML = confirmDel\(\); return; \}/);
+});
+
+test('deleting a review asks the site, then takes it out of Your Reviews', async () => {
+  const calls = [];
+  const S = { myReports: { list: [{ app: 'karpur' }, { app: 'longshot' }] }, reports: { karpur: {} }, view: 'home' };
+  const c = vm.createContext({ S, invoke: async (cmd, args) => { calls.push([cmd, args]); return true; }, toast: () => {}, t: (s) => s, loadReports: () => {}, render: () => {}, window: {}, setTimeout });
+  vm.runInContext(`${fn(more, 'deleteReview')}\nglobalThis.del = deleteReview;`, c);
+  await c.del('karpur');
+  assert.equal(JSON.stringify(calls), JSON.stringify([['review_delete', { id: 'karpur' }]]));
+  assert.equal(S.myReports.list.map((x) => x.app).join(), 'longshot');
+  assert.equal(S.reports.karpur, undefined);
+});
