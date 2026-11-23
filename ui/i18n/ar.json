@@ -1138,6 +1138,8 @@
  "Set a Background…": "تعيين خلفية…",
  "Set a Cover…": "تعيين غلاف…",
  "Set it up": "إعدادها",
+ "Game build": "بناء اللعبة",
+ "Its last build didn't finish. Set it up again before you play.": "لم يكتمل آخر بناء لها. أعد إعدادها قبل أن تلعب.",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "أعده باستخدام قرصك، وغير إعداداته، ثم اضغط «تشغيل». عدل الملف واضغط «التحقق مجددًا»: يقرأ المشغل الملف من جديد في كل مرة.",
  "Set up": "إعداد",
  "Set up RecompLauncher": "إعداد RecompLauncher",

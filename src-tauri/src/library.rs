@@ -100,6 +100,12 @@ pub struct Installed {
     /// clears it. One game of several keeps its own in `games`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub set_up: String,
+    /// A build (a setup step, a disc unpacked) started and didn't finish: stopped, the launcher
+    /// closed, or the PC went off partway. What it wrote over the last build may be half there,
+    /// so the game builds again before it plays, even on the release `set_up` names. One game of
+    /// several keeps its own in `games`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub build_cut: bool,
     /// Read once from a library saved before named inputs were the one way (format 3), to tell
     /// which games were set up then: see `SetupUpgrade`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -944,7 +950,7 @@ mod tests {
         let mut l = Library::default();
         let mut g = Installed { id: "series".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
         g.games.insert("first".into(), crate::games::Played {
-            played_secs: 90, last_played: 200, sessions: vec![[110, 90]], set_up: "v1".into(),
+            played_secs: 90, last_played: 200, sessions: vec![[110, 90]], set_up: "v1".into(), ..Default::default()
         });
         l.put("series", g);
         l.forget("series").unwrap();

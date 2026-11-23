@@ -1138,6 +1138,8 @@
  "Set a Background…": "Ustaw tło…",
  "Set a Cover…": "Ustaw okładkę…",
  "Set it up": "Skonfiguruj",
+ "Game build": "Kompilacja gry",
+ "Its last build didn't finish. Set it up again before you play.": "Ostatnia kompilacja nie została ukończona. Skonfiguruj grę ponownie przed graniem.",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "Skonfiguruj ją z własną płytą, zmień ustawienia i naciśnij Graj. Zmień plik i naciśnij Sprawdź ponownie: launcher za każdym razem wczytuje go od nowa.",
  "Set up": "Skonfiguruj",
  "Set up RecompLauncher": "Skonfiguruj RecompLauncher",

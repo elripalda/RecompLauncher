@@ -1138,6 +1138,8 @@
  "Set a Background…": "배경 설정…",
  "Set a Cover…": "커버 설정…",
  "Set it up": "설정하기",
+ "Game build": "게임 빌드",
+ "Its last build didn't finish. Set it up again before you play.": "마지막 빌드가 끝나지 않았습니다. 플레이하기 전에 다시 설정하세요.",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "직접 가진 디스크로 설정하고 설정을 바꾼 다음 플레이를 누르세요. 파일을 고치고 다시 확인을 누르면 런처가 매번 새로 읽습니다.",
  "Set up": "설정",
  "Set up RecompLauncher": "RecompLauncher 설정",

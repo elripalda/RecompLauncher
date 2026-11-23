@@ -1138,6 +1138,8 @@
  "Set a Background…": "設定背景…",
  "Set a Cover…": "設定封面…",
  "Set it up": "設定",
+ "Game build": "遊戲建置",
+ "Its last build didn't finish. Set it up again before you play.": "上次建置沒有完成。請在遊玩前重新設定。",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "用您自己的光碟設定它，變更設定後按「開始遊戲」。修改檔案後按「重新檢查」：啟動器每次都會重新讀取。",
  "Set up": "設定",
  "Set up RecompLauncher": "設定 RecompLauncher",

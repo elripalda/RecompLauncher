@@ -1537,6 +1537,11 @@ function otherFileRows(id, su) {
     d: r.path ? tf('Set up with {file}', { file: baseName(r.path) }) : '',
     fix: r.path ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(t('Choose It'))}</button>` }));
 }
+// Its last build was stopped partway: Before you play says so, with Set Up to build it again.
+const BUILD_CUT = N_("Its last build didn't finish. Set it up again before you play.");
+function cutRow(id) {
+  return { k: t('Game build'), v: false, d: t(BUILD_CUT), fix: `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(t('Set it up'))}</button>` };
+}
 function readyRows(a) {
   const id = a.id, g = S.library[id], pc = S.pc || {}, rows = [];
   const own = S.owned[id], su = S.setup[id];
@@ -1559,6 +1564,7 @@ function readyRows(a) {
     d: own ? '' : g && g.last_played ? t('Set up the first time you played') : t('Not found'), html: own ? copyLine(id) : '',
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
   if (su && su.needs && !selfRun) rows.push(...otherFileRows(id, su));
+  if (st && st.detail === 'cut' && !selfRun) rows.push(cutRow(id));
   rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
@@ -7087,6 +7093,8 @@ async function playGame2(id, program) {
         if (updateBuildDue(id)) return updateBuildModal(id);
       }
       if (rebuild) S.setupNote = { id, text: t('This game\'s setup changed since you built it. Pick your copy and it\'s built again.') };
+      // Its last build was stopped partway (Cancel, the launcher closing, a crash): said as that.
+      if (/^NEED_REBUILD\|cut$/.test(String(err && err.message ? err.message : err))) S.setupNote = { id, text: t(BUILD_CUT) };
       // Its setup step kept what it needs from the copy (prepare.keeps_copy): no copy to pick, and
       // Easy Setup's own heading says so.
       if (/^NEED_REBUILD\|kept$/.test(String(err && err.message ? err.message : err))) S.setupNote = null;

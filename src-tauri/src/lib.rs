@@ -852,6 +852,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         // What was set up, and on which release, stays through an update: a new release is told
         // apart from the one it was set up on, and builds again on the next Play.
         set_up: prev.as_ref().map(|p| p.set_up.clone()).unwrap_or_default(),
+        // A build cut short before the update still has to be built again after it.
+        build_cut: prev.as_ref().is_some_and(|p| p.build_cut),
         upgrade: prev.as_ref().and_then(|p| p.upgrade.clone()),
         setup_inputs: prev.as_ref().map(|p| p.setup_inputs.clone()).unwrap_or_default(),
         unpacked_from: prev.as_ref().map(|p| p.unpacked_from.clone()).unwrap_or_default(),
@@ -3847,12 +3849,18 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     if stopped() {
         return Err("Stopped.".into());
     }
+    // Right before the build is written over (a disc unpacked, the setup step started), and not
+    // before: the game is marked as cut short (saved first) until all of it has worked, so a
+    // Stop, the launcher closing or the PC going off partway leaves a game that builds again
+    // instead of one that plays half a build. A setup that fails before then (no room, its
+    // program missing) leaves the last build playable.
+    let writing = || mark_cut(&st, job, true);
     let checked = if said.is_empty() { "Files selected.".to_string() } else { said.clone() };
     emit(SetupEv { step: "verify".into(), pct: 1.0, text: checked, verified: verified.clone(), ..Default::default() });
     // 2. A disc for a recomp that reads the disc's files: unpacked where it reads them.
     for i in p.inputs.iter().filter(|i| i.picked() && !i.extract.is_empty()) {
         let Some(image) = inputs::picked(g, &i.id).filter(|x| x.is_file()) else { continue };
-        let dest = unpack_disc(i, &image, &g.path, emit, stopped)?;
+        let dest = unpack_disc(i, &image, &g.path, emit, stopped, &writing)?;
         g.setup_inputs.insert(i.id.clone(), dest);
         g.unpacked_from.insert(i.id.clone(), image);
     }
@@ -3874,7 +3882,7 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
         let extra = prepare_extra(job.dir, &pr, &g.prepare_opts);
         let handed = p.handed(copy.as_deref());
         let report = |pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() });
-        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped);
+        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped, &writing);
         // Built from what it kept and that didn't work: the player's copy builds it.
         done.map_err(|e| if job.from_kept { kept_failed(&e) } else { e })?;
     }
@@ -3891,8 +3899,15 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
     x.unpacked_from = g.unpacked_from.clone();
     let tag = x.tag.clone();
     match job.sub {
-        Some(s) => x.games.entry(s.to_string()).or_default().set_up = tag,
-        None => x.set_up = tag,
+        Some(s) => {
+            let own = x.games.entry(s.to_string()).or_default();
+            own.set_up = tag;
+            own.build_cut = false;
+        }
+        None => {
+            x.set_up = tag;
+            x.build_cut = false;
+        }
     }
     x.mode = library::SetupMode::Easy;
     drop(l);
@@ -3904,6 +3919,17 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
         (true, false) => "Your files are set up.".to_string(),
     };
     Ok((verified, text))
+}
+
+/// Marks the game's build as cut short (or not), saved straight away.
+fn mark_cut(st: &App, job: &SetupJob, cut: bool) {
+    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(job.rid) {
+        match job.sub {
+            Some(s) => x.games.entry(s.to_string()).or_default().build_cut = cut,
+            None => x.build_cut = cut,
+        }
+    }
+    st.save();
 }
 
 /// Where one file is among several read whole: its label ("Disc 2", empty when it's the only
@@ -4025,8 +4051,9 @@ fn remember_check(st: &App, rid: &str, input: &str, path: &Path, crc32: &str) {
 }
 
 /// A disc image unpacked for a recomp that reads the disc's files (`extract`): into its `into`
-/// folder (or game-files), checked for the file it must have. Gives back that folder.
-fn unpack_disc(i: &inputs::Input, image: &Path, install: &Path, emit: &dyn Fn(SetupEv), stopped: &dyn Fn() -> bool) -> Result<PathBuf, String> {
+/// folder (or game-files), checked for the file it must have. Gives back that folder. `writing`
+/// is called once its checks pass, right before it writes.
+fn unpack_disc(i: &inputs::Input, image: &Path, install: &Path, emit: &dyn Fn(SetupEv), stopped: &dyn Fn() -> bool, writing: &dyn Fn()) -> Result<PathBuf, String> {
     let into = i.into.trim().trim_matches(['/', '\\']).to_string();
     let dest = if into == "." {
         install.to_path_buf()
@@ -4044,6 +4071,7 @@ fn unpack_disc(i: &inputs::Input, image: &Path, install: &Path, emit: &dyn Fn(Se
         }
     }
     let progress = |d: u64, t: u64| emit(SetupEv { step: "extras".into(), pct: d as f32 / t.max(1) as f32, done: d, total: t, text: say.into(), ..Default::default() });
+    writing();
     if let Err(e) = extract::unpack(image, &i.extract, &dest, &progress, stopped) {
         return Err(if stopped() { "Stopped.".into() } else { format!("Couldn't unpack the disc: {e}") });
     }
@@ -4080,6 +4108,20 @@ fn setup_cancel(id: String) {
     }
     // INPUT_WORKERS is left alone: a cancelled worker may still be finishing a file copy, and
     // holds its lock until it has actually stopped.
+}
+
+/// The launcher is closing: every setup stops, its setup step and what that started with it.
+/// Left running, a builder goes on writing the game's files with no launcher to see it end, and
+/// can still be at it when the next build of the same game starts. Waits a moment (a step is
+/// checked on every 60 ms) for them to be gone.
+fn stop_setups() {
+    if let Some(m) = SETUP_RUN.lock().unwrap().as_mut() {
+        m.clear();
+    }
+    let until = Instant::now() + std::time::Duration::from_secs(3);
+    while !INPUT_WORKERS.lock().unwrap().is_empty() && Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
 }
 
 #[tauri::command]
@@ -4303,10 +4345,125 @@ fn prepare_args(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extr
     named.map(|a| profile::fill(a, install, copy)).collect()
 }
 
+#[cfg(target_os = "linux")]
+extern "C" {
+    // Variadic in C, so declared as it is there.
+    fn prctl(option: std::ffi::c_int, ...) -> std::ffi::c_int;
+    fn getppid() -> std::ffi::c_int;
+}
+
+/// The setup step is sent SIGKILL when the thread that started it ends, the launcher killed
+/// with it. (That thread waits for the step, so it never ends first otherwise.) prctl and
+/// getppid are async-signal-safe, as pre_exec requires.
+#[cfg(target_os = "linux")]
+fn die_with_launcher(c: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    const PR_SET_PDEATHSIG: std::ffi::c_int = 1;
+    const SIGKILL: std::ffi::c_ulong = 9;
+    let launcher = std::process::id() as std::ffi::c_int;
+    unsafe {
+        c.pre_exec(move || {
+            prctl(PR_SET_PDEATHSIG, SIGKILL);
+            // The launcher already gone between the fork and here (the signal only comes for a
+            // death after it's asked for): the step doesn't start. Its parent is then init (1),
+            // or the session's reaper (systemd, Flatpak, a container): either way not the launcher.
+            if getppid() != launcher {
+                return Err(std::io::Error::other("the launcher is gone"));
+            }
+            Ok(())
+        });
+    }
+}
+
+/// A process put in a job of its own that Windows ends, with what it started, when the job's
+/// last handle closes without being let go: when the launcher is killed or crashes and Windows
+/// closes its handles. Dropped while the launcher runs (the step ended or was stopped), the job
+/// is let go first, so what the step left running on purpose (a runtime installer it started
+/// without waiting, a helper) goes on as it did before.
+#[cfg(windows)]
+mod win_job {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE};
+
+    pub struct Job(HANDLE);
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = set_limits(self.0, JOB_OBJECT_LIMIT(0));
+                let _ = CloseHandle(self.0);
+            }
+        }
+    }
+
+    unsafe fn set_limits(job: HANDLE, flags: JOB_OBJECT_LIMIT) -> windows::core::Result<()> {
+        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = flags;
+        let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as *const std::ffi::c_void, size)
+    }
+
+    /// None when Windows won't make the job: the process then runs as it did before, outside one.
+    pub fn kill_on_close(child: &std::process::Child) -> Option<Job> {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let job = Job(CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?);
+            set_limits(job.0, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE).ok()?;
+            AssignProcessToJobObject(job.0, HANDLE(child.as_raw_handle())).ok()?;
+            Some(job)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        fn ping() -> std::process::Child {
+            std::process::Command::new("cmd").args(["/c", "ping -n 30 127.0.0.1 > nul"]).spawn().unwrap()
+        }
+
+        fn ended(step: &mut std::process::Child) -> bool {
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while step.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            step.try_wait().unwrap().is_some()
+        }
+
+        /// The launcher gone (Windows closes its handle to the job, nothing let go): the step ends.
+        #[test]
+        fn a_step_ends_when_the_launcher_is_gone() {
+            let mut step = ping();
+            let job = super::kill_on_close(&step).expect("a job");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(step.try_wait().unwrap().is_none(), "still running while the job is held");
+            let handle = job.0;
+            std::mem::forget(job);
+            unsafe {
+                let _ = windows::Win32::Foundation::CloseHandle(handle);
+            }
+            assert!(ended(&mut step), "ended with the launcher");
+        }
+
+        /// The job dropped while the launcher runs: what's still in it goes on.
+        #[test]
+        fn a_dropped_job_leaves_what_runs_in_it() {
+            let mut step = ping();
+            let job = super::kill_on_close(&step).expect("a job");
+            drop(job);
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            assert!(step.try_wait().unwrap().is_none(), "still running after the drop");
+            // The whole tree, ping too: it's out of the job now, so nothing else would end it.
+            crate::kill_process_tree(&mut step);
+        }
+    }
+}
+
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
-fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool) -> Result<(), String> {
+/// Runs the recomp's setup step. `writing` is called once the step has started, when it can
+/// write over the last build; a step that can't start (its program missing, no room, no Proton)
+/// never calls it.
+fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn()) -> Result<(), String> {
     use std::io::BufRead;
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
     // On Linux an AppImage is never run, its setup step included: Play unpacks the game first.
@@ -4362,7 +4519,17 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         use std::os::unix::process::CommandExt;
         c.process_group(0);
     }
+    // The launcher killed or crashing (no Exit to stop it): on Linux the step goes with it.
+    #[cfg(target_os = "linux")]
+    die_with_launcher(&mut c);
     let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
+    // Started: from here it can write over the last build. (Not before: a step Windows Security
+    // blocked never ran.)
+    writing();
+    // On Windows the same, through a job that ends the step (and what it started) when the
+    // launcher is gone. Held until the step is.
+    #[cfg(windows)]
+    let _job = win_job::kill_on_close(&child);
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     if let Some(o) = child.stdout.take() {
         let tx = tx.clone();
@@ -4946,6 +5113,14 @@ fn mark_of<'a>(g: &'a Installed, sub: Option<&str>) -> &'a str {
     own.unwrap_or(&g.set_up)
 }
 
+/// Whether a game's last build was cut short, read as mark_of reads its release: one game of
+/// several's own once it has its own build (or its own cut short), else the whole recomp's. So a
+/// game's own build that worked counts, whatever the recomp's says.
+fn cut_of(g: &Installed, sub: Option<&str>) -> bool {
+    let own = sub.and_then(|s| g.games.get(s)).filter(|x| !x.set_up.is_empty() || x.build_cut);
+    own.map_or(g.build_cut, |x| x.build_cut)
+}
+
 /// Set up, or why not, as Play gives it (`p` scoped to one game of several when it's that game's,
 /// `sub` naming it): from what the library has picked. A setup from an older launcher is read
 /// first, so the answer never comes before it.
@@ -4959,7 +5134,7 @@ fn game_status(st: &App, g: &Installed, p: &profile::Profile, sub: Option<&str>)
         g
     };
     let rows = inputs::rows(p, g, &st.dir).unwrap_or_default();
-    let facts = setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, sub), own_program: false, skipped: false };
+    let facts = setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, sub), cut: cut_of(g, sub), own_program: false, skipped: false };
     setup_state::of(&facts)
 }
 
@@ -5147,7 +5322,7 @@ fn easy_status(st: &App, id: &str, g: &Installed, p: &profile::Profile, sub: Opt
     let skipped = player_sets_up(st, id);
     if own_program || skipped {
         let rows: Vec<inputs::Row> = vec![];
-        return setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: "", own_program, skipped });
+        return setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: "", cut: false, own_program, skipped });
     }
     game_status(st, g, p, sub)
 }
@@ -10105,6 +10280,7 @@ pub fn run() {
                 // on its way then leaves the launcher closed (see update_launcher).
                 tauri::RunEvent::ExitRequested { .. } => update_launch::note_quitting(),
                 tauri::RunEvent::Exit => {
+                    stop_setups();
                     pads::stop();
                     ping::close(app);
                 }
@@ -10638,7 +10814,7 @@ mod tests {
         let mut g = Installed { id: "combo".into(), path: game, tag: "v1".into(), set_up: "v1".into(), ..Default::default() };
         g.setup_inputs.insert("game".into(), copy);
         let rows = crate::inputs::rows(&p, &g, &d).unwrap();
-        let facts = crate::setup_state::Facts { profile: &p, game: &g, rows: &rows, set_up: &g.set_up, own_program: false, skipped: false };
+        let facts = crate::setup_state::Facts { profile: &p, game: &g, rows: &rows, set_up: &g.set_up, cut: false, own_program: false, skipped: false };
         let status = crate::setup_state::of(&facts);
         assert!(status.ready, "{status:?}");
         let _ = std::fs::remove_dir_all(&d);
@@ -11290,6 +11466,7 @@ mod tests {
                 }
                 stopped.load(std::sync::atomic::Ordering::Relaxed)
             },
+            &|| {},
         );
 
         assert_eq!(res.unwrap_err(), "Stopped.");
@@ -11332,13 +11509,41 @@ mod prepare_env_tests {
         PathBuf::from(std::fs::read_to_string(dir.join(file)).unwrap().trim())
     }
 
+    /// Set Up Again whose step can't start (its program missing): the last build isn't marked
+    /// as cut short, so the game still plays.
+    #[test]
+    fn a_step_that_cant_start_leaves_the_build_unmarked() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-nostart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = profile::Prepare { program: vec!["missing-builder".into()], ..Default::default() };
+        let marked = std::cell::Cell::new(0);
+        let res = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1));
+        assert!(res.is_err());
+        assert_eq!(marked.get(), 0, "nothing was written");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A step that starts is marked once, as it starts.
+    #[test]
+    fn a_step_that_starts_marks_the_build() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-marks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = tattler(&dir);
+        let marked = std::cell::Cell::new(0);
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1)).unwrap();
+        assert_eq!(marked.get(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_setup_step_gets_its_own_temp_folder_and_the_data_folder() {
         let dir = std::env::temp_dir().join(format!("rl-prep-env-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let pr = tattler(&dir);
-        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false).unwrap();
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap();
         let temp = dir.join(setup_temp::FOLDER);
         assert_eq!(said(&dir, "temp.txt"), temp);
         assert_eq!(said(&dir, "tmp.txt"), temp);
@@ -11358,7 +11563,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(dir.join(setup_temp::FOLDER)).unwrap();
         std::fs::write(dir.join(setup_temp::FOLDER).join("release.txt"), b"theirs").unwrap();
         let pr = tattler(&dir);
-        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false).unwrap_err();
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap_err();
         assert_eq!(e, setup_temp::NOT_OURS);
         assert!(!dir.join("temp.txt").exists(), "the step didn't run");
         assert!(dir.join(setup_temp::FOLDER).join("release.txt").is_file());
@@ -11388,7 +11593,7 @@ mod set_up_marks_tests {
 
     fn status(p: &profile::Profile, g: &Installed, sub: &str, dir: &Path) -> setup_state::Status {
         let rows = inputs::rows(p, g, dir).unwrap();
-        setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, Some(sub)), own_program: false, skipped: false })
+        setup_state::of(&setup_state::Facts { profile: p, game: g, rows: &rows, set_up: mark_of(g, Some(sub)), cut: cut_of(g, Some(sub)), own_program: false, skipped: false })
     }
 
     #[test]
@@ -11423,6 +11628,29 @@ mod set_up_marks_tests {
         own.games.entry("ga".into()).or_default().set_up = "v0".into();
         assert_eq!(mark_of(&own, Some("ga")), "v0");
         assert_eq!(mark_of(&own, None), "v1");
+    }
+
+    /// The whole recomp's build was cut short, then game A was built on its own and that worked:
+    /// A plays, and B (no build of its own) still builds again.
+    #[test]
+    fn a_game_of_several_built_after_the_recomps_cut_build_plays() {
+        let mut g = Installed { set_up: "v1".into(), build_cut: true, ..Default::default() };
+        let a = g.games.entry("ga".into()).or_default();
+        a.set_up = "v1".into();
+        a.build_cut = false;
+        assert!(!cut_of(&g, Some("ga")));
+        assert!(cut_of(&g, Some("gb")));
+        assert!(cut_of(&g, None));
+    }
+
+    /// Game A's own build cut short before it had one that worked: A builds again, the recomp's
+    /// other games don't.
+    #[test]
+    fn a_game_of_several_cut_short_on_its_first_own_build_builds_again() {
+        let mut g = Installed { set_up: "v1".into(), ..Default::default() };
+        g.games.entry("ga".into()).or_default().build_cut = true;
+        assert!(cut_of(&g, Some("ga")));
+        assert!(!cut_of(&g, Some("gb")));
     }
 
     #[test]

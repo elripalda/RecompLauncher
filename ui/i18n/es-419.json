@@ -1135,6 +1135,8 @@
  "Set a Background…": "Elegir un fondo…",
  "Set a Cover…": "Poner una portada…",
  "Set it up": "Prepáralo",
+ "Game build": "Compilación del juego",
+ "Its last build didn't finish. Set it up again before you play.": "Su última compilación no terminó. Prepáralo de nuevo antes de jugar.",
  "Set it up with your own disc, change its settings, then press Play. Change the file and press Check again: the launcher reads it fresh each time.": "Configúrala con tu propio disco, cambia sus opciones y presiona Jugar. Cambia el archivo y presiona Verificar de nuevo: el lanzador lo vuelve a leer cada vez.",
  "Set up": "Configurar",
  "Set up RecompLauncher": "Configurar RecompLauncher",
