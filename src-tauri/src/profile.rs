@@ -1797,6 +1797,30 @@ impl Profile {
         })
     }
 
+    /// Start With's programs, out of every program `found` in the game's folder (relative to
+    /// `install`): the ones its start names, and the one the player picked in its settings. A
+    /// recomp that ships its own tools (a setup worker, a compiler, each kept build's game) offered
+    /// them all to start by hand. With no start program, or none of them found, every program.
+    pub fn start_with(&self, install: &Path, picked: Option<&Path>, found: Vec<String>) -> Vec<String> {
+        let named = self.start.as_ref().is_some_and(|s| !s.program.is_empty());
+        if !named {
+            return found;
+        }
+        let is_picked = |full: &Path| picked.is_some_and(|p| p == full);
+        let ours: Vec<String> = found
+            .iter()
+            .filter(|rel| {
+                let full = install.join(rel);
+                self.starts_program(&full) || is_picked(&full)
+            })
+            .cloned()
+            .collect();
+        if ours.is_empty() {
+            return found;
+        }
+        ours
+    }
+
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
         let exe = self.program_for(install, windows_build)?;
         let through_proton = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
@@ -2827,6 +2851,49 @@ mod tests {
         // The game the builder made, or anything else: the player's own pick.
         assert!(!p.starts_program(Path::new("C:/Games/Hopper/bin/hopper.exe")));
         assert!(!p.starts_program(Path::new("/opt/HopperEditor.exe")));
+    }
+
+    // A release folder like Cubic.Heroes' in #464: the game, the launcher's setup worker, a
+    // compiler and a kept build's game binary.
+    fn cubic_found() -> Vec<String> {
+        ["CubicHeroes.exe", "setup/worker.exe", "setup/zig/zig.exe", "builds/1.0.2/cubic.exe"].map(String::from).to_vec()
+    }
+
+    #[test]
+    fn start_with_offers_only_the_program_its_start_names() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
+        let got = p.start_with(std::path::Path::new("/games/cubic"), None, cubic_found());
+        assert_eq!(got, vec!["CubicHeroes.exe".to_string()]);
+    }
+
+    #[test]
+    fn start_with_keeps_the_program_the_player_picked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
+        let picked = std::path::Path::new("/games/cubic/builds/1.0.2/cubic.exe");
+        let got = p.start_with(std::path::Path::new("/games/cubic"), Some(picked), cubic_found());
+        assert_eq!(got, vec!["CubicHeroes.exe".to_string(), "builds/1.0.2/cubic.exe".to_string()]);
+    }
+
+    #[test]
+    fn start_with_finds_a_native_build_by_the_name_its_start_gives() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Hopper.AppImage","HopperBuilder.exe"]}}"#).unwrap();
+        let found = ["Hopper-nightly-80-x86_64.AppImage", "tools/appimagetool.AppImage"].map(String::from).to_vec();
+        let got = p.start_with(std::path::Path::new("/games/hopper"), None, found);
+        assert_eq!(got, vec!["Hopper-nightly-80-x86_64.AppImage".to_string()]);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_without_a_start_program() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        let got = p.start_with(std::path::Path::new("/games/cubic"), None, cubic_found());
+        assert_eq!(got, cubic_found());
+    }
+
+    #[test]
+    fn start_with_offers_every_program_when_the_named_one_isnt_there() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Renamed.exe"]}}"#).unwrap();
+        let got = p.start_with(std::path::Path::new("/games/cubic"), None, cubic_found());
+        assert_eq!(got, cubic_found());
     }
 
     #[test]

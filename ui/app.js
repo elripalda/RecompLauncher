@@ -7218,7 +7218,8 @@ window.startWith = async function startWith(id) {
   const g = S.library[id];
   if (!g) return;
   let list = [];
-  try { list = (await invoke('game_programs', { id })) || []; } catch (e) { /* none */ }
+  // Only the programs its recomplauncher.json starts, when it names them: not its own tools.
+  try { list = (await invoke('start_with_programs', { id })) || []; } catch (e) { /* none */ }
   const usual = String(g.exe || '').replace(/\\/g, '/');
   list = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
   if (list.length < 2) return playGame(id);

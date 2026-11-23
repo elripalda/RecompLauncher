@@ -8240,6 +8240,24 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
 #[tauri::command(async)]
 fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    Ok(programs_in(&g))
+}
+
+/// Start With (hold Play): the programs the game's recomplauncher.json starts, and the one the
+/// player picked; a game without one offers every program in its folder, as before (#464).
+#[tauri::command(async)]
+fn start_with_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let found = programs_in(&g);
+    let Some(p) = profile_of(&st, &id, &g) else { return Ok(found) };
+    // Only a program the player picked in the game's settings (as picked_program reads it), not the
+    // one the launcher found for itself: that can be the bare game a start script wraps.
+    let picked = g.exe.as_ref().filter(|_| g.exe_rules == u8::MAX).map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) });
+    Ok(p.start_with(&g.path, picked.as_deref(), found))
+}
+
+/// Every program in a game's folder, three folders down at most, relative to it.
+fn programs_in(g: &Installed) -> Vec<String> {
     let os = if g.proton { "windows" } else { assets::os_now() };
     let mut out = vec![];
     let mut stack = vec![(g.path.clone(), 0usize)];
@@ -8267,11 +8285,11 @@ fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
                 }
             }
             if out.len() >= 60 {
-                return Ok(out);
+                return out;
             }
         }
     }
-    Ok(out)
+    out
 }
 
 /// The folder with the game's files, from the one the player picked: that folder, or the one
@@ -10256,7 +10274,7 @@ pub fn run() {
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, start_with_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::spons_mine, cloud::spons_seen, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
