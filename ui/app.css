@@ -2162,6 +2162,9 @@ body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .badge.soon svg{margin-right:-1px}
 .btn.notify-on{background:transparent;color:var(--cyan);border:1.5px solid rgba(52,242,232,.6)}
 .btn.notify-on svg{color:var(--cyan)}
+/* How many want it, after Notify Me or Add to Library on a game's page: "Notify Me · 3,412". */
+.btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.btn .want::before{content:'·';margin-right:9px}
 .tnotes{display:flex;flex-direction:column;gap:10px;margin:0 0 22px}
 .tnote{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--cyan)}
 .tnote.gold{border-left-color:#f5c518}.tnote.violet{border-left-color:#a98bff}

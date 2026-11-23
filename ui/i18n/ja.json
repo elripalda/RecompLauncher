@@ -3343,5 +3343,6 @@
  "Syncs when you press Play": "プレイを押すと同期されます",
  "syncs when you press Play": "プレイを押すと同期",
  "Saved {time}. What's there now is kept as a backup first.": "{time}に保存。今のセーブデータは先にバックアップとして残ります。",
- "A newer save is in the cloud": "クラウドに新しいセーブデータがあります"
+ "A newer save is in the cloud": "クラウドに新しいセーブデータがあります",
+ "{n} people saved it or are waiting for it": "{n}人が保存したか、リリースを待っています"
 }

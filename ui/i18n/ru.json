@@ -3343,5 +3343,6 @@
  "Syncs when you press Play": "Синхронизируется, когда вы нажмёте «Играть»",
  "syncs when you press Play": "синхронизируется при нажатии «Играть»",
  "Saved {time}. What's there now is kept as a backup first.": "Сохранено {time}. Текущее сначала сохранится как копия.",
- "A newer save is in the cloud": "В облаке есть более новое сохранение"
+ "A newer save is in the cloud": "В облаке есть более новое сохранение",
+ "{n} people saved it or are waiting for it": "{n} человек сохранили её или ждут"
 }

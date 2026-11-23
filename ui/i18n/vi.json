@@ -3343,5 +3343,6 @@
  "Syncs when you press Play": "Đồng bộ khi bạn nhấn Chơi",
  "syncs when you press Play": "đồng bộ khi bạn nhấn Chơi",
  "Saved {time}. What's there now is kept as a backup first.": "Đã lưu {time}. Bản hiện có sẽ được giữ lại làm bản sao lưu trước.",
- "A newer save is in the cloud": "Có bản lưu mới hơn trên đám mây"
+ "A newer save is in the cloud": "Có bản lưu mới hơn trên đám mây",
+ "{n} people saved it or are waiting for it": "{n} người đã lưu hoặc đang chờ"
 }

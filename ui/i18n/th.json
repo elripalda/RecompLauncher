@@ -3343,5 +3343,6 @@
  "Syncs when you press Play": "ซิงก์เมื่อคุณกดเล่น",
  "syncs when you press Play": "ซิงก์เมื่อคุณกดเล่น",
  "Saved {time}. What's there now is kept as a backup first.": "บันทึกเมื่อ {time} เซฟที่มีอยู่ตอนนี้จะถูกเก็บเป็นข้อมูลสำรองก่อน",
- "A newer save is in the cloud": "มีเซฟที่ใหม่กว่าบนคลาวด์"
+ "A newer save is in the cloud": "มีเซฟที่ใหม่กว่าบนคลาวด์",
+ "{n} people saved it or are waiting for it": "มี {n} คนบันทึกไว้หรือกำลังรอเกมนี้"
 }

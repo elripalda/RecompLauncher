@@ -3343,5 +3343,6 @@
  "Syncs when you press Play": "按“开始游戏”时同步",
  "syncs when you press Play": "按“开始游戏”时同步",
  "Saved {time}. What's there now is kept as a backup first.": "保存于{time}。当前存档会先保留为备份。",
- "A newer save is in the cloud": "云端有较新的存档"
+ "A newer save is in the cloud": "云端有较新的存档",
+ "{n} people saved it or are waiting for it": "{n} 人已保存或正在等待"
 }

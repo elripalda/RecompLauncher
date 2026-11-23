@@ -624,6 +624,32 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
 }
 
+/// How many people want a recomp: everyone who saved it (Add to Library, signed in) or is waiting for
+/// its Notify Me email, each account once. The website's own number for the Save button on its page,
+/// shown on the launcher's game page beside Notify Me and Add to Library. Kept 10 minutes: the site
+/// keeps it 2 (5 at Cloudflare), and a count this size doesn't need to be newer.
+pub async fn interest(http: &reqwest::Client, dir: &Path, id: &str) -> Result<Fetched, Error> {
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = format!("{}/api/pc.php?a=interest&id={id}", base());
+    cached(http, &url, dir.join("cache/interest").join(format!("{id}.json")), INTEREST_FRESH, crate::net::QUICK, true, interest_ok).await
+}
+
+/// How long one recomp's count of who wants it is kept before it's asked for again (seconds).
+pub const INTEREST_FRESH: u64 = 600;
+
+/// An answer that carries the count, a whole number. Anything else isn't kept, so a bad answer never
+/// replaces a good one on disk. (A website from before the count answers 400, Unknown request.)
+fn interest_ok(v: &Value) -> bool {
+    v.get("n").map(Value::is_u64).unwrap_or(false)
+}
+
+/// The count in an answer `interest_ok` took (0 for anything else).
+pub fn interest_n(v: &Value) -> u64 {
+    v.get("n").and_then(Value::as_u64).unwrap_or(0)
+}
+
 /// How a release's files were checked before the store offered them (ClamAV on the website's server,
 /// or VirusTotal): for Downloads, beside each finished download. Kept an hour.
 /// `force`: asked again (a release still being checked, which turns Verified once the team okays it).
@@ -1331,6 +1357,22 @@ mod tests {
         assert_eq!(super::trend_fresh(None, "2026-11-14"), 0);
         assert!(super::trend_ok(&chart));
         assert!(!super::trend_ok(&serde_json::json!({ "ok": false, "entries": [] })));
+    }
+
+    #[test]
+    fn interest_answer_is_a_whole_number() {
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 3412 })));
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 0 })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": false, "error": "Unknown request." })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": "12" })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": -3 })));
+    }
+
+    #[test]
+    fn interest_count_is_zero_without_one() {
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true, "n": 3412 })), 3412);
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true })), 0);
+        assert_eq!(super::interest_n(&serde_json::Value::Null), 0);
     }
 
     #[test]

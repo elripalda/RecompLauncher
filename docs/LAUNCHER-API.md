@@ -195,6 +195,10 @@ Everything the launcher asks this server goes to one address, `API_BASE` in `src
 - `api/gh.php?repo=`: kept on disk for 6 hours per repo. Asked for when the player opens a game's
   page, installs or updates, and on start for installed games whose copy is older than 6 hours.
 - `api/pc.php?a=counts` and `a=feedback`: only when a page that shows them opens, kept for 1 hour.
+- `api/pc.php?a=interest&id=`: `{n}`, how many saved the recomp or wait for its Notify Me email (each
+  account once), the number on its website page's Save button. Asked when its game page opens, kept
+  for 10 minutes (`cache/interest/`). The game page shows it after Notify Me and Add to Library, in
+  Big Picture too, from 10 (`wantCount` in app.js). A site without it answers 400, and nothing shows.
 - `launcher/version.json`: on start (an answer from the last hour is reused), then about every
   6 hours, or after a `launcher` push.
 - `api/launcher-ping.php`: on open, then every 30 minutes at the most often. A `next` (seconds) in

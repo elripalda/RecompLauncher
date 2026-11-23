@@ -3340,5 +3340,6 @@
  "Syncs when you press Play": "Se sincroniza al presionar Jugar",
  "syncs when you press Play": "se sincroniza al presionar Jugar",
  "Saved {time}. What's there now is kept as a backup first.": "Guardada {time}. Lo que hay ahora se guarda antes como copia.",
- "A newer save is in the cloud": "Hay una partida más reciente en la nube"
+ "A newer save is in the cloud": "Hay una partida más reciente en la nube",
+ "{n} people saved it or are waiting for it": "{n} personas lo guardaron o lo están esperando"
 }

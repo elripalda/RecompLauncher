@@ -1416,5 +1416,6 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} est désinstallé, mais son dossier est resté : une copie de ses sauvegardes n'a pas pu être faite avant. Il est dans {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Une copie de ses sauvegardes est gardée. Réinstalle-le et remets-les depuis son onglet Sauvegardes.",
  "{path}. A copy of its saves is kept first.": "{path}. Une copie de ses sauvegardes est gardée avant.",
- "Delete its folder and its saves": "Supprimer son dossier et ses sauvegardes"
+ "Delete its folder and its saves": "Supprimer son dossier et ses sauvegardes",
+ "{n} people saved it or are waiting for it": "{n} personnes l'ont enregistré ou l'attendent"
 }
