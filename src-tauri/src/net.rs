@@ -728,6 +728,106 @@ pub fn with_proxy(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     b.no_proxy().proxy(reqwest::Proxy::custom(proxy_for))
 }
 
+// ---------- why a connection failed ----------
+
+/// The errors under this one, outermost first (reqwest's, hyper's, then the system's or TLS's).
+fn causes(e: &reqwest::Error) -> Vec<&(dyn std::error::Error + 'static)> {
+    let mut out = vec![];
+    let mut at = std::error::Error::source(e);
+    while let Some(s) = at {
+        out.push(s);
+        at = s.source();
+    }
+    out
+}
+
+/// The connection opened but the secure handshake didn't finish: what came back wasn't TLS, or
+/// its certificate wasn't one to trust. rustls reports both as invalid data. A router filter,
+/// antivirus or VPN that blocks a site by name usually does this, where a site that's down or
+/// unreachable refuses or never answers instead.
+pub fn tls_failed(e: &reqwest::Error) -> bool {
+    let ios = causes(e).into_iter().filter_map(|s| s.downcast_ref::<std::io::Error>());
+    ios.flat_map(io_kinds).any(|k| k == std::io::ErrorKind::InvalidData)
+}
+
+/// An io error's kind and the kinds of the io errors it wraps. reqwest wraps rustls's InvalidData
+/// in one of kind Other, and an io error's `source()` skips the error it wraps, so `get_ref` it is.
+fn io_kinds(e: &std::io::Error) -> Vec<std::io::ErrorKind> {
+    let mut out = vec![];
+    let mut at = Some(e);
+    while let Some(i) = at {
+        out.push(i.kind());
+        at = i.get_ref().and_then(|inner| inner.downcast_ref::<std::io::Error>());
+    }
+    out
+}
+
+/// The deepest reason under an error, in its own words, for the trail ("received corrupt message
+/// of type InvalidContentType", "Connection refused"). reqwest's own text alone says only "error
+/// sending request".
+pub fn cause(e: &reqwest::Error) -> String {
+    causes(e).last().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+}
+
+#[cfg(test)]
+mod connection_failure_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// A server that answers anything with a plain-text page, the way a blocking filter answers a
+    /// secure connection it won't let through. Its port.
+    fn plain_text_server() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                let _ = s.read(&mut [0u8; 1024]);
+                let _ = s.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+            }
+        });
+        port
+    }
+
+    fn closed_port() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    }
+
+    fn get_error(url: &str) -> reqwest::Error {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(reqwest::Client::new().get(url).send()).unwrap_err()
+    }
+
+    #[test]
+    fn a_handshake_answered_in_plain_text_is_a_secure_connection_failure() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
+        assert!(e.is_connect());
+        assert!(tls_failed(&e), "{}", cause(&e));
+    }
+
+    #[test]
+    fn a_secure_connection_failure_says_so_and_names_the_server() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
+        let msg = crate::Error::from(e).to_string();
+        assert!(msg.starts_with("Couldn't open a secure connection to 127.0.0.1."), "{msg}");
+    }
+
+    #[test]
+    fn a_refused_connection_is_not_a_secure_connection_failure() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", closed_port()));
+        assert!(e.is_connect());
+        assert!(!tls_failed(&e));
+    }
+
+    #[test]
+    fn the_cause_is_the_deepest_reason() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
+        assert_ne!(cause(&e), e.to_string());
+    }
+}
+
 #[cfg(test)]
 mod proxy_tests {
     use super::*;
