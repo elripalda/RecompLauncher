@@ -63,7 +63,7 @@
   <releases>
     <release version="0.90.0-beta.68" date="2026-11-22">
       <description>
-        <p>One simpler Easy Setup for every game, games that rebuild with each new release, a cleaner Downloads list, and general improvements.</p>
+        <p>Easy Setup rebuilt so every game sets up the same way, games build again with every new release and after a build that was cut short, every build shows on Downloads with its progress, cloud saves are asked about once, and cleaner game pages.</p>
       </description>
     </release>
     <release version="0.90.0-beta.67" date="2026-11-20">
