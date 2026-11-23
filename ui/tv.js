@@ -1279,6 +1279,7 @@
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in the Catalog'))}
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
+          ${(() => { const on = window.reviewAskOn ? window.reviewAskOn() : true; return `<button type="button" class="tv-item" data-f data-key="s:reviewask" data-tvact="reviewask"><span class="k">${esc(t('Ask After Playing'))}<small>${esc(t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>`; })()}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
           ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
@@ -2939,6 +2940,8 @@
       case 'back': return back();
       case 'leave': return leave();
       case 'monitor': sfx('open'); return tvMonitorSheet();
+      // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
+      case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');

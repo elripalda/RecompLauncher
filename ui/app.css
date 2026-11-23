@@ -1292,14 +1292,44 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .beta-pill{font-size:12px!important;font-weight:700;color:var(--cyan)!important;padding:3px 10px;border-radius:99px;background:rgba(52,242,232,.1)}
 .beta-notes{margin:4px 0 10px;color:var(--muted);white-space:pre-line}
 .beta-card .muted{margin:6px 0 12px}
-.ask-run{position:fixed;right:22px;bottom:22px;z-index:60;width:380px;max-width:calc(100vw - 44px);padding:18px 20px;border-radius:20px;background:rgba(20,31,51,.97);backdrop-filter:blur(20px);border:1px solid var(--line2);box-shadow:0 24px 60px -16px rgba(0,0,0,.85);display:flex;flex-direction:column;gap:8px;animation:islIn .36s var(--ease) both}
-.ask-run.out{animation:islOut .25s ease forwards}
-.ask-run b{font-size:15px;padding-right:26px}
-.ask-run>span{font-size:13px;color:var(--muted)}
-.ask-run .ask-x{position:absolute;top:10px;right:12px;width:28px;height:28px;border-radius:9px;color:var(--dim);font-size:19px;line-height:1}
-.ask-run .ask-x:hover{background:var(--fill3);color:var(--ink)}
-.ask-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px}
-.ask-three .btn{padding:0 8px;font-size:13px;height:40px}
+/* How did it run? (more.js reviewDialog): in front of everything, the game's own background art on
+   top with its cover and the question, then the three answers as big cards in their colors, and the
+   few words in the same window. Don't Ask Me Again and Not Now share the last line. */
+.modal.rv{width:min(620px,94vw);padding:0;gap:0;overflow:hidden;position:relative}
+.modal.rv:focus{outline:none}
+.rv-art{position:relative;min-height:150px;display:flex;align-items:flex-end;gap:16px;padding:22px 26px 20px;background:linear-gradient(180deg,rgba(8,12,20,.1) 0%,rgba(8,12,20,.55) 55%,var(--card) 100%),var(--rv-hero) center 30%/cover no-repeat,var(--card2)}
+.rv-art.plain{background:var(--noise),radial-gradient(60% 120% at 20% 0%,rgba(52,242,232,.18),transparent 70%),linear-gradient(180deg,rgba(55,123,182,.18),transparent),var(--card)}
+.rv-cover{flex:none;width:68px;height:90px;object-fit:cover;border-radius:12px;box-shadow:0 14px 34px -10px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.12)}
+.rv-tt{min-width:0;display:flex;flex-direction:column;gap:6px}
+.rv-tt h2{margin:0;font-size:24px;line-height:1.15;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.6);overflow-wrap:anywhere}
+.rv-art.plain .rv-tt h2{color:var(--ink);text-shadow:none}
+.rv-when{align-self:flex-start;font-size:12px;font-weight:700;color:#e9f6ff;padding:3px 10px;border-radius:99px;background:rgba(8,12,20,.55);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(6px)}
+.rv-body{padding:6px 26px 22px;display:flex;flex-direction:column;gap:14px;animation:fadeIn .2s ease}
+.rv-lead{margin:0;color:var(--muted);font-size:13.5px}
+.rv-picks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.rv-pick{--c:61,220,151;display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:16px 14px 15px;border-radius:16px;text-align:left;background:linear-gradient(180deg,rgba(var(--c),.09),rgba(var(--c),.02));border:1px solid rgba(var(--c),.26);transition:border-color .15s,background .15s,transform .12s,box-shadow .15s}
+.rv-pick.v-issues{--c:255,200,87}
+.rv-pick.v-broken{--c:255,107,107}
+.rv-pick:hover{border-color:rgba(var(--c),.7);background:linear-gradient(180deg,rgba(var(--c),.16),rgba(var(--c),.04));box-shadow:0 14px 34px -18px rgba(var(--c),.7)}
+.rv-pick:active{transform:scale(.98)}
+.rv-pick:focus-visible{outline:2px solid rgb(var(--c));outline-offset:2px}
+.rv-ic{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:rgb(var(--c));background:rgba(var(--c),.13);margin-bottom:4px}
+.rv-pick b{font-size:15px}
+.rv-pick>span:last-child{font-size:12.5px;line-height:1.35;color:var(--muted)}
+.rv-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:2px}
+.modal .rv-never{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13.5px;font-weight:600}
+.rv-never span{display:flex;flex-direction:column;gap:1px}
+.rv-never small{font-size:12px;font-weight:500;color:var(--dim)}
+.rv-two{padding-top:10px;gap:12px}
+.rv-chosen{display:flex;align-items:center;gap:10px}
+.rv-back{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--muted);background:var(--fill2);border:1px solid var(--line2)}
+.rv-back:hover{color:var(--ink);border-color:var(--line3)}
+.rv-q{font-size:16px}
+.rv textarea{width:100%;resize:vertical;min-height:96px;border-radius:12px;border:1px solid var(--line2);background:var(--fill);color:var(--ink);padding:11px 13px;font:500 13.5px Figtree,sans-serif}
+.rv textarea:focus{outline:none;border-color:var(--line3)}
+.rv .acts{gap:8px}
+.rv .ask-anon{display:block;font-size:11.5px;color:var(--muted);text-align:center}
+@media (max-width:560px){.rv-picks{grid-template-columns:1fr}.rv-pick{flex-direction:row;align-items:center}.rv-ic{margin:0}}
 .ask-log{display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;margin-top:2px}
 .ask-log input{width:17px;height:17px;flex:none;margin-top:1px;accent-color:var(--cyan)}
 .ask-log span{display:flex;flex-direction:column;gap:1px}
@@ -1307,12 +1337,6 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .ask-specs{font-size:12px;color:var(--dim);line-height:1.4;overflow-wrap:anywhere}
 .ask-how{align-self:flex-start;font-size:13px}
 .ask-err{margin:0;font-size:13px;color:var(--bad,#ff7a7a)}
-.ask-three .v-runs:hover{border-color:rgba(52,242,232,.5)}
-.ask-three .v-issues:hover{border-color:rgba(245,184,61,.55)}
-.ask-three .v-broken:hover{border-color:rgba(255,122,122,.55)}
-.ask-run textarea{width:100%;resize:none;border-radius:12px;border:1px solid var(--line2);background:var(--fill);color:var(--ink);padding:10px 12px;font:500 13.5px Figtree,sans-serif}
-.ask-run textarea:focus{outline:none;border-color:var(--line3)}
-.ask-run .acts{margin-top:4px;gap:8px}
 .whatsnew{max-width:560px}
 .whatsnew .md{max-height:52vh;overflow:auto;margin:10px 0 18px;color:var(--muted)}
 .whatsnew .md h2,.whatsnew .md h3{color:var(--ink);font-size:15px;margin:14px 0 6px}
@@ -2745,7 +2769,6 @@ body.light .su-req{color:#8a5300}
 .runs .rep-filter{display:flex;gap:6px;margin:12px 0 0}
 .runs .rep-filter .chip{height:30px;padding:0 12px;font-size:12.5px}
 .runs .rep-filter .chip.on{color:var(--ink);background:var(--fill2,rgba(255,255,255,.08));border-color:var(--line3)}
-.ask-run .ask-anon{display:block;margin-top:8px;font-size:11.5px;color:var(--muted);text-align:center}
 .loc-ask{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--muted);cursor:pointer}
 
 /* Console Labels on Covers: the console's strip across the top of a cover (the site's PNG), over

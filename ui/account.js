@@ -159,11 +159,17 @@ function accountSection(group, row) {
 }
 // ---------- Settings > Reviews ----------
 // The player's own reviews have their own section, so they're found without looking under Account.
-// Signed out there are none to show: what signing in is for, and the button.
+// On top, whether the launcher asks for one after a long session: the same switch as Don't Ask Me
+// Again on that question, the other way round. Signed out there are no reviews to show: what
+// signing in is for, and the button.
 function reviewsSection(group, row) {
-  if (S.account && S.account.signedIn) return myReportsGroup(group, row);
+  const on = window.reviewAskOn ? window.reviewAskOn() : true;
+  const label = t('Ask After Playing');
+  const sw = `<button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-act="acc-review-ask"></button>`;
+  const ask = group(t('Asking for Reviews'), row(label, t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), sw));
+  if (S.account && S.account.signedIn) return ask + myReportsGroup(group, row);
   const signIn = `<button type="button" class="btn sm main" data-act="acc-signin">${esc(t('Sign in'))}</button>`;
-  return group(t('Your Reviews'), row(t('Sign In to Write Reviews'), t('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.'), signIn));
+  return ask + group(t('Your Reviews'), row(t('Sign In to Write Reviews'), t('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.'), signIn));
 }
 // The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
 // computer's own name. Only copies made after a change carry the new name.
@@ -966,6 +972,11 @@ window.accountAct = async (act, el) => {
     }
     // The dot on the account button is a developer's answer: it opens Reviews, where the answer is.
     case 'acc-btn': if (S.account && S.account.signedIn) { const unread = reportsUnread(); S.setTab = unread ? 'reviews' : 'account'; if (unread) loadMyReports(); return go('settings'); } return signIn(false);
+    case 'acc-review-ask': {
+      const on = el.getAttribute('aria-checked') !== 'true';
+      await window.setReviewAsk(on);
+      return render(true);
+    }
     case 'myrep-load': return loadMyReports();
     case 'myrep-send': {
       const ta = $(`textarea[data-myrep="${CSS.escape(String(id))}"]`);

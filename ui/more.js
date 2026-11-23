@@ -215,18 +215,35 @@ async function signInToReport() {
 const needSignIn = (e) => { const m = String(e && e.message ? e.message : e); return m.startsWith('NEED_SIGNIN|') ? m.slice(12) : null; };
 window.signInToReport = signInToReport;
 const VERDICT = [['runs', N_('Plays great')], ['issues', N_('Has problems')], ['broken', N_('Won\'t run')]];
+// What each answer means, under it on its card, and its picture.
+const VERDICT_SUB = { runs: N_('Ran smoothly, start to finish'), issues: N_('Glitches, crashes or slowdowns'), broken: N_('Doesn\'t start, or can\'t be played') };
+const VERDICT_ICON = {
+  runs: '<circle cx="12" cy="12" r="9"/><path d="m8 12.4 2.8 2.8L16.2 9.8"/>',
+  issues: '<path d="M10.3 4.3 2.9 17.4A2 2 0 0 0 4.6 20.4h14.8a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/><path d="M12 9.6v4.2M12 17.2h.01"/>',
+  broken: '<circle cx="12" cy="12" r="9"/><path d="m9.2 9.2 5.6 5.6m0-5.6-5.6 5.6"/>',
+};
+const rvIcon = (k) => `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${VERDICT_ICON[k]}</svg>`;
+// Asking after a long session is the player's to turn off (Don't Ask Me Again, or Settings >
+// Reviews, which turns it back on). On until they do.
+const reviewAskOn = () => (S.settings.ui || {}).review_ask !== false;
+const setReviewAsk = (on) => saveUi({ review_ask: !!on }, true);
+// A game the account has a review of already, written on this PC or any other.
+const reviewedAlready = (id) => ((S.myReports && S.myReports.list) || []).some((x) => x.app === id);
+Object.assign(window, { reviewAskOn, setReviewAsk });
 async function askRun(id, secs, asked_for) {
   const g = S.library[id];
   if (!g || g.local) return;
-  // Asked after the first long session of each version. Not answered: asked again after three more
-  // long sessions, three times at most. Answered: not again until the next version.
+  // Asked after a long session until the game has a review: after the first long session of each
+  // version, and if that goes unanswered, after three more, three times at most. Once reviewed it's
+  // never asked about again, and nothing is asked once the player turned asking off.
   const asked = (S.settings.ui || {}).ran || {};
-  if (asked[id] === 'never' && !asked_for) return;
-  // Signed out it can't be sent: not asked after a session, and the report button asks to sign in.
+  if (!asked_for && (!reviewAskOn() || asked[id] === 'never' || reviewedAlready(id))) return;
+  // Signed out it can't be sent: not asked after a session, and the review button asks to sign in.
   if (!signedIn()) return asked_for ? signInToReport() : undefined;
   const was = asked[id];
+  const sentBefore = !!(was && typeof was === 'object' && was.sent);
   let r = was && typeof was === 'object' ? Object.assign({}, was) : was ? { tag: was, asks: 1, waits: 0, sent: false } : null;
-  if (!r || r.tag !== g.tag) r = { tag: g.tag, asks: 0, waits: 0, sent: false };
+  if (!r || r.tag !== g.tag) r = { tag: g.tag, asks: 0, waits: 0, sent: sentBefore };
   const keep = (x) => saveUi({ ran: Object.assign({}, (S.settings.ui || {}).ran || {}, { [id]: x }) }, true);
   if (!asked_for) {
     if (r.sent || r.asks >= 3) return;
@@ -246,11 +263,13 @@ async function askRun(id, secs, asked_for) {
     if (S.view === 'game' && S.arg === id) setTimeout(() => loadReports(id, true), 1500);
     if (S.account && S.account.signedIn && window.loadMyReports) setTimeout(() => window.loadMyReports(true), 2500);
   };
-  const a = byId(id) || {};
-  const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
   const specsLine = pre ? [pre.device, pre.specs, pre.version].filter(Boolean).join(' · ') : '';
   if (tvOn() && window.tvAsk) {
-    const i = await window.tvAsk(tf('How did {name} run?', { name: g.name }), VERDICT.map(([, n]) => ({ label: t(n), sub: t('Shows on its page, with your PC\'s graphics card'), icon: 'check' })).concat([{ label: t('Not now'), icon: 'chevL' }]));
+    const items = VERDICT.map(([k, n]) => ({ label: t(n), sub: t(VERDICT_SUB[k]), icon: 'check' }));
+    // After a session, Don't Ask Me Again too, as on the desktop.
+    if (!asked_for) items.push({ label: t('Don\'t Ask Me Again'), sub: t('Turn it back on in Settings, Reviews.'), icon: 'bell' });
+    const i = await window.tvAsk(tf('How did {name} run?', { name: g.name }), items.concat([{ label: t('Not now'), icon: 'chevL' }]));
+    if (!asked_for && i === 3) return setReviewAsk(false);
     if (i == null || i < 0 || i > 2) return;
     const verdict = VERDICT[i][0];
     const sent = (p) => p.catch((e) => { const s = needSignIn(e); return s != null ? signInToReport() : fail(e); });
@@ -261,61 +280,93 @@ async function askRun(id, secs, asked_for) {
     if (note == null) return;
     return sent(send(verdict, note, !!(pre && pre.log)));
   }
-  const old = $('.ask-run');
-  if (old) old.remove();
-  const box = document.createElement('div');
-  box.className = 'ask-run';
-  box.setAttribute('role', 'dialog');
-  box.innerHTML = `<button type="button" class="ask-x" aria-label="${esc(t('Close'))}">×</button><b>${esc(tf('How did {name} run?', { name: g.name }))}</b>
-    <span>${esc(t('It helps others, and shows on its page with your PC\'s graphics card and Windows version.'))}</span>
-    <div class="ask-three">${VERDICT.map(([k, n]) => `<button type="button" class="btn v-${k}" data-v="${k}">${esc(t(n))}</button>`).join('')}</div>`;
-  document.body.append(box);
-  const close = () => { box.classList.add('out'); setTimeout(() => box.remove(), 250); };
-  const timer = setTimeout(close, 60000);
-  box.addEventListener('click', (e) => {
-    if (e.target.closest('.ask-x')) { clearTimeout(timer); return close(); }
-    const v = e.target.closest('[data-v]');
-    if (!v) return;
-    clearTimeout(timer);
-    const verdict = v.dataset.v, bad = verdict !== 'runs';
-    // A few words: needed for a problem (what happened, and when), up to them for Plays great.
-    box.innerHTML = `<button type="button" class="ask-x" aria-label="${esc(t('Close'))}">×</button><b>${esc(bad ? t('What happened?') : t('Anything others should know?'))}</b>
-      <textarea rows="3" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}></textarea>
+  // After a session it waits for any other window the launcher has open (a save to pick, say).
+  if (!asked_for && typeof noModal === 'function') await noModal();
+  reviewDialog({ id, g, secs: asked_for ? 0 : secs, auto: !asked_for, pre, specsLine, send });
+}
+// The review, in front of everything: the game's art and the question on top, the three answers as
+// cards, then (in the same window) a few words and what goes with them. Asked after a session, it
+// also has Don't Ask Me Again, which turns asking off for every game until Settings > Reviews turns
+// it back on. While the player is writing, a click outside or Escape doesn't throw the words away.
+function reviewDialog({ id, g, secs, auto, pre, specsLine, send }) {
+  const a = byId(id) || {};
+  const hero = media(thumbOf(a.hero || a.cover, 960)), cover = media(thumbOf(a.cover, 160));
+  const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
+  const session = secs >= 60 ? `<small class="rv-when">${esc(tf('{time} this session', { time: fmtTime(secs) }))}</small>` : '';
+  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: g.name }))}</h2></div></div>`;
+  const never = auto ? `<label class="rv-never"><button type="button" class="switch" role="switch" aria-checked="${!reviewAskOn()}" data-x="never"></button><span>${esc(t('Don\'t Ask Me Again'))}<small>${esc(t('Turn it back on in Settings, Reviews.'))}</small></span></label>` : '<span></span>';
+  const pick = ([k, n]) => `<button type="button" class="rv-pick v-${k}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span><b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></button>`;
+  const first = () => `<div class="rv-body"><p class="rv-lead">${esc(t('It helps others, and shows on its page with your PC\'s graphics card and Windows version.'))}</p>
+    <div class="rv-picks">${VERDICT.map(pick).join('')}</div>
+    <div class="rv-foot">${never}<button type="button" class="btn" data-x="no">${esc(auto ? t('Not Now') : t('Cancel'))}</button></div></div>`;
+  // A few words: needed for a problem (what happened, and when), up to them for Plays great.
+  const second = (verdict) => {
+    const bad = verdict !== 'runs';
+    const word = (VERDICT.find(([k]) => k === verdict) || [])[1];
+    return `<div class="rv-body rv-two"><div class="rv-chosen"><button type="button" class="rv-back" data-x="back" aria-label="${esc(t('Back'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><span class="rverdict v-${esc(verdict)}"><i aria-hidden="true"></i>${esc(t(word))}</span></div>
+      <b class="rv-q">${esc(bad ? t('What happened?') : t('Anything others should know?'))}</b>
+      <textarea rows="4" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}></textarea>
       ${pre && pre.log ? `<label class="ask-log"><input type="checkbox" data-log${bad ? ' checked' : ''}><span>${esc(t('Attach the Game\'s Log'))}<small>${esc(t('Only the game\'s developer sees the log.'))}</small></span></label>` : ''}
       ${specsLine ? `<small class="ask-specs">${esc(t('This goes with your review'))}: ${esc(specsLine)}</small>` : ''}
-      ${howTo ? `<button type="button" class="linkbtn ask-how" data-s="how">${esc(t('How to Report Bugs for This Game'))}</button>` : ''}
+      ${howTo ? `<button type="button" class="linkbtn ask-how" data-x="how">${esc(t('How to Report Bugs for This Game'))}</button>` : ''}
       <p class="ask-err" hidden></p>
-      <div class="acts grid2">${bad ? `<button type="button" class="btn" data-s="cancel">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-s="note" disabled>${esc(t('Send'))}</button>` : `<button type="button" class="btn" data-s="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-s="note">${esc(t('Send'))}</button>`}</div>
-      <small class="ask-anon">${esc(t('Your name isn\'t shown with your review.'))}</small>`;
-    const ta = $('textarea', box), go2 = $('[data-s="note"]', box), err = $('.ask-err', box);
-    ta.focus();
-    if (bad) ta.addEventListener('input', () => { go2.disabled = [...ta.value.trim()].length < 15; });
-    let busy = false;
-    box.onclick = async (ev) => {
-      if (ev.target.closest('.ask-x')) return close();
-      const s2 = ev.target.closest('[data-s]');
-      if (!s2 || busy) return;
-      if (s2.dataset.s === 'how') return invoke('open_url', { url: howTo }).catch(fail);
-      if (s2.dataset.s === 'cancel') return close();
-      const note = s2.dataset.s === 'note' ? ta.value.trim() : '';
-      if (bad && [...note].length < 15) return;
-      busy = true;
-      $$('.acts .btn', box).forEach((b) => { b.disabled = true; });
-      try {
-        await send(verdict, note, !!($('[data-log]', box) || {}).checked);
-        close();
-      } catch (ex) {
-        const s = needSignIn(ex);
-        if (s != null) { close(); return signInToReport(); }
-        // The site's own words when it turns the report down.
-        busy = false;
-        err.textContent = String(ex && ex.message ? ex.message : ex);
-        err.hidden = false;
-        $$('.acts .btn', box).forEach((b) => { b.disabled = false; });
-        if (bad) go2.disabled = [...ta.value.trim()].length < 15;
-      }
-    };
-  });
+      <div class="acts grid2">${bad ? `<button type="button" class="btn" data-x="back">${esc(t('Back'))}</button><button type="button" class="btn main" data-x="send" disabled>${esc(t('Send'))}</button>` : `<button type="button" class="btn" data-x="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-x="send">${esc(t('Send'))}</button>`}</div>
+      <small class="ask-anon">${esc(t('Your name isn\'t shown with your review.'))}</small></div>`;
+  };
+  let verdict = null, busy = false;
+  const s = modal(`${art}${first()}`, async (x, close) => {
+    const box = $('.modal', s);
+    const body = () => $('.rv-body', box);
+    const act = x.dataset.x;
+    if (act === 'never') {
+      const off = x.getAttribute('aria-checked') !== 'true';
+      x.setAttribute('aria-checked', String(off));
+      return setReviewAsk(!off);
+    }
+    if (act === 'v') {
+      verdict = x.dataset.v;
+      body().outerHTML = second(verdict);
+      // Words being written aren't thrown away by a click outside or Escape: Back and Send only.
+      s.dataset.busy = '1';
+      const ta = $('textarea', box), go2 = $('[data-x="send"]', box);
+      if (verdict !== 'runs') ta.addEventListener('input', () => { go2.disabled = [...ta.value.trim()].length < 15; });
+      return ta.focus();
+    }
+    if (act === 'back') {
+      if (busy) return;
+      delete s.dataset.busy;
+      body().outerHTML = first();
+      const f = $(`[data-v="${verdict}"]`, box);
+      return f && f.focus();
+    }
+    if (act === 'how') return invoke('open_url', { url: howTo }).catch(fail);
+    if (act !== 'send' && act !== 'skip') return;
+    const ta = $('textarea', box), err = $('.ask-err', box);
+    const note = act === 'send' ? ta.value.trim() : '';
+    if (verdict !== 'runs' && [...note].length < 15) return;
+    if (busy) return;
+    busy = true;
+    $$('.acts .btn, .rv-back', box).forEach((b) => { b.disabled = true; });
+    try {
+      await send(verdict, note, !!($('[data-log]', box) || {}).checked);
+      delete s.dataset.busy;
+      close();
+    } catch (ex) {
+      const sn = needSignIn(ex);
+      if (sn != null) { delete s.dataset.busy; close(); return signInToReport(); }
+      // The site's own words when it turns the review down.
+      busy = false;
+      err.textContent = String(ex && ex.message ? ex.message : ex);
+      err.hidden = false;
+      $$('.acts .btn, .rv-back', box).forEach((b) => { b.disabled = false; });
+      if (verdict !== 'runs') $('[data-x="send"]', box).disabled = [...ta.value.trim()].length < 15;
+    }
+  }, tf('How did {name} run?', { name: g.name }));
+  // Focus on the window, not on the first answer, so nothing looks picked before the player picks.
+  const box = $('.modal', s);
+  box.classList.add('rv');
+  box.tabIndex = -1;
+  box.focus();
 }
 T.event.listen('game', ({ payload: p }) => {
   if (p.state !== 'stopped' || (p.code != null && p.code !== 0)) return;
