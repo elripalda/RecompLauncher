@@ -2798,6 +2798,8 @@
  "Key inputs must declare a supported shared key type.": "Входи ключів мають оголошувати підтримуваний тип спільного ключа.",
  "Files and Saves": "Файли та збереження",
  "Move with the left stick": "Переміщення лівим стиком",
+ "Use the Controller Outside Big Picture": "Контролер поза Big Picture",
+ "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "Хрестовина, A, B, X, LB і RB переміщують і цим видом. Вимкни, якщо використовуєш контролер як мишу, щоб його кнопки не натискали тут щось іще. Утримання Menu й надалі відкриває режим Big Picture.",
  "Moving Around": "Переміщення",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Заверши вибір файлів цієї гри в простому налаштуванні.",
  "No save yet": "Збережень поки немає",

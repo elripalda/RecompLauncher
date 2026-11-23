@@ -2798,6 +2798,8 @@
  "Key inputs must declare a supported shared key type.": "อินพุตคีย์ต้องระบุประเภทคีย์ที่ใช้ร่วมกันที่รองรับ",
  "Files and Saves": "ไฟล์และเซฟ",
  "Move with the left stick": "เลื่อนด้วยสติกซ้าย",
+ "Use the Controller Outside Big Picture": "ใช้คอนโทรลเลอร์นอก Big Picture",
+ "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "ปุ่มทิศทาง, A, B, X, LB และ RB เลื่อนไปมาในมุมมองนี้ได้ด้วย ปิดไว้ถ้าคุณใช้คอนโทรลเลอร์เป็นเมาส์ เพื่อไม่ให้ปุ่มของมันกดสิ่งต่าง ๆ ที่นี่ไปด้วย การกด Menu ค้างไว้ยังเปิดโหมด Big Picture ได้",
  "Moving Around": "การเลื่อน",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|เลือกไฟล์ของเกมนี้ให้เสร็จใน ตั้งค่าง่าย",
  "No save yet": "ยังไม่มีเซฟ",

@@ -3159,6 +3159,9 @@
   let nativeSeen = false;
   let lastPad = { b: '', t: 0 };
   const BORN = performance.now();
+  // Holding Menu on the desktop view opens Big Picture mode: not in the first few seconds after the
+  // launcher opens, and not while the first-run setup is up.
+  const holdOpensTV = () => document.hasFocus() && performance.now() - BORN > 3000 && !document.querySelector('.oob');
   function pad(b, kind) {
     // The same button twice within 70 ms is one press arriving twice (a PlayStation controller
     // read directly and again through Steam Input): only the first counts, and the button icons
@@ -3173,6 +3176,13 @@
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
     }
     if (!TV.on) {
+      // Settings → Controllers, Use the Controller Outside Big Picture off: the desktop view leaves
+      // the controller alone (a player using it as a mouse, its RB a click, would also change the
+      // page), apart from holding Menu for Big Picture mode.
+      if (S.settings.pad_desktop === false) {
+        if (b === 'menu-hold' && holdOpensTV()) enter();
+        return;
+      }
       // The file browser and the first-run setup take the controller while they're up.
       if (window.fbPad && window.fbPad(b)) return;
       if (window.oobPad && window.oobPad(b)) return;
@@ -3181,9 +3191,8 @@
         if (!TV.hinted && !document.querySelector('.oob')) { TV.hinted = true; if (window.toast) toast(t('Hold Menu on your controller to switch to Big Picture mode.')); }
         return;
       }
-      // A controller on the desktop view: holding Menu (Options) for a second opens TV mode. Not in
-      // the first few seconds after the launcher opens, and not while the first-run setup is up.
-      if (b === 'menu-hold' && document.hasFocus() && performance.now() - BORN > 3000 && !document.querySelector('.oob')) enter();
+      // A controller on the desktop view: holding Menu (Options) for a second opens TV mode.
+      if (b === 'menu-hold' && holdOpensTV()) enter();
       else if (!TV.hinted && ['a', 'b', 'up', 'down', 'left', 'right', 'menu'].includes(b) && !document.querySelector('.oob')) { TV.hinted = true; if (window.toast) toast(t('Hold Menu on your controller to switch to Big Picture mode.')); }
       return;
     }

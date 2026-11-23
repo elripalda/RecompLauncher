@@ -2798,6 +2798,8 @@
  "Key inputs must declare a supported shared key type.": "Đầu vào khóa phải khai báo một loại khóa dùng chung được hỗ trợ.",
  "Files and Saves": "Tệp và dữ liệu lưu",
  "Move with the left stick": "Di chuyển bằng cần trái",
+ "Use the Controller Outside Big Picture": "Dùng tay cầm ngoài Big Picture",
+ "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "Phím hướng, A, B, X, LB và RB cũng di chuyển trong chế độ xem này. Hãy tắt nếu bạn dùng tay cầm như chuột, để các nút không bấm luôn vào thứ gì ở đây. Giữ Menu vẫn mở Chế độ Big Picture.",
  "Moving Around": "Di chuyển",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Hãy chọn xong các tệp của trò chơi này trong Thiết lập dễ dàng.",
  "No save yet": "Chưa có dữ liệu lưu",

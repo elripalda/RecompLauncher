@@ -2798,6 +2798,8 @@
  "Key inputs must declare a supported shared key type.": "Anahtar girdileri desteklenen bir paylaşılan anahtar türü belirtmelidir.",
  "Files and Saves": "Dosyalar ve kayıtlar",
  "Move with the left stick": "Sol çubukla gezin",
+ "Use the Controller Outside Big Picture": "Kumandayı Big Picture dışında kullan",
+ "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "Yön tuşları, A, B, X, LB ve RB bu görünümde de gezinir. Kumandanızı fare olarak kullanıyorsanız kapatın, böylece tuşları burada da bir şeylere basmaz. Menu'yü basılı tutmak Big Picture modunu açmaya devam eder.",
  "Moving Around": "Gezinme",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Bu oyunun dosyalarını Kolay kurulum'da seçmeyi bitirin.",
  "No save yet": "Henüz kayıt yok",

@@ -5053,7 +5053,8 @@ function pageSettings() {
     }
     case 'pads':
       body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
-        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick'))))
+        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick')))
+          + row(t('Use the Controller Outside Big Picture'), t('The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don\'t also press things here. Holding Menu still opens Big Picture mode.'), sw('pad_desktop', st.pad_desktop !== false, t('Use the Controller Outside Big Picture'))))
         + group(t('Buttons'), `<div class="pad-guide">${buttonGuide().map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>`);
       break;
     case 'pc':
@@ -9370,6 +9371,8 @@ async function act(el, e) {
       if (k === 'auto_update_all') { await saveSettings({ auto_update_all: !autoUpdateAll() }); if (autoUpdateAll()) checkUpdates(); return; }
       if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
       if (k === 'start_at_login') { await startAtLogin(!S.settings.start_at_login); return render(true); }
+      // Turned off with the controller itself: its highlight goes too, as it does when the mouse moves.
+      if (k === 'pad_desktop') { await saveSettings({ pad_desktop: S.settings.pad_desktop === false }); if (S.settings.pad_desktop === false) padLetGo(); return; }
       return saveSettings({ [k]: !S.settings[k] });
     }
     case 'libdir': {
@@ -9817,6 +9820,13 @@ window.deskPad = (b) => {
   }
   return false;
 };
+// The controller no longer moves around the desktop view (Settings → Controllers): no highlight.
+function padLetGo() {
+  PAD.armed = false;
+  document.body.classList.remove('pad-nav');
+  if (PAD.el) PAD.el.classList.remove('pad-focus');
+  PAD.el = null;
+}
 // The mouse moving again: no highlight.
 document.addEventListener('mousemove', (e) => {
   if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;

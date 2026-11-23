@@ -369,6 +369,11 @@ pub struct Settings {
     /// only the d-pad does (for players whose stick drifts, or who move a mouse with it).
     #[serde(default = "yes")]
     pub pad_stick: bool,
+    /// Settings → Controllers: the controller moves around the desktop view too. Off, the desktop
+    /// view leaves the controller alone (for players who use it as a mouse, where its buttons would
+    /// also press things in the launcher); holding Menu still opens Big Picture mode.
+    #[serde(default = "yes")]
+    pub pad_desktop: bool,
     /// On Linux: recomps with only a Windows version install that and play through Proton.
     #[serde(default)]
     pub proton: bool,
@@ -453,6 +458,7 @@ impl Default for Settings {
             close_to_tray: false,
             start_at_login: false,
             pad_stick: true,
+            pad_desktop: true,
             proton: false,
             proton_auto: false,
             tray_told: false,
@@ -868,6 +874,22 @@ mod tests {
         let saved = serde_json::to_string(&settings).unwrap();
         let restored: super::Settings = serde_json::from_str(&saved).unwrap();
         assert!(!restored.auto_install);
+    }
+
+    #[test]
+    fn the_controller_moves_around_the_desktop_view_by_default_and_for_settings_saved_before_it() {
+        // On keeps what every launcher before the switch did.
+        assert!(super::Settings::default().pad_desktop);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(settings.pad_desktop);
+    }
+
+    #[test]
+    fn the_controller_turned_off_on_the_desktop_view_stays_off() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","pad_desktop":false}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(!restored.pad_desktop);
     }
 
     #[test]

@@ -2798,6 +2798,8 @@
  "Key inputs must declare a supported shared key type.": "Input kunci harus menyatakan jenis kunci bersama yang didukung.",
  "Files and Saves": "File dan save",
  "Move with the left stick": "Bergerak dengan stik kiri",
+ "Use the Controller Outside Big Picture": "Pakai kontroler di luar Big Picture",
+ "The d-pad, A, B, X, LB and RB move around this view too. Turn it off if you use your controller as a mouse, so its buttons don't also press things here. Holding Menu still opens Big Picture mode.": "D-pad, A, B, X, LB, dan RB juga bergerak di tampilan ini. Matikan jika kamu memakai kontroler sebagai mouse, agar tombolnya tidak ikut menekan sesuatu di sini. Menahan Menu tetap membuka Mode Big Picture.",
  "Moving Around": "Navigasi",
  "NEED_COPY|Finish choosing this game's files in Easy Setup.": "NEED_COPY|Selesaikan pemilihan file game ini di Penyiapan mudah.",
  "No save yet": "Belum ada save",
