@@ -153,11 +153,6 @@ in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
   Find your files from `APPDIR` or your own program's path (`/proc/self/exe`), never from
   `APPIMAGE` or a mount point, and don't update yourself through `APPIMAGE`: updates come from
   your releases through the launcher.
-- A `start.program` or `prepare.program` that names a program inside the AppImage instead (`mkw`,
-  `usr/bin/game`) starts without your `AppRun`. The library folders your AppImage brings (`lib`,
-  `lib64`, `usr/lib`, `usr/lib64` and `usr/lib/<arch>-linux-gnu`, those that exist) go first on
-  `LD_LIBRARY_PATH` for it, as most `AppRun`s do. Anything else your `AppRun` sets up, it
-  doesn't get: set it in `start.env`, or link your program with an rpath of `$ORIGIN/lib`.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
   release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.

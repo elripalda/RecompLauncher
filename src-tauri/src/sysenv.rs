@@ -79,16 +79,6 @@ fn changes() -> &'static [Change] {
     C.get_or_init(|| if cfg!(any(test, target_os = "linux")) { changes_from(&|k| std::env::var(k).ok()) } else { vec![] })
 }
 
-/// A variable as the programs the launcher starts get it: the PC's own value, without the
-/// launcher's AppImage folders in it.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub fn for_games(k: &str) -> Option<OsString> {
-    match changes().iter().find(|(name, _)| *name == k) {
-        Some((_, v)) => v.clone(),
-        None => std::env::var_os(k),
-    }
-}
-
 pub fn clean_std(c: &mut std::process::Command) {
     for (k, v) in changes() {
         match v {
