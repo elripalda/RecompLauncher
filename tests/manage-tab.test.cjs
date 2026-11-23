@@ -102,7 +102,8 @@ test('Customize is called Edit Name and Artwork', () => {
 test('the side column has no buttons, and Launcher Support is a box on Overview', () => {
   const rail = fn(app, 'gameRail');
   assert.doesNotMatch(rail, /quickActs|btn/);
-  assert.match(rail, /S\.tab === 'overview' \? readyCard\(a\) \+ supportCard\(a\) : ''/);
+  // (Beta 68) The store card can sit between them (Placement in RecompLauncher on the site).
+  assert.match(rail, /S\.tab === 'overview' \? readyCard\(a\) \+ igSlot\(a, 'side'\) \+ supportCard\(a\) : ''/);
 });
 
 test('the facts card leaves out who made it (it is under the title)', () => {

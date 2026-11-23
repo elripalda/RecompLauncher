@@ -72,6 +72,16 @@ const fmtTime = (s) => {
   if (m && h < 10) return h === 1 ? tf('1 hour {m} min', { m }) : tf('{n} hours {m} min', { n: h, m });
   return tn(h, '1 hour', '{n} hours');
 };
+// A time in few letters, for tight spots: "2 hrs 8 min", "1 hr", "46 min". Other languages keep their
+// own words (theirs are short already).
+const fmtTimeShort = (s) => {
+  if (!/^en\b/i.test(document.documentElement.lang || 'en')) return fmtTime(s);
+  if (!s) return t('Not yet');
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  if (!h) return `${Math.max(1, m)} min`;
+  const hs = h === 1 ? '1 hr' : `${fmtNum(h)} hrs`;
+  return m && h < 100 ? `${hs} ${m} min` : hs;
+};
 const playedFor = (g) => (!g || !g.last_played ? t('Not played yet') : g.played_secs < 60 ? t('Under a minute') : fmtTime(g.played_secs));
 // On its own (a date column): "Today", not "today".
 const agoCap = (ts) => ago(ts).replace(/^./, (c) => c.toLocaleUpperCase(curLocale()));
@@ -1642,9 +1652,13 @@ function playCard(g, a) {
   const recent = days.some((x) => x.secs);
   // (Beta 67) The bars on the left, the numbers as a short list on the right: all the time played
   // first (it was the stats row's), then this week, this month, sessions and the longest one.
-  const rows = [...(a ? playtimeRows(a, gamePlaytime(a)).map(([k, v]) => [PT_IC.all, k, v]) : []),
-    [PT_IC.week, t('This week'), fmtTime(sum(now - 7 * 86400))], [PT_IC.month, t('This month'), fmtTime(sum(now - 30 * 86400))],
-    [PT_IC.ses, t('Sessions'), fmtNum(count)], [PT_IC.long, t('Longest'), fmtTime(longest)]];
+  // (Beta 68) Short times here ("2 hrs 8 min") so a long one never runs out of its column.
+  const tot = a ? gamePlaytime(a) : null;
+  const realSecs = (g) => (g && g.last_played && g.played_secs >= 60 ? g.played_secs : null);
+  const ptSecs = !a ? [] : tot && tot.grouped ? [realSecs(tot), realSecs(recompPlaytime(a.id))] : [realSecs(tot)];
+  const rows = [...(a ? playtimeRows(a, tot).map(([k, v], i) => [PT_IC.all, k, ptSecs[i] != null ? fmtTimeShort(ptSecs[i]) : v]) : []),
+    [PT_IC.week, t('This week'), fmtTimeShort(sum(now - 7 * 86400))], [PT_IC.month, t('This month'), fmtTimeShort(sum(now - 30 * 86400))],
+    [PT_IC.ses, t('Sessions'), fmtNum(count)], [PT_IC.long, t('Longest'), fmtTimeShort(longest)]];
   const bars = recent ? `<div class="bars" role="img" aria-label="${esc(t('Play time over the last two weeks'))}">${days.map((x) => `<div class="b" title="${esc(tf('{day}: {time}', { day: x.d.toLocaleDateString(curLocale(), { weekday: 'short', month: 'short', day: 'numeric' }), time: x.secs ? fmtTime(x.secs) : t('not played') }))}"><i class="${x.secs ? '' : 'z'}" style="height:${x.secs ? Math.max(6, Math.round((x.secs / max) * 100)) : 0}%"></i><span>${esc(x.d.toLocaleDateString(curLocale(), { weekday: 'narrow' }))}</span></div>`).join('')}</div>`
     : `<p class="muted pt-none">${esc(t('Not played in the last two weeks.'))}</p>`;
   return `<div class="card pt-card"><div class="card-h"><h3>${esc(t('Your play time'))}</h3><span>${esc(t('The last two weeks'))}</span></div>
@@ -2341,7 +2355,7 @@ function pageGame(id) {
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
       <div class="gp-title">${gameTitle(a, id)}</div>
-      <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}<div class="ig-slot" data-ig="${esc(id)}">${igCard(a)}</div></div></div>
+      <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
@@ -2352,7 +2366,7 @@ function pageGame(id) {
 const IG = { data: undefined, seen: new Set(), obs: null };
 async function loadIg() {
   try { const d = await invoke('ig_info'); IG.data = d && typeof d === 'object' ? d : null; } catch (e) { IG.data = null; }
-  for (const el of $$('.ig-slot')) { const a = byId(el.dataset.ig); if (a) { el.innerHTML = igCard(a); igWatch(); } }
+  for (const el of $$('.ig-slot')) { const a = byId(el.dataset.ig); if (a) { el.innerHTML = igCard(a, el.dataset.place, el.dataset.alt === '1'); igWatch(); } }
   if (S.view === 'settings') render(true);
 }
 const igOn = () => !!(IG.data && IG.data.on === true && IG.data.launcher === true);
@@ -2373,12 +2387,22 @@ function igVariant() {
   saveUi({ ig_pick: { r: round, v } }, true).catch(() => {});
   return v;
 }
-function igCard(a) {
+// (Beta 68) Where the card sits on the game's page, picked per game on the site: the right column
+// under Before You Play (side), under the stats (strip) or under Your Play Time (play). Never beside
+// Play. A game with no play time yet shows a play card under the stats instead.
+const IG_PLACES = ['side', 'strip', 'play'];
+const igPlace = (e) => (IG_PLACES.includes(e && e.at) ? e.at : 'side');
+function igSlot(a, where, alt) {
+  return `<div class="ig-slot ig-at-${where}" data-ig="${esc(a.id)}" data-place="${where}"${alt ? ' data-alt="1"' : ''}>${igCard(a, where, alt)}</div>`;
+}
+function igCard(a, where, alt) {
   const e = igEntry(a);
   if (!e) return '';
+  const at = igPlace(e);
+  if (where && at !== where && !(alt && where === 'strip' && at === 'play')) return '';
   const sale = Number(e.pct) > 0;
   const price = e.price ? `<span class="ig-price">${sale ? `<b class="ig-pct">-${fmtNum(Number(e.pct))}%</b>${e.old ? `<s>${esc(e.old)}</s>` : ''}` : ''}<b>${esc(e.price)}</b></span>` : '';
-  return `<div class="ig-card" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
+  return `<div class="ig-card${where && where !== 'side' ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
     <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div><small class="ig-aff">${esc(t('Affiliate link'))}</small></div>`;
 }
 // One view per game per launch, when the card is actually on screen.
@@ -2705,7 +2729,7 @@ function gameRail(a) {
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   // Who made it is under the title; adding it somewhere, its project page and reporting are in the
   // "…" menu. Overview has what it needs to play, and what the launcher can do for it.
-  const overview = S.tab === 'overview' ? readyCard(a) + supportCard(a) : '';
+  const overview = S.tab === 'overview' ? readyCard(a) + igSlot(a, 'side') + supportCard(a) : '';
   return `<div class="stack">${overview}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
     </div>`;
@@ -2806,8 +2830,11 @@ function gameBody(a) {
   if (S.tab === 'ach' && window.achBody) return window.achBody(a) + gameRail(a);
   if (S.tab === 'overview') {
     const feats = (a.features && a.features.length ? a.features : a.tags || []);
+    const pcard = inst ? playCard(inst, a) : '';
     body = `<div class="stack">${gameStrip(a, inst)}
-      ${inst ? playCard(inst, a) : ''}
+      ${igSlot(a, 'strip', !pcard)}
+      ${pcard}
+      ${pcard ? igSlot(a, 'play') : ''}
       ${window.betaCard ? window.betaCard(a) : ''}
       ${a.blurb ? `<p class="blurb">${esc(a.blurb)}</p>` : ''}
       ${ownAboutCard(id)}
