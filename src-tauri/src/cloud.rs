@@ -366,6 +366,43 @@ pub async fn spons_mine(app: AppHandle) -> Res<Value> {
     Ok(play_call(req, &url).await.unwrap_or(Value::Null))
 }
 
+/// Home's order from the website (admin: Launcher > Home page): which rows go where, the info boxes
+/// and banners between them. Signed in, it also has the blocks for App Testers. The last good
+/// answer is kept on disk so Home stays the same offline; null when there has never been one,
+/// and Home keeps its built-in order.
+#[tauri::command]
+pub async fn home_layout(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let file = st.dir.join("cache/home.json");
+    let acct = load(&st.dir);
+    let me = if acct.is_some() { "&me=1" } else { "" };
+    let url = format!("{}/api/home.php?page=app{me}", crate::catalog::base());
+    let mut req = st.http.get(&url).timeout(crate::net::QUICK);
+    if let Some(a) = &acct {
+        req = req.bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    }
+    if let Some(v) = home_fetch(req, &url).await {
+        crate::catalog::save(&file, &v);
+        return Ok(v);
+    }
+    Ok(crate::catalog::load(&file).filter(home_ok).unwrap_or(Value::Null))
+}
+
+async fn home_fetch(req: reqwest::RequestBuilder, url: &str) -> Option<Value> {
+    let r = crate::net::send(req, url, false).await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    home_ok(&v).then_some(v)
+}
+
+/// A Home list this launcher can read: version 1 with its items. A newer version is left alone, so
+/// a later change to the format can't break Home here.
+fn home_ok(v: &Value) -> bool {
+    v.get("v").and_then(Value::as_u64) == Some(1) && v.get("items").map(Value::is_array).unwrap_or(false)
+}
+
 /// A sponsor spot was on screen: one view, sent and forgotten.
 #[tauri::command]
 pub async fn spons_seen(app: AppHandle, id: u64) -> Res<()> {
@@ -2442,5 +2479,26 @@ mod status_tests {
         let local = vec![saves::Copy { name: "200.zip".into(), when: 200, size: 1, files: 1, hash: "b".into(), device: String::new(), played: 0 }];
         let s = saves::State { synced_hash: "a".into(), ..Default::default() };
         assert_eq!(waiting_copies(&local, &s), 0);
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::home_ok;
+    use serde_json::json;
+
+    #[test]
+    fn home_list_version_one_is_read() {
+        assert!(home_ok(&json!({"v": 1, "items": []})));
+    }
+
+    #[test]
+    fn home_list_of_a_newer_version_is_left_alone() {
+        assert!(!home_ok(&json!({"v": 2, "items": []})));
+    }
+
+    #[test]
+    fn home_list_without_items_is_left_alone() {
+        assert!(!home_ok(&json!({"v": 1, "error": "Try again in a moment."})));
     }
 }
