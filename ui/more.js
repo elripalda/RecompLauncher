@@ -268,7 +268,7 @@ async function askRun(id, secs, asked_for) {
     const items = VERDICT.map(([k, n]) => ({ label: t(n), sub: t(VERDICT_SUB[k]), icon: 'check' }));
     // After a session, Don't Ask Me Again too, as on the desktop.
     if (!asked_for) items.push({ label: t('Don\'t Ask Me Again'), sub: t('Turn it back on in Settings, Reviews.'), icon: 'bell' });
-    const i = await window.tvAsk(tf('How did {name} run?', { name: g.name }), items.concat([{ label: t('Not now'), icon: 'chevL' }]));
+    const i = await window.tvAsk(tf('How did {name} run?', { name: (byId(id) || {}).name || g.name }), items.concat([{ label: t('Not now'), icon: 'chevL' }]));
     if (!asked_for && i === 3) return setReviewAsk(false);
     if (i == null || i < 0 || i > 2) return;
     const verdict = VERDICT[i][0];
@@ -282,20 +282,23 @@ async function askRun(id, secs, asked_for) {
   }
   // After a session it waits for any other window the launcher has open (a save to pick, say).
   if (!asked_for && typeof noModal === 'function') await noModal();
-  reviewDialog({ id, g, secs: asked_for ? 0 : secs, auto: !asked_for, pre, specsLine, send });
+  // Changing a review: the dialog starts from what was said before.
+  const prev = asked_for ? myReviewOf(id) : null;
+  reviewDialog({ id, g, secs: asked_for ? 0 : secs, auto: !asked_for, pre, specsLine, send, prev });
 }
 // The review, in front of everything: the game's art and the question on top, the three answers as
 // cards, then (in the same window) a few words and what goes with them. Asked after a session, it
 // also has Don't Ask Me Again, which turns asking off for every game until Settings > Reviews turns
 // it back on. While the player is writing, a click outside or Escape doesn't throw the words away.
-function reviewDialog({ id, g, secs, auto, pre, specsLine, send }) {
+function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
   const a = byId(id) || {};
   const hero = media(thumbOf(a.hero || a.cover, 960)), cover = media(thumbOf(a.cover, 160));
   const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
   const session = secs >= 60 ? `<small class="rv-when">${esc(tf('{time} this session', { time: fmtTime(secs) }))}</small>` : '';
-  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: g.name }))}</h2></div></div>`;
+  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: (byId(id) || {}).name || g.name }))}</h2></div></div>`;
   const never = auto ? `<label class="rv-never"><button type="button" class="switch" role="switch" aria-checked="${!reviewAskOn()}" data-x="never"></button><span>${esc(t('Don\'t Ask Me Again'))}<small>${esc(t('Turn it back on in Settings, Reviews.'))}</small></span></label>` : '<span></span>';
-  const pick = ([k, n]) => `<button type="button" class="rv-pick v-${k}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span><b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></button>`;
+  const was = (k) => !!prev && prev.verdict === k;
+  const pick = ([k, n]) => `<button type="button" class="rv-pick v-${k}${was(k) ? ' was' : ''}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span>${was(k) ? `<em class="rv-was">${esc(t('Your Last Answer'))}</em>` : ''}<b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></button>`;
   const first = () => `<div class="rv-body"><p class="rv-lead">${esc(t('It helps others, and shows on its page with your PC\'s graphics card and Windows version.'))}</p>
     <div class="rv-picks">${VERDICT.map(pick).join('')}</div>
     <div class="rv-foot">${never}<button type="button" class="btn" data-x="no">${esc(auto ? t('Not Now') : t('Cancel'))}</button></div></div>`;
@@ -305,7 +308,7 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send }) {
     const word = (VERDICT.find(([k]) => k === verdict) || [])[1];
     return `<div class="rv-body rv-two"><div class="rv-chosen"><button type="button" class="rv-back" data-x="back" aria-label="${esc(t('Back'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><span class="rverdict v-${esc(verdict)}"><i aria-hidden="true"></i>${esc(t(word))}</span></div>
       <b class="rv-q">${esc(bad ? t('What happened?') : t('Anything others should know?'))}</b>
-      <textarea rows="4" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}></textarea>
+      <textarea rows="4" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}>${prev && prev.note ? esc(prev.note) : ''}</textarea>
       ${pre && pre.log ? `<label class="ask-log"><input type="checkbox" data-log${bad ? ' checked' : ''}><span>${esc(t('Attach the Game\'s Log'))}<small>${esc(t('Only the game\'s developer sees the log.'))}</small></span></label>` : ''}
       ${specsLine ? `<small class="ask-specs">${esc(t('This goes with your review'))}: ${esc(specsLine)}</small>` : ''}
       ${howTo ? `<button type="button" class="linkbtn ask-how" data-x="how">${esc(t('How to Report Bugs for This Game'))}</button>` : ''}
@@ -329,7 +332,11 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send }) {
       // Words being written aren't thrown away by a click outside or Escape: Back and Send only.
       s.dataset.busy = '1';
       const ta = $('textarea', box), go2 = $('[data-x="send"]', box);
-      if (verdict !== 'runs') ta.addEventListener('input', () => { go2.disabled = [...ta.value.trim()].length < 15; });
+      // A note from before counts: Send is ready when it's long enough already.
+      const short = () => verdict !== 'runs' && [...ta.value.trim()].length < 15;
+      go2.disabled = short();
+      ta.addEventListener('input', () => { go2.disabled = short(); });
+      ta.setSelectionRange(ta.value.length, ta.value.length);
       return ta.focus();
     }
     if (act === 'back') {
@@ -361,7 +368,7 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send }) {
       $$('.acts .btn, .rv-back', box).forEach((b) => { b.disabled = false; });
       if (verdict !== 'runs') $('[data-x="send"]', box).disabled = [...ta.value.trim()].length < 15;
     }
-  }, tf('How did {name} run?', { name: g.name }));
+  }, tf('How did {name} run?', { name: (byId(id) || {}).name || g.name }));
   // Focus on the window, not on the first answer, so nothing looks picked before the player picks.
   const box = $('.modal', s);
   box.classList.add('rv');

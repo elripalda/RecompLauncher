@@ -2682,6 +2682,45 @@ function devReplies(x) {
   const list = (x.replies || []).filter((r) => r.dev);
   return list.length ? `<div class="rep-replies">${list.map((r) => `<div class="rep-reply dev"><div class="who"><b>${esc(r.name || t('Developer'))}</b><span class="dev-badge">${esc(t('Developer'))}</span><small>${esc(Date.parse(r.when) ? ago(Date.parse(r.when) / 1000) : '')}</small></div><p dir="auto">${esc(r.text)}</p></div>`).join('')}</div>` : '';
 }
+// The account's own review of a game, as Your Reviews has it (written on any PC, or the website).
+const myReviewOf = (id) => ((S.myReports && S.myReports.list) || []).find((x) => x.app === id) || null;
+window.myReviewOf = myReviewOf;
+// Where a review was played: the system's own name (not translated) and its icon.
+const REP_SYS = { windows: 'Windows', linux: 'Linux', macos: 'Mac', deck: 'Steam Deck' };
+function repSys(x) {
+  const k = String(x.sys || '');
+  if (!REP_SYS[k]) return '';
+  const icon = k === 'deck' ? DECK_ICON(13) : osIcon(k);
+  return `<span class="rep-sys">${icon}${esc(REP_SYS[k])}</span>`;
+}
+// A note longer than this folds to a few lines until Show More opens it.
+const REP_LONG = 280;
+// One player's review: their answer, where and on which version, what they said, their PC in a
+// line, and the developer's answers.
+function repItem(x) {
+  const long = !!x.note && [...x.note].length > REP_LONG;
+  const note = x.note ? `<p class="rep-note${long ? ' long' : ''}" dir="auto">${esc(x.note)}</p>` : '';
+  const open = long ? `<button type="button" class="linkbtn rep-open" data-act="rep-open">${esc(t('Show more'))}</button>` : '';
+  const pc = x.specs || (x.pc ? [x.pc.gpu, x.pc.cpu, x.pc.ram ? tf('{n} GB', { n: x.pc.ram }) : '', x.pc.os].filter(Boolean).join(' · ') : '');
+  const when = x.when ? ago(Date.parse(x.when) / 1000 || x.when) : '';
+  return `<div class="rep"><div class="rep-top"><span class="rverdict v-${esc(x.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[x.verdict] || ''))}</span>${repSys(x)}${viaPx(x) ? `<span class="rep-pxtag">${esc(t('Through Proton'))}</span>` : ''}${x.version ? `<span class="rep-ver">${esc(x.version)}</span>` : ''}<small>${esc(when)}</small></div>
+    ${note}${open}${pc ? `<p class="rep-pc" title="${esc(pc)}">${esc(pc)}</p>` : ''}${devReplies(x)}</div>`;
+}
+// How the reviews split, a row for each answer with its share as a bar. A row shows only those
+// reviews below (and again, all of them); one nobody gave can't be picked.
+function runRows(id, r, on) {
+  const row = (k) => `<button type="button" class="rv-row v-${k}${on === k ? ' on' : ''}" data-act="rep-v" data-id="${esc(id)}" data-v="${k}" aria-pressed="${on === k}"${r[k] || on === k ? '' : ' disabled'}><i aria-hidden="true"></i><span>${esc(t(RUN_WORD[k]))}</span><em class="rv-track" aria-hidden="true"><s style="width:${r.pct(k)}%"></s></em><b>${fmtNum(r[k])}</b></button>`;
+  return `<div class="rv-dist">${['runs', 'issues', 'broken'].map(row).join('')}</div>`;
+}
+// The player's own review, set apart on top of everyone else's (Edit Your Review changes it).
+function myReviewBlock(id) {
+  const m = myReviewOf(id);
+  if (!m) return '';
+  const when = Date.parse(m.when) ? ago(Date.parse(m.when) / 1000) : '';
+  return `<div class="rv-mine"><div class="rv-mine-h"><b>${esc(t('Your Review'))}</b><span class="rverdict v-${esc(m.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[m.verdict] || ''))}</span><small>${esc([m.version, when].filter(Boolean).join(' · '))}</small></div>
+    ${m.note ? `<p class="rep-note" dir="auto">${esc(m.note)}</p>` : ''}${devReplies(m)}</div>`;
+}
+const scoreTone = (p) => (p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low');
 function runsCard(a) {
   if (a.soon || (S.library[a.id] && S.library[a.id].local)) return '';
   const rep = S.reports[a.id];
@@ -2690,29 +2729,32 @@ function runsCard(a) {
   const head = (sub) => `<div class="card-h"><h3>${esc(t('Reviews'))}</h3><span>${esc(sub)}</span></div>`;
   if (!rep || rep === 'loading') return `<div class="card runs">${head('')}<p class="muted" style="margin:6px 0 0">${esc(t('Loading…'))}</p></div>`;
   const sc = scoreOf(rep.counts, rep.latest), r = sc.r, all = sc.all;
-  const say = inst ? `<button type="button" class="btn" data-act="run-say" data-id="${esc(a.id)}">${esc(t('Write a Review'))}</button>` : '';
+  // Reviewed already: the same button opens the review to change, with what was said before.
+  const mine = myReviewOf(a.id);
+  const say = inst ? `<button type="button" class="btn main" data-act="run-say" data-id="${esc(a.id)}">${esc(mine ? t('Edit Your Review') : t('Write a Review'))}</button>` : '';
   const site = `<button type="button" class="btn" data-act="url" data-url="${esc(SITE + '/game/' + encodeURIComponent(a.id))}">${esc(all.n > 3 ? tf('All {n} reviews', { n: all.n }) : t('On recomplauncher.com'))}</button>`;
   const acts = `<div class="acts${say ? ' grid2' : ''}">${say}${site}</div>`;
-  if (!all.n) return `<div class="card runs">${head(rep.error ? t('Can\'t be reached right now') : t('No reviews yet'))}<p class="runs-empty">${esc(inst ? t('Be the first: after you play, say how it ran on your PC.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.'))}</p>${say ? `<div class="acts">${say}</div>` : ''}</div>`;
-  // Reports from Linux or a Steam Deck on a Windows build: played through Proton.
+  if (!all.n) return `<div class="card runs">${head(rep.error ? t('Can\'t be reached right now') : t('No reviews yet'))}${myReviewBlock(a.id)}<p class="runs-empty">${esc(inst ? t('Be the first: after you play, say how it ran on your PC.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.'))}</p>${say ? `<div class="acts">${say}</div>` : ''}</div>`;
+  // Reviews from Linux or a Steam Deck on a Windows build: played through Proton.
   const pxc = rep.proton_counts || (rep.items || []).filter(viaPx).reduce((c, x) => Object.assign(c, { [x.verdict]: (c[x.verdict] || 0) + 1 }), {});
   const px = runTally(pxc);
   const pxLine = px.n ? `<p class="rep-px">${esc(tf('Through Proton: {great} of {all} say it plays great', { great: fmtNum(px.runs), all: fmtNum(px.n) }))}</p>` : '';
-  // This version's reports, or every one.
+  // This version's reviews or every one, all answers or the one picked in the rows above.
   const only = sc.v && (S.repOnly || {})[a.id];
-  const shown = (rep.items || []).filter((x) => !only || verNorm(x.version) === verNorm(sc.v));
+  const pickV = (S.repV || {})[a.id] || '';
+  const shown = (rep.items || []).filter((x) => (!only || verNorm(x.version) === verNorm(sc.v)) && (!pickV || x.verdict === pickV));
   const filter = sc.v && (rep.items || []).length ? `<div class="rep-filter" role="group" aria-label="${esc(t('Reviews'))}"><button type="button" class="chip${only ? '' : ' on'}" data-act="rep-only" data-id="${esc(a.id)}" data-on="">${esc(t('All Versions'))}</button><button type="button" class="chip${only ? ' on' : ''}" data-act="rep-only" data-id="${esc(a.id)}" data-on="1">${esc(t('This Version'))}</button></div>` : '';
-  const items = shown.slice(0, 3).map((x) => `<div class="rep"><div class="rep-top"><span class="rverdict v-${esc(x.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[x.verdict] || ''))}</span>${viaPx(x) ? `<span class="rep-pxtag">${esc(t('Through Proton'))}</span>` : ''}<small>${esc([x.version, x.when ? ago(Date.parse(x.when) / 1000 || x.when) : ''].filter(Boolean).join(' · '))}</small></div>
-      ${x.specs ? `<p class="rep-pc">${esc(x.specs)}</p>` : x.pc ? `<p class="rep-pc">${esc([x.pc.gpu, x.pc.cpu, x.pc.ram ? tf('{n} GB', { n: x.pc.ram }) : '', x.pc.os].filter(Boolean).join(' · '))}</p>` : ''}
-      ${x.note ? `<p class="rep-note" dir="auto">${esc(x.note)}</p>` : ''}${devReplies(x)}</div>`).join('');
+  // Three at first, five more with each Show More Reviews.
+  const limit = (S.repShow || {})[a.id] || 3;
+  const items = shown.slice(0, limit).map(repItem).join('');
+  const more = shown.length > limit ? `<button type="button" class="btn rep-moreb" data-act="rep-more" data-id="${esc(a.id)}">${esc(t('Show More Reviews'))}</button>` : '';
+  const none = only ? t('No reviews for this version yet.') : t('No reviews yet');
   const sub = sc.cur ? `<p class="runs-sub">${esc(tf('All versions: {pct}%', { pct: all.pct('runs') }))}</p>`
     : sc.v && sc.l ? `<p class="runs-sub">${esc(sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 review so far', '{n} reviews so far')}` : tf('{v}: no reviews yet', { v: sc.v }))}</p>` : '';
+  const p = r.pct('runs');
   return `<div class="card runs">${head(tn(all.n, '1 review', '{n} reviews'))}
-    <div class="runs-top"><b class="runs-pct">${esc(tf('{pct}%', { pct: r.pct('runs') }))}</b><span>${esc(sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great'))}</span></div>
-    ${sub}
-    ${runBar(r)}
-    <div class="rlegend">${['runs', 'issues', 'broken'].map((k) => `<div class="v-${k}"><i aria-hidden="true"></i><span>${esc(t(RUN_WORD[k]))}</span><b>${fmtNum(r[k])}</b></div>`).join('')}</div>
-    ${pxLine}${filter}${items ? `<div class="reps">${items}</div>` : only ? `<p class="muted">${esc(t('No reviews for this version yet.'))}</p>` : ''}${acts}</div>`;
+    <div class="rv-sum"><div class="rv-score"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><span>${esc(sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great'))}</span>${sub}</div>${runRows(a.id, r, pickV)}</div>
+    ${pxLine}${myReviewBlock(a.id)}${filter}${items ? `<div class="reps">${items}</div>${more}` : `<p class="muted rep-none">${esc(none)}</p>`}${acts}</div>`;
 }
 const viaPx = (x) => !!x && (x.proton === true || x.proton === 1 || x.proton === '1' || x.proton === 'true');
 
@@ -9085,7 +9127,22 @@ async function act(el, e) {
     case 'gh-add': return githubModal();
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
-    case 'rep-only': S.repOnly = Object.assign(S.repOnly || {}, { [id]: !!el.dataset.on }); return refreshGame();
+    // The Reviews card: which reviews show (a new choice starts again from three), how many, and a
+    // long note opened in place.
+    case 'rep-only': S.repOnly = Object.assign(S.repOnly || {}, { [id]: !!el.dataset.on }); S.repShow = Object.assign(S.repShow || {}, { [id]: 3 }); return refreshGame();
+    case 'rep-v': {
+      const was = (S.repV || {})[id] || '';
+      S.repV = Object.assign(S.repV || {}, { [id]: was === el.dataset.v ? '' : el.dataset.v });
+      S.repShow = Object.assign(S.repShow || {}, { [id]: 3 });
+      return refreshGame();
+    }
+    case 'rep-more': S.repShow = Object.assign(S.repShow || {}, { [id]: ((S.repShow || {})[id] || 3) + 5 }); return refreshGame();
+    case 'rep-open': {
+      const note = el.previousElementSibling;
+      const open = note.classList.toggle('open');
+      el.textContent = open ? t('Show less') : t('Show more');
+      return;
+    }
     case 'reopen-setup': return setupModal(id);
     case 'setup-cancel': {
       invoke('setup_cancel', { id }).catch(() => {});
