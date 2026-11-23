@@ -28,7 +28,8 @@ function desktop(focused = false) {
   const root = { id: 'app', querySelectorAll: () => [button], contains: el => el === button };
   const main = { contains: el => el === button, getBoundingClientRect: () => ({ top: 0, bottom: 500 }) };
   if (focused) document.activeElement = button;
-  const window = {};
+  const windowListeners = {};
+  const window = { addEventListener: (name, fn) => { windowListeners[name] = fn; } };
   const ctx = vm.createContext({
     window, document, SU: {}, S: { back: [], view: 'home' },
     $: selector => selector === '#app' ? root : selector === '#main' ? main : null,
@@ -37,7 +38,7 @@ function desktop(focused = false) {
     calm: () => true, setTimeout: () => {}, requestAnimationFrame: () => {},
   });
   vm.runInContext(app.slice(start, end), ctx);
-  return { window, document, body, button, listeners, get clicks() { return clicks; } };
+  return { window, windowListeners, document, body, button, listeners, get clicks() { return clicks; } };
 }
 
 test('A does not focus a desktop control before directional input', () => {
@@ -69,6 +70,19 @@ test('mouse movement disarms A until another direction is pressed', () => {
   d.window.deskPad('down');
   d.window.deskPad('a');
   assert.equal(d.clicks, 1);
+});
+
+test('losing window focus disarms A until another direction is pressed', () => {
+  const d = desktop();
+  d.window.deskPad('down');
+  d.window.deskPad('a');
+  assert.equal(d.clicks, 1);
+  d.windowListeners.blur();
+  d.window.deskPad('a');
+  assert.equal(d.clicks, 1);
+  d.window.deskPad('down');
+  d.window.deskPad('a');
+  assert.equal(d.clicks, 2);
 });
 
 test('A can activate a dialog without first navigating the desktop', () => {

@@ -9826,6 +9826,8 @@ document.addEventListener('mousemove', (e) => {
   if (PAD.el) PAD.el.classList.remove('pad-focus');
   PAD.el = null;
 }, true);
+// A game or another app took over: coming back, A waits for a direction so it can't press Play again.
+window.addEventListener('blur', () => { PAD.armed = false; });
 
 // The window has no system title bar, so these are its buttons.
 const W = T.window.getCurrentWindow();
