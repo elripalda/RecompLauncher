@@ -728,7 +728,42 @@ pub fn with_proxy(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     b.no_proxy().proxy(reqwest::Proxy::custom(proxy_for))
 }
 
-// ---------- why a connection failed ----------
+// ---------- which server a failed download couldn't connect to, and why ----------
+
+/// A client that never follows redirects, so each step of a download link can be asked on its own.
+fn hop_client() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| {
+        let b = with_proxy(reqwest::Client::builder()).user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")));
+        b.redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(15)).build().unwrap_or_default()
+    })
+}
+
+/// The error from the server a download link really failed at. reqwest follows redirects inside
+/// itself and labels a failure with the first address, so a project's server that sends every
+/// download on to its CDN (git.magicbean.dev to git-cdn.magicbean.dev) got the blame for the CDN.
+/// The link is asked again one redirect at a time until a step fails; `None` when every step
+/// answers now, or the chain can't be followed (too long, or down to plain http).
+pub async fn failed_hop(url: &str) -> Option<reqwest::Error> {
+    let mut at = reqwest::Url::parse(url).ok()?;
+    for _ in 0..10 {
+        // One byte is plenty: only whether it answers, and where it sends the download next.
+        let asked = hop_client().get(at.clone()).header(reqwest::header::RANGE, "bytes=0-0").timeout(QUICK).send().await;
+        let r = match asked {
+            Ok(r) => r,
+            Err(e) => return Some(e),
+        };
+        if !r.status().is_redirection() {
+            return None;
+        }
+        let next = r.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).and_then(|l| at.join(l).ok())?;
+        if next.scheme() != "https" && at.scheme() == "https" {
+            return None;
+        }
+        at = next;
+    }
+    None
+}
 
 /// The errors under this one, outermost first (reqwest's, hyper's, then the system's or TLS's).
 fn causes(e: &reqwest::Error) -> Vec<&(dyn std::error::Error + 'static)> {
@@ -790,6 +825,20 @@ mod connection_failure_tests {
         port
     }
 
+    /// A plain http server whose every answer sends the download on to `to`. Its port.
+    fn redirect_server(to: String) -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                let _ = s.read(&mut [0u8; 1024]);
+                let _ = s.write_all(format!("HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\n\r\n").as_bytes());
+            }
+        });
+        port
+    }
+
     fn closed_port() -> u16 {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         l.local_addr().unwrap().port()
@@ -825,6 +874,31 @@ mod connection_failure_tests {
     fn the_cause_is_the_deepest_reason() {
         let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
         assert_ne!(cause(&e), e.to_string());
+    }
+
+    #[test]
+    fn the_failed_hop_is_the_server_the_link_was_sent_on_to() {
+        let cdn = plain_text_server();
+        let start = redirect_server(format!("https://127.0.0.1:{cdn}/file.zip"));
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let e = rt.block_on(failed_hop(&format!("http://127.0.0.1:{start}/file.zip"))).unwrap();
+        assert_eq!(e.url().and_then(|u| u.port()), Some(cdn));
+        assert!(tls_failed(&e));
+    }
+
+    #[test]
+    fn a_link_that_answers_has_no_failed_hop() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                let _ = s.read(&mut [0u8; 1024]);
+                let _ = s.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 1\r\n\r\nx");
+            }
+        });
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        assert!(rt.block_on(failed_hop(&format!("http://127.0.0.1:{port}/file.zip"))).is_none());
     }
 }
 
