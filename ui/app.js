@@ -5744,7 +5744,19 @@ async function loadCatalog(force, asked) {
   }
 }
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
-T.event.listen('catalog-fresh', () => loadCatalog(false).then(() => render(true)).catch(() => {}));
+const approvedReleases = () => JSON.stringify(Object.keys(S.library).sort().map((id) => {
+  const a = byId(id) || {};
+  return [id, a.tag, a.version, a.repo];
+}));
+T.event.listen('catalog-fresh', async () => {
+  const before = approvedReleases();
+  try { await loadCatalog(false); } catch (e) { return; }
+  render(true);
+  if (S.settings?.check_updates === false || approvedReleases() === before) return;
+  // The check at startup read the old list. Retire it so its late answer can't undo this one.
+  updateCheckRevision++;
+  await checkUpdates();
+});
 // A Forgejo project's own setup file came in: Easy Setup can show for it now.
 T.event.listen('profiles-fresh', () => loadCatalog(false).then(() => loadEasy(true)).then(() => render(true)).catch(() => {}));
 // A game the player added by its link is on the list now: their copy moved over to the list's one.
