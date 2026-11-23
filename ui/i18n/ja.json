@@ -1970,7 +1970,7 @@
  "Your Review": "あなたのレビュー",
  "Edit Your Review": "レビューを編集",
  "Your Last Answer": "前回の回答",
- "Show More Reviews": "さらにレビューを表示",
+ "The newest {n} are here. The rest are on recomplauncher.com.": "ここには新しい順に {n} 件あります。残りは recomplauncher.com にあります。",
  "Show less": "表示を減らす",
  "Ran smoothly, start to finish": "最初から最後まで快適に動いた",
  "Glitches, crashes or slowdowns": "表示の乱れ、クラッシュ、動作の重さ",

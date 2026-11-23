@@ -30,16 +30,24 @@ test('reviewed already, the card\'s button is Edit Your Review', () => {
   assert.match(fn(app, 'runsCard'), /\$\{myReviewBlock\(a\.id\)\}/);
 });
 
-test('a row for each answer filters the reviews, and one nobody gave can\'t be picked', () => {
+test('a row for each answer: on the card it opens All Reviews, in that window it narrows the list', () => {
   const rows = fn(app, 'runRows');
-  assert.match(rows, /data-act="rep-v"/);
+  assert.match(rows, /inWindow \? `data-x="v" data-v="\$\{k\}"` : `data-act="rep-v" data-id="\$\{esc\(id\)\}" data-v="\$\{k\}"`/);
   assert.match(rows, /\$\{r\[k\] \|\| on === k \? '' : ' disabled'\}/);
-  assert.match(fn(app, 'runsCard'), /\(!pickV \|\| x\.verdict === pickV\)/);
+  assert.match(app, /case 'rep-v': return reviewsModal\(id, el\.dataset\.v\);/);
+  assert.match(fn(app, 'reviewsModal'), /\(!pickV \|\| x\.verdict === pickV\)/);
 });
 
-test('three reviews show at first, and Show More Reviews adds five', () => {
-  assert.match(fn(app, 'runsCard'), /const limit = \(S\.repShow \|\| \{\}\)\[a\.id\] \|\| 3;/);
-  assert.match(app, /case 'rep-more': S\.repShow = Object\.assign\(S\.repShow \|\| \{\}, \{ \[id\]: \(\(S\.repShow \|\| \{\}\)\[id\] \|\| 3\) \+ 5 \}\);/);
+test('the card shows the three newest, and All Reviews has the rest in the launcher', () => {
+  const card = fn(app, 'runsCard');
+  assert.match(card, /const newest = items\.slice\(0, 3\)\.map\(repItem\)\.join\(''\);/);
+  assert.match(card, /items\.length > 3\n\s*\? `<button type="button" class="btn" data-act="rep-all"/);
+  assert.doesNotMatch(card, /rep-more|Show More Reviews/);
+  assert.match(app, /case 'rep-all': return reviewsModal\(id\);/);
+});
+
+test('All Reviews says when the site has more than the newest it sent', () => {
+  assert.match(fn(app, 'reviewsModal'), /all\.n > items\.length \? `<p class="rva-rest">/);
 });
 
 test('a review says where it was played', () => {

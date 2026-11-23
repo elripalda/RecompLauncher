@@ -1970,7 +1970,7 @@
  "Your Review": "Ваш відгук",
  "Edit Your Review": "Змінити відгук",
  "Your Last Answer": "Ваша минула відповідь",
- "Show More Reviews": "Показати ще відгуки",
+ "The newest {n} are here. The rest are on recomplauncher.com.": "Тут {n} найновіших. Решта — на recomplauncher.com.",
  "Show less": "Згорнути",
  "Ran smoothly, start to finish": "Працювала плавно від початку до кінця",
  "Glitches, crashes or slowdowns": "Графічні збої, вильоти чи гальмування",

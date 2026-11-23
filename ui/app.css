@@ -1630,7 +1630,27 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 .rep-note.long.open{display:block}
 .rep-open{align-self:flex-start;margin-top:-2px}
 .rep-pc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rep-moreb{width:100%;margin-top:12px}
+/* All Reviews (app.js reviewsModal): the project's name on top, the score and rows to narrow the
+   list, the player's own review, then every review scrolling under them and the site in the footer. */
+.modal.rvall{width:min(760px,94vw);height:min(840px,88vh);padding:0;gap:0;overflow:hidden;display:flex;flex-direction:column}
+.modal.rvall:focus{outline:none}
+.rva-h{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 26px 14px}
+.rva-h small{color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.04em}
+.rva-h h2{margin:3px 0 0;font-size:24px;overflow-wrap:anywhere}
+.rva-x{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--muted);background:var(--fill2);border:1px solid var(--line2)}
+.rva-x:hover{color:var(--ink);border-color:var(--line3)}
+.rva-top{padding:0 26px 14px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--line)}
+.rva-top .rv-mine,.rva-top .rep-px{margin:0}
+.rva-chips:empty{display:none}
+.rvall .rep-filter{margin:0}
+.rva-list{flex:1;min-height:0;overflow:auto;margin:0;padding:0 26px;border-top:0}
+.rva-list .rep:last-child{border-bottom:0}
+/* .modal p dims every paragraph: notes and answers keep the card's color here. */
+.modal.rvall .rep-note,.modal.rvall .rep-reply p{color:#d6dce5}
+.modal.rvall .rep-pc{color:var(--dim)}
+.rva-foot{display:flex;align-items:center;gap:16px;padding:14px 26px;border-top:1px solid var(--line)}
+.rva-rest{margin:0;font-size:12.5px;color:var(--muted)}
+.rva-foot .btn{margin-left:auto;flex:none}
 .rep-none{margin:14px 0 0}
 @media (max-width:760px){.rv-sum{grid-template-columns:1fr;gap:14px}}
 .rep-pxtag{flex:none;height:22px;display:inline-flex;align-items:center;padding:0 8px;border-radius:7px;font-size:11.5px;font-weight:700;color:var(--muted);background:var(--fill2);border:1px solid var(--line2)}
