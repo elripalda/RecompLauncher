@@ -31,7 +31,9 @@
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>',
     user: '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
-    close: '<path d="m6 6 12 12M18 6 6 18"/>',
+    // A list with one item ticked: cloud saves for only the games picked (account.js cloudAllChoices).
+    picklist: '<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/>',
+    close:'<path d="m6 6 12 12M18 6 6 18"/>',
     shot: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6l1.5-2h5L16 6"/><circle cx="12" cy="13" r="3.5"/>',
     puzzle: '<path d="M9 4h4v2.5a1.5 1.5 0 0 0 3 0V4h4v6h-2.5a1.5 1.5 0 0 0 0 3H20v7h-6v-2.5a1.5 1.5 0 0 0-3 0V20H4v-6h2.5a1.5 1.5 0 0 0 0-3H4V4z"/>',
     more: '<circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/>',
@@ -439,6 +441,21 @@
     ], 'tv-ask', head);
     return true;
   };
+  // Cloud saves for every game, asked once after signing in (account.js askCloudAll): true,
+  // false, or null when closed without an answer.
+  window.tvCloudAll = (title, lead, choices) => new Promise((res) => {
+    const show = () => {
+      if (!TV.on) return res(null);
+      if (TV.booting || TV.flying || !stage() || TV.sheet) return setTimeout(show, 400);
+      let done = false;
+      const fin = (v) => { if (!done) { done = true; res(v); } };
+      const head = `<h3>${esc(title)}</h3><p class="tv-sh-p">${esc(lead)}</p>`;
+      const items = choices.map((c) => ({ label: c.label, tag: c.tag, sub: c.sub, icon: c.tvIcon, run: () => fin(c.v) }));
+      sheet('', items, 'tv-ask', head);
+      TV.sheet.onClose = () => setTimeout(() => fin(null), 0);
+    };
+    show();
+  });
   window.tvSetupReq = (id) => {
     if (!TV.on) return false;
     if (TV.booting || TV.flying || !stage()) { setTimeout(() => window.tvSetupReq(id), 300); return true; }
@@ -1829,7 +1846,7 @@
         // No Add to desktop on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
         ...(S.steam || S.os !== 'macos' ? [{ gap: true, ...(S.steam ? { label: t('Add to Steam'), sub: t('With its art'), icon: 'steam', run: () => addToSteam(id, false) } : { label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }) }] : []),
         ...(S.steam && S.os !== 'macos' ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
-        ...(S.account && S.account.signedIn ? [{ label: g.cloud ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: g.cloud ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); toast(g.cloud ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
+        ...(S.account && S.account.signedIn ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
         // The same switch as the game's Manage tab on the desktop, and the same skip list under Settings.
         ...(!g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
@@ -3005,7 +3022,7 @@
       case 'gs-cloud': {
         sfx('select');
         const g = S.library[id] || {};
-        try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); } catch (e) { fail(e); }
+        try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); } catch (e) { fail(e); }
         return loadGameSaves(id);
       }
       case 'gs-share': {

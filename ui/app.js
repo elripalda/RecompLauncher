@@ -170,6 +170,10 @@ const favMark = (id, cls) => (favs().includes(id) ? `<span class="${cls}" title=
 // its key carries the context after a bar, and English shows only the word.
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
 const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet);
+// Cloud saves for an installed game: its own switch (Manage) when it was set, otherwise what the
+// player picked for every game (account.js askCloudAll). Paired with Installed::cloud_on in
+// src-tauri/src/library.rs, which decides what really syncs: change both together.
+const cloudOn = (g) => (g && g.cloud != null ? g.cloud === true : (S.settings.ui || {}).cloud_all === true);
 // Download speed limits the player can pick (MB a second; 0 is none), sent to the app at start and
 // whenever they change.
 const DL_LIMITS = [0, 1, 2, 5, 10, 25, 50];
@@ -2895,8 +2899,8 @@ function manageFileRows(id, inst) {
   if (!inst.local) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update: the saves in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`);
   // Cloud saves is switched here only; the Saves tab just offers to turn it on.
   if (S.account && S.account.signedIn) {
-    const on = inst.cloud === true;
-    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? t('On. After you play, its saves go to your account.') : t('Off. Its saves only stay on this PC.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>`);
+    const on = cloudOn(inst);
+    rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? t('On. Saves for this game are synced to the cloud.') : t('Off. Saves for this game are not synced to the cloud.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>`);
   }
   return rows;
 }
@@ -10146,6 +10150,9 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && startsInTV()) window.startTV();
   else setTimeout(askData, 800);
+  // Signed in before cloud saves were asked about once for every game: asked now (account.js; the
+  // account may have come in before the settings did, so its own call could not ask yet).
+  setTimeout(() => { if (window.askCloudAll) window.askCloudAll(); }, 900);
   // The window opens only now, with the first real screen already drawn (two frames: the draw, then its paint).
   // A hidden window may not get frames at all, so a short timer opens it too, whichever comes first;
   // waiting for the launcher's 4 s fallback on every start would be worse than an early show.

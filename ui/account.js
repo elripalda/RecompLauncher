@@ -1,8 +1,8 @@
 'use strict';
 // The RecompStore account and cloud saves: signing in (browser or phone), Settings > Account, the
-// sidebar's account button, a game's Saves tab, and what happens before Play (turn cloud saves on?
-// a newer save from another PC? which save to keep?). Works the same in Big Picture mode, with its
-// own sheets. Uses app.js's helpers and state (S).
+// sidebar's account button, a game's Saves tab, cloud saves for every game (asked once), and what
+// happens before Play (a newer save from another PC? which save to keep?). Works the same in Big
+// Picture mode, with its own sheets. Uses app.js's helpers and state (S).
 
 const ACC_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>';
 const CLOUD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/></svg>';
@@ -31,6 +31,8 @@ async function loadAccount(fresh) {
   if (typeof playSync === 'function') playSync().then((changed) => changed && render(true));
   // Sponsor spots for this account (none when signed out).
   if (typeof sponsSync === 'function') sponsSync();
+  // Signed in and not asked yet: cloud saves for every game, or only the ones they pick.
+  askCloudAll();
 }
 
 // ---------- your reports ----------
@@ -144,11 +146,14 @@ function accountSection(group, row) {
       + group(t('Save backups'), row(t('On this PC'), t('After every session the launcher keeps a copy of each game\'s saves, the newest ten. They\'re on each game\'s Saves tab.'), ''));
   }
   const used = a.used || 0, quota = a.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
+  // Back Up Every Game says what it does now, like a game's own switch in its Manage tab.
+  const all = (S.settings.ui || {}).cloud_all === true;
+  const allNow = all ? t('On. Cloud saves are activated for all games. Turning it off disables cloud saves for every game. Saves stay intact.') : t('Off. Cloud saves are only active for the games you turn on in their Manage tab. Turning it on activates them for every game.');
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
-      <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Ask for Each New Game'), t('Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)
+      <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
+      + row(t('Back Up Every Game'), allNow, `<button type="button" class="switch" role="switch" aria-checked="${all}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
       + deviceNameRow())
     + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
@@ -728,9 +733,90 @@ function pageSaves() {
 window.pageSaves = pageSaves;
 window.loadSavesAll = loadSavesAll;
 
+// ---------- cloud saves for every game ----------
+// Asked once: right after signing in (first-run setup asks on a step of its own instead), and on
+// the first start after the update for players who were signed in already. ui.cloud_all: true,
+// every game's saves go up; false, only the games switched on in their Manage tab; not set, not
+// asked yet (off). A game either follows this or was switched in its Manage tab since it was
+// picked: picking again (here or in Settings, Account) makes every game follow it.
+const CA_SVG = (paths, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const CA = {
+  pc: CA_SVG('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
+  any: CA_SVG('<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 19h19"/>'),
+  cloud: CA_SVG('<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="M12 15.5v-5m-2.2 2.2L12 10.5l2.2 2.2"/>', 40),
+  all: CA_SVG('<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2 2 3.2-3.6"/>', 26),
+  pick: CA_SVG('<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/>', 26),
+  chev: CA_SVG('<path d="m9 6 6 6-6 6"/>', 18),
+};
+const CLOUD_ALL_LEAD = N_('After you play, a game\'s saves can go to your account, ready on any PC. A copy always stays on this PC.');
+let cloudAsked = false;
+
+async function setCloudAll(on) {
+  try { await invoke('saves_cloud_follow_all'); } catch (e) { return fail(e); }
+  for (const g of Object.values(S.library)) g.cloud = null;
+  await saveUi({ cloud_all: on }, true);
+  // Each game's Saves tab and badge knew the old answer.
+  S.saves = {}; S.savesAll = null; forgetSaveStatus();
+}
+
+// Waits until nothing else covers the window (setup, signing in, another question).
+function noModal() {
+  const free = () => !document.querySelector('.scrim, .oob');
+  if (free()) return Promise.resolve();
+  return new Promise((ok) => {
+    const o = new MutationObserver(() => { if (free()) { o.disconnect(); ok(); } });
+    o.observe(document.body, { childList: true });
+  });
+}
+
+// The two answers, the same words on the desktop and in Big Picture mode.
+function cloudAllChoices() {
+  return [
+    { v: true, icon: CA.all, tvIcon: 'cloud', label: t('Every game'), tag: t('Recommended'), sub: t('Backed up after you play. Turn it off for one game in its Manage tab.') },
+    { v: false, icon: CA.pick, tvIcon: 'picklist', label: t('Only games I pick'), sub: t('Saves stay on this PC. Turn cloud saves on for a game in its Manage tab.') },
+  ];
+}
+
+// true, false, or null when closed without an answer.
+async function pickCloudAll() {
+  const choices = cloudAllChoices();
+  const name = (S.account.user && S.account.user.username) || '';
+  const lead = `${tf('Signed in as {name}.', { name })} ${t(CLOUD_ALL_LEAD)}`;
+  if (inTV() && window.tvCloudAll) return window.tvCloudAll(t('Back up your saves?'), lead, choices);
+  const foot = t('You can change this any time in Settings → Account.');
+  const row = (c, i) => `<button type="button" class="ca-pick${c.tag ? ' rec' : ''}" data-x="c${i}"><span class="ic">${c.icon}</span><span class="k"><b>${esc(c.label)}${c.tag ? `<em>${esc(c.tag)}</em>` : ''}</b><span>${esc(c.sub)}</span></span>${CA.chev}</button>`;
+  const art = `<div class="ca-art" aria-hidden="true"><span class="dev">${CA.pc}<small>${esc(t('This PC'))}</small></span><i class="ln"></i><span class="cl">${CA.cloud}</span><i class="ln"></i><span class="dev">${CA.any}<small>${esc(t('Any PC'))}</small></span></div>`;
+  return new Promise((res) => {
+    let picked = null;
+    const box = modal(`${art}<div class="ca-body"><h2>${esc(t('Back up your saves?'))}</h2><p>${esc(lead)}</p><div class="ca-picks">${choices.map(row).join('')}</div><p class="ca-foot">${esc(foot)}</p></div>`, (x, close) => {
+      const c = choices[Number(String(x.dataset.x).slice(1))];
+      if (c) { picked = c.v; close(); }
+    }, t('Back up your saves?'));
+    $('.modal', box).classList.add('ca');
+    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
+  });
+}
+
+async function askCloudAll() {
+  const ui = S.settings.ui || {};
+  if (cloudAsked || ui.cloud_all != null || !S.settings.setup_done) return;
+  if (!(S.account && S.account.signedIn) || document.body.classList.contains('first-run')) return;
+  cloudAsked = true;
+  await noModal();
+  if ((S.settings.ui || {}).cloud_all != null) return;
+  const v = await pickCloudAll();
+  // Closed without an answer: asked again the next time the launcher opens.
+  if (v == null) return;
+  await setCloudAll(v);
+  toast(v ? t('Every game\'s saves go to your account after you play.') : t('Only the games you turn on back up to your account.'));
+  if (['settings', 'game', 'saves'].includes(S.view)) render(true);
+}
+window.askCloudAll = askCloudAll;
+window.setCloudAll = setCloudAll;
+window.cloudAllChoices = cloudAllChoices;
+
 // ---------- before Play ----------
-// Asks once per game, while signed in, whether its saves go to the cloud; then brings in a newer
-// save from another PC, or asks which to keep. false: don't start it.
+// Brings in a newer save from another PC, or asks which to keep. false: don't start it.
 // `cards`: on the desktop the choices are big cards to click (a heading, a green tag such as
 // Newer, and their `lines`), not buttons under the text. Big Picture's sheet is the same either way.
 async function ask(title, text, buttons, cards) {
@@ -779,20 +865,12 @@ async function beforePlay(id) {
   }
   return true;
 }
+// A newer save from another PC is put in place before the game starts. Nothing is asked here:
+// whether a game's saves go up was picked once for every game (askCloudAll), or in its Manage tab.
 async function beforeCloudPlay(id) {
   const g = S.library[id];
   if (!g || !(S.account && S.account.signedIn)) return true;
-  // Asked once per game, unless the player said not to ask (Settings, Account).
-  if (g.cloud == null && (S.settings.ui || {}).cloud_ask !== false) {
-    const v = await ask(tf('Cloud saves for {name}?', { name: g.name }), `<p>${esc(t('After you play, its saves go to your account, so they\'re safe and ready on any PC. You can change this on its Saves tab.'))}</p>`,
-      [{ label: t('Don\'t Ask Again'), v: 'never', last: true }, { label: t('Not now'), sub: t('Its saves stay on this PC'), icon: 'chevL', v: 'no', focus: true }, { label: t('Turn on'), sub: t('Back them up to your account'), icon: 'check', v: 'yes', main: true }]);
-    if (v == null) return false;
-    if (v === 'never') { await saveUi({ cloud_ask: false }); toast(t('Games won\'t ask about cloud saves anymore. Turn it back on in Settings → Account.')); }
-    try { S.library[id] = await invoke('saves_cloud', { id, on: v === 'yes' }); } catch (e) { fail(e); }
-    savesChanged(id);
-    if (v !== 'yes') return true;
-  }
-  if (S.library[id].cloud !== true) return true;
+  if (!cloudOn(g)) return true;
   let r;
   try { r = await invoke('saves_check', { id }); } catch (e) { fail(e); return false; }
   if (r.action === 'restored') toast(tf('Your newer save from {device} is in place.', { device: r.cloud.device || t('another PC') }));
@@ -869,7 +947,11 @@ window.accountAct = async (act, el) => {
       try { await syncCloudNow(id); } catch (e) { fail(e); }
       return loadSaves(id);
     }
-    case 'acc-cloud-ask': { const on = (S.settings.ui || {}).cloud_ask !== false; await saveUi({ cloud_ask: !on }); return render(true); }
+    case 'acc-cloud-all': {
+      const on = (S.settings.ui || {}).cloud_all === true;
+      await setCloudAll(!on);
+      return render(true);
+    }
     case 'acc-device-save': {
       const v = (($('#device-name') || {}).value || '').trim();
       await saveUi({ device_name: v });

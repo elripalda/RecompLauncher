@@ -7,9 +7,11 @@ const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([
 const same = (x) => x;
 
 // The rows of the Manage tab's Files and Saves card, for a signed-in player or not.
-const fileRows = (inst, signedIn) => {
-  const run = new Function('S', 't', 'esc', `${fn(app, 'manageFileRows')}; return manageFileRows;`);
-  return run({ account: { signedIn } }, same, same)('g', inst).join('');
+// The switch reads cloudOn: the game's own setting, or what was picked for every game.
+const cloudOnSrc = app.match(/^const cloudOn = .*$/m)[0];
+const fileRows = (inst, signedIn, ui = {}) => {
+  const run = new Function('S', 't', 'esc', `${cloudOnSrc}; ${fn(app, 'manageFileRows')}; return manageFileRows;`);
+  return run({ account: { signedIn }, settings: { ui } }, same, same)('g', inst).join('');
 };
 // The rows of the Updates card, with the game's updates paused or not (and Settings → Update All
 // Games Automatically off).
@@ -189,8 +191,12 @@ test('Cloud saves shows in Manage only when signed in', () => {
 
 test('Cloud saves switch is on when the game sends its saves', () => {
   const html = fileRows(Object.assign({ cloud: true }, GAME), true);
-  assert.match(html, /On\. After you play, its saves go to your account\./);
+  assert.match(html, /On\. Saves for this game are synced to the cloud\./);
   assert.match(html, /aria-checked="true"[^>]*data-act="saves-cloud"/);
+});
+
+test('Cloud saves switch is on for a game never switched when every game backs up', () => {
+  assert.match(fileRows(GAME, true, { cloud_all: true }), /aria-checked="true"[^>]*data-act="saves-cloud"/);
 });
 
 test('the Cloud saves switch redraws the Manage tab', () => {
