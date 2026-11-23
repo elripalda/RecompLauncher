@@ -740,6 +740,17 @@ fn words(s: &str) -> Vec<String> {
     joined.into_iter().filter(|t| (t.len() > 2 || (t.len() == 2 && t.chars().all(|c| c.is_ascii_digit()))) && !GENERIC.contains(&t.as_str())).collect()
 }
 
+/// Whether `word` is a shortened `full`. A lone digit after it is a sequel's: "hopper3" is a
+/// different game from "hopper". Two digits aren't: "zelda64" is how Zelda's projects are named.
+fn starts_the_word(word: &str, full: &str) -> bool {
+    if word.len() <= 3 {
+        return false;
+    }
+    let Some(rest) = full.strip_prefix(word) else { return false };
+    let sequel_number = rest.len() == 1 && rest.chars().all(|c| c.is_ascii_digit());
+    !sequel_number
+}
+
 /// Whether an app's or shortcut's name is this game's: every word of it is in the game's names,
 /// and enough of them ("Madden NFL 08" for Madden NFL 08 Recompiled, not Madden NFL 25).
 fn is_ours(want: &[String], name: &str) -> bool {
@@ -747,7 +758,7 @@ fn is_ours(want: &[String], name: &str) -> bool {
     if have.is_empty() || have.iter().any(|h| h.starts_with("unins")) {
         return false;
     }
-    let hit = |h: &String| want.iter().any(|w| w == h || (h.len() > 3 && w.starts_with(h.as_str())) || (w.len() > 3 && h.starts_with(w.as_str())));
+    let hit = |h: &String| want.iter().any(|w| w == h || starts_the_word(h, w) || starts_the_word(w, h));
     let hits = have.iter().filter(|h| hit(h)).count();
     hits == have.len() && hits >= want.len().min(2)
 }
@@ -1022,6 +1033,18 @@ mod tests {
         assert!(!is_ours(&want_of(&["Hopper 2 Port", "Hopper2Port"]), "Hopper 3 PC Port"));
         // Two-digit numbers stay their own word, as before.
         assert_eq!(words("Hopper NFL 08"), vec!["hopper", "nfl", "08"]);
+    }
+
+    #[test]
+    fn the_original_and_its_sequel_arent_each_other() {
+        assert!(!is_ours(&want_of(&["Hopper Port", "Hopper", "HopperPort"]), "Hopper 3 PC Port"));
+        assert!(!is_ours(&want_of(&["Hopper 3 Port", "Hopper3Port"]), "Hopper PC Port"));
+        assert!(!is_ours(&want_of(&["Mass Effect"]), "Mass Effect 2"));
+    }
+
+    #[test]
+    fn a_two_digit_number_in_a_project_name_still_matches() {
+        assert!(is_ours(&want_of(&["Zelda Recomp"]), "Zelda64Recompiled"));
     }
 
     #[test]
