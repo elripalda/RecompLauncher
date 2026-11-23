@@ -268,7 +268,7 @@ async function askRun(id, secs, asked_for) {
     const items = VERDICT.map(([k, n]) => ({ label: t(n), sub: t(VERDICT_SUB[k]), icon: 'check' }));
     // After a session, Don't Ask Me Again too, as on the desktop.
     if (!asked_for) items.push({ label: t('Don\'t Ask Me Again'), sub: t('Turn it back on in Settings, Reviews.'), icon: 'bell' });
-    const i = await window.tvAsk(tf('How did {name} run?', { name: (byId(id) || {}).name || g.name }), items.concat([{ label: t('Not now'), icon: 'chevL' }]));
+    const i = await window.tvAsk(tf('How did {name} run?', { name: reviewName(id, g) }), items.concat([{ label: t('Not now'), icon: 'chevL' }]));
     if (!asked_for && i === 3) return setReviewAsk(false);
     if (i == null || i < 0 || i > 2) return;
     const verdict = VERDICT[i][0];
@@ -290,12 +290,21 @@ async function askRun(id, secs, asked_for) {
 // cards, then (in the same window) a few words and what goes with them. Asked after a session, it
 // also has Don't Ask Me Again, which turns asking off for every game until Settings > Reviews turns
 // it back on. While the player is writing, a click outside or Escape doesn't throw the words away.
+// A review is about the project (the recomp), so the question names it, not the game: the catalog's
+// own name, which Show Game Names keeps aside while the game's shows on the page.
+function reviewName(id, g) {
+  const a = byId(id);
+  if (!a) return g.name;
+  return (a._name !== undefined ? a._name : a.name) || g.name;
+}
 function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
   const a = byId(id) || {};
-  const hero = media(thumbOf(a.hero || a.cover, 960)), cover = media(thumbOf(a.cover, 160));
+  // The project's own pictures, not the game's that Show Game Media or Show Game Names put on its page.
+  const own = (k) => pickArt(a, k, false);
+  const hero = media(thumbOf(own('hero') || own('cover'), 960)), cover = media(thumbOf(own('cover'), 160));
   const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
   const session = secs >= 60 ? `<small class="rv-when">${esc(tf('{time} this session', { time: fmtTime(secs) }))}</small>` : '';
-  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: (byId(id) || {}).name || g.name }))}</h2></div></div>`;
+  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: reviewName(id, g) }))}</h2></div></div>`;
   const never = auto ? `<label class="rv-never"><button type="button" class="switch" role="switch" aria-checked="${!reviewAskOn()}" data-x="never"></button><span>${esc(t('Don\'t Ask Me Again'))}<small>${esc(t('Turn it back on in Settings, Reviews.'))}</small></span></label>` : '<span></span>';
   const was = (k) => !!prev && prev.verdict === k;
   const pick = ([k, n]) => `<button type="button" class="rv-pick v-${k}${was(k) ? ' was' : ''}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span>${was(k) ? `<em class="rv-was">${esc(t('Your Last Answer'))}</em>` : ''}<b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></button>`;
@@ -368,7 +377,7 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
       $$('.acts .btn, .rv-back', box).forEach((b) => { b.disabled = false; });
       if (verdict !== 'runs') $('[data-x="send"]', box).disabled = [...ta.value.trim()].length < 15;
     }
-  }, tf('How did {name} run?', { name: (byId(id) || {}).name || g.name }));
+  }, tf('How did {name} run?', { name: reviewName(id, g) }));
   // Focus on the window, not on the first answer, so nothing looks picked before the player picks.
   const box = $('.modal', s);
   box.classList.add('rv');

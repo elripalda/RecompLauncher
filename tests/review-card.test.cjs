@@ -50,6 +50,16 @@ test('a review says where it was played', () => {
   assert.equal(c.sys({ sys: 'amiga' }), '');
 });
 
+test('the review dialog names the project, not the game Show Game Names puts on its page', () => {
+  const apps = { karpur: { name: 'Pokemon Scarlet and Violet', _name: 'KarPur' }, longshot: { name: 'Longshot' } };
+  const c = vm.createContext({ byId: (id) => apps[id] });
+  vm.runInContext(`${fn(more, 'reviewName')}\nglobalThis.name = reviewName;`, c);
+  assert.equal(c.name('karpur', { name: 'KarPur (installed)' }), 'KarPur');
+  assert.equal(c.name('longshot', { name: 'x' }), 'Longshot');
+  assert.equal(c.name('gone', { name: 'From the Library' }), 'From the Library');
+  assert.match(fn(more, 'reviewDialog'), /const own = \(k\) => pickArt\(a, k, false\);/);
+});
+
 test('changing a review starts the dialog from the answer and note given before', () => {
   assert.match(fn(more, 'askRun'), /const prev = asked_for \? myReviewOf\(id\) : null;/);
   const dialog = fn(more, 'reviewDialog');
