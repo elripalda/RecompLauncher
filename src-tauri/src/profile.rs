@@ -1124,6 +1124,8 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
         return None;
     }
     let parse = |bytes: &[u8], image: Option<&Path>| -> Option<ReleaseProfile> {
+        // Some Windows editors start a UTF-8 file with a byte order mark, which JSON doesn't allow.
+        let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
         let mut raw: Value = serde_json::from_slice(bytes).ok()?;
         if let Some(image) = image {
             bind_image(&mut raw, image)?;
@@ -2703,6 +2705,17 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_manifest_saved_with_a_byte_order_mark_is_still_read() {
+        let dir = std::env::temp_dir().join(format!("rl-profile-bom-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("recomplauncher.json"), "\u{feff}{\"format\":1}").unwrap();
+        let found = super::release_profile(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(found.map(|p| p.profile.format), Some(1));
+    }
 
     #[test]
     fn system_reads_each_part_and_a_profile_without_it_writes_none() {
