@@ -9873,7 +9873,8 @@ T.event.listen('install', ({ payload: p }) => {
     // The library isn't refreshed yet, so this still says whether it was here before this download.
     const wasInstalled = !!S.library[id];
     if (p.phase === 'done') {
-      delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; loadNews();
+      // The new files may bring a recomplauncher.json the old ones didn't have.
+      delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; delete S.supLocal[id]; loadNews();
       // Switched to a better version: once it's in, the old one is offered for uninstall.
       if ((((S.settings.ui || {}).switch_from) || {})[id]) refreshState().then(() => betterDone(id));
       // A game the launcher sets up: straight on to its copy, unless it already has one.
