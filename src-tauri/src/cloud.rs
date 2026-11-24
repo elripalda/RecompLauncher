@@ -974,9 +974,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
     if g.cloud == Some(true) && signed_in(&st.dir) {
-        let s = saves::state(&st.dir, id);
-        let latest = saves::list(&st.dir, id, &g).into_iter().next();
-        if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
+        if let Some(l) = newest_unsent(&st.dir, id, &g) {
             if let Err(e) = upload(app, id, &l.name).await {
                 let too_big = e.to_string().starts_with("This save is too big");
                 if !too_big {
@@ -1540,7 +1538,21 @@ fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<O
     if running && latest.as_ref().map(|l| l.hash != s.last_hash).unwrap_or(false) {
         return Err(Error::Msg("Close the game first to back up and upload its restored save.".into()));
     }
-    Ok(latest.filter(|l| l.hash != s.synced_hash))
+    Ok(newest_unsent(dir, id, g))
+}
+
+/// The newest copy, if it's the current save and the cloud doesn't have it. After a restore the
+/// newest archive can be the save the player replaced: sending it would make it the cloud's newest.
+fn newest_unsent(dir: &Path, id: &str, g: &Installed) -> Option<saves::Copy> {
+    let s = saves::state(dir, id);
+    let latest = saves::list(dir, id, g).into_iter().next()?;
+    if latest.hash == s.synced_hash {
+        return None;
+    }
+    if !s.last_hash.is_empty() && latest.hash != s.last_hash {
+        return None;
+    }
+    Some(latest)
 }
 
 /// Upload Now, from a game's Saves tab: the current save copied (when the game isn't running)
@@ -2439,6 +2451,30 @@ mod sync_tests {
         // Closing the game makes a current backup; Upload Now can then send the chosen save.
         saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
         assert_eq!(upload_candidate(&app, "g", &game, false).unwrap().unwrap().hash, chosen.hash);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_emptied_save_folder_cannot_send_the_pre_restore_archive() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rl-save-upload-emptied-{}", std::process::id()));
+        let app = dir.join("app");
+        let inst = dir.join("game");
+        std::fs::create_dir_all(inst.join("save")).unwrap();
+        let path = inst.join("save/slot.sav");
+        let game = Installed { id: "g".into(), path: inst, ..Default::default() };
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        std::fs::write(&path, "chosen save").unwrap();
+        let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        std::fs::write(&path, "superseded save").unwrap();
+        saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
+        let mut state = saves::state(&app, "g");
+        state.synced_hash = chosen.hash.clone();
+        saves::set_state(&app, "g", &state);
+        std::fs::remove_file(&path).unwrap();
+        assert!(saves::backup(&app, "g", &spots, &game).unwrap().is_none());
+        assert!(upload_candidate(&app, "g", &game, false).unwrap().is_none());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
