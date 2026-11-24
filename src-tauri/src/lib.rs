@@ -6974,11 +6974,12 @@ fn say_why_it_stopped() {
         }
         let what = info.payload().downcast_ref::<String>().cloned().or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
         trail::note(format!("The launcher stopped: {what}"));
-        let low = what.to_lowercase();
-        let text = if low.contains("webview2") || low.contains("webview") {
-            format!("RecompLauncher couldn't open its window, because Microsoft Edge WebView2 is missing or broken on this PC.\n\nInstall the WebView2 Runtime from Microsoft (search for \"WebView2 Runtime\"), then open RecompLauncher again.\n\n{what}")
+        // Every window that fails to open reads "failed to create webview: WebView2 error", so the
+        // text can't tell a missing WebView2 from anything else: ask WebView2 for its version.
+        let text = if webview2_missing() {
+            format!("RecompLauncher couldn't open its window, because Microsoft Edge WebView2 isn't installed on this PC.\n\nInstall the WebView2 Runtime from Microsoft (search for \"WebView2 Runtime\"), then open RecompLauncher again.\n\n{what}")
         } else {
-            format!("RecompLauncher couldn't start.\n\n{what}")
+            format!("RecompLauncher couldn't start.\n\n{what}\n\nPlease report this at https://github.com/elripalda/RecompLauncher/issues and attach launcher-trail.log from %APPDATA%\\com.recomplauncher.app.")
         };
         #[link(name = "user32")]
         extern "system" {
@@ -6990,6 +6991,17 @@ fn say_why_it_stopped() {
         // SAFETY: both strings end with a zero and live until the call returns.
         unsafe { MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), 0x0000_0010 | 0x0001_0000) };
     }));
+}
+
+/// True only when WebView2 says for sure it isn't there. It asks from a thread of its own: a panic
+/// inside the panic hook would end the launcher without the box, and a helper's panic only fails
+/// the join. Anything it can't tell counts as not missing.
+#[cfg(windows)]
+fn webview2_missing() -> bool {
+    let Ok(asking) = std::thread::Builder::new().spawn(tauri::webview_version) else {
+        return false;
+    };
+    matches!(asking.join(), Ok(Err(_)))
 }
 
 /// Where what a game printed on its last start is kept.
