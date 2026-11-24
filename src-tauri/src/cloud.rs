@@ -675,7 +675,8 @@ const CLOSE_GAME_FIRST: &str = "Close the game first.";
 
 /// A game started outside the launcher (its program opened straight from its folder) isn't in
 /// `running`, but it writes saves all the same: a save put in place under it could replace what
-/// it just saved. Not seen on macOS, or under Wine where the program is Wine's own.
+/// it just saved. Not seen on macOS, or under Wine where the program is Wine's own; the saves are
+/// checked again just before anything replaces them (`saves::restore_if_unchanged`) for those.
 async fn open_outside(g: &Installed) -> Res<bool> {
     let dir = g.path.clone();
     blocking(move || crate::still_running_in(&dir)).await
@@ -1076,7 +1077,10 @@ fn open_sessions(saves_dir: &Path) -> Vec<String> {
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
-async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
+/// `checked`: the checksum of the saves the caller looked at before deciding. Then the copy goes
+/// in only over those saves, not over ones made while it downloaded. None: the player picked
+/// this cloud save themselves, over whatever is there.
+async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&str>) -> Res<usize> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let _working = working(app, id, "down");
@@ -1106,7 +1110,11 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
-    let n = blocking(move || saves::restore(&dir, &id2, &t2, &spots, &g)).await;
+    let checked = checked.map(String::from);
+    let n = blocking(move || match checked {
+        Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
+        None => saves::restore(&dir, &id2, &t2, &spots, &g),
+    }).await;
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
@@ -1268,7 +1276,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         if open_outside(&g).await? {
             return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
         }
-        let taken = take_cloud(&app, &id, top).await;
+        let taken = take_cloud(&app, &id, top, Some(&local)).await;
         // Sync Now says why. Before Play the player is asked whether to play with this PC's save
         // instead (saves_play_without_cloud); nothing about the sync changes until they say so.
         if let (Err(e), false) = (&taken, manual) {
@@ -1363,7 +1371,7 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
             return Err(changed());
         }
         match keep.as_str() {
-            "cloud" => take_cloud(&app, &id, top).await.map(|_| ()),
+            "cloud" => take_cloud(&app, &id, top, Some(&hash)).await.map(|_| ()),
             "local" => upload_current(&app, &id, g, spots, hash, top.made).await,
             _ => Err(Error::Msg("Choose this PC or the cloud.".into())),
         }
@@ -1767,7 +1775,7 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
         let c = list.into_iter().find(|c| c.v == v).ok_or_else(|| Error::Msg("That cloud save is gone.".into()))?;
-        return take_cloud(&app, &id, &c).await;
+        return take_cloud(&app, &id, &c, None).await;
     }
     let name = name.unwrap_or_default();
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
