@@ -214,7 +214,7 @@ function playtimeRows(a, total) {
 // folder, settings): those get the recomp's id. Playing it, its setup, shortcuts and achievements
 // go by the game's own id, and so do its saves when it keeps its own.
 const GAME_CMDS = new Set(['play', 'game_info', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game', 'ach_set_disc', 'ach_set_folder']);
-const SAVE_CMDS = new Set(['saves_check', 'saves_pick', 'saves_info', 'saves_status', 'saves_peek', 'saves_upload_now', 'saves_backup', 'saves_restore', 'saves_cloud_delete', 'saves_open', 'saves_open_backups']);
+const SAVE_CMDS = new Set(['saves_check', 'saves_pick', 'saves_play_without_cloud', 'saves_info', 'saves_status', 'saves_peek', 'saves_upload_now', 'saves_backup', 'saves_restore', 'saves_cloud_delete', 'saves_open', 'saves_open_backups']);
 function gameArgs(cmd, args) {
   if (!args || typeof args.id !== 'string') return args;
   const s = subOf(args.id);
