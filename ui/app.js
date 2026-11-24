@@ -1476,18 +1476,32 @@ function supportAsk(a, source, rows) {
 }
 // "A, B and C" in the player's language.
 const listOf = (w) => { try { return new Intl.ListFormat(curLocale(), { type: 'conjunction' }).format(w); } catch (e) { return w.join(', '); } };
+// The installed release's own recomplauncher.json, read once per set of installed files. Each
+// answer keeps the key of the files it was read from, so an update, a version switch, a move to
+// another library, a local build rebuilt in place or a library synced from another PC all read
+// it again, whichever way the change arrived.
 S.supLocal = {};
+const supLocalKey = (g) => `${g.path}@${g.tag}@${g.updated_at || 0}`;
+function supLocalFor(id) {
+  const g = S.library[id];
+  if (!g) return null;
+  const key = supLocalKey(g);
+  const known = S.supLocal[id];
+  if (known && known.key === key) return known.v;
+  S.supLocal[id] = { key, v: null };
+  invoke('support_local', { id }).then((v) => {
+    // The files changed again while this was read: the newer read is the one that counts.
+    const now = S.supLocal[id];
+    if (!now || now.key !== key) return;
+    now.v = v || null;
+    if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
+  }).catch(() => {});
+  return null;
+}
 function supportCard(a) {
   if (!a || a.soon) return '';
   const id = a.id;
-  if (S.library[id] && S.supLocal[id] === undefined) {
-    S.supLocal[id] = null;
-    invoke('support_local', { id }).then((v) => {
-      S.supLocal[id] = v || null;
-      if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
-    }).catch(() => {});
-  }
-  const local = S.library[id] ? S.supLocal[id] : null;
+  const local = supLocalFor(id);
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
   const source = supportSource(a, local, sup);
   const st = supportStates(a, local, sup, source);
