@@ -98,7 +98,8 @@ If a game crashes, send the log from the crash screen. Every one helps.
 
 Add a `recomplauncher.json` to your release and players get one-click setup, your settings inside
 the launcher, and Big Picture mode support. The guide is in [docs/DEVELOPERS.md](docs/DEVELOPERS.md),
-with examples in [docs/examples](docs/examples).
+with examples in [docs/examples](docs/examples). [docs/ADD-SUPPORT.md](docs/ADD-SUPPORT.md) is the
+checklist for adding support to a recomp.
 
 ## Source code
 

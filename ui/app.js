@@ -98,7 +98,7 @@ const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id ===
 // The catalog's consoles A to Z for the pickers: the catalog keeps its own order, which reads as random.
 const originsAZ = () => [...((S.cat && S.cat.origins) || [])].sort((x, y) => x.name.localeCompare(y.name));
 // Each console's own colour (the website's), for its dot in lists.
-const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', xseries: '#107c10', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
+const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', xseries: '#107c10', xone: '#0b8f52', vita: '#5c8de6', pce: '#c25bd6', mobile: '#7dd3a8', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
   wii: '#4fc3f7', wiiu: '#00a2c7', snes: '#b38cf2', gba: '#6c63ff', gb: '#9bbc0f', ds: '#aab4c2', dc: '#ff8a3d', saturn: '#4f7cff', psp: '#5b6b8c', switch: '#e60012', switch2: '#ff3b47',
   nes: '#c8102e', gbc: '#f2c12e', '3ds': '#d6262d', vb: '#c4121b', ps5: '#e8edf3', genesis: '#1f6fd1', s32x: '#d4a017', gg: '#3b82c4', arcade: '#ff5fa2', cdi: '#2bb3a3', amiga: '#e5762b', other: '#a7b3c4' };
 // An icon for a list's choice (drops.js asks for it by the option's data-ico): "c:ps2" a console's
@@ -180,6 +180,25 @@ const favMark = (id, cls) => (favs().includes(id) ? `<span class="${cls}" title=
 // its key carries the context after a bar, and English shows only the word.
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
 const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet);
+// Settings > Game Art: the player's own LaunchBox folder, where Customize finds the pictures and
+// descriptions LaunchBox already saved (launchbox.rs). Shown on Windows, or anywhere once it's set.
+function launchboxRow(ui) {
+  const dir = String(ui.launchbox_dir || '').trim();
+  if (S.os !== 'windows' && !dir) return '';
+  const acts = dir ? `<button type="button" class="btn sm" data-act="folder" data-path="${esc(dir)}">${esc(t('Open'))}</button><button type="button" class="btn sm" data-act="lb-pick">${esc(t('Change'))}</button><button type="button" class="btn sm danger" data-act="lb-forget">${esc(t('Remove'))}</button>`
+    : `<button type="button" class="btn sm" data-act="lb-find">${esc(t('Find It'))}</button><button type="button" class="btn sm" data-act="lb-pick">${esc(t('Pick Its Folder…'))}</button>`;
+  return `<div class="set-row"><div class="k"><b>${esc(t('LaunchBox Folder'))}</b><span>${dir ? `<span class="path">${esc(dir)}</span>` : esc(t('Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.'))}</span></div><span class="acts">${acts}</span></div>`;
+}
+// A LaunchBox folder checked and kept: the one picked, or (none) the one found where it usually is.
+async function launchboxSet(path) {
+  try {
+    const r = await invoke('launchbox_find', { path });
+    if (!r) return toast(t('LaunchBox wasn\'t found in the usual places. Pick its folder.'), true);
+    await saveUi({ launchbox_dir: r.path });
+    toast(t('Saved. Customize can use your LaunchBox pictures now.'));
+    if (S.view === 'settings') setSection(S.setTab, false);
+  } catch (e) { fail(e); }
+}
 // Cloud saves for an installed game: its own switch (Manage) when it was set, otherwise what the
 // player picked for every game (account.js askCloudAll). Paired with Installed::cloud_on in
 // src-tauri/src/library.rs, which decides what really syncs: change both together.
@@ -399,7 +418,7 @@ async function playSync(ids) {
   } catch (e) { /* this PC's own numbers stay */ }
   return JSON.stringify(S.cloudPlay || null) !== before;
 }
-setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); } }, 10 * 60 * 1000);
+setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); homeSync(); } }, 10 * 60 * 1000);
 // Sponsor spots in the app for this account, from the website (Sponsors in the admin). Home shows
 // one between Ready to Play and Recently Updated when there is one.
 async function sponsSync() {
@@ -418,7 +437,7 @@ function sponsBand(slot) {
   const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
   return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
-// One view per spot per launch, once it's on screen.
+// One view per spot per launch, once it's on screen (on Home, or Big Picture's Home).
 const SP_SEEN = new Set();
 let spObs = null;
 function sponsWatch() {
@@ -433,7 +452,15 @@ function sponsWatch() {
       invoke('spons_seen', { id }).catch(() => {});
     }
   }, { threshold: 0.5 });
-  for (const el of $$('.sp-tile')) spObs.observe(el);
+  for (const el of $$('[data-sp]')) spObs.observe(el);
+}
+// A folder with ROMs or game backups, picked by the player (with a controller in Big Picture), then
+// looked through for games that have a recomp.
+async function addRomFolder() {
+  const p = await pickFile({ title: t('A folder with your ROMs or game backups'), directory: true }).catch(fail);
+  if (!p) return;
+  await saveSettings({ rom_dirs: uniq([...(S.settings.rom_dirs || []), typeof p === 'string' ? p : p.path]) });
+  return scanRoms();
 }
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
@@ -1449,18 +1476,32 @@ function supportAsk(a, source, rows) {
 }
 // "A, B and C" in the player's language.
 const listOf = (w) => { try { return new Intl.ListFormat(curLocale(), { type: 'conjunction' }).format(w); } catch (e) { return w.join(', '); } };
+// The installed release's own recomplauncher.json, read once per set of installed files. Each
+// answer keeps the key of the files it was read from, so an update, a version switch, a move to
+// another library, a local build rebuilt in place or a library synced from another PC all read
+// it again, whichever way the change arrived.
 S.supLocal = {};
+const supLocalKey = (g) => `${g.path}@${g.tag}@${g.updated_at || 0}`;
+function supLocalFor(id) {
+  const g = S.library[id];
+  if (!g) return null;
+  const key = supLocalKey(g);
+  const known = S.supLocal[id];
+  if (known && known.key === key) return known.v;
+  S.supLocal[id] = { key, v: null };
+  invoke('support_local', { id }).then((v) => {
+    // The files changed again while this was read: the newer read is the one that counts.
+    const now = S.supLocal[id];
+    if (!now || now.key !== key) return;
+    now.v = v || null;
+    if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
+  }).catch(() => {});
+  return null;
+}
 function supportCard(a) {
   if (!a || a.soon) return '';
   const id = a.id;
-  if (S.library[id] && S.supLocal[id] === undefined) {
-    S.supLocal[id] = null;
-    invoke('support_local', { id }).then((v) => {
-      S.supLocal[id] = v || null;
-      if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
-    }).catch(() => {});
-  }
-  const local = S.library[id] ? S.supLocal[id] : null;
+  const local = supLocalFor(id);
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
   const source = supportSource(a, local, sup);
   const st = supportStates(a, local, sup, source);
@@ -1475,7 +1516,7 @@ function supportCard(a) {
     { k: 'prepare', name: N_('Full Setup Step'), line: t('The recomp\'s own setup step, run for you.'), s: st.prepare, icon: '<path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-3-1-1-3z"/>' },
     { k: 'verified', name: N_('Verified Copies'), line: t('Shows when your copy matches a known good one.'), s: st.verified, icon: '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2 2 4-4"/>' },
     { k: 'saves', name: N_('Cloud Saves'), line: savesLine, s: st.saves, icon: '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8.5a4 4 0 0 1 0 9.5z"/>' },
-    { k: 'hh', name: N_('Handheld Rating'), line: hh ? tf('Handheld players say it runs well: {devices}', { devices: devices || t('several players') }) : t('From handheld players\' reports. None yet.'), s: hh ? 'players' : '', icon: '<rect x="2.5" y="7" width="19" height="10" rx="3"/><path d="M7 10.5v3M5.5 12h3M16 11h.01M18 13h.01"/>' },
+    { k: 'hh', name: N_('Handheld Rating'), line: hh ? tf('Handheld players say it runs well: {devices}', { devices: devices || t('several players') }) : t('From handheld players\' reviews. None yet.'), s: hh ? 'players' : '', icon: '<rect x="2.5" y="7" width="19" height="10" rx="3"/><path d="M7 10.5v3M5.5 12h3M16 11h.01M18 13h.01"/>' },
   ];
   // A setup step the project's own file leaves out isn't needed: not shown, and not counted.
   const shown = rows.filter((r) => r.s !== 'na');
@@ -1778,18 +1819,131 @@ function pageHome() {
   const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;
   return `<div class="page home">${offlineNote()}
     ${showBanner ? slider(feats) : ''}
-    ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
-    ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
-    ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
-    ${sponsBand('app_home')}
-    ${shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
-    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
-    ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
-    ${trendShelf(pool)}
-    ${shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true })}
-    ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
-    ${newsSection()}
+    ${homeLayout({
+      played: () => (played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''),
+      favs: () => (fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''),
+      ready: () => (ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''),
+      updated: () => shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) }),
+      follow: () => (follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''),
+      found: () => (found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()),
+      trend: () => trendShelf(pool),
+      new: () => shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true }),
+      easy: () => (easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''),
+      news: () => newsSection(),
+    })}
   </div>`;
+}
+
+// ---------- Home's order, from the website (admin: Launcher > Home page) ----------
+// The rows in their built-in order. '@app_home' is where the App Home Banner sat before the website
+// could move it; it's used only when the website's list hasn't come (yet, or ever).
+const HOME_ROWS = ['played', 'favs', 'ready', '@app_home', 'updated', 'follow', 'found', 'trend', 'new', 'easy', 'news'];
+// The website's list ({v: 1, items, hide}): undefined until asked, null when there isn't one, and then
+// Home keeps its built-in order. It's asked for at start, every 10 minutes, and when Home opens
+// (at most once a minute), so a change in the admin shows the next time a player opens Home.
+let homeAt = 0;
+async function homeSync() {
+  homeAt = Date.now();
+  const before = JSON.stringify(S.home || null);
+  let v = null;
+  try { v = await invoke('home_layout'); } catch (e) { v = S.home || null; }
+  S.home = v && Array.isArray(v.items) ? v : null;
+  if (JSON.stringify(S.home) === before) return;
+  if (S.view === 'home') render(true);
+  // Big Picture's Home follows the same list.
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+}
+function homeMaybe() { if (Date.now() - homeAt > 60 * 1000) homeSync(); }
+// The order to draw: the website's items, with any row this version has that the list doesn't name
+// (a row newer than the list) put back after the row it usually follows. Hidden rows stay out.
+function homePlan(home) {
+  const rowsOnly = HOME_ROWS.filter((k) => k[0] !== '@');
+  if (!home) return HOME_ROWS.map((k) => (k[0] === '@' ? { k: 'spot', slot: k.slice(1) } : { k: 'row', id: k }));
+  const known = (x) => x && (x.k === 'box' || x.k === 'banner' || (x.k === 'row' && rowsOnly.includes(x.id)));
+  const plan = home.items.filter(known);
+  const named = new Set([...plan.filter((x) => x.k === 'row').map((x) => x.id), ...(Array.isArray(home.hide) ? home.hide : [])]);
+  rowsOnly.forEach((id, i) => {
+    if (named.has(id)) return;
+    const before = rowsOnly.slice(0, i).reverse().find((r) => plan.some((x) => x.k === 'row' && x.id === r));
+    const at = before ? plan.findIndex((x) => x.k === 'row' && x.id === before) + 1 : 0;
+    plan.splice(at, 0, { k: 'row', id });
+  });
+  return plan;
+}
+// rows: id => a function that draws it (only rows that show are drawn).
+function homeLayout(rows) {
+  return homePlan(S.home).map((x) => {
+    if (x.k === 'row') return rows[x.id] ? rows[x.id]() : '';
+    if (x.k === 'spot') return sponsBand(x.slot);
+    if (x.k === 'banner') return homeBanner(x);
+    return homeBox(x);
+  }).join('');
+}
+const HOME_ICONS = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  gift: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 13h18M12 9v12M12 9c-2-4-6-4-6-1.5S9 9 12 9c3 0 6-1 6-1.5S14 5 12 9"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+  pad: '<rect x="2.5" y="7" width="19" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M15.5 12h.01M17.5 14h.01"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  sparkle: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+};
+const homeIcon = (k) => (k === 'disc' || !HOME_ICONS[k] ? (k === 'disc' ? DISC_L : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOME_ICONS.info}</svg>`) : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOME_ICONS[k]}</svg>`);
+const HOME_GO = { 'go:discover': 'discover', 'go:soon': 'soon', 'go:library': 'library', 'go:settings': 'settings' };
+const homeClosed = () => (S.settings.ui || {}).home_closed || [];
+// Whether an info box is for this player right now (the website can't know these, so it asks).
+function homeBoxShows(x) {
+  if (x.close && homeClosed().includes(Number(x.id))) return false;
+  if (x.when === 'no_folders') return !(S.settings.rom_dirs || []).length;
+  if (x.when === 'signed_out') return !accountId();
+  if (x.when === 'signed_in') return !!accountId();
+  return true;
+}
+// An info box's words in the player's language (or its base one: es for es-419), where the website
+// translated them when the admin saved; else as the admin typed them. Only these regional languages
+// fall back, so zh-Hant never gets another script's words.
+const HOME_TR_BASE = { 'en-GB': 'en', 'es-419': 'es', 'fr-CA': 'fr', 'pt-BR': 'pt' };
+function homeWord(x, k) {
+  const tr = x.tr && typeof x.tr === 'object' ? x.tr : {};
+  const lang = String(curLang() || 'en');
+  const m = tr[lang] || (HOME_TR_BASE[lang] && tr[HOME_TR_BASE[lang]]);
+  const v = m && typeof m[k] === 'string' && m[k].trim() ? m[k] : x[k];
+  return typeof v === 'string' ? v : '';
+}
+// What an info box's button does, when it has a label and does something the launcher allows: add
+// a ROM folder, open one of its screens, a game it has, or an https link. Null leaves the button
+// out. Home and Big Picture's Home both ask here, so a box does the same thing in each.
+function homeBoxAct(x) {
+  if (!x || !homeWord(x, 'btn')) return null;
+  if (x.act === 'rom-add') return { act: 'rom-add' };
+  if (HOME_GO[x.act]) return { act: 'go', view: HOME_GO[x.act] };
+  if (x.act === 'game' && byId(x.arg)) return { act: 'game', id: String(x.arg) };
+  const url = x.act === 'link' ? httpsOnly(x.arg) : '';
+  return url ? { act: 'link', url } : null;
+}
+// An info box from the admin, in the same look as "It finds the games you already have", in the
+// player's language when it's translated; the button does only what the launcher allows.
+function homeBox(x) {
+  if (!homeBoxShows(x)) return '';
+  const title = homeWord(x, 'title'), text = homeWord(x, 'text'), label = homeWord(x, 'btn');
+  const a = homeBoxAct(x);
+  const attrs = !a ? ''
+    : a.act === 'rom-add' ? 'data-act="rom-add"'
+    : a.act === 'go' ? `data-act="home-go" data-v="${esc(a.view)}"`
+    : a.act === 'game' ? `data-act="open" data-id="${esc(a.id)}"`
+    : `data-act="note-url" data-url="${esc(a.url)}"`;
+  const btn = attrs ? `<button type="button" class="btn main" ${attrs}>${esc(label)}</button>` : '';
+  const close = x.close ? `<button type="button" class="tn-x" data-act="home-close" data-id="${esc(String(x.id))}" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}">${XMARK}</button>` : '';
+  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<span dir="auto">${esc(text)}</span>` : ''}</div>${btn}${close}</div>`;
+}
+// A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
+function homeBanner(x) {
+  const sp = x && x.sp;
+  if (!sp || !sp.id || !sp.img) return '';
+  const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
+  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(sp.id))}" data-sp="${esc(String(sp.id))}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
 
 // ---------- Trending This Week (the site's weekly chart of the most played recomps) ----------
@@ -1904,7 +2058,7 @@ function slideTitle(a) {
   return `<div class="sl-logo"><img src="${esc(src)}" alt=""><h2>${esc(a.name)}</h2></div>`;
 }
 function slider(feats) {
-  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(thumbOf(a.hero || a.cover, 960), 'bg')}
+  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(a.hero || a.cover, 'bg')}
       <div class="sl-in"><span class="kick">${esc(bannerInfo(a.id).tag || (a.featured ? t('Featured') : t('Popular right now')))}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span>${slideTitle(a)}${based(a)}${bannerInfo(a.id).text || a.blurb ? `<p>${esc(bannerInfo(a.id).text || a.blurb)}</p>` : ''}
         <div class="acts">${slideActs(a)}</div></div>
       <button type="button" class="sl-cover" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(t('Details'))}" tabindex="-1">${pic(thumbOf(a.cover))}</button></div>`).join('')}
@@ -2187,7 +2341,7 @@ function discoverGrid() {
   const shown = Math.min(S.dshow || DISCOVER_PAGE, list.length);
   const endedBox = f.hideEnded ? endedBoxHtml(discoverList(true)) : '';
   return list.length ? `<div class="count-line">${esc(byGame() ? tn(S.findCount || list.length, '1 game', '{n} games') : tn(S.findCount || list.length, '1 recomp', '{n} recomps'))}</div>${protonNote}<div class="grid${byGame() ? ' by-game' : ''}" data-n="${list.length}" style="margin-top:20px">${list.slice(0, shown).map(discTile).join('')}</div>${shown < list.length ? '<div class="more" aria-hidden="true"></div>' : ''}${endedBox}`
-    : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reports yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p>${protonNote}</div>${endedBox}`;
+    : `<div class="empty"><h2>${esc(t('Nothing here'))}</h2><p>${esc(f.great ? t('Nothing here has enough player reviews yet. Turn off “Plays great” to see the rest.') : f.deckgreat && onHandheld() ? t('No recomps match. Turn off “Great on Deck” to see the rest.') : f.easy ? t('No Easy Setup recomps match. Turn off “Easy Setup” to see the rest.') : f.mp ? t('No multiplayer recomps match. Turn off “Multiplayer” to see the rest.') : t('Try another search, console or genre.'))}</p>${protonNote}</div>${endedBox}`;
 }
 // The optional line under a tile's name: the latest release in Discover, the installed one in the Library.
 const showVer = () => !!(S.settings.ui || {}).show_versions;
@@ -2351,7 +2505,7 @@ function pageGame(id) {
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
-    <div class="gp-hero">${pic(thumbOf(a.hero || a.cover, 960))}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
+    <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
       <div class="gp-title">${gameTitle(a, id)}</div>
@@ -2403,7 +2557,7 @@ function igCard(a, where, alt) {
   const sale = Number(e.pct) > 0;
   const price = e.price ? `<span class="ig-price">${sale ? `<b class="ig-pct">-${fmtNum(Number(e.pct))}%</b>${e.old ? `<s>${esc(e.old)}</s>` : ''}` : ''}<b>${esc(e.price)}</b></span>` : '';
   return `<div class="ig-card${where && where !== 'side' ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
-    <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div><small class="ig-aff">${esc(t('Affiliate link'))}</small></div>`;
+    <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div></div>`;
 }
 // One view per game per launch, when the card is actually on screen.
 function igWatch() {
@@ -2562,6 +2716,7 @@ async function loadCounts(force) {
   S.runCounts = rc || S.runCounts || {};
   S.deckScores = ds || S.deckScores || {};
   S.latestCounts = lc || S.latestCounts || {};
+  keepGoneCounts();
   // Nothing new: the page stays as it is (no second draw of a long list).
   if (JSON.stringify([S.runCounts, S.deckScores]) === before) return;
   if (S.view === 'game') refreshGame();
@@ -2571,9 +2726,61 @@ async function loadCounts(force) {
 }
 async function loadReports(id, force) {
   S.reports[id] = S.reports[id] && S.reports[id] !== 'loading' ? S.reports[id] : 'loading';
-  try { S.reports[id] = await invoke('play_reports', { id, force: !!force }); } catch (e) { S.reports[id] = { error: true, counts: {}, items: [] }; }
+  try { S.reports[id] = keepGoneOut(id, await invoke('play_reports', { id, force: !!force })); } catch (e) { S.reports[id] = { error: true, counts: {}, items: [] }; }
   if (S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
 }
+// A review the player deleted stays off the screen. The website's lists can be a few minutes old
+// (its cache keeps reviews for up to 5, counts for up to 2), so a list fetched right after could
+// bring it back. For 10 minutes, or until a list comes without it, it's left out of what's fetched
+// and its answer counts one less than when it was deleted.
+const GONE_MS = 10 * 60e3;
+function reviewGone(id) {
+  const all = S.reviewGone || (S.reviewGone = {}), g = all[id];
+  if (g && g.until < Date.now()) delete all[id];
+  return all[id] || null;
+}
+// The player's own review among everyone's (public ones carry no id): the same answer, words,
+// version and PC.
+const sameReview = (x, r) => x.verdict === r.verdict && String(x.note || '').trim() === String(r.note || '').trim()
+  && verNorm(x.version) === verNorm(r.version) && (!x.specs || !r.specs || x.specs === r.specs);
+const lessOne = (c, at, v) => (c && at ? Object.assign({}, c, { [v]: Math.max(0, Math.min(c[v] || 0, (at[v] || 0) - 1)) }) : c);
+function goneReview(id, mine) {
+  if (!mine) return;
+  const rep = S.reports[id] && S.reports[id] !== 'loading' ? S.reports[id] : null;
+  const latest = (S.latestCounts || {})[id];
+  (S.reviewGone || (S.reviewGone = {}))[id] = {
+    until: Date.now() + GONE_MS, r: mine,
+    // What the counts were with it in: anything fetched later counts it one less, at most.
+    at: { list: rep && rep.counts ? Object.assign({}, rep.counts) : null, listLatest: rep && rep.latest ? JSON.parse(JSON.stringify(rep.latest)) : null, all: Object.assign({}, (S.runCounts || {})[id] || {}),
+      latest: latest && verNorm(latest.version) === verNorm(mine.version) ? Object.assign({}, latest) : null },
+  };
+  if (rep) S.reports[id] = keepGoneOut(id, rep);
+  keepGoneCounts();
+}
+// One game's reviews as fetched, without the deleted one while the website still has it.
+function keepGoneOut(id, rep) {
+  const g = reviewGone(id);
+  if (!g || !rep || !Array.isArray(rep.items)) return rep;
+  const items = rep.items.filter((x) => !sameReview(x, g.r));
+  // A fresh list without it: the website caught up, nothing left to hide.
+  if (items.length === rep.items.length && !rep.offline) { delete S.reviewGone[id]; return rep; }
+  // This version's own counts too, when it's the version the review was about.
+  let latest = rep.latest;
+  if (latest && verNorm(latest.version) === verNorm(g.r.version)) {
+    const at = g.at.listLatest || latest;
+    latest = latest.counts ? Object.assign({}, latest, { counts: lessOne(latest.counts, at.counts || latest.counts, g.r.verdict) }) : lessOne(latest, at, g.r.verdict);
+  }
+  return Object.assign({}, rep, { items, latest, counts: lessOne(rep.counts, g.at.list || rep.counts, g.r.verdict) });
+}
+function keepGoneCounts() {
+  for (const id of Object.keys(S.reviewGone || {})) {
+    const g = reviewGone(id);
+    if (!g) continue;
+    if (S.runCounts && S.runCounts[id]) S.runCounts[id] = lessOne(S.runCounts[id], g.at.all, g.r.verdict);
+    if (g.at.latest && S.latestCounts && S.latestCounts[id] && verNorm(S.latestCounts[id].version) === verNorm(g.r.version)) S.latestCounts[id] = lessOne(S.latestCounts[id], g.at.latest, g.r.verdict);
+  }
+}
+Object.assign(window, { goneReview, reviewGone });
 // { n, runs, issues, broken, pct(k) } from counts.
 function runTally(c) {
   c = c || {};
@@ -2675,44 +2882,138 @@ function runScore(id) {
   if (!r.n) return '';
   const p = r.pct('runs');
   const which = sc.cur ? tf('This version ({v})', { v: sc.v }) : t('All versions');
-  return `<span class="vscore ${p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low'}" title="${esc(`${which}: ${tf('{pct}% plays great', { pct: p })} · ${tn(r.n, '1 report', '{n} reports')}`)}">${esc(tf('{pct}%', { pct: p }))}</span>`;
+  return `<span class="vscore ${p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low'}" title="${esc(`${which}: ${tf('{pct}% plays great', { pct: p })} · ${tn(r.n, '1 review', '{n} reviews')}`)}">${esc(tf('{pct}%', { pct: p }))}</span>`;
 }
 // A developer's answers under a player's report, marked Developer.
 function devReplies(x) {
   const list = (x.replies || []).filter((r) => r.dev);
   return list.length ? `<div class="rep-replies">${list.map((r) => `<div class="rep-reply dev"><div class="who"><b>${esc(r.name || t('Developer'))}</b><span class="dev-badge">${esc(t('Developer'))}</span><small>${esc(Date.parse(r.when) ? ago(Date.parse(r.when) / 1000) : '')}</small></div><p dir="auto">${esc(r.text)}</p></div>`).join('')}</div>` : '';
 }
+// The account's own review of a game, as Your Reviews has it (written on any PC, or the website).
+const myReviewOf = (id) => ((S.myReports && S.myReports.list) || []).find((x) => x.app === id) || null;
+window.myReviewOf = myReviewOf;
+// Where a review was played: the system's own name (not translated) and its icon.
+const REP_SYS = { windows: 'Windows', linux: 'Linux', macos: 'Mac', deck: 'Steam Deck' };
+function repSys(x) {
+  const k = String(x.sys || '');
+  if (!REP_SYS[k]) return '';
+  const icon = k === 'deck' ? DECK_ICON(13) : osIcon(k);
+  return `<span class="rep-sys">${icon}${esc(REP_SYS[k])}</span>`;
+}
+// A note longer than this folds to a few lines until Show More opens it.
+const REP_LONG = 280;
+// One player's review: their answer, where and on which version, what they said, their PC in a
+// line, and the developer's answers.
+function repItem(x) {
+  const long = !!x.note && [...x.note].length > REP_LONG;
+  const note = x.note ? `<p class="rep-note${long ? ' long' : ''}" dir="auto">${esc(x.note)}</p>` : '';
+  const open = long ? `<button type="button" class="linkbtn rep-open" data-act="rep-open">${esc(t('Show more'))}</button>` : '';
+  const pc = x.specs || (x.pc ? [x.pc.gpu, x.pc.cpu, x.pc.ram ? tf('{n} GB', { n: x.pc.ram }) : '', x.pc.os].filter(Boolean).join(' · ') : '');
+  const when = x.when ? ago(Date.parse(x.when) / 1000 || x.when) : '';
+  return `<div class="rep"><div class="rep-top"><span class="rverdict v-${esc(x.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[x.verdict] || ''))}</span>${repSys(x)}${viaPx(x) ? `<span class="rep-pxtag">${esc(t('Through Proton'))}</span>` : ''}${x.version ? `<span class="rep-ver">${esc(x.version)}</span>` : ''}<small>${esc(when)}</small></div>
+    ${note}${open}${pc ? `<p class="rep-pc" title="${esc(pc)}">${esc(pc)}</p>` : ''}${devReplies(x)}</div>`;
+}
+// In All Reviews, how the reviews split: a row for each answer with its share as a bar, which narrows
+// the list to that answer (and again, back to all of them). One nobody gave can't be picked.
+function runRows(r, on) {
+  const row = (k) => `<button type="button" class="rv-row v-${k}${on === k ? ' on' : ''}" data-x="v" data-v="${k}" aria-pressed="${on === k}"${r[k] || on === k ? '' : ' disabled'}><i aria-hidden="true"></i><span>${esc(t(RUN_WORD[k]))}</span><em class="rv-track" aria-hidden="true"><s style="width:${r.pct(k)}%"></s></em><b>${fmtNum(r[k])}</b></button>`;
+  return `<div class="rv-dist">${['runs', 'issues', 'broken'].map(row).join('')}</div>`;
+}
+// The player's own review, set apart on top of everyone else's (Edit Your Review changes it).
+function myReviewBlock(id) {
+  const m = myReviewOf(id);
+  if (!m) return '';
+  const when = Date.parse(m.when) ? ago(Date.parse(m.when) / 1000) : '';
+  return `<div class="rv-mine"><div class="rv-mine-h"><b>${esc(t('Your Review'))}</b><span class="rverdict v-${esc(m.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[m.verdict] || ''))}</span><small>${esc([m.version, when].filter(Boolean).join(' · '))}</small></div>
+    ${m.note ? `<p class="rep-note" dir="auto">${esc(m.note)}</p>` : ''}${devReplies(m)}</div>`;
+}
+const scoreTone = (p) => (p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low');
+// What the score is of, and the other score beside it: every version's when it's this version's,
+// else how far this version has got.
+function scoreSub(sc) {
+  if (sc.cur) return tf('All versions: {pct}%', { pct: sc.all.pct('runs') });
+  if (!(sc.v && sc.l)) return '';
+  return sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 review so far', '{n} reviews so far')}` : tf('{v}: no reviews yet', { v: sc.v });
+}
+const scoreOfWhat = (sc) => (sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great'));
+// On the game page the score takes one line: the number in its color, what it's of, and one bar
+// split by answer. The rows for each answer are in All Reviews.
+function runsLine(rep) {
+  const sc = scoreOf(rep.counts, rep.latest), p = sc.r.pct('runs'), sub = scoreSub(sc);
+  return `<div class="rv-line"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><div class="rv-what"><span>${esc(scoreOfWhat(sc))}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>${runBar(sc.r)}</div>`;
+}
+// In All Reviews: the score big, in its color, with the rows beside it, and how many played through Proton.
+function runsSummary(rep, pickV) {
+  const sc = scoreOf(rep.counts, rep.latest), r = sc.r, sub = scoreSub(sc);
+  // Reviews from Linux or a Steam Deck on a Windows build: played through Proton.
+  const pxc = rep.proton_counts || (rep.items || []).filter(viaPx).reduce((c, x) => Object.assign(c, { [x.verdict]: (c[x.verdict] || 0) + 1 }), {});
+  const px = runTally(pxc);
+  const pxLine = px.n ? `<p class="rep-px">${esc(tf('Through Proton: {great} of {all} say it plays great', { great: fmtNum(px.runs), all: fmtNum(px.n) }))}</p>` : '';
+  const p = r.pct('runs');
+  return `<div class="rv-sum"><div class="rv-score"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><span>${esc(scoreOfWhat(sc))}</span>${sub ? `<p class="runs-sub">${esc(sub)}</p>` : ''}</div>${runRows(r, pickV)}</div>${pxLine}`;
+}
 function runsCard(a) {
   if (a.soon || (S.library[a.id] && S.library[a.id].local)) return '';
   const rep = S.reports[a.id];
   if (rep === undefined) loadReports(a.id);
   const inst = S.library[a.id];
-  const head = (sub) => `<div class="card-h"><h3>${esc(t('How it runs'))}</h3><span>${esc(sub)}</span></div>`;
+  const head = (sub) => `<div class="card-h"><h3>${esc(t('Reviews'))}</h3><span>${esc(sub)}</span></div>`;
   if (!rep || rep === 'loading') return `<div class="card runs">${head('')}<p class="muted" style="margin:6px 0 0">${esc(t('Loading…'))}</p></div>`;
-  const sc = scoreOf(rep.counts, rep.latest), r = sc.r, all = sc.all;
-  const say = inst ? `<button type="button" class="btn" data-act="run-say" data-id="${esc(a.id)}">${esc(t('Say how it runs'))}</button>` : '';
-  const site = `<button type="button" class="btn" data-act="url" data-url="${esc(SITE + '/game/' + encodeURIComponent(a.id))}">${esc(all.n > 3 ? tf('All {n} reports', { n: all.n }) : t('On recomplauncher.com'))}</button>`;
-  const acts = `<div class="acts${say ? ' grid2' : ''}">${say}${site}</div>`;
-  if (!all.n) return `<div class="card runs">${head(rep.error ? t('Can\'t be reached right now') : t('No reports yet'))}<p class="runs-empty">${esc(inst ? t('Be the first: after you play, say how it ran on your PC.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.'))}</p>${say ? `<div class="acts">${say}</div>` : ''}</div>`;
-  // Reports from Linux or a Steam Deck on a Windows build: played through Proton.
-  const pxc = rep.proton_counts || (rep.items || []).filter(viaPx).reduce((c, x) => Object.assign(c, { [x.verdict]: (c[x.verdict] || 0) + 1 }), {});
-  const px = runTally(pxc);
-  const pxLine = px.n ? `<p class="rep-px">${esc(tf('Through Proton: {great} of {all} say it plays great', { great: fmtNum(px.runs), all: fmtNum(px.n) }))}</p>` : '';
-  // This version's reports, or every one.
-  const only = sc.v && (S.repOnly || {})[a.id];
-  const shown = (rep.items || []).filter((x) => !only || verNorm(x.version) === verNorm(sc.v));
-  const filter = sc.v && (rep.items || []).length ? `<div class="rep-filter" role="group" aria-label="${esc(t('Reports'))}"><button type="button" class="chip${only ? '' : ' on'}" data-act="rep-only" data-id="${esc(a.id)}" data-on="">${esc(t('All Versions'))}</button><button type="button" class="chip${only ? ' on' : ''}" data-act="rep-only" data-id="${esc(a.id)}" data-on="1">${esc(t('This Version'))}</button></div>` : '';
-  const items = shown.slice(0, 3).map((x) => `<div class="rep"><div class="rep-top"><span class="rverdict v-${esc(x.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[x.verdict] || ''))}</span>${viaPx(x) ? `<span class="rep-pxtag">${esc(t('Through Proton'))}</span>` : ''}<small>${esc([x.version, x.when ? ago(Date.parse(x.when) / 1000 || x.when) : ''].filter(Boolean).join(' · '))}</small></div>
-      ${x.specs ? `<p class="rep-pc">${esc(x.specs)}</p>` : x.pc ? `<p class="rep-pc">${esc([x.pc.gpu, x.pc.cpu, x.pc.ram ? tf('{n} GB', { n: x.pc.ram }) : '', x.pc.os].filter(Boolean).join(' · '))}</p>` : ''}
-      ${x.note ? `<p class="rep-note" dir="auto">${esc(x.note)}</p>` : ''}${devReplies(x)}</div>`).join('');
-  const sub = sc.cur ? `<p class="runs-sub">${esc(tf('All versions: {pct}%', { pct: all.pct('runs') }))}</p>`
-    : sc.v && sc.l ? `<p class="runs-sub">${esc(sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 report so far', '{n} reports so far')}` : tf('{v}: no reports yet', { v: sc.v }))}</p>` : '';
-  return `<div class="card runs">${head(tn(all.n, '1 report', '{n} reports'))}
-    <div class="runs-top"><b class="runs-pct">${esc(tf('{pct}%', { pct: r.pct('runs') }))}</b><span>${esc(sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great'))}</span></div>
-    ${sub}
-    ${runBar(r)}
-    <div class="rlegend">${['runs', 'issues', 'broken'].map((k) => `<div class="v-${k}"><i aria-hidden="true"></i><span>${esc(t(RUN_WORD[k]))}</span><b>${fmtNum(r[k])}</b></div>`).join('')}</div>
-    ${pxLine}${filter}${items ? `<div class="reps">${items}</div>` : only ? `<p class="muted">${esc(t('No reports for this version yet.'))}</p>` : ''}${acts}</div>`;
+  const all = runTally(rep.counts);
+  // Reviewed already: the same button opens the review to change, with what was said before.
+  const mine = myReviewOf(a.id);
+  const say = inst ? `<button type="button" class="btn main" data-act="run-say" data-id="${esc(a.id)}">${esc(mine ? t('Edit Your Review') : t('Write a Review'))}</button>` : '';
+  // More than the card shows: every one in All Reviews, in the launcher. Otherwise the site's page.
+  const items = rep.items || [];
+  const rest = items.length > 3
+    ? `<button type="button" class="btn" data-act="rep-all" data-id="${esc(a.id)}">${esc(tf('All {n} reviews', { n: all.n }))}</button>`
+    : `<button type="button" class="btn" data-act="url" data-url="${esc(SITE + '/game/' + encodeURIComponent(a.id))}">${esc(t('On recomplauncher.com'))}</button>`;
+  const acts = `<div class="acts${say ? ' grid2' : ''}">${say}${rest}</div>`;
+  if (!all.n) return `<div class="card runs">${head(rep.error ? t('Can\'t be reached right now') : t('No reviews yet'))}${myReviewBlock(a.id)}<p class="runs-empty">${esc(inst ? t('Be the first: after you play, say how it ran on your PC.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.'))}</p>${say ? `<div class="acts">${say}</div>` : ''}</div>`;
+  // The three newest; the rest, and narrowing them down, are in All Reviews.
+  const newest = items.slice(0, 3).map(repItem).join('');
+  return `<div class="card runs">${head(tn(all.n, '1 review', '{n} reviews'))}
+    ${runsLine(rep)}${myReviewBlock(a.id)}${newest ? `<div class="reps">${newest}</div>` : ''}${acts}</div>`;
+}
+// All Reviews: every review the launcher gets for a project (the site sends the newest 60), in a
+// window over its page, with the rows and This Version to narrow them (the player's own review
+// stays on the card).
+// When the project has more, the rest are on its page on recomplauncher.com.
+function reviewsModal(id, verdict) {
+  const rep = S.reports[id];
+  if (!rep || rep === 'loading' || !(rep.items || []).length) return;
+  const a = byId(id) || {};
+  // A review is about the project, so the window has its name, not the game's (Show Game Names).
+  const name = (a._name !== undefined ? a._name : a.name) || id;
+  const sc = scoreOf(rep.counts, rep.latest), all = sc.all, items = rep.items;
+  let pickV = verdict || '', only = false;
+  const list = () => {
+    const shown = items.filter((x) => (!only || verNorm(x.version) === verNorm(sc.v)) && (!pickV || x.verdict === pickV));
+    if (shown.length) return shown.map(repItem).join('');
+    return `<p class="muted rep-none">${esc(only ? t('No reviews for this version yet.') : t('No reviews yet'))}</p>`;
+  };
+  const chips = () => (sc.v ? `<div class="rep-filter" role="group" aria-label="${esc(t('Reviews'))}"><button type="button" class="chip${only ? '' : ' on'}" data-x="only" data-on="">${esc(t('All Versions'))}</button><button type="button" class="chip${only ? ' on' : ''}" data-x="only" data-on="1">${esc(t('This Version'))}</button></div>` : '');
+  const site = SITE + '/game/' + encodeURIComponent(id);
+  const restNote = all.n > items.length ? `<p class="rva-rest">${esc(tf('The newest {n} are here. The rest are on recomplauncher.com.', { n: fmtNum(items.length) }))}</p>` : '';
+  const html = `<div class="rva-h"><div><small>${esc(tn(all.n, '1 review', '{n} reviews'))}</small><h2>${esc(name)}</h2></div><button type="button" class="rva-x" data-x="no" aria-label="${esc(t('Close'))}">${XMARK}</button></div>
+    <div class="rva-top">${runsSummary(rep, pickV)}<div class="rva-chips">${chips()}</div></div>
+    <div class="rva-list reps">${list()}</div>
+    <div class="rva-foot">${restNote}<button type="button" class="btn" data-url="${esc(site)}">${esc(t('On recomplauncher.com'))}</button></div>`;
+  const s = modal(html, (x) => {
+    if (x.dataset.x === 'v') pickV = pickV === x.dataset.v ? '' : x.dataset.v;
+    else if (x.dataset.x === 'only') only = !!x.dataset.on;
+    else return;
+    $('.rv-dist', s).outerHTML = runRows(sc.r, pickV);
+    $('.rva-chips', s).innerHTML = chips();
+    const box = $('.rva-list', s);
+    box.innerHTML = list();
+    box.scrollTop = 0;
+  }, t('Reviews'));
+  // Focus on the window, not the close button, so nothing looks picked.
+  const box = $('.modal', s);
+  box.classList.add('rvall', 'runs');
+  box.tabIndex = -1;
+  box.focus();
 }
 const viaPx = (x) => !!x && (x.proton === true || x.proton === 1 || x.proton === '1' || x.proton === 'true');
 
@@ -4826,6 +5127,7 @@ const SET_ICONS = {
   playing: '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/>',
   report: '<path d="M5 21V4.5"/><path d="M5 4.5h11l-2 4 2 4H5"/>',
   account: '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
+  reviews: '<path d="M5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-5 4v-4h.5A1.5 1.5 0 0 1 4 14.5v-9A1.5 1.5 0 0 1 5.5 4z"/><path d="m12 6.8 1.1 2.2 2.4.4-1.7 1.7.4 2.4-2.2-1.2-2.2 1.2.4-2.4-1.7-1.7 2.4-.4z"/>',
   general: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   library: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2.5h7.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/>',
   updates: '<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/>',
@@ -4880,7 +5182,7 @@ async function saveProxy(mode) {
     if (S.view === 'settings') setSection('updates', false);
   } catch (e) { fail(e); }
 }
-const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['changelog', N_('Changelog')], ['about', N_('About')]];
+const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['reviews', N_('Reviews')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['changelog', N_('Changelog')], ['about', N_('About')]];
 // Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
 // shows the progress, and Windows may ask for permission).
 let vcBusy = false;
@@ -4974,6 +5276,9 @@ function pageSettings() {
     case 'account':
       body = accountSection(group, row);
       break;
+    case 'reviews':
+      body = reviewsSection(group, row);
+      break;
     case 'library':
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
         ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
@@ -4990,7 +5295,8 @@ function pageSettings() {
         + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Games from another launcher, Steam or a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="mig-open">${esc(t('Bring Your Games'))}</button>`))
         + dlssGroup(group, row)
         + group(t('Game Art'), `<div class="set-row"><div class="k"><b>${esc(t('SteamGridDB API Key'))}</b><span>${esc(t('Optional. With your own free key from steamgriddb.com (Preferences → API), games you add from GitHub get covers, backgrounds and logos.'))}</span></div>
-          <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`);
+          <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`
+          + launchboxRow(ui));
       break;
     case 'bring':
       body = window.migratePage ? window.migratePage(group) : '';
@@ -5083,6 +5389,7 @@ function pageSettings() {
         <p class="muted" style="margin:0">${esc(t('RecompLauncher has no game files and never downloads any. Every recomp comes from its developer\'s own GitHub, and you set it up with your own copy of the game.'))}</p>`, `<button type="button" class="btn sm" data-act="about">${esc(t('More about it'))}</button>`)
         + group(t('Support'), row(t('Support RecompLauncher'), t('Help keep it running and growing, on Ko-fi'), `<button type="button" class="btn" data-act="url" data-url="${KOFI}">${HEART}${esc(t('Support Us'))}</button>`))
         + (discordUrl() ? group(t('Community'), row(t('Discord'), t('News, help with a game, and a place to send your logs.'), `<button type="button" class="btn" data-act="url" data-url="${esc(discordUrl())}">${DISCORD}${esc(t('Join the Discord'))}</button>`)) : '')
+        + group(t('Troubleshoot'), row(t('Export Logs'), t('Saves the launcher\'s and your games\' logs in one zip on your desktop, to attach wherever you ask for help.'), `<button type="button" class="btn" data-act="export-logs">${esc(t('Export Logs'))}</button>`))
         + group(t('Start over'), row(t('Reset settings'), t('Every setting goes back to how it started. Your games, saves, library folders and pinned games stay.'), `<button type="button" class="btn" data-act="reset" data-k="settings">${esc(t('Reset settings'))}</button>`)
           + row(t('First-time setup'), t('Go through first-time setup again. Nothing is deleted.'), `<button type="button" class="btn" data-act="reset" data-k="setup">${esc(t('Run it again'))}</button>`));
   }
@@ -5609,8 +5916,9 @@ function toggleSide() {
 }
 
 function go(view, arg, fromEl) {
-  if (view === 'settings') { loadLibs(); loadPads(); }
+  if (view === 'settings') { loadLibs(); loadPads(); if (S.view !== 'settings') S.myRepNew = S.myRepAll = S.myRepQ = S.myRepV = null; }
   if (view === 'shots') loadAllShots();
+  if (view === 'home') homeMaybe();
   if (view === 'saves' && window.loadSavesAll) window.loadSavesAll();
   if (view === S.view && arg === S.arg) { if (view === 'game' && S.nextTab) { S.tab = S.nextTab; S.nextTab = null; } return render(true); }
   S.back.push({ view: S.view, arg: S.arg, tab: S.tab, scroll: $('#main').scrollTop });
@@ -5731,7 +6039,7 @@ async function loadCatalog(force, asked) {
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
     // Kept for offline use, but not while the window is opening: a while later, at the sizes shown.
-    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => { const hero = catalogArt(a, 'hero'); return [thumbOf(catalogArt(a, 'cover'), tileThumb()), hero ? thumbOf(hero, 960) : '', catalogArt(a, 'logo')]; }).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [thumbOf(catalogArt(a, 'cover'), tileThumb()), catalogArt(a, 'hero') || '', catalogArt(a, 'logo')]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     if (urls.length) setTimeout(() => invoke('prefetch_images', { urls }).catch(() => {}), 15000);
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
@@ -5745,7 +6053,17 @@ async function loadCatalog(force, asked) {
   }
 }
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
-T.event.listen('catalog-fresh', () => loadCatalog(false).then(() => render(true)).catch(() => {}));
+const approvedReleases = () => JSON.stringify(Object.keys(S.library).sort().map((id) => {
+  const a = byId(id) || {};
+  return [id, a.tag, a.version, a.repo];
+}));
+T.event.listen('catalog-fresh', async () => {
+  const before = approvedReleases();
+  try { await loadCatalog(false); } catch (e) { return; }
+  render(true);
+  if (approvedReleases() === before) return;
+  await afterCatalog();
+});
 // A Forgejo project's own setup file came in: Easy Setup can show for it now.
 T.event.listen('profiles-fresh', () => loadCatalog(false).then(() => loadEasy(true)).then(() => render(true)).catch(() => {}));
 // A game the player added by its link is on the list now: their copy moved over to the list's one.
@@ -5803,7 +6121,6 @@ for (const ev of ['pointerover', 'focusin']) {
   });
 }
 
-let updateCheckRevision = 0;
 // Free Up Space, on the Your Copy card: the copy the game doesn't read anymore goes to the bin.
 const binName = () => S.os === 'windows' ? t('Recycle Bin') : t('Trash');
 function spareRow(id, su) {
@@ -5893,6 +6210,15 @@ function readyLine(ids) {
   const name = updateName(ids);
   return name ? tf('An update is ready for {name}.', { name }) : t('An update is ready for a game.');
 }
+let updateCheckRevision = 0;
+// The update check for the catalog that just came in: the saved one at startup, a fresh one later.
+// A fresh one can land while the startup check still waits on its answer. Moving the revision on
+// retires that older check, so its late answer (from the old list) can't undo this one.
+function afterCatalog() {
+  if (S.settings?.check_updates === false) return Promise.resolve();
+  updateCheckRevision++;
+  return checkUpdates();
+}
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
   try {
@@ -5934,6 +6260,8 @@ window.setLanguage = setLanguage;
 // left and the page around it stay as they are.
 function setSection(k, fade = true) {
   if (S.view !== 'settings') { S.setTab = k; return go('settings'); }
+  // Your Reviews opened again: what's new is worked out afresh, and it shows the first ones only.
+  if (k !== S.setTab) S.myRepNew = S.myRepAll = S.myRepQ = S.myRepV = null;
   S.setTab = k;
   const ob = $('#main .set-body');
   if (!ob) return render(true);
@@ -6433,7 +6761,9 @@ function menuRows(items) {
     // A row with something new behind it (`dot`, said in words for screen readers) has a dot on its right.
     const dot = i.dot ? `<span class="m-dot" aria-hidden="true"></span>` : '';
     const named = i.dot ? ` aria-label="${esc(i.label + ' · ' + i.dot)}"` : '';
-    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
+    // `raw`: a file name or path, shown as it is (Title Case leaves it alone).
+    const raw = i.raw ? ' data-raw' : '';
+    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}${raw}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
   }).join('');
 }
 function menu(at, items) {
@@ -6631,6 +6961,7 @@ function gameMenu(id) {
   const fresh = newPrepOpts(S.setup[id]).length;
   const newOpts = fresh ? tn(fresh, '1 new option', '{n} new options') : '';
   return [
+    ...startWithItem(id),
     ...(first ? [first] : []),
     ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
     ...(g && S.updates[id] ? [{ act: 'install', id, label: t('Update'), icon: 'down' }] : []),
@@ -6659,6 +6990,7 @@ function gameMenu(id) {
         { act: 'report', id, label: t('Report to RecompLauncher…'), icon: 'page' },
         ...devReportItem(x),
       ] },
+      ...(hasOwnPlaytime(id) ? [{ act: 'play-reset', id, label: t('Reset Play Time…'), icon: 'history' }] : []),
     ] : links.length ? ['-', ...links] : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
@@ -6697,6 +7029,34 @@ function ownFolder(g) {
   const made = String(g.id || '').replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
   return !!g.asset && norm(g.path).split('/').pop() === made;
 }
+// Play time this PC counted for it (a setup that starts the game counts too, issue #487).
+function hasOwnPlaytime(id) {
+  const play = localPlaytime(id);
+  return !!(play && play.played_secs);
+}
+// Its play time back to zero on this PC, and this PC's share on the account when signed in. The
+// same in Big Picture: ask() shows a controller sheet there.
+async function resetPlaytime(id) {
+  const g = S.library[id];
+  if (!g || !hasOwnPlaytime(id)) return;
+  if (S.running.has(id)) return toast(t('Close the game first.'), true);
+  const signedIn = !!(S.account && S.account.signedIn);
+  const text = signedIn ? t('Its play time and sessions on this PC go back to zero, on your account too. Time played on your other PCs stays.')
+    : t('Its play time and sessions on this PC go back to zero.');
+  const buttons = [{ label: t('Keep it'), sub: t('Nothing changes'), v: 'no', focus: true }, { label: t('Reset Play Time'), v: 'yes', main: true, last: true }];
+  const v = await ask(tf('Reset play time for {name}?', { name: g.name }), `<p>${esc(text)}</p>`, buttons);
+  if (v !== 'yes') return;
+  let r = {};
+  try { r = (await invoke('playtime_reset', { id })) || {}; } catch (err) { return fail(err); }
+  await refreshState();
+  if (r.account) await playSync([]);
+  render(true);
+  if (window.tvRefresh) window.tvRefresh();
+  if (r.account === false) return toast(tf('{name}\'s play time is reset on this PC. Your account couldn\'t be reached, so it still counts the old time: clear it on recomplauncher.com, under Account.', { name: g.name }), true);
+  toast(tf('{name}\'s play time is reset.', { name: g.name }));
+}
+window.resetPlaytime = resetPlaytime;
+window.hasOwnPlaytime = hasOwnPlaytime;
 function confirmUninstall(id) {
   id = parentId(id);
   const g = S.library[id];
@@ -7213,49 +7573,42 @@ async function askProgram(id) {
   if (!full.length) { S.nextTab = 'installed'; go('game', id); return toast(t('The launcher couldn\'t tell which program starts the game. Pick it in the game\'s settings.'), true); }
   return confirmProgram(id, (libApp(g) || g).name || id, full, true);
 }
-// Hold Play: pick which of the game's programs starts this time (the game itself, or its own
-// launcher or tools). A normal press starts the usual one.
-window.startWith = async function startWith(id) {
-  const g = S.library[id];
-  if (!g) return;
+// Start With is for a game the launcher doesn't set up, or one the player sets up their own way
+// (Skip Easy Setup). A game Easy Setup runs is made to start through the launcher as it is: there's
+// no other program for the player to pick, on the desktop or in Big Picture.
+const startWithOffered = (id) => !!S.library[id] && !S.easy.has(id);
+// Start With's programs for each installed game: the program Play starts, and the one the player
+// picked (or every program, for a game whose recomplauncher.json doesn't name one). The "…" menu
+// and Big Picture's Options sheet are drawn at once, so the list is loaded just before they open.
+const START_WITH = {};
+async function loadStartWith(id) {
+  if (!startWithOffered(id)) return [];
   let list = [];
-  try { list = (await invoke('game_programs', { id })) || []; } catch (e) { /* none */ }
-  const usual = String(g.exe || '').replace(/\\/g, '/');
-  list = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
-  if (list.length < 2) return playGame(id);
-  if (window.tvAsk && document.body.classList.contains('tv-on')) {
-    const i = await tvAsk(t('Start With'), list.map((p) => ({ label: p.split(/[\\/]/).pop(), sub: p.replace(/\\/g, '/') === usual ? t('Its usual program') : p, icon: 'play' })));
-    if (i >= 0) playGame(id, list[i]);
-    return;
-  }
-  const m = modal(`<h2>${esc(t('Start With'))}</h2><p>${esc(tf('Which of {name}\'s programs starts this time. A normal press of Play starts the usual one.', { name: g.name }))}</p>
-    <div class="choices">${list.map((p, i) => `<button type="button" class="choice" data-x="pick" data-i="${i}"><span><b>${esc(p.split(/[\\/]/).pop())}</b><small>${esc(p.replace(/\\/g, '/') === usual ? t('Its usual program') : p)}</small></span></button>`).join('')}</div>
-    <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button></div>`, (x, close) => {
-    if (x.dataset.x !== 'pick') return;
-    close();
-    playGame(id, list[Number(x.dataset.i)]);
-  }, t('Start With'));
-  return m;
-};
-// Pressing and holding a Play button opens Start With instead of playing.
-{
-  let held = null;
-  document.addEventListener('pointerdown', (e) => {
-    const b = e.target.closest('[data-act="play"][data-id]');
-    if (!b || e.button !== 0 || !S.library[b.dataset.id]) return;
-    clearTimeout(held && held.t);
-    held = { b, t: setTimeout(() => { b.dataset.held = '1'; startWith(b.dataset.id); }, 600) };
-  });
-  const stop = () => { if (held) { clearTimeout(held.t); held = null; } };
-  document.addEventListener('pointerup', stop);
-  document.addEventListener('pointercancel', stop);
-  document.addEventListener('pointerleave', stop);
-  // The click that ends a hold doesn't also play.
-  document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-held]');
-    if (b) { delete b.dataset.held; e.stopImmediatePropagation(); e.preventDefault(); }
-  }, true);
+  try { list = (await invoke('start_with_programs', { id })) || []; } catch (e) { /* none */ }
+  START_WITH[id] = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
+  return START_WITH[id];
 }
+// With one program there's nothing to pick: Play already starts it.
+const startWithList = (id) => (startWithOffered(id) && !S.running.has(id) && (START_WITH[id] || []).length > 1 ? START_WITH[id] : []);
+const isUsualProgram = (id, p) => p.replace(/\\/g, '/') === String((S.library[id] || {}).exe || '').replace(/\\/g, '/');
+// The "…" menu's Start With, at its top: a group with one row per program, the usual one ticked.
+function startWithItem(id) {
+  const list = startWithList(id);
+  if (!list.length) return [];
+  const rows = list.map((p, i) => ({ act: 'start-with', id, k: String(i), label: p.replace(/\\/g, '/'), raw: true, icon: 'play', check: isUsualProgram(id, p) }));
+  return [{ label: t('Start With'), icon: 'play', sub: rows }, '-'];
+}
+async function openGameMenu(at, id) {
+  await loadStartWith(id);
+  return menu(at, gameMenu(id));
+}
+// Big Picture's Start With (from the game's Options sheet): the same programs, as a list to pick.
+window.startWith = async function startWith(id) {
+  const list = startWithList(id);
+  if (!list.length) return playGame(id);
+  const i = await tvAsk(t('Start With'), list.map((p) => ({ label: p.split(/[\\/]/).pop(), sub: isUsualProgram(id, p) ? t('Its usual program') : p, icon: 'play' })));
+  if (i >= 0) playGame(id, list[i]);
+};
 
 // Windows Security stopped a file: say what happened and what can be done, instead of a raw error.
 function blocked(id, err) {
@@ -8476,7 +8829,7 @@ function githubModal() {
 }
 
 // Consoles to pick from: the catalog's, then the usual ones.
-const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['xseries', 'Xbox Series'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch2', 'Nintendo Switch 2'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pc', 'PC']];
+const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['xseries', 'Xbox Series X|S'], ['xone', 'Xbox One'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['vita', 'PS Vita'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch2', 'Nintendo Switch 2'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pce', 'TurboGrafx-16'], ['mobile', 'Mobile'], ['pc', 'PC']];
 function consoleList() {
   const seen = new Set(), out = [];
   for (const o of (S.cat && S.cat.origins) || []) if (!seen.has(o.name.toLowerCase())) { seen.add(o.name.toLowerCase()); seen.add(o.id); out.push([o.id, o.name]); }
@@ -8718,6 +9071,8 @@ const TS_TEXT = [
   N_('Sign in to answer.'),
   N_('Your reports couldn\'t be loaded. Try again later.'),
   N_('Your answer didn\'t go through. Try again later.'),
+  N_('Sign in to delete your review.'),
+  N_('Your review couldn\'t be deleted. Try again later.'),
   N_('Your report is in, but the log couldn\'t be kept.'),
   N_('Logs can be 2 MB at most.'),
   N_('Send the log as a text file, like a .txt or .log.'),
@@ -9077,12 +9432,22 @@ async function act(el, e) {
     case 'move-listing': return moveListing(id, el.dataset.to);
     case 'dlss-remove': try { await invoke('dlss_remove'); S.dlssState = { applies: true, have: false }; toast(t('NVIDIA DLSS file removed.')); if (S.view === 'settings') setSection('library', false); } catch (e) { fail(e); } return;
     case 'umu-repair': try { toast(t(await invoke('umu_repair'))); S.protonNow = await invoke('proton_now').catch(() => S.protonNow); if (S.view === 'settings') setSection(S.setTab); } catch (e) { fail(e); } return;
+    case 'lb-find': return launchboxSet(null);
+    case 'lb-pick': { const p = await pickFile({ title: t('LaunchBox\'s folder'), directory: true }).catch(fail); if (p) await launchboxSet(typeof p === 'string' ? p : p.path); return; }
+    case 'lb-forget': await saveUi({ launchbox_dir: '' }); toast(t('LaunchBox folder removed.')); if (S.view === 'settings') setSection(S.setTab, false); return;
     case 'sgdb-save': { const v = ($('#sgdb-key') || {}).value || ''; await saveUi({ sgdb_key: v.trim() }); return toast(v.trim() ? t('Saved. Games you add from GitHub get art now.') : t('Key removed.')); }
     case 'build': return changeBuild(id);
     case 'gh-add': return githubModal();
     case 'recomp-req': return requestModal();
     case 'setup': return setupModal(id);
-    case 'rep-only': S.repOnly = Object.assign(S.repOnly || {}, { [id]: !!el.dataset.on }); return refreshGame();
+    // The Reviews card: All Reviews, and a long note opened in place.
+    case 'rep-all': return reviewsModal(id);
+    case 'rep-open': {
+      const note = el.previousElementSibling;
+      const open = note.classList.toggle('open');
+      el.textContent = open ? t('Show less') : t('Show more');
+      return;
+    }
     case 'reopen-setup': return setupModal(id);
     case 'setup-cancel': {
       invoke('setup_cancel', { id }).catch(() => {});
@@ -9157,6 +9522,9 @@ async function act(el, e) {
     case 'deck-f': S.find.deckgreat = !S.find.deckgreat; return updateDiscover();
     case 'notify': return toggleNotify(id);
     case 'note-x': return closeNote(el.dataset.n);
+    // An info box from Home page: its screen, or closed for good on this PC.
+    case 'home-go': return HOME_GO['go:' + el.dataset.v] ? go(el.dataset.v) : null;
+    case 'home-close': { const id = Number(el.dataset.id); if (!id) return null; return saveUi({ home_closed: [...homeClosed().filter((x) => x !== id), id].slice(-50) }).then(() => render(true)); }
     case 'note-url': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
@@ -9234,7 +9602,7 @@ async function act(el, e) {
         (x, close) => { close(); if (x.dataset.x === 'yes') run(); }, t('Clear'));
       return;
     }
-    case 'menu': return menu(el, gameMenu(id));
+    case 'menu': return openGameMenu(el, id);
     case 'folder': try { await invoke('open_folder', { id: id || null, path: el.dataset.path || null }); } catch (err) { fail(err); } return;
     case 'app-menu': try { await invoke('desktop_shortcut', { id, menu: true }); toast(tf(S.os === 'windows' ? '{name} is in your Start menu.' : '{name} is in your app menu.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
     case 'desktop': try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
@@ -9249,6 +9617,13 @@ async function act(el, e) {
     case 'rel': return toggleRel(el);
     case 'upd-game': S.nextTab = 'updates'; S.toTabs = true; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
+    case 'export-logs': {
+      if (el.disabled) return;
+      el.disabled = true;
+      // The full path: the zip lands in Downloads on a PC with no desktop folder.
+      try { const p = await invoke('export_logs'); toast(tf('Saved {file}.', { file: p })); } catch (err) { fail(err); } finally { el.disabled = false; }
+      return;
+    }
     case 'dev-add': return devAdd();
     case 'dev-open': S.nextTab = 'dev'; return go('game', id);
     case 'dev-check': return devCheck(id, true);
@@ -9315,12 +9690,7 @@ async function act(el, e) {
       return loadLibs();
     }
     case 'lib-add': return addLibrary().then(loadLibs);
-    case 'rom-add': {
-      const p = await pickFile({ title: t('A folder with your ROMs or game backups'), directory: true }).catch(fail);
-      if (!p) return;
-      await saveSettings({ rom_dirs: uniq([...(S.settings.rom_dirs || []), typeof p === 'string' ? p : p.path]) });
-      return scanRoms();
-    }
+    case 'rom-add': return addRomFolder();
     case 'rom-remove': await saveSettings({ rom_dirs: (S.settings.rom_dirs || []).filter((d) => d !== el.dataset.path) }); return scanRoms();
     case 'rom-scan': return scanRoms();
     case 'rom-emus': return emuFolders();
@@ -9349,6 +9719,8 @@ async function act(el, e) {
       } catch (err) { fail(err); }
       return;
     case 'uninstall': return confirmUninstall(parentId(id));
+    case 'play-reset': return resetPlaytime(id);
+    case 'start-with': return playGame(id, (START_WITH[id] || [])[Number(el.dataset.k)]);
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
       const ids = S.ids || await invoke('data_ids');
@@ -9562,7 +9934,7 @@ document.addEventListener('contextmenu', (e) => {
   }
   const g = e.target.closest('[data-id]');
   const id = g && g.dataset.id;
-  if (id && (byId(id) || S.library[id])) return menu(at, gameMenu(id));
+  if (id && (byId(id) || S.library[id])) return openGameMenu(at, id);
   menu(at, [{ act: 'refresh', label: t('Refresh'), icon: 'refresh' }, { act: 'go-settings', label: t('Settings'), icon: 'gear' }, { act: 'about', label: t('About RecompLauncher'), icon: 'info' }]);
 });
 $('#brand').addEventListener('click', () => aboutModal());
@@ -9831,15 +10203,21 @@ function padLetGo() {
   const held = document.activeElement;
   if (held && held !== document.body) held.blur();
 }
-// The mouse moving again: no highlight.
-document.addEventListener('mousemove', (e) => {
-  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+// The controller lets go: no highlight, and A waits for a direction before it presses anything.
+function padRest() {
   PAD.armed = false;
   if (!document.body.classList.contains('pad-nav')) return;
   document.body.classList.remove('pad-nav');
   if (PAD.el) PAD.el.classList.remove('pad-focus');
   PAD.el = null;
+}
+// The mouse moving again.
+document.addEventListener('mousemove', (e) => {
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+  padRest();
 }, true);
+// A game or another app took over: coming back, a lit Play that A ignores would look broken.
+window.addEventListener('blur', padRest);
 
 // The window has no system title bar, so these are its buttons.
 const W = T.window.getCurrentWindow();
@@ -10158,6 +10536,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   await loadCatalog(false, catAsk);
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
+  homeSync();
   loadIg();
   enjoyDay();
   // Both read the list on disk, side by side. The window waits a moment for them, so the first
@@ -10176,7 +10555,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   S.anim = 'enter';
   render(true);
   // Update check first (it keeps the release info on disk current), then the news reads from it.
-  const upd = S.settings.check_updates !== false ? checkUpdates() : Promise.resolve();
+  const upd = afterCatalog();
   applyLighter();
   watchSlow();
   // Handheld or not is worked out in the background when the launcher starts.

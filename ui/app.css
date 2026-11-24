@@ -306,6 +306,9 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .callout{display:flex;align-items:center;gap:18px;padding:20px 22px;border-radius:20px;background:var(--noise),linear-gradient(90deg,rgba(52,242,232,.09),rgba(52,242,232,.02));border:1px solid rgba(52,242,232,.22)}
 .callout .ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:rgba(52,242,232,.12);color:var(--cyan);flex:none}
 .callout .k{flex:1;min-width:0}.callout b{font-size:16px;display:block}.callout span{color:var(--muted);font-size:14px}
+.callout.home-box .tn-x{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--dim);margin-left:-6px}
+.callout.home-box .tn-x:hover{color:var(--ink);background:var(--fill2)}
+.callout.home-box .tn-x svg{width:14px;height:14px}
 .callout.lib-note{margin-top:12px;padding:12px 16px;gap:12px;border-radius:14px;text-align:left}.callout.lib-note .ic{width:34px;height:34px;border-radius:10px}
 
 /* ---------- discover and library ---------- */
@@ -1292,14 +1295,74 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .beta-pill{font-size:12px!important;font-weight:700;color:var(--cyan)!important;padding:3px 10px;border-radius:99px;background:rgba(52,242,232,.1)}
 .beta-notes{margin:4px 0 10px;color:var(--muted);white-space:pre-line}
 .beta-card .muted{margin:6px 0 12px}
-.ask-run{position:fixed;right:22px;bottom:22px;z-index:60;width:380px;max-width:calc(100vw - 44px);padding:18px 20px;border-radius:20px;background:rgba(20,31,51,.97);backdrop-filter:blur(20px);border:1px solid var(--line2);box-shadow:0 24px 60px -16px rgba(0,0,0,.85);display:flex;flex-direction:column;gap:8px;animation:islIn .36s var(--ease) both}
-.ask-run.out{animation:islOut .25s ease forwards}
-.ask-run b{font-size:15px;padding-right:26px}
-.ask-run>span{font-size:13px;color:var(--muted)}
-.ask-run .ask-x{position:absolute;top:10px;right:12px;width:28px;height:28px;border-radius:9px;color:var(--dim);font-size:19px;line-height:1}
-.ask-run .ask-x:hover{background:var(--fill3);color:var(--ink)}
-.ask-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px}
-.ask-three .btn{padding:0 8px;font-size:13px;height:40px}
+/* How did it run? (more.js reviewDialog): in front of everything, the game's own background art on
+   top with its cover and the question, then the three answers as big cards in their colors, and the
+   few words in the same window. Don't Ask Me Again and Not Now share the last line. */
+.modal.rv{width:min(620px,94vw);padding:0;gap:0;overflow:hidden;position:relative}
+.modal.rv:focus{outline:none}
+.rv-art{position:relative;min-height:150px;display:flex;align-items:flex-end;gap:16px;padding:22px 26px 20px;background:linear-gradient(180deg,rgba(8,12,20,.1) 0%,rgba(8,12,20,.55) 55%,var(--card) 100%),var(--rv-hero) center 30%/cover no-repeat,var(--card2)}
+.rv-art.plain{background:var(--noise),radial-gradient(60% 120% at 20% 0%,rgba(52,242,232,.18),transparent 70%),linear-gradient(180deg,rgba(55,123,182,.18),transparent),var(--card)}
+.rv-cover{flex:none;width:68px;height:90px;object-fit:cover;border-radius:12px;box-shadow:0 14px 34px -10px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.12)}
+.rv-tt{min-width:0;display:flex;flex-direction:column;gap:6px}
+.rv-tt h2{margin:0;font-size:24px;line-height:1.15;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.6);overflow-wrap:anywhere}
+.rv-art.plain .rv-tt h2{color:var(--ink);text-shadow:none}
+.rv-when{align-self:flex-start;font-size:12px;font-weight:700;color:#e9f6ff;padding:3px 10px;border-radius:99px;background:rgba(8,12,20,.55);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(6px)}
+.rv-body{padding:6px 26px 22px;display:flex;flex-direction:column;gap:14px;animation:fadeIn .2s ease}
+.rv-lead{margin:0;color:var(--muted);font-size:13.5px}
+.rv-picks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.rv-pick{--c:61,220,151;display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:16px 14px 15px;border-radius:16px;text-align:left;background:linear-gradient(180deg,rgba(var(--c),.09),rgba(var(--c),.02));border:1px solid rgba(var(--c),.26);transition:border-color .15s,background .15s,transform .12s,box-shadow .15s}
+.rv-pick.v-issues{--c:255,200,87}
+.rv-pick.v-broken{--c:255,107,107}
+.rv-pick:hover{border-color:rgba(var(--c),.7);background:linear-gradient(180deg,rgba(var(--c),.16),rgba(var(--c),.04));box-shadow:0 14px 34px -18px rgba(var(--c),.7)}
+.rv-pick:active{transform:scale(.98)}
+.rv-pick:focus-visible{outline:2px solid rgb(var(--c));outline-offset:2px}
+.rv-pick{position:relative}
+.rv-ic{display:grid;place-items:center;color:rgb(var(--c));margin-bottom:2px}
+.rv-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:2px}
+.btn.main.bad{background:var(--bad);border-color:var(--bad);color:#1a0505}
+.btn.main.bad:hover{filter:brightness(1.08)}
+.modal .rv-never{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13.5px;font-weight:600}
+.rv-never span{display:flex;flex-direction:column;gap:1px}
+.rv-never small{font-size:12px;font-weight:500;color:var(--dim)}
+.rv-del-q{padding-top:16px;gap:12px}
+/* The X on the art: closes like Cancel / Not Now. */
+.rv-x{position:absolute;top:14px;right:14px;z-index:1;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#e9f6ff;background:rgba(8,12,20,.5);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(8px);transition:background .15s,color .15s,transform .12s}
+.rv-x:hover{background:rgba(8,12,20,.78);color:#fff}
+.rv-x:active{transform:scale(.94)}
+.rv-x:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.rv-art.plain .rv-x{color:var(--muted);background:var(--fill2);border-color:var(--line2);backdrop-filter:none}
+.rv-q{font-size:16px}
+.rv textarea{width:100%;resize:vertical;min-height:96px;border-radius:12px;border:1px solid var(--line2);background:var(--fill);color:var(--ink);padding:11px 13px;font:500 13.5px Figtree,sans-serif}
+.rv textarea:focus{outline:none;border-color:var(--line3)}
+.rv .acts{gap:8px}
+.rv .ask-anon{display:block;font-size:11.5px;color:var(--muted);text-align:center}
+/* Write a Review / Edit Your Review: which it is, on the art. */
+.rv-when.rv-kind{color:var(--cyan);border-color:rgba(52,242,232,.4)}
+/* The field and, under it, how many more letters a problem needs. */
+.rv-field{display:flex;flex-direction:column;gap:6px}
+.rv-count{align-self:flex-end;min-height:16px;font-size:12px;font-weight:700;color:var(--v-issues,#ffc857)}
+.rv-count:empty{min-height:0}
+/* What goes with the review: a chip each. */
+.rv-specs{display:flex;flex-direction:column;gap:7px}
+.rv-specs>small{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--dim)}
+.rv-specs>div{display:flex;flex-wrap:wrap;gap:6px}
+.rv-specs span{height:24px;display:inline-flex;align-items:center;padding:0 9px;border-radius:7px;font-size:12px;font-weight:600;color:var(--muted);background:var(--fill2);box-shadow:inset 0 0 0 1px var(--line);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-vernote{margin:0;padding:9px 12px;border-radius:10px;font-size:12.5px;color:var(--ink);background:rgba(52,242,232,.07);box-shadow:inset 0 0 0 1px rgba(52,242,232,.25)}
+/* One page: compact answers to pick from, the words right under them. */
+.rv-one{padding-top:14px}
+.rv-picks.mini .rv-pick{flex-direction:row;align-items:center;gap:11px;padding:12px 13px}
+.rv-picks.mini .rv-ic{margin:0}
+.rv-picks.mini .rv-ic svg{width:22px;height:22px}
+.rv-pt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rv-pt b{font-size:14px}
+.rv-pt>span{font-size:11.5px;line-height:1.3;color:var(--muted)}
+.rv-pick.on{border-color:rgb(var(--c));background:linear-gradient(180deg,rgba(var(--c),.22),rgba(var(--c),.06));box-shadow:0 0 0 3px rgba(var(--c),.16)}
+.rv-pick.on::after{content:'';position:absolute;top:8px;right:8px;width:16px;height:16px;border-radius:50%;background:rgb(var(--c)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2306121a' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/11px no-repeat}
+.rv-write{display:flex;flex-direction:column;gap:12px;transition:opacity .2s}
+.rv-write.off{opacity:.45}
+.rv-foot-r{display:flex;gap:8px;margin-left:auto}
+.rv-foot-r .btn.main{min-width:130px}
+@media (max-width:560px){.rv-picks{grid-template-columns:1fr}.rv-pick{flex-direction:row;align-items:center}.rv-ic{margin:0}}
 .ask-log{display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;margin-top:2px}
 .ask-log input{width:17px;height:17px;flex:none;margin-top:1px;accent-color:var(--cyan)}
 .ask-log span{display:flex;flex-direction:column;gap:1px}
@@ -1307,12 +1370,6 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .ask-specs{font-size:12px;color:var(--dim);line-height:1.4;overflow-wrap:anywhere}
 .ask-how{align-self:flex-start;font-size:13px}
 .ask-err{margin:0;font-size:13px;color:var(--bad,#ff7a7a)}
-.ask-three .v-runs:hover{border-color:rgba(52,242,232,.5)}
-.ask-three .v-issues:hover{border-color:rgba(245,184,61,.55)}
-.ask-three .v-broken:hover{border-color:rgba(255,122,122,.55)}
-.ask-run textarea{width:100%;resize:none;border-radius:12px;border:1px solid var(--line2);background:var(--fill);color:var(--ink);padding:10px 12px;font:500 13.5px Figtree,sans-serif}
-.ask-run textarea:focus{outline:none;border-color:var(--line3)}
-.ask-run .acts{margin-top:4px;gap:8px}
 .whatsnew{max-width:560px}
 .whatsnew .md{max-height:52vh;overflow:auto;margin:10px 0 18px;color:var(--muted)}
 .whatsnew .md h2,.whatsnew .md h3{color:var(--ink);font-size:15px;margin:14px 0 6px}
@@ -1560,23 +1617,79 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 /* ---------- how it runs ---------- */
 .runs{--v-runs:#3ddc97;--v-issues:#ffc857;--v-broken:#ff6b6b}
 .runs .card-h{margin-bottom:12px}
-.runs-top{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
-.runs-pct{font:700 34px/1 Archivo,sans-serif;letter-spacing:-.02em;color:var(--v-runs)}
-.runs-top span{color:var(--muted);font-size:14px;font-weight:600}
 .rbar{display:flex;gap:3px;height:10px;border-radius:6px;overflow:hidden;background:var(--fill2)}
 .rbar i{display:block;min-width:4px}
 .rbar .v-runs{background:var(--v-runs,#3ddc97)}.rbar .v-issues{background:var(--v-issues,#ffc857)}.rbar .v-broken{background:var(--v-broken,#ff6b6b)}
-.rlegend{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
-.rlegend>div{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:12px;background:var(--fill);border:1px solid var(--line);min-width:0}
-.rlegend i{width:9px;height:9px;border-radius:50%;flex:none}
-.rlegend span{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--muted)}
-.rlegend b{font-size:14px}
 .v-runs>i,.rverdict.v-runs i{background:var(--v-runs,#3ddc97)}.v-issues>i,.rverdict.v-issues i{background:var(--v-issues,#ffc857)}.v-broken>i,.rverdict.v-broken i{background:var(--v-broken,#ff6b6b)}
 .reps{display:flex;flex-direction:column;margin-top:14px;border-top:1px solid var(--line)}
 .rep{padding:12px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
-.rep-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.rep-top{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px}
 .rep-top small{color:var(--dim);font-size:12px;white-space:nowrap}
 .rep-top small{margin-left:auto}
+/* The Reviews card: the score big on the left in its own color, and a row for each answer with its
+   share as a bar (a row shows only those reviews). The player's own review sits apart in cyan, and
+   each review says where it was played. */
+/* The game page's score in one line: number, what it's of, one bar split by answer. */
+.rv-line{display:flex;align-items:center;gap:16px}
+.rv-line .runs-pct{font-size:36px;flex:none}
+.rv-what{display:flex;flex-direction:column;gap:2px;flex:none;max-width:45%}
+.rv-what span{color:var(--muted);font-size:14px;font-weight:600}
+.rv-what small{color:var(--dim);font-size:12px}
+.rv-line .rbar{flex:1;min-width:80px}
+.rv-sum{display:grid;grid-template-columns:minmax(150px,auto) minmax(0,1fr);gap:24px;align-items:center}
+.rv-score{display:flex;flex-direction:column;gap:5px;min-width:0}
+.rv-score>span{color:var(--muted);font-size:14px;font-weight:600}
+.rv-score .runs-sub{margin:0}
+.runs-pct{font:700 46px/1 Archivo,sans-serif;letter-spacing:-.02em;color:var(--v-runs)}
+.runs-pct.mid{color:var(--v-issues)}
+.runs-pct.low{color:var(--v-broken)}
+.rv-dist{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rv-row{display:grid;grid-template-columns:10px minmax(90px,auto) minmax(0,1fr) 34px;align-items:center;gap:12px;padding:7px 10px;border-radius:10px;text-align:left;border:1px solid transparent;transition:background .15s,border-color .15s}
+.rv-row:hover:not(:disabled){background:var(--fill2)}
+.rv-row.on{background:var(--fill2);border-color:var(--line3)}
+.rv-row:disabled{opacity:.45;cursor:default}
+.rv-row i{width:9px;height:9px;border-radius:50%}
+.rv-row span{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+.rv-row.on span{color:var(--ink)}
+.rv-track{height:8px;border-radius:99px;background:var(--fill2);overflow:hidden}
+.rv-track s{display:block;height:100%;min-width:4px;border-radius:inherit;text-decoration:none}
+.rv-row.v-runs s{background:var(--v-runs)}.rv-row.v-issues s{background:var(--v-issues)}.rv-row.v-broken s{background:var(--v-broken)}
+.rv-row b{font-size:13.5px;text-align:right}
+.rv-mine{margin-top:16px;padding:14px 16px;border-radius:14px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(90deg,rgba(52,242,232,.09),rgba(52,242,232,.02));border:1px solid rgba(52,242,232,.3)}
+.rv-mine-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rv-mine-h b{font-size:14px;color:var(--cyan)}
+.rv-mine-h small{margin-left:auto;color:var(--dim);font-size:12px}
+.rv-mine .rep-note{margin:0}
+.rep-sys{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+.rep-sys .os-ico,.rep-sys svg{width:13px;height:13px;flex:none}
+.rep-ver{height:20px;display:inline-flex;align-items:center;padding:0 7px;border-radius:6px;font-size:11.5px;font-weight:700;color:var(--muted);background:var(--fill2)}
+.rep-note.long{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.rep-note.long.open{display:block}
+.rep-open{align-self:flex-start;margin-top:-2px}
+.rep-pc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* All Reviews (app.js reviewsModal): the project's name on top, the score and rows to narrow the
+   list, the player's own review, then every review scrolling under them and the site in the footer. */
+.modal.rvall{width:min(1180px,95vw);height:92vh;padding:0;gap:0;overflow:hidden;display:flex;flex-direction:column}
+.modal.rvall:focus{outline:none}
+.rva-h{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 26px 14px}
+.rva-h small{color:var(--dim);font-size:12px;font-weight:700;letter-spacing:.04em}
+.rva-h h2{margin:3px 0 0;font-size:24px;overflow-wrap:anywhere}
+.rva-x{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--muted);background:var(--fill2);border:1px solid var(--line2)}
+.rva-x:hover{color:var(--ink);border-color:var(--line3)}
+.rva-top{padding:0 26px 14px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--line)}
+.rva-top .rv-mine,.rva-top .rep-px{margin:0}
+.rva-chips:empty{display:none}
+.rvall .rep-filter{margin:0}
+.rva-list{flex:1;min-height:0;overflow:auto;margin:0;padding:0 26px;border-top:0}
+.rva-list .rep:last-child{border-bottom:0}
+/* .modal p dims every paragraph: notes and answers keep the card's color here. */
+.modal.rvall .rep-note,.modal.rvall .rep-reply p{color:#d6dce5}
+.modal.rvall .rep-pc{color:var(--dim)}
+.rva-foot{display:flex;align-items:center;gap:16px;padding:14px 26px;border-top:1px solid var(--line)}
+.rva-rest{margin:0;font-size:12.5px;color:var(--muted)}
+.rva-foot .btn{margin-left:auto;flex:none}
+.rep-none{margin:14px 0 0}
+@media (max-width:760px){.rv-sum{grid-template-columns:1fr;gap:14px}}
 .rep-pxtag{flex:none;height:22px;display:inline-flex;align-items:center;padding:0 8px;border-radius:7px;font-size:11.5px;font-weight:700;color:var(--muted);background:var(--fill2);border:1px solid var(--line2)}
 .rep-px{margin:2px 0 0;font-size:13px;color:var(--muted)}
 .rverdict{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700}
@@ -1591,11 +1704,53 @@ main.enter-back>*{animation:backIn .34s cubic-bezier(.2,.8,.2,1) both}
 .rep-reply.dev{border-left-color:var(--cyan)}
 .rep-replies .rep-reply.dev{margin-left:-14px;padding-left:12px;border-left:2px solid var(--cyan)}
 .dev-badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.02em;background:rgba(52,242,232,.14);color:var(--cyan)}
-.myrep{padding:14px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
-.myrep:last-child{border-bottom:0;padding-bottom:0}
+/* Settings > Your Reviews: a review per project, its picture and name open its page. */
+.myrep-lead{color:var(--cyan);font-weight:600}
+.myrep-name{font-size:15px;font-weight:800;color:var(--ink);text-align:start;padding:0}
+.myrep-name:not([disabled]):hover{color:var(--cyan)}
+.myrep-pic{flex:none;width:54px;height:72px;border-radius:10px;overflow:hidden;padding:0;background:var(--card3);box-shadow:0 0 0 1px var(--line2)}
+.myrep-pic img{width:100%;height:100%;object-fit:cover;display:block}
+.myrep-pic.plain{background:radial-gradient(80% 80% at 30% 20%,rgba(52,242,232,.2),transparent 70%),var(--card3)}
+.myrep-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.myrep-meta small{color:var(--dim);font-size:12.5px}
+.myrep-new{flex:none;white-space:nowrap;height:20px;display:inline-flex;align-items:center;padding:0 8px;border-radius:99px;font-size:11px;font-weight:800;color:#06121a;background:var(--cyan)}
+.myrep-acts{display:flex;gap:8px;margin-left:auto}
+.myrep-in{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.myrep-in .rep-note{margin:0}
 .myrep-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.myrep-h small{color:var(--dim);font-size:12.5px;margin-left:auto}
-.myrep.fresh .myrep-h b::after{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--cyan);margin-left:8px;vertical-align:middle}
+/* Search and answer chips: one bar; the field lights up while it's in use. */
+.myrep-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 14px}
+.myrep-q{position:relative;flex:1 1 280px;min-width:220px;height:42px;display:flex;align-items:center;gap:10px;padding:0 8px 0 14px;border-radius:12px;background:var(--bg2);box-shadow:inset 0 0 0 1px var(--line2);color:var(--dim);transition:box-shadow .18s,color .18s,background .18s;cursor:text}
+.myrep-q svg{flex:none;width:18px;height:18px;transition:color .18s,transform .18s}
+.myrep-q:hover{box-shadow:inset 0 0 0 1px var(--line3)}
+.myrep-q:focus-within{color:var(--cyan);background:var(--card);box-shadow:inset 0 0 0 1px rgba(52,242,232,.65),0 0 0 4px rgba(52,242,232,.12),0 10px 30px -12px rgba(52,242,232,.35)}
+.myrep-q:focus-within>svg{transform:scale(1.08)}
+.myrep-q input{flex:1;min-width:0;height:100%;border:0;outline:0;background:none;color:var(--ink);font:600 14.5px Figtree,sans-serif}
+.myrep-q input::placeholder{color:var(--dim);font-weight:500}
+.myrep-q input::-webkit-search-cancel-button{display:none}
+.myrep-hits{flex:none;font-size:12px;font-weight:700;color:var(--cyan);white-space:nowrap}
+.myrep-hits:empty{display:none}
+.myrep-x{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:var(--muted);background:var(--fill2);opacity:0;pointer-events:none;transform:scale(.8);transition:opacity .15s,transform .15s,color .15s}
+.myrep-q.has .myrep-x{opacity:1;pointer-events:auto;transform:none}
+.myrep-x:hover{color:var(--ink);background:var(--fill3)}
+.myrep-x svg{width:12px;height:12px}
+.myrep-chips{display:flex;gap:4px;flex-wrap:wrap;padding:3px;border-radius:12px;background:var(--bg2);box-shadow:inset 0 0 0 1px var(--line)}
+.myrep-chip{height:34px;padding:0 12px;border-radius:9px;display:inline-flex;align-items:center;gap:7px;font:700 13px Figtree,sans-serif;color:var(--muted);white-space:nowrap;transition:background .15s,color .15s}
+.myrep-chip i{width:8px;height:8px;border-radius:50%}
+.myrep-chip b{min-width:20px;height:20px;padding:0 6px;border-radius:99px;display:inline-grid;place-items:center;font-size:11px;background:var(--fill2);color:var(--muted)}
+.myrep-chip:not([disabled]):hover{color:var(--ink);background:var(--fill)}
+.myrep-chip.on{color:var(--ink);background:var(--card3);box-shadow:inset 0 0 0 1px var(--line3)}
+.myrep-chip.on b{background:var(--cyan);color:#06121a}
+.myrep-chip[data-v="new"]{color:var(--cyan)}
+.myrep-chip[disabled]{opacity:.4;cursor:default}
+.myrep-none{display:flex;flex-direction:column;align-items:center;gap:12px;padding:34px 16px;text-align:center;color:var(--muted);border-radius:14px;border:1px dashed var(--line2)}
+.myrep-none[hidden]{display:none}
+.myrep-none b{font-size:15px;color:var(--ink)}
+.myrep[hidden]{display:none!important}
+/* A small cover beside each review; one with a new answer is lit. */
+.myreps>.myrep{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
+.myreps>.myrep:last-child{border-bottom:0;padding-bottom:0}
+.myreps>.myrep.fresh{margin:0 -12px;padding:14px 12px;border-radius:12px;background:linear-gradient(90deg,rgba(52,242,232,.08),transparent);border-bottom-color:transparent}
 .myrep-ans{display:flex;gap:10px;align-items:flex-end;margin-top:10px}
 .myrep-ans textarea{flex:1;min-width:0;resize:vertical;min-height:44px}
 .acc-btn{position:relative}
@@ -2060,6 +2215,8 @@ body.playing *,body.playing *::before,body.playing *::after{animation-duration:0
 .cz-fit{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .cz-src{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .cz-src .btn{white-space:normal;height:auto;min-height:42px;padding:8px 10px;line-height:1.2}
+/* With LaunchBox too: four sources in two rows. */
+.cz-src.four{grid-template-columns:repeat(2,minmax(0,1fr))}
 .cz-right h4{margin:2px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .cz-prev{display:flex;flex-direction:column;gap:12px}
 .cz-tip{margin:12px 0 0;font-size:13px}
@@ -2090,6 +2247,7 @@ span.pv-logo{display:none}
 .ap-grid.icon .ap-it img,.ap-grid.logo .ap-it img{object-fit:contain;padding:8px;background:repeating-conic-gradient(#232a36 0 25%,#1b212c 0 50%) 0 0/16px 16px}
 .cz-key{max-width:560px}
 .cz-keyrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0}
+.cz-lbpath{margin:12px 0}
 @media (max-width:860px){.cz-art{grid-template-columns:1fr}.cz-stage{height:300px}}
 
 /* After a game's own setup: which program starts it */
@@ -2197,6 +2355,7 @@ body.light .tag.deck{color:#0b6fbf}
 /* Customize, Info: the player's own words about the game. */
 .cz-desc{width:100%;min-height:110px;resize:vertical;line-height:1.5;font:inherit;padding:10px 12px}
 .cz-name .cz-lab+.cz-desc{margin-top:6px}
+.cz-from{margin-top:8px}
 .own-about .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .own-about p{white-space:pre-line}
 /* Discover's pinned search and filters: slides in under the window's top once the page's own scroll away. */
@@ -2723,13 +2882,12 @@ body.light .su-req{color:#8a5300}
 .ig-card.ig-wide{flex-direction:row;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px}
 .ig-card.ig-wide .ig-top{flex:1}
 .ig-card.ig-wide .ig-row{flex:none;gap:14px}
-.ig-card.ig-wide .ig-aff{flex:none;order:3}
 @media (max-width:700px){.ig-card.ig-wide{flex-direction:column;align-items:stretch}}
 .ig-top{display:flex;align-items:center;gap:10px;min-width:0}
 .ig-logo{flex:none;width:22px;height:22px;border-radius:6px}
 .ig-what{display:flex;flex-direction:column;min-width:0}
 .ig-what b{font-size:13.5px}
-.ig-what small,.ig-aff{font-size:11.5px;color:var(--dim)}
+.ig-what small{font-size:11.5px;color:var(--dim)}
 .ig-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .ig-price{display:flex;align-items:baseline;gap:7px;font-size:15px}
 .ig-price s{color:var(--dim);font-size:12.5px}
@@ -2745,7 +2903,6 @@ body.light .su-req{color:#8a5300}
 .runs .rep-filter{display:flex;gap:6px;margin:12px 0 0}
 .runs .rep-filter .chip{height:30px;padding:0 12px;font-size:12.5px}
 .runs .rep-filter .chip.on{color:var(--ink);background:var(--fill2,rgba(255,255,255,.08));border-color:var(--line3)}
-.ask-run .ask-anon{display:block;margin-top:8px;font-size:11.5px;color:var(--muted);text-align:center}
 .loc-ask{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--muted);cursor:pointer}
 
 /* Console Labels on Covers: the console's strip across the top of a cover (the site's PNG), over
