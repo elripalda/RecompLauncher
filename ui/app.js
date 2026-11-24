@@ -255,6 +255,9 @@ const copyGoneText = (id) => updateBuildDue(id) ? t('Your copy isn\'t needed: it
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
 // A game of a multi-game recomp is set up as its recomp is.
+// The launcher hands the player's copy to the game (Easy Setup, or a boot profile that puts it where
+// the game reads it). Otherwise the game asks for it itself on its first start.
+const feedsCopy = (a) => S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || ''));
 const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
@@ -1561,23 +1564,27 @@ function readyRows(a) {
   // A self-managed install doesn't need the player's copy or its update: Play just starts their
   // executable.
   const selfRun = !!(su && su.own_program);
+  // While it builds, its copy and other files are in use: asking for them then only reads as missing.
+  const building = status(a) === 'settingup' || buildWaits(id);
+  // Only ask for the copy when the launcher can hand it to the game, and not while it builds.
+  const askCopy = !selfRun && !building && feedsCopy(a);
   const cs = su && su.needs ? copyState(id, su) : null;
   // Set up without a copy to show: built from the copy (it plays without it).
   const st = setupStatus(id);
   // (or, after an update, built again from what its setup step kept)
   const builtOnly = !!(cs && !cs.file && st && ((st.ready && st.reason === 'built') || copyNotNeeded(id)));
-  if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: copyGoneText(id), fix: '' });
-  else if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
+  if (builtOnly && askCopy) rows.push({ k: t('Your copy of the game'), v: true, d: copyGoneText(id), fix: '' });
+  else if (cs && askCopy) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
     d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
     tags: cs.file || own ? '' : fmtTags(cs.exts),
     fix: cs.file ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
-  else if (!g && S.easy.has(id)) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
+  else if (!g && S.easy.has(id) && askCopy) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
     d: own ? t('It\'s set up for you after it installs.') : t('You insert it after it installs, and the launcher sets the game up.'), html: own ? copyLine(id) : '', tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
-  else if (a.needs && !selfRun) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
+  else if (a.needs && askCopy) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
     d: own ? '' : g && g.last_played ? t('Set up the first time you played') : t('Not found'), html: own ? copyLine(id) : '',
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
-  if (su && su.needs && !selfRun) rows.push(...otherFileRows(id, su));
-  if (st && st.detail === 'cut' && !selfRun) rows.push(cutRow(id));
+  if (su && su.needs && askCopy) rows.push(...otherFileRows(id, su));
+  if (st && st.detail === 'cut' && askCopy) rows.push(cutRow(id));
   rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
