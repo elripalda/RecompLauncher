@@ -677,7 +677,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         report(Progress::new(id, "unpack", 0, 0));
         let (file, sdir) = (got.file.clone(), installer::staging(&st.dir, id));
         let setup = tokio::task::spawn_blocking(move || installer::stage(&file, &sdir)).await.map_err(|e| Error::Msg(e.to_string()))??;
-        let _ = std::fs::remove_file(&got.file);
+        // A zip with the installer in it stays with Keep downloaded files on, like a game's zip.
+        // (A lone setup program has already moved to staging, so there's nothing left to keep.)
+        if !keep {
+            let _ = std::fs::remove_file(&got.file);
+        }
         {
             let mut l = st.lib.lock().unwrap();
             match l.installed.get_mut(id) {
