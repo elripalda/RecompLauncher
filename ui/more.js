@@ -319,37 +319,67 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
   const own = (k) => pickArt(a, k, false);
   const hero = media(thumbOf(own('hero') || own('cover'), 960)), cover = media(thumbOf(own('cover'), 160));
   const howTo = /^https:\/\//i.test(String(a.report_url || '')) ? a.report_url : '';
-  const session = secs >= 60 ? `<small class="rv-when">${esc(tf('{time} this session', { time: fmtTime(secs) }))}</small>` : '';
-  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: reviewName(id, g) }))}</h2></div></div>`;
+  // Opened from the game page (not after a session): it says whether it's a new review or a change.
+  const editing = !auto && !!prev;
+  const kind = auto ? '' : editing ? t('Edit Your Review') : t('Write a Review');
+  const session = secs >= 60 ? `<small class="rv-when">${esc(tf('{time} this session', { time: fmtTime(secs) }))}</small>`
+    : kind ? `<small class="rv-when rv-kind">${esc(kind)}</small>` : '';
+  // The version it's about: a review sent again is about the version installed now.
+  const nowVer = (pre && pre.version) || g.tag || '';
+  const verNote = editing && prev.version && nowVer && prev.version !== nowVer
+    ? `<p class="rv-vernote">${esc(tf('Your review is about {old}. Sending it again makes it about {new}.', { old: prev.version, new: nowVer }))}</p>` : '';
+  // What goes with it, a chip each, so it reads at a glance.
+  const specs = specsLine ? `<div class="rv-specs"><small>${esc(t('This goes with your review'))}</small><div>${specsLine.split(' · ').filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join('')}</div></div>` : '';
+  const sendLabel = editing ? t('Update Review') : t('Send');
+  let draft = prev && prev.note ? prev.note : '', logTouched = false;
+  // The X in the corner does what Cancel (or Not Now) does.
+  const shut = `<button type="button" class="rv-x" data-x="cancel" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`;
+  const art = `<div class="rv-art${hero ? '' : ' plain'}"${hero ? ` style="--rv-hero:url('${esc(hero)}')"` : ''}>${shut}${cover ? `<img class="rv-cover" src="${esc(cover)}" alt="">` : ''}<div class="rv-tt">${session}<h2>${esc(tf('How did {name} run?', { name: reviewName(id, g) }))}</h2></div></div>`;
   const left = auto ? `<label class="rv-never"><button type="button" class="switch" role="switch" aria-checked="${!reviewAskOn()}" data-x="never"></button><span>${esc(t('Don\'t Ask Me Again'))}<small>${esc(t('Turn it back on in Settings, Reviews.'))}</small></span></label>`
     // Changing a review already sent: it can be taken back too (never offered right after a session).
     : prev ? `<button type="button" class="btn danger rv-del" data-x="del">${esc(t('Delete Review'))}</button>` : '<span></span>';
-  const was = (k) => !!prev && prev.verdict === k;
-  const pick = ([k, n]) => `<button type="button" class="rv-pick v-${k}${was(k) ? ' was' : ''}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span>${was(k) ? `<em class="rv-was">${esc(t('Your Last Answer'))}</em>` : ''}<b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></button>`;
-  const first = () => `<div class="rv-body"><p class="rv-lead">${esc(t('It helps others, and shows on its page with your PC\'s graphics card and Windows version.'))}</p>
-    <div class="rv-picks">${VERDICT.map(pick).join('')}</div>
-    <div class="rv-foot">${left}<button type="button" class="btn" data-x="no">${esc(auto ? t('Not Now') : t('Cancel'))}</button></div></div>`;
   // A few words: needed for a problem (what happened, and when), up to them for Plays great.
-  const second = (verdict) => {
-    const bad = verdict !== 'runs';
-    const word = (VERDICT.find(([k]) => k === verdict) || [])[1];
-    return `<div class="rv-body rv-two"><div class="rv-chosen"><button type="button" class="rv-back" data-x="back" aria-label="${esc(t('Back'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><span class="rverdict v-${esc(verdict)}"><i aria-hidden="true"></i>${esc(t(word))}</span></div>
-      <b class="rv-q">${esc(bad ? t('What happened?') : t('Anything others should know?'))}</b>
-      <textarea rows="4" maxlength="1000" placeholder="${esc(bad ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'))}"${bad ? ' required aria-required="true"' : ''}>${prev && prev.note ? esc(prev.note) : ''}</textarea>
-      ${pre && pre.log ? `<label class="ask-log"><input type="checkbox" data-log${bad ? ' checked' : ''}><span>${esc(t('Attach the Game\'s Log'))}<small>${esc(t('Only the game\'s developer sees the log.'))}</small></span></label>` : ''}
-      ${specsLine ? `<small class="ask-specs">${esc(t('This goes with your review'))}: ${esc(specsLine)}</small>` : ''}
+  const isBad = (v) => !!v && v !== 'runs';
+  const question = (v) => (isBad(v) ? t('What happened?') : t('Anything others should know?'));
+  const hint = (v) => (isBad(v) ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped'));
+  const field = (v) => `<textarea rows="4" maxlength="1000" placeholder="${esc(hint(v))}"${isBad(v) ? ' required aria-required="true"' : ''}>${esc(draft)}</textarea>
+      <small class="rv-count" aria-live="polite"></small>`;
+  const extras = (v) => `${pre && pre.log ? `<label class="ask-log"><input type="checkbox" data-log${isBad(v) ? ' checked' : ''}><span>${esc(t('Attach the Game\'s Log'))}<small>${esc(t('Only the game\'s developer sees the log.'))}</small></span></label>` : ''}
+      ${specs}${verNote}
       ${howTo ? `<button type="button" class="linkbtn ask-how" data-x="how">${esc(t('How to Report Bugs for This Game'))}</button>` : ''}
-      <p class="ask-err" hidden></p>
-      <div class="acts grid2">${bad ? `<button type="button" class="btn" data-x="back">${esc(t('Back'))}</button><button type="button" class="btn main" data-x="send" disabled>${esc(t('Send'))}</button>` : `<button type="button" class="btn" data-x="skip">${esc(t('Just send it'))}</button><button type="button" class="btn main" data-x="send">${esc(t('Send'))}</button>`}</div>
-      <small class="ask-anon">${esc(t('Your name isn\'t shown with your review.'))}</small></div>`;
-  };
+      <p class="ask-err" hidden></p>`;
+  const anon = `<small class="ask-anon">${esc(t('Your name isn\'t shown with your review.'))}</small>`;
+  // One page: the answers on top, the words under them, Send at the bottom. Edit opens with what was
+  // said before, so changing one word is one click away.
+  const onePick = ([k, n]) => `<button type="button" class="rv-pick v-${k}${verdict === k ? ' on' : ''}" role="radio" aria-checked="${verdict === k}" data-x="v" data-v="${k}"><span class="rv-ic">${rvIcon(k)}</span><span class="rv-pt"><b>${esc(t(n))}</b><span>${esc(t(VERDICT_SUB[k]))}</span></span></button>`;
+  const one = () => `<div class="rv-body rv-one"><div class="rv-picks mini" role="radiogroup" aria-label="${esc(tf('How did {name} run?', { name: reviewName(id, g) }))}">${VERDICT.map(onePick).join('')}</div>
+      <div class="rv-write${verdict ? '' : ' off'}"><b class="rv-q">${esc(question(verdict))}</b><div class="rv-field">${field(verdict)}</div>${extras(verdict)}</div>
+      <div class="rv-foot">${left}<div class="rv-foot-r"><button type="button" class="btn" data-x="cancel">${esc(auto ? t('Not Now') : t('Cancel'))}</button><button type="button" class="btn main" data-x="send" disabled>${esc(sendLabel)}</button></div></div>
+      ${anon}</div>`;
   // Deleting asks once more, in the same window, saying what goes.
-  const confirmDel = () => `<div class="rv-body rv-two"><b class="rv-q">${esc(t('Delete your review?'))}</b>
+  const confirmDel = () => `<div class="rv-body rv-del-q"><b class="rv-q">${esc(t('Delete your review?'))}</b>
       <p class="rv-lead">${esc(tf('Your review of {name} comes off its page and out of Your Reviews, with any answers on it. This can\'t be undone.', { name: reviewName(id, g) }))}</p>
       <p class="ask-err" hidden></p>
       <div class="acts grid2"><button type="button" class="btn" data-x="back">${esc(t('Cancel'))}</button><button type="button" class="btn main bad" data-x="del-yes">${esc(t('Delete Review'))}</button></div></div>`;
-  let verdict = null, busy = false;
-  const s = modal(`${art}${first()}`, async (x, close) => {
+  let verdict = prev ? prev.verdict : null, busy = false;
+  // Send is ready once there's an answer and, for a problem, enough words; the count under the field
+  // says how many more it needs. A note from before counts.
+  const wire = () => {
+    const box = $('.modal', s), ta = $('textarea', box);
+    if (!ta) return;
+    const upd = () => {
+      const need = isBad(verdict) ? Math.max(0, 15 - [...ta.value.trim()].length) : 0;
+      const go2 = $('[data-x="send"]', box);
+      if (go2) go2.disabled = !verdict || need > 0;
+      const c = $('.rv-count', box);
+      if (c) c.textContent = !verdict ? t('Pick an answer first') : need ? tf('{n} more letters', { n: need }) : '';
+    };
+    ta.oninput = () => { draft = ta.value; s.dataset.busy = '1'; upd(); };
+    const log = $('[data-log]', box);
+    if (log) log.onchange = () => { logTouched = true; };
+    upd();
+  };
+  const s = modal(`${art}${one()}`, async (x, close) => {
     const box = $('.modal', s);
     const body = () => $('.rv-body', box);
     const act = x.dataset.x;
@@ -358,27 +388,30 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
       x.setAttribute('aria-checked', String(off));
       return setReviewAsk(!off);
     }
+    // Cancel is said on purpose: it closes even with words written (a click outside doesn't).
+    if (act === 'cancel') { if (busy) return; delete s.dataset.busy; return close(); }
     if (act === 'v') {
+      // Picked in place: the words stay, the question and what's needed follow the answer.
       verdict = x.dataset.v;
-      body().outerHTML = second(verdict);
-      // Words being written aren't thrown away by a click outside or Escape: Back and Send only.
-      s.dataset.busy = '1';
-      const ta = $('textarea', box), go2 = $('[data-x="send"]', box);
-      // A note from before counts: Send is ready when it's long enough already.
-      const short = () => verdict !== 'runs' && [...ta.value.trim()].length < 15;
-      go2.disabled = short();
-      ta.addEventListener('input', () => { go2.disabled = short(); });
+      for (const p of $$('.rv-pick', box)) { const on = p.dataset.v === verdict; p.classList.toggle('on', on); p.setAttribute('aria-checked', String(on)); }
+      $('.rv-write', box).classList.remove('off');
+      $('.rv-q', box).textContent = question(verdict);
+      const ta = $('textarea', box);
+      ta.placeholder = hint(verdict);
+      ta.required = isBad(verdict);
+      const log = $('[data-log]', box);
+      if (log && !logTouched) log.checked = isBad(verdict);
+      wire();
       ta.setSelectionRange(ta.value.length, ta.value.length);
       return ta.focus();
     }
+    // Back from Delete's question: the review as it was being written.
     if (act === 'back') {
       if (busy) return;
-      delete s.dataset.busy;
-      body().outerHTML = first();
-      const f = $(`[data-v="${verdict}"]`, box);
-      return f && f.focus();
+      body().outerHTML = one();
+      return wire();
     }
-    if (act === 'del') { body().outerHTML = confirmDel(); return; }
+    if (act === 'del') { const ta = $('textarea', box); if (ta) draft = ta.value; body().outerHTML = confirmDel(); return; }
     if (act === 'del-yes') {
       if (busy) return;
       busy = true;
@@ -397,13 +430,13 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
       return;
     }
     if (act === 'how') return invoke('open_url', { url: howTo }).catch(fail);
-    if (act !== 'send' && act !== 'skip') return;
+    if (act !== 'send') return;
     const ta = $('textarea', box), err = $('.ask-err', box);
-    const note = act === 'send' ? ta.value.trim() : '';
-    if (verdict !== 'runs' && [...note].length < 15) return;
+    const note = ta.value.trim();
+    if (!verdict || (verdict !== 'runs' && [...note].length < 15)) return;
     if (busy) return;
     busy = true;
-    $$('.acts .btn, .rv-back', box).forEach((b) => { b.disabled = true; });
+    $$('.acts .btn, .rv-foot .btn, .rv-x', box).forEach((b) => { b.disabled = true; });
     try {
       await send(verdict, note, !!($('[data-log]', box) || {}).checked);
       delete s.dataset.busy;
@@ -415,14 +448,15 @@ function reviewDialog({ id, g, secs, auto, pre, specsLine, send, prev }) {
       busy = false;
       err.textContent = String(ex && ex.message ? ex.message : ex);
       err.hidden = false;
-      $$('.acts .btn, .rv-back', box).forEach((b) => { b.disabled = false; });
-      if (verdict !== 'runs') $('[data-x="send"]', box).disabled = [...ta.value.trim()].length < 15;
+      $$('.acts .btn, .rv-foot .btn, .rv-x', box).forEach((b) => { b.disabled = false; });
+      wire();
     }
   }, tf('How did {name} run?', { name: reviewName(id, g) }));
   // Focus on the window, not on the first answer, so nothing looks picked before the player picks.
   const box = $('.modal', s);
   box.classList.add('rv');
   box.tabIndex = -1;
+  wire();
   box.focus();
 }
 T.event.listen('game', ({ payload: p }) => {

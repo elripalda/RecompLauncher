@@ -1313,27 +1313,52 @@ body.away .slide>.bg,body.unfocused .slide>.bg{transition:none}
 .rv-pick:hover{border-color:rgba(var(--c),.7);background:linear-gradient(180deg,rgba(var(--c),.16),rgba(var(--c),.04));box-shadow:0 14px 34px -18px rgba(var(--c),.7)}
 .rv-pick:active{transform:scale(.98)}
 .rv-pick:focus-visible{outline:2px solid rgb(var(--c));outline-offset:2px}
-.rv-pick.was{border-color:rgba(var(--c),.55)}
-.rv-was{position:absolute;top:12px;right:12px;font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.02em;color:rgb(var(--c));background:rgba(var(--c),.12);border:1px solid rgba(var(--c),.35);border-radius:7px;padding:1px 7px}
 .rv-pick{position:relative}
 .rv-ic{display:grid;place-items:center;color:rgb(var(--c));margin-bottom:2px}
-.rv-pick b{font-size:15px}
-.rv-pick>span:last-child{font-size:12.5px;line-height:1.35;color:var(--muted)}
 .rv-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:2px}
 .btn.main.bad{background:var(--bad);border-color:var(--bad);color:#1a0505}
 .btn.main.bad:hover{filter:brightness(1.08)}
 .modal .rv-never{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13.5px;font-weight:600}
 .rv-never span{display:flex;flex-direction:column;gap:1px}
 .rv-never small{font-size:12px;font-weight:500;color:var(--dim)}
-.rv-two{padding-top:10px;gap:12px}
-.rv-chosen{display:flex;align-items:center;gap:10px}
-.rv-back{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--muted);background:var(--fill2);border:1px solid var(--line2)}
-.rv-back:hover{color:var(--ink);border-color:var(--line3)}
+.rv-del-q{padding-top:16px;gap:12px}
+/* The X on the art: closes like Cancel / Not Now. */
+.rv-x{position:absolute;top:14px;right:14px;z-index:1;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#e9f6ff;background:rgba(8,12,20,.5);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(8px);transition:background .15s,color .15s,transform .12s}
+.rv-x:hover{background:rgba(8,12,20,.78);color:#fff}
+.rv-x:active{transform:scale(.94)}
+.rv-x:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.rv-art.plain .rv-x{color:var(--muted);background:var(--fill2);border-color:var(--line2);backdrop-filter:none}
 .rv-q{font-size:16px}
 .rv textarea{width:100%;resize:vertical;min-height:96px;border-radius:12px;border:1px solid var(--line2);background:var(--fill);color:var(--ink);padding:11px 13px;font:500 13.5px Figtree,sans-serif}
 .rv textarea:focus{outline:none;border-color:var(--line3)}
 .rv .acts{gap:8px}
 .rv .ask-anon{display:block;font-size:11.5px;color:var(--muted);text-align:center}
+/* Write a Review / Edit Your Review: which it is, on the art. */
+.rv-when.rv-kind{color:var(--cyan);border-color:rgba(52,242,232,.4)}
+/* The field and, under it, how many more letters a problem needs. */
+.rv-field{display:flex;flex-direction:column;gap:6px}
+.rv-count{align-self:flex-end;min-height:16px;font-size:12px;font-weight:700;color:var(--v-issues,#ffc857)}
+.rv-count:empty{min-height:0}
+/* What goes with the review: a chip each. */
+.rv-specs{display:flex;flex-direction:column;gap:7px}
+.rv-specs>small{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--dim)}
+.rv-specs>div{display:flex;flex-wrap:wrap;gap:6px}
+.rv-specs span{height:24px;display:inline-flex;align-items:center;padding:0 9px;border-radius:7px;font-size:12px;font-weight:600;color:var(--muted);background:var(--fill2);box-shadow:inset 0 0 0 1px var(--line);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-vernote{margin:0;padding:9px 12px;border-radius:10px;font-size:12.5px;color:var(--ink);background:rgba(52,242,232,.07);box-shadow:inset 0 0 0 1px rgba(52,242,232,.25)}
+/* One page: compact answers to pick from, the words right under them. */
+.rv-one{padding-top:14px}
+.rv-picks.mini .rv-pick{flex-direction:row;align-items:center;gap:11px;padding:12px 13px}
+.rv-picks.mini .rv-ic{margin:0}
+.rv-picks.mini .rv-ic svg{width:22px;height:22px}
+.rv-pt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rv-pt b{font-size:14px}
+.rv-pt>span{font-size:11.5px;line-height:1.3;color:var(--muted)}
+.rv-pick.on{border-color:rgb(var(--c));background:linear-gradient(180deg,rgba(var(--c),.22),rgba(var(--c),.06));box-shadow:0 0 0 3px rgba(var(--c),.16)}
+.rv-pick.on::after{content:'';position:absolute;top:8px;right:8px;width:16px;height:16px;border-radius:50%;background:rgb(var(--c)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2306121a' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/11px no-repeat}
+.rv-write{display:flex;flex-direction:column;gap:12px;transition:opacity .2s}
+.rv-write.off{opacity:.45}
+.rv-foot-r{display:flex;gap:8px;margin-left:auto}
+.rv-foot-r .btn.main{min-width:130px}
 @media (max-width:560px){.rv-picks{grid-template-columns:1fr}.rv-pick{flex-direction:row;align-items:center}.rv-ic{margin:0}}
 .ask-log{display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;margin-top:2px}
 .ask-log input{width:17px;height:17px;flex:none;margin-top:1px;accent-color:var(--cyan)}

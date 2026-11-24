@@ -82,15 +82,27 @@ test('the review dialog names the project, not the game Show Game Names puts on 
 test('changing a review starts the dialog from the answer and note given before', () => {
   assert.match(fn(more, 'askRun'), /const prev = asked_for \? myReviewOf\(id\) : null;/);
   const dialog = fn(more, 'reviewDialog');
-  assert.match(dialog, /t\('Your Last Answer'\)/);
-  assert.match(dialog, />\$\{prev && prev\.note \? esc\(prev\.note\) : ''\}<\/textarea>/);
+  // One page: the answer given before is picked already, and the words are in the field.
+  assert.match(dialog, /let verdict = prev \? prev\.verdict : null/);
+  assert.match(dialog, /let draft = prev && prev\.note \? prev\.note : ''/);
+  assert.match(dialog, />\$\{esc\(draft\)\}<\/textarea>/);
+  assert.match(dialog, /const sendLabel = editing \? t\('Update Review'\) : t\('Send'\);/);
+});
+
+test('the review window is one page, and its X closes it like Cancel or Not Now', () => {
+  const dialog = fn(more, 'reviewDialog');
+  assert.match(dialog, /const s = modal\(`\$\{art\}\$\{one\(\)\}`/);
+  assert.doesNotMatch(dialog, /const second = |const first = /);
+  assert.match(dialog, /class="rv-x" data-x="cancel"/);
+  assert.match(dialog, /data-x="cancel">\$\{esc\(auto \? t\('Not Now'\) : t\('Cancel'\)\)\}/);
+  assert.match(dialog, /if \(act === 'cancel'\) \{ if \(busy\) return; delete s\.dataset\.busy; return close\(\); \}/);
 });
 
 test('Delete Review shows only when changing a review already sent, never right after a session', () => {
   const dialog = fn(more, 'reviewDialog');
   assert.match(dialog, /const left = auto \? `<label class="rv-never">/);
   assert.match(dialog, /: prev \? `<button type="button" class="btn danger rv-del" data-x="del">\$\{esc\(t\('Delete Review'\)\)\}<\/button>` : '<span><\/span>';/);
-  assert.match(dialog, /if \(act === 'del'\) \{ body\(\)\.outerHTML = confirmDel\(\); return; \}/);
+  assert.match(dialog, /if \(act === 'del'\) \{[^\n]*body\(\)\.outerHTML = confirmDel\(\); return; \}/);
 });
 
 test('deleting a review asks the site, then takes it out of Your Reviews and keeps it hidden', async () => {
