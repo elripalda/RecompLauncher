@@ -1833,11 +1833,13 @@
     const items = [
       ...(m && !m.play ? [m] : []),
       ...setupItem,
+      // Start With at the top, as in the desktop's "…" menu (a game with Setup Options never has it):
+      // only with two or more programs to pick.
+      ...(startWithList(id).length ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
       ...(TV.view !== 'game' || !onPage ? [{ label: t('Game page'), sub: a.game ? tf('Based on {game}', { game: a.game }) : '', icon: 'page', run: () => go('game', id) }] : []),
       { label: pinned ? t('Unpin from Home') : t('Pin to Home'), sub: pinned ? t('It comes off your Home row') : t('Keep it on Home, in the order you like'), icon: 'pin', run: () => togglePin(id) },
       ...(pinned && TV.view === 'home' && homePinned() && $(`.tv-dk[data-dock="${CSS.escape(id)}"]`, stage()) ? [{ label: t('Move'), sub: t('Change where it sits on Home'), icon: 'move', run: () => startSort(id) }] : []),
       ...(TV.view === 'game' && onPage && verGroup(a) ? [{ label: tn(verGroup(a).list.length, '1 version', '{n} versions'), sub: t('Pick which one this page is for'), icon: 'layers', run: () => pickVersion(id) }] : []),
-      ...(g && !S.running.has(id) ? [{ label: t('Start With'), sub: t('Pick which of its programs starts this time'), icon: 'play', run: () => { closeSheet(); setTimeout(() => window.startWith(id), 250); } }] : []),
       ...(byId(id) && !byId(id).custom ? [window.isHidden(id) ? { label: t('Show in Catalog'), sub: t('It shows in the Catalog and on Home again'), icon: 'search', run: async () => { closeSheet(); await window.unhideGame(id); draw(true); } } : { label: t('Hide from Catalog'), sub: t('It won\'t show in the Catalog or on Home'), icon: 'stop', run: async () => { closeSheet(); await window.hideGame(id); draw(true); } }] : []),
       ...(g ? [
         { gap: true, label: t('Saves'), sub: t('Back them up, or restore an older one'), icon: 'save', run: () => go('gsaves', id) },
@@ -2995,7 +2997,7 @@
           { label: t('Clear it'), sub: a.help, icon: 'bin', run },
         ]);
       }
-      case 'more': sfx('open'); return gameSheet(id);
+      case 'more': sfx('open'); return loadStartWith(id).then(() => gameSheet(id));
       case 'about': sfx('open'); return go('about');
       case 'support': sfx('select'); return invoke('open_url', { url: 'https://ko-fi.com/recomp' }).catch(fail);
       case 'storage': sfx('open'); TV.sizes = null; return go('storage');
@@ -3138,7 +3140,7 @@
         if (!TV.sheet) {
           // Options for the game in focus, or the page's game.
           const gid = (cur && (cur.dataset.hero || cur.dataset.goGame || (cur.dataset.tvact === 'stor' && cur.dataset.id))) || (GAMEVIEWS.includes(TV.view) && TV.arg);
-          if (gid) { sfx('open'); gameSheet(gid); }
+          if (gid) { sfx('open'); loadStartWith(gid).then(() => gameSheet(gid)); }
         }
         break;
       case 'y': {

@@ -6708,7 +6708,9 @@ function menuRows(items) {
     // A row with something new behind it (`dot`, said in words for screen readers) has a dot on its right.
     const dot = i.dot ? `<span class="m-dot" aria-hidden="true"></span>` : '';
     const named = i.dot ? ` aria-label="${esc(i.label + ' · ' + i.dot)}"` : '';
-    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
+    // `raw`: a file name or path, shown as it is (Title Case leaves it alone).
+    const raw = i.raw ? ' data-raw' : '';
+    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}${raw}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
   }).join('');
 }
 function menu(at, items) {
@@ -6906,6 +6908,7 @@ function gameMenu(id) {
   const fresh = newPrepOpts(S.setup[id]).length;
   const newOpts = fresh ? tn(fresh, '1 new option', '{n} new options') : '';
   return [
+    ...startWithItem(id),
     ...(first ? [first] : []),
     ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
     ...(g && S.updates[id] ? [{ act: 'install', id, label: t('Update'), icon: 'down' }] : []),
@@ -7517,49 +7520,42 @@ async function askProgram(id) {
   if (!full.length) { S.nextTab = 'installed'; go('game', id); return toast(t('The launcher couldn\'t tell which program starts the game. Pick it in the game\'s settings.'), true); }
   return confirmProgram(id, (libApp(g) || g).name || id, full, true);
 }
-// Hold Play: pick which of the game's programs starts this time (the game itself, or its own
-// launcher or tools). A normal press starts the usual one.
-window.startWith = async function startWith(id) {
-  const g = S.library[id];
-  if (!g) return;
+// Start With is for a game the launcher doesn't set up, or one the player sets up their own way
+// (Skip Easy Setup). A game Easy Setup runs is made to start through the launcher as it is: there's
+// no other program for the player to pick, on the desktop or in Big Picture.
+const startWithOffered = (id) => !!S.library[id] && !S.easy.has(id);
+// Start With's programs for each installed game: the program Play starts, and the one the player
+// picked (or every program, for a game whose recomplauncher.json doesn't name one). The "…" menu
+// and Big Picture's Options sheet are drawn at once, so the list is loaded just before they open.
+const START_WITH = {};
+async function loadStartWith(id) {
+  if (!startWithOffered(id)) return [];
   let list = [];
-  try { list = (await invoke('game_programs', { id })) || []; } catch (e) { /* none */ }
-  const usual = String(g.exe || '').replace(/\\/g, '/');
-  list = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
-  if (list.length < 2) return playGame(id);
-  if (window.tvAsk && document.body.classList.contains('tv-on')) {
-    const i = await tvAsk(t('Start With'), list.map((p) => ({ label: p.split(/[\\/]/).pop(), sub: p.replace(/\\/g, '/') === usual ? t('Its usual program') : p, icon: 'play' })));
-    if (i >= 0) playGame(id, list[i]);
-    return;
-  }
-  const m = modal(`<h2>${esc(t('Start With'))}</h2><p>${esc(tf('Which of {name}\'s programs starts this time. A normal press of Play starts the usual one.', { name: g.name }))}</p>
-    <div class="choices">${list.map((p, i) => `<button type="button" class="choice" data-x="pick" data-i="${i}"><span><b>${esc(p.split(/[\\/]/).pop())}</b><small>${esc(p.replace(/\\/g, '/') === usual ? t('Its usual program') : p)}</small></span></button>`).join('')}</div>
-    <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button></div>`, (x, close) => {
-    if (x.dataset.x !== 'pick') return;
-    close();
-    playGame(id, list[Number(x.dataset.i)]);
-  }, t('Start With'));
-  return m;
-};
-// Pressing and holding a Play button opens Start With instead of playing.
-{
-  let held = null;
-  document.addEventListener('pointerdown', (e) => {
-    const b = e.target.closest('[data-act="play"][data-id]');
-    if (!b || e.button !== 0 || !S.library[b.dataset.id]) return;
-    clearTimeout(held && held.t);
-    held = { b, t: setTimeout(() => { b.dataset.held = '1'; startWith(b.dataset.id); }, 600) };
-  });
-  const stop = () => { if (held) { clearTimeout(held.t); held = null; } };
-  document.addEventListener('pointerup', stop);
-  document.addEventListener('pointercancel', stop);
-  document.addEventListener('pointerleave', stop);
-  // The click that ends a hold doesn't also play.
-  document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-held]');
-    if (b) { delete b.dataset.held; e.stopImmediatePropagation(); e.preventDefault(); }
-  }, true);
+  try { list = (await invoke('start_with_programs', { id })) || []; } catch (e) { /* none */ }
+  START_WITH[id] = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
+  return START_WITH[id];
 }
+// With one program there's nothing to pick: Play already starts it.
+const startWithList = (id) => (startWithOffered(id) && !S.running.has(id) && (START_WITH[id] || []).length > 1 ? START_WITH[id] : []);
+const isUsualProgram = (id, p) => p.replace(/\\/g, '/') === String((S.library[id] || {}).exe || '').replace(/\\/g, '/');
+// The "…" menu's Start With, at its top: a group with one row per program, the usual one ticked.
+function startWithItem(id) {
+  const list = startWithList(id);
+  if (!list.length) return [];
+  const rows = list.map((p, i) => ({ act: 'start-with', id, k: String(i), label: p.replace(/\\/g, '/'), raw: true, icon: 'play', check: isUsualProgram(id, p) }));
+  return [{ label: t('Start With'), icon: 'play', sub: rows }, '-'];
+}
+async function openGameMenu(at, id) {
+  await loadStartWith(id);
+  return menu(at, gameMenu(id));
+}
+// Big Picture's Start With (from the game's Options sheet): the same programs, as a list to pick.
+window.startWith = async function startWith(id) {
+  const list = startWithList(id);
+  if (!list.length) return playGame(id);
+  const i = await tvAsk(t('Start With'), list.map((p) => ({ label: p.split(/[\\/]/).pop(), sub: isUsualProgram(id, p) ? t('Its usual program') : p, icon: 'play' })));
+  if (i >= 0) playGame(id, list[i]);
+};
 
 // Windows Security stopped a file: say what happened and what can be done, instead of a raw error.
 function blocked(id, err) {
@@ -9553,7 +9549,7 @@ async function act(el, e) {
         (x, close) => { close(); if (x.dataset.x === 'yes') run(); }, t('Clear'));
       return;
     }
-    case 'menu': return menu(el, gameMenu(id));
+    case 'menu': return openGameMenu(el, id);
     case 'folder': try { await invoke('open_folder', { id: id || null, path: el.dataset.path || null }); } catch (err) { fail(err); } return;
     case 'app-menu': try { await invoke('desktop_shortcut', { id, menu: true }); toast(tf(S.os === 'windows' ? '{name} is in your Start menu.' : '{name} is in your app menu.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
     case 'desktop': try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
@@ -9676,6 +9672,7 @@ async function act(el, e) {
       return;
     case 'uninstall': return confirmUninstall(parentId(id));
     case 'play-reset': return resetPlaytime(id);
+    case 'start-with': return playGame(id, (START_WITH[id] || [])[Number(el.dataset.k)]);
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
       const ids = S.ids || await invoke('data_ids');
@@ -9887,7 +9884,7 @@ document.addEventListener('contextmenu', (e) => {
   }
   const g = e.target.closest('[data-id]');
   const id = g && g.dataset.id;
-  if (id && (byId(id) || S.library[id])) return menu(at, gameMenu(id));
+  if (id && (byId(id) || S.library[id])) return openGameMenu(at, id);
   menu(at, [{ act: 'refresh', label: t('Refresh'), icon: 'refresh' }, { act: 'go-settings', label: t('Settings'), icon: 'gear' }, { act: 'about', label: t('About RecompLauncher'), icon: 'info' }]);
 });
 $('#brand').addEventListener('click', () => aboutModal());
