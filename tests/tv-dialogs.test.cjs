@@ -128,7 +128,9 @@ function dialog(make, { overflow = false } = {}) {
 
 function bigPicture({ desktop = true } = {}) {
   const { document, make } = page();
-  const window = {};
+  // The desktop's controller code listens on the window too (it lets go of the highlight when the
+  // window loses focus); nothing here needs those listeners to fire.
+  const window = { addEventListener: () => {} };
   const ctx = vm.createContext({
     window, document, SU: {}, S: { back: [], view: 'home' }, TV: { on: true }, root: null,
     $: (s, r = document) => r.querySelector(s), $$: (s, r = document) => [...r.querySelectorAll(s)],
