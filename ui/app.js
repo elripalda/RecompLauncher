@@ -1355,6 +1355,7 @@ const SUP_KEYS = { easy_setup: '`game` and `start`', settings: '`config` and `se
 function supportIssue(ask) {
   const lines = ['Hi! I play this through RecompLauncher.', ''];
   if (ask.kind === 'repo') lines.push('Your repo has a `recomplauncher.json`, but your releases don\'t include it yet, so players don\'t get it. Could you put it at the top of your next release zip, next to the executable?');
+  if (ask.kind === 'unread') lines.push('Your releases include a `recomplauncher.json`, but RecompLauncher can\'t read it, so it skips the whole file: no Easy Setup, settings or save backups yet. To see which part doesn\'t fit the format, turn on Developer tools in RecompLauncher (Settings → Developers) and add your build: its Developer tab marks it in red.');
   if (ask.kind === 'none') lines.push('Could you add a `recomplauncher.json` to your releases? Then RecompLauncher sets the game up from the player\'s copy, shows its settings and backs up its saves.');
   if (ask.kind === 'gaps' || ask.kind === 'ours') {
     lines.push('Your `recomplauncher.json` already does a lot. These would finish it:');
@@ -1379,7 +1380,7 @@ function askSupportUrl(a, ask) {
   return `${repoIssues(a.repo)}/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
 // What a recomplauncher.json covers, the way support_local counts it, for a file the catalog
-// carries as the project's own (a Forgejo project's repo file).
+// carries as the project's own (a release the store checked, or a Forgejo project's repo file).
 function fileCovers(p) {
   const list = (v) => Array.isArray(v) && v.length > 0;
   const game = p && p.game && typeof p.game === 'object' ? p.game : null;
@@ -1387,21 +1388,25 @@ function fileCovers(p) {
   // required input of role game or disc that isn't a shared key, as the site counts it.
   const inputs = Array.isArray(p && p.inputs) ? p.inputs : [];
   const copyInput = inputs.some((i) => i && !i.optional && !i.shared && ['game', 'disc'].includes(i.role || 'game'));
+  // A `game` block needs a program to start, as in Profile::easy_setup.
+  const started = !!(p && p.start);
   return {
-    easy_setup: !!game || copyInput,
+    easy_setup: (started && !!game) || copyInput,
     settings: list(p && p.settings),
     prepare: !!(p && p.prepare),
     verified: !!game && (list(game.dumps) || list(game.check && game.check.ids)),
     saves: list(p && p.saves),
   };
 }
-// Where a game's setup comes from. 'own': the project's own file reaches players (in the installed
-// release, a release the store checked, or a Forgejo repo the launcher reads itself). 'repo': only
+// Where a game's setup comes from. 'own': the launcher has the project's own file (in the
+// installed release, the copy of a checked release the catalog carries, or a Forgejo repo the
+// launcher reads itself). 'unread': the release has one but the launcher can't read it (the store
+// leaves such a file out of the catalog, and Play skips it), so it sets nothing up. 'repo': only
 // its repo has one, which the launcher never reads for GitHub or GitLab. '' otherwise.
 function supportSource(a, local, sup) {
   if (local || a.launcher_from === 'repo') return 'own';
   const sdk = sup ? sup.sdk : '';
-  if (sdk === 'release') return 'own';
+  if (sdk === 'release') return a.launcher ? 'own' : 'unread';
   if (sdk === 'repo') return 'repo';
   return '';
 }
@@ -1411,8 +1416,13 @@ function supportSource(a, local, sup) {
 // own file they're the project's or nothing. Copy checks and save folders can come from us too.
 function supportStates(a, local, sup, source) {
   const own = source === 'own';
-  const file = local || (a.launcher_from === 'repo' ? fileCovers(a.launcher) : null);
-  const theirs = (k) => own && (file ? !!file[k] : !!sup && sup[k] === 'dev');
+  // Only the file the launcher reads counts, never the catalog's labels alone: they were counted
+  // from the file as the store found it, even one the launcher can't read.
+  const file = local || (own ? fileCovers(a.launcher) : null);
+  // Before it's installed, Easy Setup is the project's only when Install offers it (the
+  // easy_setup command, from the same file), so the box and the button agree.
+  const easyOffered = !!local || !!(S.easyAll && S.easyAll.has(a.parent || a.id));
+  const theirs = (k) => own && !!file && !!file[k] && (k !== 'easy_setup' || easyOffered);
   const boot = a.boot || builtinBoot()[a.id] || {};
   const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
   // Offline, without the catalog's labels: what our boot profile does.
@@ -1422,7 +1432,9 @@ function supportStates(a, local, sup, source) {
     prepare: !!(boot.setup || boot.prepare),
     verified: !!(files && files.sha256),
   };
-  const ours = (k) => (sup ? sup[k] === 'launcher' : !!guess[k]);
+  // With a release file the launcher can't read, the catalog's labels describe that file, while
+  // Play falls back to our boot profile: what it does is the guess.
+  const ours = (k) => (sup && source !== 'unread' ? sup[k] === 'launcher' : !!guess[k]);
   const setup = (k) => {
     if (theirs(k)) return 'p';
     if (own) return k === 'prepare' ? 'na' : '';
@@ -1467,6 +1479,7 @@ function supportAsk(a, source, rows) {
   const filled = asked.filter((r) => r.s === 'l');
   const base = { verified, todo: [...gaps, ...filled] };
   if (source === 'repo') return { ...base, kind: 'repo', text: verified ? tf('{who}\'s repo has a setup file, but their releases don\'t include it yet. Ask them to add it to their next release.', { who }) : tf('{who}\'s repo has a setup file, but their releases don\'t include it yet. Ask them to add it to their next release, and to sign up as a developer and verify.', { who }) };
+  if (source === 'unread') return { ...base, kind: 'unread', text: verified ? tf('{who}\'s release has a setup file, but RecompLauncher can\'t read it, so it sets nothing up yet. Ask them to check it with the launcher\'s Developer tools.', { who }) : tf('{who}\'s release has a setup file, but RecompLauncher can\'t read it, so it sets nothing up yet. Ask them to check it with the launcher\'s Developer tools, and to sign up as a developer and verify.', { who }) };
   if (source !== 'own') return { ...base, kind: 'none', text: verified ? t('Ask the developer to add RecompLauncher support.') : t('Ask the developer to add RecompLauncher support, and to sign up as a developer and verify.') };
   if (gaps.length) return { ...base, kind: 'gaps', text: verified ? t('Is a feature missing? Ask the developer to add it.') : t('Is a feature missing? Ask the developer to add it, and to sign up as a developer and verify.') };
   const features = listOf(filled.map((r) => t(r.name)));
@@ -1536,7 +1549,7 @@ function supportCard(a) {
   const row = (r) => `<div class="sup-row${r.s ? ' on st-' + r.s : ''}"><span class="sup-ib">${svg(r.icon, 'sup-i')}</span><span class="sup-k"><b>${esc(t(r.name))}</b><span>${esc(r.line)}</span></span><span class="sup-st" role="img" data-tip="${esc(tipOf(r))}" aria-label="${esc(tipOf(r))}">${markOf(r)}</span></div>`;
   // Where the setup comes from, and who made the game (with the tick when they're verified).
   const ourSetup = ['easy_setup', 'settings', 'prepare', 'verified'].some((k) => st[k] === 'l');
-  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
+  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : source === 'unread' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the release, but the launcher can\'t read it')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
   const badge = full ? `<span class="tag sup-full" data-tip="${esc(t(SUP_FULL_TIP))}">${svg('<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor" stroke="none"/>', 'sup-star')}${esc(t('Full Support'))}</span>` : `<span class="tag ${n >= 3 ? 'complete' : 'paused'}" data-raw>${esc(tf('{n} of {total}', { n, total: shown.length }))}</span>`;
   const askBox = ask ? `<div class="sup-ask"><p>${esc(ask.text)}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(ask.kind === 'verify' ? t('Ask to Verify') : t('Ask the Developer'))}</button></div>` : '';
   return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3>${badge}</div>

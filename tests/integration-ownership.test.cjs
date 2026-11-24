@@ -12,11 +12,12 @@ const block = source.match(/^\/\/ The part of recomplauncher\.json that adds eac
 const INSTALLED = { path: '/games/game', tag: 'v1.0.0', updated_at: 1 };
 
 // The Launcher Support box on Overview, for a catalog entry and (installed) its own release file.
-// `dev` is the developer's account, when they have one: { name, verified }.
-function render(entry, local = null, dev = null) {
+// `dev` is the developer's account, when they have one: { name, verified }. `offered`: the games
+// Install offers Easy Setup for (the easy_setup command).
+function render(entry, local = null, dev = null, offered = ['game']) {
   const fill = (s, args) => s.replace(/\{(\w+)\}/g, (m, k) => (k in args ? String(args[k]) : m));
   const ctx = vm.createContext({
-    S: { library: local ? { game: INSTALLED } : {}, easy: new Set(), supLocal: {} },
+    S: { library: local ? { game: INSTALLED } : {}, easy: new Set(), easyAll: new Set(offered), supLocal: {} },
     invoke: async () => local, builtinBoot: () => ({}), TURNKEY_HOW: [],
     t: (s) => s, N_: (s) => s, tf: fill, curLocale: () => 'en',
     esc: (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'),
@@ -48,9 +49,69 @@ test("the installed release's own file makes the setup the project's", () => {
 });
 
 test("with the project's own file, a setup feature is never ours", () => {
-  const row = rowOf(render({ support: { sdk: 'release', easy_setup: 'dev', settings: 'launcher' } }), 'Game Settings');
+  const launcher = { format: 1, game: {}, start: { program: ['game.exe'] } };
+  const row = rowOf(render({ launcher, support: { sdk: 'release', easy_setup: 'dev', settings: 'launcher' } }), 'Game Settings');
   assert.doesNotMatch(row, /mark\.svg/);
   assert.match(row, /sup-no/);
+});
+
+// A checked release's file as the catalog carries it, setting up everything a project can.
+const COMPLETE = {
+  format: 1,
+  game: { kind: 'folder', dumps: [{ name: 'USA', crc32: '1234abcd' }] },
+  start: { program: ['game.exe'] },
+  config: [{ id: 'main', format: 'ini', file: [{ path: '{install}/game.ini' }] }],
+  settings: [{ id: 'fps', label: 'FPS', choices: [{ label: '60', set: { FPS: '60' } }] }],
+  prepare: { program: ['Setup.exe'], args: ['--game', '{game}'] },
+  saves: ['{install}/profile'],
+};
+// The catalog's labels for a release whose file has every section, as the store counts them.
+const ALL_DEV = { sdk: 'release', easy_setup: 'dev', settings: 'dev', prepare: 'dev', verified: 'dev', saves: 'dev' };
+
+test('a release file the launcher reads, with everything in it, is Full Support', () => {
+  const html = render({ launcher: COMPLETE, support: ALL_DEV }, null, { name: 'Dev', verified: true });
+  assert.match(html, /sup-full[^]*Full Support/);
+  assert.match(rowOf(html, 'Easy Setup'), /sup-p/);
+});
+
+// Mario Tennis Fever: its release ships a file with every section, so the store labels them all
+// the project's, but the launcher can't read it (config.file is one path, not a list). The
+// catalog then carries no copy of it, Install offers no Easy Setup and Play skips the file.
+test("a release file the launcher can't read is not Full Support", () => {
+  const html = render({ support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
+  assert.doesNotMatch(html, /Full Support<\/span>/);
+  assert.doesNotMatch(html, /From the project/);
+});
+
+test("a release file the launcher can't read ticks none of its features", () => {
+  const html = render({ support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
+  for (const name of ['Easy Setup', 'Game Settings', 'Full Setup Step', 'Verified Copies', 'Cloud Saves']) assert.match(rowOf(html, name), /sup-no/, name);
+});
+
+test("a release file the launcher can't read says so and asks for it to be checked", () => {
+  const html = render({ support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
+  assert.match(html, /In the release, but the launcher can't read it/);
+  assert.match(html, /can't read it, so it sets nothing up yet/);
+  assert.match(issueOf(html), /RecompLauncher can't read it/);
+});
+
+test('Easy Setup is not the project\'s when Install does not offer it', () => {
+  const html = render({ launcher: COMPLETE, support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
+  assert.match(rowOf(html, 'Easy Setup'), /sup-no/);
+  assert.doesNotMatch(html, /Full Support<\/span>/);
+});
+
+test("the store's Verified Copies label doesn't count when the file has no known dumps", () => {
+  const launcher = { ...COMPLETE, game: { kind: 'folder', check: { file: 'exefs/main' } } };
+  const html = render({ launcher, support: ALL_DEV }, null, { name: 'Dev', verified: true });
+  assert.match(rowOf(html, 'Verified Copies'), /sup-no/);
+  assert.doesNotMatch(html, /Full Support<\/span>/);
+});
+
+test('a game block with no program to start is not Easy Setup', () => {
+  const launcher = { ...COMPLETE, start: undefined };
+  const html = render({ launcher, support: ALL_DEV }, null, { name: 'Dev', verified: true });
+  assert.match(rowOf(html, 'Easy Setup'), /sup-no/);
 });
 
 test("a setup step the project's own file leaves out is not shown", () => {
