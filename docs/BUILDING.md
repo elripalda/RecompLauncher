@@ -112,6 +112,14 @@ does not fix it. The launcher preserves the developer's game bundle and does not
 A build you make yourself won't be byte-for-byte the same file as a release (the compiler stamps
 times and paths into it), so its checksum won't match. The code it's built from is this code.
 
+### Building in a container
+
+`sandbox/build-in-container.sh` runs the same `npm ci`, `npm run build` and `cargo build` inside a
+container: the checkout is mounted read-only, everything the build writes lives in a volume of its
+own, and the pass that produces the artifacts runs with the network off. It is optional and
+Linux-only, and the commands above are still the normal way to build. See
+[sandbox/README.md](../sandbox/README.md), which also covers running the launcher in a sandbox.
+
 ### Testing against a copy of the site
 
 Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for example
