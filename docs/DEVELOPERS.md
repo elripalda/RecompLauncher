@@ -3,6 +3,10 @@
 Adding support to a recomp? [ADD-SUPPORT.md](ADD-SUPPORT.md) has the steps, the rules and the
 report to finish with.
 
+This guide is the standard. When your release doesn't fit it (its folder layout, an AppImage entry
+point, file names), the fix goes in your recomp, not in the launcher: RecompLauncher doesn't add
+special code for one recomp. If the guide is missing something many recomps need, open an issue.
+
 For multiple discs, DLC slots and explicitly conditional shared keys, see
 [Named Easy Setup inputs](SETUP-INPUTS.md). That extension is limited to game inputs and three
 shared key types. BIOS/firmware management and multidisc hashing are explicitly deferred.
