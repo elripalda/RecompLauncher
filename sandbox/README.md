@@ -39,10 +39,28 @@ Stages can be run on their own: `--stage offline`, `--stage tests` (the project'
 Rust test suites), `--rebuild-image`. `--no-trace` turns off the `strace` log of `connect()` calls
 that the offline stage writes to `sandbox/out/connect-offline.log`.
 
-One thing the build needs but cannot download offline is the AppImage type-2 runtime that
-`appimagetool` fetches while packaging (Tauri pipes it through as `LDAI_RUNTIME_FILE`). The fetch
-stage downloads it once and pins its SHA-256 in `entry.sh`; if upstream ever republishes that file,
-the build fails and says so rather than quietly using something else.
+### What is pinned, and why
+
+Two builds of the same commit should be the same build, so everything movable in the image is
+named exactly and moving it is a deliberate edit:
+
+| What | Pinned as |
+|---|---|
+| the base image | `ubuntu:24.04@sha256:9c7f200c…`, a digest rather than a tag |
+| the Rust toolchain | `ARG RUST_VERSION=1.100.0`, an exact release (the version used is in `build-info.txt`) |
+| Node | `22.23.5` with nodejs.org's own SHA-256 |
+| the app's dependencies | `Cargo.lock` and `package-lock.json`, both fetched with `--locked` |
+| the AppImage type-2 runtime | the `20251108` release of `type2-runtime`, with that file's SHA-256 |
+
+The AppImage runtime is the one thing the build needs but cannot download offline: `appimagetool`
+fetches it while packaging, and Tauri passes ours through as `LDAI_RUNTIME_FILE`. A tagged release,
+not the moving `continuous` one, so the pinned hash keeps matching; the fetch stage downloads it
+once and the offline pass verifies it again.
+
+Still floating: `apt-get install` in the image fetches whatever the package archive serves that
+day. Pinning that as well means pointing the image at a dated snapshot of the archive
+(`snapshot.ubuntu.com`), which is worth doing when a bit-exact rebuild is the goal rather than a
+build that cannot surprise you.
 
 ### What it leaves in `sandbox/out/`
 
