@@ -1,0 +1,502 @@
+#!/usr/bin/env python3
+"""Run RecompLauncher inside a bubblewrap sandbox.
+
+The launcher is a program that downloads other programs, unpacks them and starts them. This
+script does not try to judge that: it makes the blast radius explicit. Outside the paths named in
+the configuration, the sandboxed launcher sees an empty filesystem: no other home directories, no
+SSH keys, no browser profile, no documents, no other game folders.
+
+What is always visible, read-only, is what a dynamically linked desktop program cannot run
+without: /usr, /etc, /lib*, /bin, /sbin, /opt and /sys. Everything else comes from the config.
+
+    rl-sandbox                          run the launcher from the config
+    rl-sandbox -- /bin/sh -c 'ls ~'     run something else in the same sandbox
+    rl-sandbox --init-config            write a starter config and stop
+    rl-sandbox --print                  show the bwrap command without running it
+    rl-sandbox --list                   show the effective mounts
+
+Configuration (first one that exists):
+    $RL_SANDBOX_CONFIG, $XDG_CONFIG_HOME/recomplauncher/sandbox.json,
+    ~/.config/recomplauncher/sandbox.json
+"""
+
+import argparse
+import glob
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+EXIT_CONFIG = 3
+
+# Where the launcher keeps its own things: app_data_dir() for an app with the
+# com.recomplauncher.app identifier (lib.rs:9528). The catalog and cover cache, the saves index and
+# the settings all live under it. Everything else in the home stays hidden.
+#
+# The runner's own config directory is deliberately NOT in this list: a sandboxed launcher has no
+# business rewriting the policy it is running under. The runner reads it outside the sandbox.
+AUTO_DIRS = ["~/.local/share/com.recomplauncher.app"]
+
+DEFAULT_CONFIG = {
+    "version": 1,
+    "_comment": [
+        "Paths the sandboxed RecompLauncher may reach. '~' and $HOME are expanded.",
+        "read_only  : visible, cannot be written (game folders, discs, ROM collections).",
+        "read_write : visible and writable (where games are installed, save folders).",
+        "Everything not listed here does not exist inside the sandbox.",
+    ],
+    "binary": "",
+    "args": [],
+    "network": True,
+    "gpu": True,
+    "input": True,
+    "hidraw": True,
+    "sound": True,
+    "x11": True,
+    "wayland": True,
+    "session_bus": True,
+    "shared_memory_mb": 8192,
+    "auto_dirs": True,
+    "webkit_sandbox": False,
+    "read_only": ["~/Games", "/run/media", "/media", "/mnt"],
+    "read_write": ["~/Games/Recomp Library"],
+    "extra_env": {},
+}
+
+
+def die(msg, code=1):
+    print(f"rl-sandbox: {msg}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def expand(p, home):
+    """Expand ~ and the XDG/home variables, and require an absolute path in the end."""
+    text = os.path.expandvars(str(p))
+    if text.startswith("~"):
+        text = str(home) + text[1:]
+    text = os.path.normpath(text)
+    if not text.startswith("/"):
+        die(f"'{p}' is a relative path; the sandbox only takes absolute paths or ~/... paths")
+    return text
+
+
+def config_path(explicit=None):
+    if explicit:
+        return Path(explicit)
+    if os.environ.get("RL_SANDBOX_CONFIG"):
+        return Path(os.environ["RL_SANDBOX_CONFIG"])
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    return base / "recomplauncher" / "sandbox.json"
+
+
+def load_config(path):
+    if not path.is_file():
+        die(
+            f"no configuration at {path}\n"
+            f"  create one with: {sys.argv[0]} --init-config",
+            EXIT_CONFIG,
+        )
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        die(f"{path} is not valid JSON: {e}", EXIT_CONFIG)
+    if not isinstance(data, dict):
+        die(f"{path} must hold a JSON object", EXIT_CONFIG)
+    cfg = dict(DEFAULT_CONFIG)
+    cfg.update({k: v for k, v in data.items() if not k.startswith("_")})
+    for key in ("read_only", "read_write", "args"):
+        if not isinstance(cfg.get(key, []), list):
+            die(f"'{key}' must be a list", EXIT_CONFIG)
+    return cfg
+
+
+class Mounts:
+    """Collects what goes into the sandbox, so the same path is never mounted twice."""
+
+    def __init__(self, home, create_missing=True):
+        self.home = home
+        self.items = {}  # path -> "rw" | "ro"
+        self.create_missing = create_missing
+
+    def add(self, path, mode, create=False):
+        # "rw" wins over "ro" for the same path; a more specific path wins over its parent
+        # because the mounts are emitted shallowest first.
+        if path in self.items:
+            if mode == "rw":
+                self.items[path] = "rw"
+            return
+        if not os.path.exists(path):
+            if create and not self.create_missing:
+                print(f"rl-sandbox: {path} would be created", file=sys.stderr)
+            elif create:
+                try:
+                    os.makedirs(path, exist_ok=True)
+                except OSError as e:
+                    print(f"rl-sandbox: cannot create {path}: {e}", file=sys.stderr)
+                    return
+            else:
+                print(f"rl-sandbox: {path} does not exist; leaving it out", file=sys.stderr)
+                return
+        self.items[path] = mode
+
+    def emit(self, args):
+        created = {"/"}
+        for path in sorted(self.items, key=lambda p: (p.count("/"), p)):
+            # Parents have to exist before something can be mounted on them.
+            for parent in self.parents(path):
+                if parent not in created:
+                    args += ["--dir", parent]
+                    created.add(parent)
+            mode = self.items[path]
+            flag = "--bind" if mode == "rw" else "--ro-bind"
+            args += [flag, path, path]
+            created.add(path)
+
+    @staticmethod
+    def parents(path):
+        parts = Path(path).parts  # ('/', 'home', 'you', 'Games')
+        out = []
+        for i in range(2, len(parts) + 1):
+            out.append(str(Path(*parts[:i])))
+        return out
+
+
+def guess_binary(repo_hint):
+    """Where the launcher might be, in the order a person would look."""
+    candidates = [
+        repo_hint / "sandbox/out/artifacts/recomplauncher" if repo_hint else None,
+        repo_hint / "src-tauri/target/release/recomplauncher" if repo_hint else None,
+        Path("/usr/bin/recomplauncher"),
+        Path.home() / ".local/bin/recomplauncher",
+    ]
+    appimages = []
+    if repo_hint:
+        appimages = sorted((repo_hint / "sandbox/out/artifacts").glob("*.AppImage"))
+        if not appimages:
+            appimages = sorted((repo_hint / "src-tauri/target/release/bundle/appimage").glob("*.AppImage"))
+    for c in candidates:
+        if c and c.is_file():
+            return str(c)
+    if appimages:
+        return str(appimages[-1])
+    return ""
+
+
+def runtime_dir(uid):
+    return os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
+
+
+def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_args=(), config_path_used=""):
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        die("bwrap (bubblewrap) is not installed: apt install bubblewrap")
+
+    network = bool(cfg["network"])
+    mounts = Mounts(home, create_missing=create_missing)
+
+    # Read-write: the launcher's own state, plus whatever the person allows. A writable path is
+    # created if it isn't there yet: "this folder is mine to write in" is the whole point of it.
+    if cfg.get("auto_dirs", True):
+        for d in AUTO_DIRS:
+            mounts.add(expand(d, home), "rw", create=True)
+    for p in cfg.get("read_write", []):
+        mounts.add(expand(p, home), "rw", create=True)
+    # Read-only paths are not created: a missing one is a typo, not an instruction to make it.
+    for p in cfg.get("read_only", []):
+        mounts.add(expand(p, home), "ro")
+
+    # The program itself, and the directory it sits in, read-only. Without this a launcher kept
+    # outside /usr (a build tree, an AppImage in a downloads folder) could not be started.
+    binary = cfg.get("binary") or ""
+    if cmd is None:
+        binary = expand(binary, home) if binary else guess_binary(repo_hint)
+        if not binary:
+            die(
+                "no launcher binary found: set 'binary' in the config, or pass a command after --",
+                EXIT_CONFIG,
+            )
+        if not Path(binary).is_file():
+            die(f"'{binary}' does not exist", EXIT_CONFIG)
+        # Extra arguments are what a desktop file hands over, such as a recomplauncher:// URL.
+        cmd = [binary] + list(cfg.get("args", [])) + list(extra_args)
+    if isinstance(cmd[0], str) and cmd[0].startswith("/"):
+        exe_dir = str(Path(cmd[0]).resolve().parent)
+        if not any(exe_dir == p or exe_dir.startswith(p + "/") for p in mounts.items):
+            mounts.add(exe_dir, "ro")
+
+    args = [bwrap]
+
+    # --- namespaces -------------------------------------------------------
+    args += ["--unshare-all"]  # user, pid, net, ipc, uts, cgroup
+    # Also implied by --unshare-all; named here because --disable-userns is only accepted with it.
+    args += ["--unshare-user"]
+    if network:
+        args += ["--share-net"]
+    args += ["--die-with-parent", "--new-session", "--hostname", "rl-sandbox"]
+    if bwrap_supports("--disable-userns"):
+        # No nested user namespace: a sandboxed program cannot build itself a wider one.
+        args += ["--disable-userns"]
+
+    # --- the system, read-only -------------------------------------------
+    for system_dir in ("/usr", "/etc", "/opt", "/lib", "/lib64", "/bin", "/sbin", "/sys"):
+        if os.path.exists(system_dir):
+            args += ["--ro-bind", system_dir, system_dir]
+    args += ["--proc", "/proc", "--dev", "/dev"]
+
+    # --- /tmp, /run, /home -------------------------------------------------
+    args += ["--tmpfs", "/tmp", "--dir", "/run"]
+    # udev: how SDL and the launcher see controllers and GPUs.
+    if os.path.exists("/run/udev"):
+        args += ["--ro-bind", "/run/udev", "/run/udev"]
+
+    # Name resolution. On Ubuntu /etc/resolv.conf is a symlink into /run, and /run here is an
+    # empty directory, so the file it points at has to be brought along: without it the network
+    # works and every name lookup fails. Only the target is bound, not all of /run.
+    resolv = Path("/etc/resolv.conf")
+    if resolv.is_symlink():
+        target = Path(os.path.realpath(resolv))
+        if target.is_file() and not str(target).startswith("/etc/"):
+            for parent in Mounts.parents(str(target))[:-1]:  # the target itself is a file
+                if parent != "/":
+                    args += ["--dir", parent]
+            args += ["--ro-bind", str(target), str(target)]
+
+    xdg_run = runtime_dir(uid)
+    rw_sockets = []
+    if cfg["wayland"]:
+        rw_sockets += [f"{xdg_run}/wayland-0", f"{xdg_run}/wayland-1"]
+    if cfg["session_bus"]:
+        rw_sockets.append(f"{xdg_run}/bus")
+    if cfg["sound"]:
+        rw_sockets += [f"{xdg_run}/pulse/native", f"{xdg_run}/pipewire-0"]
+    if rw_sockets:
+        args += ["--dir", xdg_run]
+        for s in rw_sockets:
+            if os.path.exists(s):
+                parent = str(Path(s).parent)
+                if parent != xdg_run:
+                    args += ["--dir", parent]
+                # Sockets are mounted read-write on purpose: connect() needs write permission.
+                args += ["--bind", s, s]
+
+    if cfg["x11"]:
+        display = os.environ.get("DISPLAY", "")
+        if display.startswith(":") and os.path.isdir("/tmp/.X11-unix"):
+            socket = "/tmp/.X11-unix/X" + display[1:].split(".")[0]
+            if os.path.exists(socket):
+                args += ["--dir", "/tmp/.X11-unix", "--bind", socket, socket]
+
+    args += ["--tmpfs", "/home", "--dir", str(home)]
+
+    # --- devices -----------------------------------------------------------
+    size = int(cfg.get("shared_memory_mb", 8192))
+    args += ["--size", str(size * 1024 * 1024), "--tmpfs", "/dev/shm"]
+    if cfg["gpu"]:
+        args += dev_bind("/dev/dri")
+        for node in sorted(Path("/dev").glob("nvidia*")):
+            args += dev_bind(str(node))
+    if cfg["input"]:
+        # /dev/input alone is not enough for controllers. SDL reads a pad through whichever of the
+        # two the kernel offers: evdev (/dev/input/event*, what a wired pad and any pad SDL has no
+        # driver for use), or HIDAPI, which talks to /dev/hidraw* directly. The Xbox pads are the
+        # HIDAPI ones, and a Bluetooth DualSense comes through uhid, so both have to be here.
+        args += dev_bind("/dev/input")
+        # `hidraw: false` keeps the pad nodes out; `input: false` turns off both.
+        if cfg.get("hidraw", True):
+            args += dev_bind("/dev/hidraw*")
+    if cfg["sound"]:
+        args += dev_bind("/dev/snd")
+
+    # --- the paths from the configuration ---------------------------------
+    mounts.emit(args)
+
+    # --- environment -------------------------------------------------------
+    args += ["--clearenv"]
+    env = {
+        "HOME": str(home),
+        "USER": os.environ.get("USER", ""),
+        "LOGNAME": os.environ.get("LOGNAME", os.environ.get("USER", "")),
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "TERM": os.environ.get("TERM", "xterm-256color"),
+        "TMPDIR": "/tmp",
+        "XDG_RUNTIME_DIR": xdg_run,
+        "XDG_CONFIG_HOME": f"{home}/.config",
+        "XDG_DATA_HOME": f"{home}/.local/share",
+        "XDG_CACHE_HOME": f"{home}/.cache",
+        "SHELL": os.environ.get("SHELL", "/bin/sh"),
+        # A marker anything can look for to tell "this process is inside rl-sandbox" from "this
+        # process happens to be behind some bwrap or other".
+        "RL_SANDBOX": "1",
+        "RL_SANDBOX_CONFIG": str(config_path_used),
+    }
+    for var in ("LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "TZ"):
+        if os.environ.get(var):
+            env[var] = os.environ[var]
+    if cfg["x11"] and os.environ.get("DISPLAY"):
+        env["DISPLAY"] = os.environ["DISPLAY"]
+    if cfg["wayland"] and os.environ.get("WAYLAND_DISPLAY"):
+        env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
+    if cfg["session_bus"]:
+        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={xdg_run}/bus"
+    is_launcher = "recomplauncher" in Path(cmd[0]).name.lower()
+    if Path(cmd[0]).name.endswith(".AppImage"):
+        # An AppImage wants FUSE; a sandbox has none, so it unpacks itself into /tmp instead.
+        env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
+    if is_launcher and not cfg.get("webkit_sandbox", False):
+        # WebKitGTK sandboxes its own render process with bubblewrap, and cannot do that inside a
+        # namespace that already forbids nested ones. The outer sandbox is doing that job here.
+        env["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
+    for k, v in (cfg.get("extra_env") or {}).items():
+        env[str(k)] = str(v)
+    for k, v in env.items():
+        if v:
+            args += ["--setenv", k, str(v)]
+
+    args += ["--"]
+    args += cmd
+    return args
+
+
+def dev_bind(path):
+    """A device node, or every node matching a pattern such as /dev/hidraw*."""
+    if os.path.exists(path):
+        return ["--dev-bind", path, path]
+    if "*" in path:
+        found = []
+        for node in sorted(glob.glob(path)):
+            found += ["--dev-bind", node, node]
+        return found
+    return []
+
+
+def preflight(bwrap):
+    """Say plainly what is wrong when bubblewrap cannot make a namespace at all.
+
+    This is worth checking up front because the failure mode is a one-line kernel error that
+    looks like a bug in this script. Two common causes: Ubuntu 24.04 restricts unprivileged user
+    namespaces through AppArmor, and running this from inside another sandbox (an agent sandbox,
+    a container) leaves no room for a nested one.
+    """
+    probe = [bwrap, "--unshare-all", "--die-with-parent", "--ro-bind", "/", "/", "/usr/bin/true"]
+    result = subprocess.run(probe, capture_output=True, text=True)
+    if result.returncode == 0:
+        return
+    detail = (result.stderr or "").strip() or f"bwrap exited with {result.returncode}"
+    print(f"rl-sandbox: bubblewrap cannot start a sandbox here:\n  {detail}", file=sys.stderr)
+    if "uid map" in detail or "Permission denied" in detail:
+        print(
+            "  A user namespace was refused. On Ubuntu 24.04 that is usually AppArmor:\n"
+            "    sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0   # until reboot\n"
+            "  or load the profile Ubuntu ships for bubblewrap:\n"
+            "    sudo apparmor_parser -r /etc/apparmor.d/bwrap\n"
+            "  If you are already inside another sandbox (a container, an agent's shell),\n"
+            "  run this from a normal terminal instead: nested namespaces are not available.",
+            file=sys.stderr,
+        )
+    raise SystemExit(1)
+
+
+_BWRAP_HELP = None
+
+
+def bwrap_supports(flag):
+    global _BWRAP_HELP
+    if _BWRAP_HELP is None:
+        try:
+            _BWRAP_HELP = os.popen("bwrap --help 2>&1").read()
+        except OSError:
+            _BWRAP_HELP = ""
+    return flag in _BWRAP_HELP
+
+
+def repo_hint():
+    """The checkout this script lives in, if it is one."""
+    here = Path(__file__).resolve().parent.parent
+    return here if (here / "src-tauri/Cargo.toml").is_file() else None
+
+
+def main():
+    parser = argparse.ArgumentParser(add_help=True, description="Run RecompLauncher in a bubblewrap sandbox.")
+    parser.add_argument("--config", help="path to sandbox.json")
+    parser.add_argument("--init-config", action="store_true", help="write a starter config and stop")
+    parser.add_argument("--print", action="store_true", dest="print_only", help="show the bwrap command")
+    parser.add_argument("--list", action="store_true", help="show which paths the sandbox exposes")
+    parser.add_argument("--no-preflight", action="store_true", help="skip the bubblewrap capability check")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="command to run instead of the launcher")
+    opts = parser.parse_args()
+
+    path = config_path(opts.config)
+    if opts.init_config:
+        if path.exists():
+            die(f"{path} already exists; not overwriting it", EXIT_CONFIG)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n")
+        print(f"wrote {path}")
+        return 0
+
+    cfg = load_config(path)
+    home = Path(os.path.expanduser("~"))
+    uid = os.getuid()
+    hint = repo_hint()
+
+    # `rl-sandbox -- <command>` runs that command in the sandbox instead of the launcher, which is
+    # how you look around inside it. Anything else on the command line goes to the launcher, which
+    # is how a desktop file passes it a recomplauncher:// link.
+    rest = list(opts.command)
+    if "--" in rest:
+        cmd = rest[rest.index("--") + 1:]
+        extra_args = []
+    else:
+        cmd = None
+        extra_args = rest
+
+    args = build_command(
+        cfg, cmd, home, uid, hint,
+        create_missing=not (opts.print_only or opts.list),
+        extra_args=extra_args,
+        config_path_used=path,
+    )
+
+    if opts.print_only:
+        print(" \\\n  ".join(shlex.quote(a) for a in args))
+        return 0
+
+    if opts.list:
+        i = 0
+        while i < len(args):
+            if args[i] in ("--bind", "--ro-bind", "--dev-bind"):
+                print(f"{args[i][2:]:>8}  {args[i + 1]}")
+                i += 3
+                continue
+            if args[i] == "--tmpfs":
+                print(f"{'tmpfs':>8}  {args[i + 1]}")
+                i += 2
+                continue
+            i += 1
+        print(f"{'network':>8}  {'yes (host)' if cfg['network'] else 'no'}")
+        return 0
+
+    rw = sum(1 for a in args if a == "--bind")
+    ro = sum(1 for a in args if a == "--ro-bind")
+    launched = args[args.index("--") + 1]
+    print(
+        f"rl-sandbox: {shlex.quote(launched)} with "
+        f"{'host network' if cfg['network'] else 'no network'}, "
+        f"{rw} writable and {ro} readable path(s) from {path}",
+        file=sys.stderr,
+    )
+    if not opts.no_preflight:
+        preflight(args[0])
+    try:
+        os.execv(args[0], args)
+    except FileNotFoundError:
+        die("bwrap disappeared")
+    except PermissionError as e:
+        die(f"bwrap could not start: {e}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
