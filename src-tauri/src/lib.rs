@@ -31,8 +31,10 @@ pub mod info;
 pub mod inputs;
 pub mod ingame;
 pub mod install;
+pub mod launchbox;
 pub mod library;
 pub mod library_convert;
+pub mod logs_zip;
 pub mod looks;
 pub mod mac_update;
 pub mod manage;
@@ -115,6 +117,12 @@ impl From<reqwest::Error> for Error {
                 Some(h) => Error::Net(format!("{h} took too long to answer. Try again in a minute.")),
                 None => Error::Net("A site took too long to answer. Try again in a minute.".into()),
             }
+        } else if e.is_connect() && net::tls_failed(&e) {
+            // Something answered, but not with a secure connection: whatever stepped in between
+            // the player and the site (a proxy too, when there is one) is what to look at.
+            // Checking their connection or waiting wouldn't help.
+            let h = site.unwrap_or_else(|| "the site".into());
+            Error::Net(format!("Couldn't open a secure connection to {h}. Something on your network or PC may be blocking it: a router's security filter, an antivirus or a VPN."))
         } else if e.is_connect() && net::proxy_shown().is_some() {
             // Through a proxy that didn't answer: that's what to check, not the site.
             Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Network, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
@@ -331,7 +339,8 @@ fn catalog_tag(entry: &Value) -> Option<String> {
 /// fell back to, or the one the store let out (`store`) is where updates go anyway, so never.
 fn picked_by_player(tag: &str, newest: &str, fell_back: bool, store: Option<&str>, have: (&str, bool)) -> bool {
     let (have_tag, have_pinned) = have;
-    if !have_tag.is_empty() && tag == have_tag {
+    // The installed tag can lack the release's "v" (imported from another launcher).
+    if !have_tag.is_empty() && same_tag(tag, have_tag) {
         return have_pinned;
     }
     if fell_back || tag == newest {
@@ -344,6 +353,25 @@ fn picked_by_player(tag: &str, newest: &str, fell_back: bool, store: Option<&str
 fn same_tag(a: &str, b: &str) -> bool {
     let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).trim_start_matches('.').to_ascii_lowercase();
     !a.trim().is_empty() && n(a) == n(b)
+}
+
+/// The release an installed or saved tag names, give or take a "v": a game imported from another
+/// launcher can say 1.0.0 for the release v1.0.0.
+fn release_on<'a>(rels: &'a [Release], tag: &str) -> Option<&'a Release> {
+    rels.iter().find(|r| same_tag(&r.tag_name, tag))
+}
+
+/// A tag as its release spells it, when that's spelled differently (1.0.0 for v1.0.0). None when
+/// it already matches exactly or no release has it.
+fn exact_tag(rels: &[Release], tag: &str) -> Option<String> {
+    release_on(rels, tag).map(|r| r.tag_name.clone()).filter(|t| t != tag)
+}
+
+/// The release to install instead of one that was taken down: the newest with a build for this PC
+/// (`fits`), stable unless the one taken down was a pre-release, and never the one installed.
+fn replacement<'a>(fresh: &'a [Release], was_pre: bool, have: &str, fits: impl Fn(&Release) -> bool) -> Option<&'a Release> {
+    let r = fresh.iter().filter(|r| !r.draft && (!r.prerelease || was_pre)).find(|r| fits(r))?;
+    (!same_tag(&r.tag_name, have)).then_some(r)
 }
 
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
@@ -412,7 +440,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
     let rel = match &tag {
-        Some(t) => rels.iter().find(|r| &r.tag_name == t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
+        // Change Build sends the installed tag, which can lack the release's "v".
+        Some(t) => release_on(&rels, t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
         None if listed.is_some() => {
             fell_back = true;
             listed.unwrap()
@@ -598,7 +627,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             let same = fresh.iter().find(|r| r.tag_name == rel.tag_name);
             let have_tag = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
             let newest_now = if same.is_none() && !pinned && !fresh.is_empty() {
-                fresh.iter().filter(|r| !r.draft && (!r.prerelease || rel.prerelease)).find(|r| assets::pick(&r.assets, os, arch, pattern).is_some()).filter(|r| r.tag_name != have_tag)
+                replacement(&fresh, rel.prerelease, &have_tag, |r| assets::pick(&r.assets, os, arch, pattern).is_some())
             } else {
                 None
             };
@@ -1214,7 +1243,7 @@ async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
     let entry = catalog::app(&cat, &id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, str_of(&entry, "repo"), false).await?.data)?;
     let have = st.lib.lock().unwrap().installed.get(&id).map(|g| (g.tag.clone(), g.asset.clone())).unwrap_or_default();
-    let rel = rels.iter().find(|r| r.tag_name == have.0).or_else(|| catalog::latest(&rels)).ok_or_else(|| Error::Msg("It has no releases yet.".into()))?;
+    let rel = release_on(&rels, &have.0).or_else(|| catalog::latest(&rels)).ok_or_else(|| Error::Msg("It has no releases yet.".into()))?;
     let os = os_for(&st, &entry, &id);
     let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
     let arch = assets::arch_now();
@@ -3250,9 +3279,9 @@ fn start_game_with_monitor_context(
             cmd.env(k, v);
         }
     }
-    // An unpacked AppImage's AppRun: what its runtime would have set (APPDIR, ARGV0).
+    // A program in an unpacked AppImage: what its runtime would have set (APPDIR, OWD, ...).
     #[cfg(target_os = "linux")]
-    appimage_env(&mut cmd, &exe);
+    appimage_env(&mut cmd, &exe, &g.path);
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
     let mut ach_id = full_id.clone();
     let ach_session = {
@@ -4186,15 +4215,66 @@ fn human_size(b: u64) -> String {
     }
 }
 
-/// An AppImage unpacked at install starts from its AppRun, which may look for its files through
-/// APPDIR (the AppImage's runtime sets it when the AppImage starts itself): set it here.
+/// A program in an AppImage unpacked at install gets what the AppImage's runtime would have set
+/// (see `appimage_vars`).
 #[cfg(target_os = "linux")]
-fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
-    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
-        if let Some(dir) = exe.parent() {
-            cmd.env("APPDIR", dir).env("ARGV0", exe);
-        }
+fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path, install: &Path) {
+    for (k, v) in appimage_vars(exe, install, sysenv::for_games("LD_LIBRARY_PATH")) {
+        cmd.env(k, v);
     }
+}
+
+/// The unpacked AppImage a program is in: the nearest folder above it, inside the game's folder,
+/// that has an AppRun.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn appimage_root(exe: &Path, install: &Path) -> Option<PathBuf> {
+    let mut folders = exe.ancestors().skip(1).take_while(|d| d.starts_with(install));
+    folders.find(|d| d.join("AppRun").is_file()).map(Path::to_path_buf)
+}
+
+/// What the AppImage runtime sets for the program it starts, for a program in an unpacked
+/// AppImage: APPDIR (the AppImage's folder, where programs look for their own files), OWD (the
+/// folder it starts in) and, for its AppRun, ARGV0. A program named by itself instead of its
+/// AppRun also gets the AppImage's libraries (`appimage_libs`). Nothing for a program in a plain
+/// folder. APPIMAGE is never set: there's no AppImage file anymore.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_vars(exe: &Path, install: &Path, pc_libs: Option<std::ffi::OsString>) -> Vec<(&'static str, std::ffi::OsString)> {
+    let apprun = exe.file_name().is_some_and(|n| n == "AppRun");
+    let root = if apprun { exe.parent().map(Path::to_path_buf) } else { appimage_root(exe, install) };
+    let Some(root) = root else { return vec![] };
+    let starts_in = exe.parent().unwrap_or(&root).as_os_str().to_os_string();
+    let mut vars = vec![("APPDIR", root.into_os_string()), ("OWD", starts_in)];
+    if apprun {
+        vars.push(("ARGV0", exe.as_os_str().to_os_string()));
+    }
+    if let Some(libs) = appimage_libs(exe, install, pc_libs) {
+        vars.push(("LD_LIBRARY_PATH", libs));
+    }
+    vars
+}
+
+/// Where an AppImage keeps the libraries it brings, inside its folder.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const APPIMAGE_LIB_DIRS: [&str; 6] = ["lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu", "usr/lib/aarch64-linux-gnu"];
+
+/// A program inside an unpacked AppImage, started by itself instead of through its AppRun (a
+/// profile that names it, like mkw-recomp's `mkw`): the library folders the AppImage brings, which
+/// its AppRun would have put first. Without them it stops at once ("libvpx.so.6: cannot open
+/// shared object file", code 127). The PC's own list comes after them. None for its AppRun, which
+/// sets its own, and for a program in a folder that isn't an AppImage's.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_libs(exe: &Path, install: &Path, pc: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
+    if exe.file_name().is_some_and(|n| n == "AppRun") {
+        return None;
+    }
+    let root = appimage_root(exe, install)?;
+    let mut dirs: Vec<PathBuf> = APPIMAGE_LIB_DIRS.iter().map(|d| root.join(d)).filter(|d| d.is_dir()).collect();
+    if dirs.is_empty() {
+        return None;
+    }
+    let pc = pc.unwrap_or_default();
+    dirs.extend(std::env::split_paths(&pc).filter(|p| !p.as_os_str().is_empty()));
+    std::env::join_paths(dirs).ok()
 }
 
 /// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
@@ -4501,11 +4581,11 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     for (k, v) in temp.env() {
         c.env(k, as_given(v));
     }
-    // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
-    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
-        if let Some(dir) = exe.parent() {
-            c.env("APPDIR", dir).env("ARGV0", &exe);
-        }
+    // A setup step in an unpacked AppImage (its AppRun, or a program named inside it): what the
+    // AppImage's runtime would have set.
+    #[cfg(target_os = "linux")]
+    for (k, v) in appimage_vars(&exe, install, sysenv::for_games("LD_LIBRARY_PATH")) {
+        c.env(k, v);
     }
     c.args(&args).current_dir(exe.parent().unwrap_or(install)).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     #[cfg(windows)]
@@ -6241,7 +6321,7 @@ fn run_file(id: &str) -> String {
 }
 
 /// What `note_run` wrote down for the game's last start.
-fn last_run(dir: &Path, id: &str) -> Option<String> {
+pub(crate) fn last_run(dir: &Path, id: &str) -> Option<String> {
     std::fs::read_to_string(dir.join("cache/runs").join(format!("{}.txt", run_file(id)))).ok()
 }
 
@@ -6974,11 +7054,12 @@ fn say_why_it_stopped() {
         }
         let what = info.payload().downcast_ref::<String>().cloned().or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
         trail::note(format!("The launcher stopped: {what}"));
-        let low = what.to_lowercase();
-        let text = if low.contains("webview2") || low.contains("webview") {
-            format!("RecompLauncher couldn't open its window, because Microsoft Edge WebView2 is missing or broken on this PC.\n\nInstall the WebView2 Runtime from Microsoft (search for \"WebView2 Runtime\"), then open RecompLauncher again.\n\n{what}")
+        // Every window that fails to open reads "failed to create webview: WebView2 error", so the
+        // text can't tell a missing WebView2 from anything else: ask WebView2 for its version.
+        let text = if webview2_missing() {
+            format!("RecompLauncher couldn't open its window, because Microsoft Edge WebView2 isn't installed on this PC.\n\nInstall the WebView2 Runtime from Microsoft (search for \"WebView2 Runtime\"), then open RecompLauncher again.\n\n{what}")
         } else {
-            format!("RecompLauncher couldn't start.\n\n{what}")
+            format!("RecompLauncher couldn't start.\n\n{what}\n\nPlease report this at https://github.com/elripalda/RecompLauncher/issues and attach launcher-trail.log from %APPDATA%\\com.recomplauncher.app.")
         };
         #[link(name = "user32")]
         extern "system" {
@@ -6990,6 +7071,17 @@ fn say_why_it_stopped() {
         // SAFETY: both strings end with a zero and live until the call returns.
         unsafe { MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), 0x0000_0010 | 0x0001_0000) };
     }));
+}
+
+/// True only when WebView2 says for sure it isn't there. It asks from a thread of its own: a panic
+/// inside the panic hook would end the launcher without the box, and a helper's panic only fails
+/// the join. Anything it can't tell counts as not missing.
+#[cfg(windows)]
+fn webview2_missing() -> bool {
+    let Ok(asking) = std::thread::Builder::new().spawn(tauri::webview_version) else {
+        return false;
+    };
+    matches!(asking.join(), Ok(Err(_)))
 }
 
 /// Where what a game printed on its last start is kept.
@@ -7407,15 +7499,13 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
         let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
         // Added from the player's own folder without a version: the release out when its program
         // was made is the one they have, so an update isn't offered for the version they're on.
+        // One with a tag spelled differently from its release (1.0.0 for v1.0.0, from another
+        // launcher): saved as the release spells it, so every place that compares tags after
+        // this, in the launcher and its window, sees the release it's on.
         let mut g = g;
-        if g.tag.is_empty() {
-            if let Some(tag) = version_from_files(&g, &rels) {
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id).filter(|x| !x.local && x.repo == g.repo && x.path == g.path) {
-                    x.tag = tag.clone();
-                }
-                st.save();
-                g.tag = tag;
-            }
+        let found = if g.tag.is_empty() { version_from_files(&g, &rels) } else { exact_tag(&rels, &g.tag) };
+        if let Some(tag) = found {
+            keep_tag(st, &mut g, tag);
         }
         // The waiting installer ran outside the launcher (the player built the new version
         // themselves): its version is the one they have now.
@@ -7472,7 +7562,7 @@ fn offered_update(g: &Installed, entry: Option<&Value>, rels: &[Release]) -> Opt
     }
     let r = catalog::latest_for(rels, &g.tag)?;
     let known = rels.iter().any(|x| same_tag(&x.tag_name, &g.tag));
-    (r.tag_name != g.tag && (known || newer_than_gone(r, g)) && builds(r)).then(|| r.tag_name.clone())
+    (!same_tag(&r.tag_name, &g.tag) && (known || newer_than_gone(r, g)) && builds(r)).then(|| r.tag_name.clone())
 }
 
 /// Whether `r` is newer than the installed release when that one isn't in the list anymore (a
@@ -7532,6 +7622,32 @@ async fn update_info(st: State<'_, App>, id: String) -> Res<Value> {
     let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
     let builds: Vec<&str> = rels.iter().filter(|r| assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some()).map(|r| r.tag_name.as_str()).collect();
     Ok(json!({ "offered": offered_update(&g, entry, &rels), "checked": entry.and_then(catalog_tag), "builds": builds }))
+}
+
+/// Saves the release a game is on as `tag`, unless it was moved or changed since `g` was read.
+fn keep_tag(st: &App, g: &mut Installed, tag: String) {
+    let old = g.tag.clone();
+    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id).filter(|x| !x.local && x.repo == g.repo && x.path == g.path) {
+        retag(x, &old, &tag);
+    }
+    st.save();
+    retag(g, &old, &tag);
+}
+
+/// A game's tag spelled as `new`, with every other field that names the same release (the release
+/// its setup finished on, each game's own, the one before, a waiting installer's): left as `old`,
+/// an Easy Setup game would read as a new release and build again for nothing.
+fn retag(g: &mut Installed, old: &str, new: &str) {
+    let fix = |t: &mut String| {
+        if same_tag(t, old) {
+            *t = new.to_string();
+        }
+    };
+    g.tag = new.to_string();
+    fix(&mut g.set_up);
+    fix(&mut g.prev_tag);
+    fix(&mut g.installer_tag);
+    g.games.values_mut().for_each(|p| fix(&mut p.set_up));
 }
 
 /// Which release a game added from the player's folder is: the newest one published by the day its
@@ -7745,19 +7861,41 @@ fn launcher_platform_entry(v: &Value, os: &str, arch: &str) -> Option<Value> {
     }
 }
 
-/// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0 < 0.5.1: a beta comes before its release.
-fn version_key(s: &str) -> (u64, u64, u64, u64, u64, u64) {
+/// How far along a pre-release's label is: an rc.1 is past a beta.5 whatever their numbers.
+/// A label we don't know sits with beta, so it's never taken for older than an alpha or newer
+/// than an rc.
+fn prerelease_stage(label: &str) -> u64 {
+    let label = label.to_ascii_lowercase();
+    let starts = |prefixes: &[&str]| prefixes.iter().any(|p| label.starts_with(p));
+    if starts(&["dev", "nightly", "snapshot"]) {
+        return 0;
+    }
+    if starts(&["alpha"]) {
+        return 1;
+    }
+    // Before "pre": "preview" starts with it.
+    if starts(&["beta", "preview"]) {
+        return 2;
+    }
+    if starts(&["rc", "pre"]) {
+        return 3;
+    }
+    2
+}
+
+/// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0-rc.1 < 0.5.0 < 0.5.1: a pre-release comes before its release.
+fn version_key(s: &str) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
     let s = s.trim().trim_start_matches(['v', 'V']);
     let (core, pre) = s.split_once('-').unwrap_or((s, ""));
     // Each part's leading digits ("10a" is 10).
     let mut n = core.split('.').map(|p| p.trim().chars().take_while(char::is_ascii_digit).collect::<String>().parse::<u64>().unwrap_or(0));
-    let (a, b, c) = (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0));
+    let (a, b, c, d) = (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0));
     if pre.is_empty() {
-        return (a, b, c, 1, 0, 0);
+        return (a, b, c, d, 1, 0, 0, 0);
     }
     // beta.3.1: 3, then 1.
     let mut nums = pre.split(|ch: char| !ch.is_ascii_digit()).filter(|p| !p.is_empty()).map(|p| p.parse::<u64>().unwrap_or(0));
-    (a, b, c, 0, nums.next().unwrap_or(0), nums.next().unwrap_or(0))
+    (a, b, c, d, 0, prerelease_stage(pre), nums.next().unwrap_or(0), nums.next().unwrap_or(0))
 }
 
 /// A game's releases that have a version for this PC, newest first: for going back to an older
@@ -7865,22 +8003,28 @@ async fn news_for(st: &App) -> Res<Vec<News>> {
             if when.map(|w| w < cutoff).unwrap_or(true) {
                 continue;
             }
-            let notes: String = r.body.clone().unwrap_or_default().chars().take(1200).collect();
-            out.push(News {
-                id: g.id.clone(),
-                name: g.name.clone(),
-                tag: r.tag_name.clone(),
-                title: r.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| r.tag_name.clone()),
-                date,
-                notes,
-                url: r.html_url.clone().unwrap_or_default(),
-                have: r.tag_name == g.tag,
-            });
+            out.push(news_item(&g, r));
         }
     }
     out.sort_by(|a, b| b.date.cmp(&a.date));
     out.truncate(10);
     Ok(out)
+}
+
+/// A release of an installed game, as news.
+fn news_item(g: &Installed, r: &Release) -> News {
+    let notes: String = r.body.clone().unwrap_or_default().chars().take(1200).collect();
+    News {
+        id: g.id.clone(),
+        name: g.name.clone(),
+        tag: r.tag_name.clone(),
+        title: r.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| r.tag_name.clone()),
+        date: r.published_at.clone().unwrap_or_default(),
+        notes,
+        url: r.html_url.clone().unwrap_or_default(),
+        // The installed tag can lack the release's "v" (imported from another launcher).
+        have: same_tag(&r.tag_name, &g.tag),
+    }
 }
 
 /// About the original game, from Wikipedia.
@@ -8240,6 +8384,24 @@ async fn send_report(st: State<'_, App>, id: String, message: String, log: Optio
 #[tauri::command(async)]
 fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    Ok(programs_in(&g))
+}
+
+/// Start With, in the game's "…" menu and Big Picture's Options sheet: the program Play starts by
+/// the game's recomplauncher.json, and the one the player picked; a game without one offers every
+/// program in its folder, as before (#464).
+#[tauri::command(async)]
+fn start_with_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    // Only a program the player picked in the game's settings (as picked_program reads it), not the
+    // one the launcher found for itself: that can be the bare game a start script wraps.
+    let picked = g.exe.as_ref().filter(|_| g.exe_rules == u8::MAX).map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) });
+    let named = profile_of(&st, &id, &g).and_then(|p| p.start_with(&g.path, picked.as_deref()));
+    Ok(named.unwrap_or_else(|| programs_in(&g)))
+}
+
+/// Every program in a game's folder, three folders down at most, relative to it.
+fn programs_in(g: &Installed) -> Vec<String> {
     let os = if g.proton { "windows" } else { assets::os_now() };
     let mut out = vec![];
     let mut stack = vec![(g.path.clone(), 0usize)];
@@ -8267,11 +8429,11 @@ fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
                 }
             }
             if out.len() >= 60 {
-                return Ok(out);
+                return out;
             }
         }
     }
-    Ok(out)
+    out
 }
 
 /// The folder with the game's files, from the one the player picked: that folder, or the one
@@ -8322,6 +8484,45 @@ fn run_program(st: State<'_, App>, id: String, rel: String) -> Res<()> {
     }
     own_setup::spawn(&p).map_err(|e| if is_blocked(&e) { defender_msg(e, "the setup") } else { Error::Msg(format!("Couldn't start it: {e}")) })?;
     Ok(())
+}
+
+/// The PC, the installed games and a few settings, as launcher-and-pc.txt: in a report with
+/// "Include my PC and launcher info" on, and in the logs zip.
+pub(crate) fn launcher_and_pc(st: &App, pc: &usage::PcInfo) -> String {
+    // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
+    let drawing = if cfg!(target_os = "linux") {
+        let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
+        let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
+        format!(
+            "Graphics mode: {}{}{}\n",
+            if mode.is_empty() { "auto" } else { &mode },
+            if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
+            if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
+        )
+    } else {
+        String::new()
+    };
+    let mut txt = format!(
+        "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
+        env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
+    );
+    {
+        let lib = st.lib.lock().unwrap();
+        for (id, g) in lib.installed.iter().take(80) {
+            txt.push_str(&format!("- {id} {}{}\n", g.tag, if g.local { " (local build)" } else { "" }));
+        }
+        if lib.installed.is_empty() {
+            txt.push_str("(none)\n");
+        }
+        let s = &lib.settings;
+        txt.push_str(&format!("\nSettings: big picture at start {}, updates check {}, backups before updates {}, keep downloads {}\n", s.start_in_tv, s.check_updates, s.backup_before_update, s.keep_downloads));
+    }
+    if let Ok(h) = std::fs::read_to_string(st.dir.join("downloads.json")) {
+        let tail: String = h.chars().rev().take(6000).collect::<Vec<_>>().into_iter().rev().collect();
+        txt.push_str("\nRecent downloads (end of downloads.json):\n");
+        txt.push_str(&tail);
+    }
+    txt
 }
 
 /// Beta feedback from Settings > Beta: what it's about, what kind of note it is, how the beta is
@@ -8376,41 +8577,8 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     if attach {
         let dir = st.dir.clone();
         let pc = tokio::task::spawn_blocking(move || usage::pc_info(&dir)).await.unwrap_or_default();
-        // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
-        let drawing = if cfg!(target_os = "linux") {
-            let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
-            let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
-            format!(
-                "Graphics mode: {}{}{}\n",
-                if mode.is_empty() { "auto" } else { &mode },
-                if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
-                if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
-            )
-        } else {
-            String::new()
-        };
-        let mut txt = format!(
-            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
-            env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
-        );
-        {
-            let lib = st.lib.lock().unwrap();
-            for (id, g) in lib.installed.iter().take(80) {
-                txt.push_str(&format!("- {id} {}{}\n", g.tag, if g.local { " (local build)" } else { "" }));
-            }
-            if lib.installed.is_empty() {
-                txt.push_str("(none)\n");
-            }
-            let s = &lib.settings;
-            txt.push_str(&format!("\nSettings: big picture at start {}, updates check {}, backups before updates {}, keep downloads {}\n", s.start_in_tv, s.check_updates, s.backup_before_update, s.keep_downloads));
-        }
-        if let Ok(h) = std::fs::read_to_string(st.dir.join("downloads.json")) {
-            let tail: String = h.chars().rev().take(6000).collect::<Vec<_>>().into_iter().rev().collect();
-            txt.push_str("\nRecent downloads (end of downloads.json):\n");
-            txt.push_str(&tail);
-        }
         form.push(("name[]".into(), "launcher-and-pc.txt".into()));
-        form.push(("text[]".into(), txt));
+        form.push(("text[]".into(), launcher_and_pc(&st, &pc)));
         if let Some(t) = game.as_ref().map(|g| trail::tail_for(&g.id, 24_000)).unwrap_or_else(|| trail::tail(24_000)) {
             form.push(("name[]".into(), "launcher-trail.txt".into()));
             form.push(("text[]".into(), t));
@@ -10254,16 +10422,16 @@ pub fn run() {
             take_options_asked,
             get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
-            desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
+            desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::spons_mine, cloud::spons_seen, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_play_without_cloud, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -10411,6 +10579,104 @@ mod tests {
         use super::{listed_repo, Installed};
         let g = Installed { id: "mine".into(), repo: "someone/own-recomp".into(), ..Default::default() };
         assert_eq!(listed_repo(&g, None), "someone/own-recomp");
+    }
+
+    fn tagged_release(tag: &str, prerelease: bool) -> super::Release {
+        let file = serde_json::json!({ "name": "game-linux-x64-windows-macos-arm64.zip", "browser_download_url": "https://github.com/a/b/releases/download/t/game.zip", "size": 10 });
+        serde_json::from_value(serde_json::json!({ "tag_name": tag, "prerelease": prerelease, "published_at": "2026-11-01T00:00:00Z", "assets": [file] })).unwrap()
+    }
+
+    #[test]
+    fn the_same_version_with_a_v_isnt_an_update() {
+        let g = super::Installed { id: "g".into(), tag: "1.0.0".into(), ..Default::default() };
+        let rels = vec![tagged_release("v1.0.0", false)];
+        assert_eq!(super::offered_update(&g, None, &rels), None);
+    }
+
+    #[test]
+    fn a_prerelease_tag_without_its_v_isnt_sent_back_to_stable() {
+        let g = super::Installed { id: "g".into(), tag: "2.0.0-beta.1".into(), ..Default::default() };
+        let rels = vec![tagged_release("v2.0.0-beta.1", true), tagged_release("v1.9.0", false)];
+        assert_eq!(super::offered_update(&g, None, &rels), None);
+    }
+
+    #[test]
+    fn news_marks_a_release_installed_without_its_v_as_installed() {
+        let g = super::Installed { id: "g".into(), tag: "1.0.0".into(), ..Default::default() };
+        assert!(super::news_item(&g, &tagged_release("v1.0.0", false)).have);
+    }
+
+    #[test]
+    fn the_installed_release_is_found_when_its_tag_lacks_the_v() {
+        let rels = vec![tagged_release("v1.1.0", false), tagged_release("v1.0.0", false)];
+        assert_eq!(super::release_on(&rels, "1.0.0").map(|r| r.tag_name.as_str()), Some("v1.0.0"));
+    }
+
+    #[test]
+    fn a_taken_down_release_isnt_replaced_by_the_one_installed_without_its_v() {
+        let fresh = vec![tagged_release("v1.0.0", false)];
+        assert!(super::replacement(&fresh, false, "1.0.0", |_| true).is_none());
+    }
+
+    #[test]
+    fn reinstalling_the_version_installed_without_its_v_keeps_it_unpinned() {
+        assert!(!super::picked_by_player("v1.0.0", "v2.0.0", false, None, ("1.0.0", false)));
+    }
+
+    #[test]
+    fn a_tag_without_its_v_is_saved_as_the_release_spells_it() {
+        let d = std::env::temp_dir().join(format!("rl-exact-tag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut g = Installed { id: "g".into(), repo: "a/b".into(), tag: "1.0.0".into(), ..Default::default() };
+        let mut lib = Library::default();
+        lib.put("g", g.clone());
+        let st = app_in(&d, lib);
+        let tag = super::exact_tag(&[tagged_release("v1.0.0", false)], &g.tag).unwrap();
+        super::keep_tag(&st, &mut g, tag);
+        assert_eq!(st.lib.lock().unwrap().installed["g"].tag, "v1.0.0");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_tag_spelled_like_its_release_isnt_rewritten() {
+        assert_eq!(super::exact_tag(&[tagged_release("v1.0.0", false)], "v1.0.0"), None);
+    }
+
+    #[test]
+    fn a_game_set_up_on_a_tag_without_its_v_isnt_set_up_again_after_the_rewrite() {
+        let (d, game) = take_pick_dir("retag");
+        let copy = d.join("My Games/Combo");
+        std::fs::create_dir_all(&copy).unwrap();
+        let mut p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "game": { "kind": "iso_or_folder", "label": "Your Combo dump" },
+            "prepare": { "program": ["builder.sh"], "args": ["--game={game}"] },
+            "start": { "program": ["play.sh"] }
+        }))
+        .unwrap();
+        p.lift_game();
+        let mut g = Installed { id: "combo".into(), repo: "a/b".into(), path: game, tag: "1.0.0".into(), set_up: "1.0.0".into(), ..Default::default() };
+        g.setup_inputs.insert("game".into(), copy);
+        let mut lib = Library::default();
+        lib.put("combo", g.clone());
+        let st = app_in(&d, lib);
+        super::keep_tag(&st, &mut g, "v1.0.0".into());
+        let saved = st.lib.lock().unwrap().installed["combo"].clone();
+        assert_eq!((saved.tag.as_str(), saved.set_up.as_str()), ("v1.0.0", "v1.0.0"));
+        let rows = crate::inputs::rows(&p, &saved, &d).unwrap();
+        let facts = crate::setup_state::Facts { profile: &p, game: &saved, rows: &rows, set_up: &saved.set_up, cut: false, own_program: false, skipped: false };
+        let status = crate::setup_state::of(&facts);
+        assert!(status.ready, "{status:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_rewrite_reaches_every_field_naming_the_same_release() {
+        let mut g = Installed { tag: "1.0.0".into(), prev_tag: "1.0.0".into(), installer_tag: "v1.1.0".into(), ..Default::default() };
+        g.games.insert("one".into(), crate::games::Played { set_up: "1.0.0".into(), ..Default::default() });
+        super::retag(&mut g, "1.0.0", "v1.0.0");
+        assert_eq!((g.prev_tag.as_str(), g.installer_tag.as_str(), g.games["one"].set_up.as_str()), ("v1.0.0", "v1.1.0", "v1.0.0"));
     }
 
     #[test]
@@ -10659,6 +10925,39 @@ mod tests {
         assert!(!super::older_version("1.1", "1.0"));
         assert!(!super::older_version("nightly-2026", "1.0"));
         assert!(super::older_version("v1.9", "v1.10a"));
+    }
+
+    #[test]
+    fn a_release_candidate_is_newer_than_a_later_numbered_beta() {
+        assert!(!super::older_version("v2.0.0-rc.1", "v2.0.0-beta.5"));
+        assert!(super::older_version("v2.0.0-beta.5", "v2.0.0-rc.1"));
+    }
+
+    #[test]
+    fn a_preview_is_newer_than_an_alpha() {
+        assert!(super::older_version("1.0.0-alpha.1", "1.0.0-preview.2"));
+    }
+
+    #[test]
+    fn a_pre_is_newer_than_a_beta() {
+        assert!(super::older_version("1.0.0-beta.3", "1.0.0-pre.1"));
+    }
+
+    #[test]
+    fn a_nightly_is_older_than_an_alpha() {
+        assert!(super::older_version("1.0.0-nightly.5", "1.0.0-alpha.1"));
+    }
+
+    #[test]
+    fn an_unknown_label_sits_between_alpha_and_rc() {
+        assert!(super::older_version("1.0.0-alpha.1", "1.0.0-foo.1"));
+        assert!(super::older_version("1.0.0-foo.1", "1.0.0-rc.1"));
+    }
+
+    #[test]
+    fn a_fourth_version_part_counts() {
+        assert!(super::older_version("1.2.3.4", "1.2.3.5"));
+        assert!(!super::older_version("1.2.3.5", "1.2.3.4"));
     }
 
     #[test]
@@ -11412,6 +11711,81 @@ mod tests {
         let with = prepare_args(&pr, install, Some(Path::new("/roms/game.nup")), &extra);
         assert_eq!(with[2], "--game=/roms/game.nup");
         assert_eq!(with.len(), 6);
+    }
+
+    fn fresh_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// An unpacked AppImage like mkw-recomp's: AppRun, the program beside it, and lib/.
+    fn unpacked_appimage(name: &str) -> PathBuf {
+        let d = fresh_dir(name);
+        std::fs::write(d.join("AppRun"), "#!/bin/sh\n").unwrap();
+        std::fs::write(d.join("mkw"), "").unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_gets_its_libraries() {
+        let d = unpacked_appimage("appimage-libs-program");
+        let libs = appimage_libs(&d.join("mkw"), &d, None).unwrap();
+        assert_eq!(std::env::split_paths(&libs).collect::<Vec<_>>(), [d.join("lib")]);
+    }
+
+    #[test]
+    fn the_pcs_own_library_folders_come_after_the_appimages() {
+        let d = unpacked_appimage("appimage-libs-pc");
+        let libs = appimage_libs(&d.join("mkw"), &d, Some("/opt/mine/lib".into())).unwrap();
+        assert_eq!(std::env::split_paths(&libs).collect::<Vec<_>>(), [d.join("lib"), PathBuf::from("/opt/mine/lib")]);
+    }
+
+    #[test]
+    fn an_appimages_apprun_sets_its_own_libraries() {
+        let d = unpacked_appimage("appimage-libs-apprun");
+        assert!(appimage_libs(&d.join("AppRun"), &d, None).is_none());
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_gets_no_libraries_added() {
+        let d = fresh_dir("appimage-libs-plain");
+        std::fs::write(d.join("game"), "").unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        assert!(appimage_libs(&d.join("game"), &d, None).is_none());
+    }
+
+    fn var(vars: &[(&str, std::ffi::OsString)], k: &str) -> Option<PathBuf> {
+        vars.iter().find(|(name, _)| *name == k).map(|(_, v)| PathBuf::from(v))
+    }
+
+    #[test]
+    fn an_unpacked_appimages_apprun_gets_appdir_owd_and_argv0() {
+        let d = unpacked_appimage("appimage-vars-apprun");
+        let vars = appimage_vars(&d.join("AppRun"), &d, None);
+        assert_eq!(var(&vars, "APPDIR"), Some(d.clone()));
+        assert_eq!(var(&vars, "OWD"), Some(d.clone()));
+        assert_eq!(var(&vars, "ARGV0"), Some(d.join("AppRun")));
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_gets_its_appdir() {
+        let d = unpacked_appimage("appimage-vars-program");
+        std::fs::create_dir_all(d.join("usr/bin")).unwrap();
+        std::fs::write(d.join("usr/bin/game"), "").unwrap();
+        let vars = appimage_vars(&d.join("usr/bin/game"), &d, None);
+        assert_eq!(var(&vars, "APPDIR"), Some(d.clone()));
+        assert_eq!(var(&vars, "OWD"), Some(d.join("usr/bin")));
+        assert!(var(&vars, "ARGV0").is_none());
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_gets_nothing_of_an_appimage() {
+        let d = fresh_dir("appimage-vars-plain");
+        std::fs::write(d.join("game"), "").unwrap();
+        assert!(appimage_vars(&d.join("game"), &d, None).is_empty());
     }
 
     #[test]

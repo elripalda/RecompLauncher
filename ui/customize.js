@@ -1,5 +1,6 @@
 // Customize: one window for a game's name and its pictures (cover, background, logo, icon). Each
-// picture comes from SteamGridDB (with the player's own key) or the player's own file, and is
+// picture comes from SteamGridDB (with the player's own key), the player's own LaunchBox (the
+// pictures it already saved on this PC, launchbox.rs) or the player's own file, and is
 // framed here: dragged into place and zoomed inside a frame of the shape it's shown in, with
 // previews of where it shows. What was picked and how it was framed are kept, so it opens again
 // just as it was left.
@@ -11,6 +12,12 @@
     { k: 'icon', label: N_('Icon'), w: 256, h: 256, fill: true, type: 'image/png', sgdb: 'icons' },
   ];
   const kindOf = (k) => KINDS.find((x) => x.k === k);
+  // The player's LaunchBox folder, kept on this PC. LaunchBox is a Windows program, so the button
+  // shows there, or anywhere once a folder is set (a LaunchBox on a shared drive).
+  const lbDir = () => ((S.settings.ui || {}).launchbox_dir || '').trim();
+  const lbShown = () => S.os === 'windows' || !!lbDir();
+  // Letters and numbers only, as launchbox.rs compares names.
+  const nameKey = (v) => String(v || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
   const ZMIN = 0.2, ZMAX = 5;
 
   // Where the picture sits in its frame: scale and top-left corner, for a frame w x h.
@@ -64,7 +71,7 @@
     const own = a._name !== undefined ? a._name : a.name;
     // Per picture: { src, img, x, y, zoom, changed, reset }.
     const ed = {};
-    let tab = 'cover', browse = null;
+    let tab = 'cover', browse = null, lb = null;
     const key = () => ((S.settings.ui || {}).sgdb_key || '').trim();
     // What's shown now for a kind: the framed picture, else the game's own (an address).
     const usual = (k) => ({ cover: a.cover, hero: a.hero, logo: a.logo, icon: a.icon })[k] || '';
@@ -102,6 +109,7 @@
     function show(k) {
       tab = k;
       browse = null;
+      lb = null;
       if (everyBox) everyBox.checked = every.has(k);
       for (const b of $$('[data-x="tab"]', box)) { const on = b.dataset.k === k; b.setAttribute('aria-selected', String(on)); b.classList.toggle('on', on); }
       const body = $('#cz-body', box);
@@ -110,7 +118,8 @@
           <input class="field" id="cz-n" type="text" value="${esc(names[id] || '')}" placeholder="${esc(own)}" spellcheck="false" autocomplete="off" maxlength="80">
           <p class="muted">${esc(tf('Shown everywhere in the launcher, in Steam and on shortcuts instead of "{name}". Leave it empty for its own name.', { name: own }))}</p>
           <label class="cz-lab" for="cz-d">${esc(t('Your Description'))}</label>
-          <textarea class="field cz-desc" id="cz-d" rows="5" maxlength="2000" spellcheck="true" placeholder="${esc(t('Your own words about the game: what it is, how you play it, anything. Shown on its page.'))}">${esc(abouts[id] || '')}</textarea></div>`;
+          <textarea class="field cz-desc" id="cz-d" rows="5" maxlength="2000" spellcheck="true" placeholder="${esc(t('Your own words about the game: what it is, how you play it, anything. Shown on its page.'))}">${esc(abouts[id] || '')}</textarea>
+          ${lbDir() ? `<div class="cz-from"><button type="button" class="btn sm" data-x="lb-about">${esc(t('Description From LaunchBox'))}</button></div>` : ''}</div>`;
         const f = $('#cz-n', body);
         f.addEventListener('input', () => { const v = f.value.trim(); if (v && v !== own) names[id] = v; else delete names[id]; });
         const d = $('#cz-d', body);
@@ -126,7 +135,7 @@
             <label class="cz-zoom"><span>${esc(t('Zoom'))}</span><input type="range" id="cz-z" min="0" max="1000" step="1" aria-label="${esc(t('Zoom'))}"></label>
             <div class="cz-fit"><button type="button" class="btn sm" data-x="fit">${esc(t('Fit'))}</button><button type="button" class="btn sm" data-x="fill">${esc(t('Fill'))}</button><button type="button" class="btn sm" data-x="center">${esc(t('Center'))}</button></div>
           </div>
-          <div class="cz-src grid3"><button type="button" class="btn" data-x="sgdb">SteamGridDB</button><button type="button" class="btn" data-x="file">${esc(t('Your Picture…'))}</button><button type="button" class="btn" data-x="reset">${esc(t('Use the Usual'))}</button></div>
+          <div class="cz-src grid3${lbShown() ? ' four' : ''}"><button type="button" class="btn" data-x="sgdb">SteamGridDB</button>${lbShown() ? '<button type="button" class="btn" data-x="lb">LaunchBox</button>' : ''}<button type="button" class="btn" data-x="file">${esc(t('Your Picture…'))}</button><button type="button" class="btn" data-x="reset">${esc(t('Use the Usual'))}</button></div>
         </div>
         <div class="cz-right"><h4>${esc(t('How it looks'))}</h4><div class="cz-prev" id="cz-prev"></div><p class="muted cz-tip">${esc(k === 'icon' ? t('Used for shortcuts, Steam and the game\'s window while it runs.') : k === 'logo' ? t('A see-through picture works best. It shows over the background.') : t('Drag the picture to move it. The frame is what shows.'))}</p></div>
       </div>`;
@@ -151,7 +160,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, sw, sh);
       $('#cz-empty', box).hidden = !!e;
-      $('#cz-empty', box).textContent = e ? '' : t('Pick a picture from SteamGridDB or your own to frame it here.');
+      $('#cz-empty', box).textContent = e ? '' : lbShown() ? t('Pick a picture from SteamGridDB, LaunchBox or your own to frame it here.') : t('Pick a picture from SteamGridDB or your own to frame it here.');
       z.disabled = !e;
       for (const b of $$('[data-x="fit"], [data-x="fill"], [data-x="center"]', box)) b.disabled = !e;
       if (e) {
@@ -244,7 +253,7 @@
       e.changed = true;
       stage(kindOf(tab));
     });
-    const relayout = () => { if (tab !== 'name' && !browse) stage(kindOf(tab)); };
+    const relayout = () => { if (tab !== 'name' && !browse && !lb) stage(kindOf(tab)); };
     addEventListener('resize', relayout);
     new MutationObserver(() => { if (!m.isConnected) removeEventListener('resize', relayout); }).observe(document.body, { childList: true });
 
@@ -313,6 +322,73 @@
         : `<p class="muted">${esc(t('SteamGridDB has none of these for this game.'))}</p>`;
     }
 
+    // LaunchBox: the player's own LaunchBox folder (found where it usually is, or picked once and
+    // kept), the games in it that fit the name, and the pictures LaunchBox saved for the one picked.
+    async function lbox(spec) {
+      const body = $('#cz-body', box);
+      if (!lbDir()) {
+        let found = null;
+        try { found = await invoke('launchbox_find', { path: null }); } catch (e) { /* picked by hand then */ }
+        if (tab !== spec.k) return;
+        body.innerHTML = `<div class="cz-key"><h4>${esc(t('Your LaunchBox'))}</h4><p class="muted">${esc(t('Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.'))}</p>
+          ${found ? `<p class="cz-lbpath"><b class="path">${esc(found.path)}</b></p>` : ''}
+          <div class="acts grid2">${found ? `<button type="button" class="btn main" data-x="lb-use" data-path="${esc(found.path)}">${esc(t('Use This Folder'))}</button>` : ''}<button type="button" class="btn${found ? '' : ' main'}" data-x="lb-pick">${esc(t('Pick Its Folder…'))}</button><button type="button" class="btn" data-x="back">${esc(t('Back'))}</button></div></div>`;
+        return;
+      }
+      lb = lb || { term: a.game || own, games: null, sel: 0, pics: {} };
+      body.innerHTML = `<div class="cz-sg"><div class="cz-sgbar"><input class="field" id="cz-lq" type="search" value="${esc(lb.term)}" spellcheck="false" aria-label="${esc(t('Search'))}"><button type="button" class="btn" data-x="lb-go">${esc(t('Search'))}</button><button type="button" class="btn" data-x="back">${esc(t('Back'))}</button></div>
+        <div class="cz-games" id="cz-games"></div><div class="ap-grid ${spec.k}" id="cz-grid"><p class="muted">${esc(t('Loading…'))}</p></div></div>`;
+      const q = $('#cz-lq', body);
+      q.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); $('[data-x="lb-go"]', body).click(); } });
+      if (!lb.games) {
+        try { lb.games = await invoke('launchbox_search', { path: lbDir(), term: lb.term, console: a.origin || null }); } catch (e) { lb.games = []; $('#cz-grid', body).innerHTML = `<p class="muted">${esc(t(String(e && e.message ? e.message : e)))}</p>`; return; }
+        lb.sel = 0;
+      }
+      paintLb(spec);
+    }
+    async function paintLb(spec) {
+      const gl = $('#cz-games', box), grid = $('#cz-grid', box);
+      if (!gl || !grid || !lb) return;
+      gl.innerHTML = lb.games.slice(0, 8).map((x, i) => `<button type="button" class="chip${i === lb.sel ? ' on' : ''}" data-x="lb-game" data-i="${i}">${esc(x.title)} <small>${esc([x.platform, x.year].filter(Boolean).join(' · '))}</small></button>`).join('');
+      const game = lb.games[lb.sel];
+      if (!game) { grid.innerHTML = `<p class="muted">${esc(t('Your LaunchBox has no game by that name. Try another.'))}</p>`; return; }
+      const k = lb.sel + ':' + spec.k;
+      let pics = lb.pics[k];
+      if (!pics) {
+        grid.innerHTML = `<p class="muted">${esc(t('Loading…'))}</p>`;
+        try { pics = lb.pics[k] = await invoke('launchbox_pictures', { path: lbDir(), platform: game.platform, title: game.title, kind: spec.k }); } catch (e) { if (lb && lb.games[lb.sel] === game) grid.innerHTML = `<p class="muted">${esc(t(String(e && e.message ? e.message : e)))}</p>`; return; }
+        // Another game (or another search, or another tab) was picked while these loaded.
+        if (!lb || !$('#cz-grid', box) || lb.games[lb.sel] !== game || tab !== spec.k) return;
+      }
+      grid.style.setProperty('--cols', spec.k === 'hero' ? 2 : spec.k === 'cover' ? 5 : 4);
+      grid.innerHTML = pics.length ? pics.map((x, i) => `<button type="button" class="ap-it" data-x="lb-take" data-i="${i}" title="${esc([x.type, x.region].filter(Boolean).join(' · '))}"><img src="${esc(x.thumb)}" alt="" loading="lazy"></button>`).join('')
+        : `<p class="muted">${esc(t('LaunchBox hasn\'t saved any of these for this game. Download its pictures in LaunchBox first.'))}</p>`;
+    }
+    // Its folder, kept for next time once it's checked.
+    async function lbSet(path, spec) {
+      try {
+        const r = await invoke('launchbox_find', { path });
+        if (!r) return;
+        await saveUi({ launchbox_dir: r.path });
+        lb = null;
+        return lbox(spec);
+      } catch (e) { fail(e); }
+    }
+    // The Info tab: the description LaunchBox has for the game with this name (its own console
+    // first), into Your Description, to keep or change before Save.
+    async function lbAbout() {
+      const term = a.game || own;
+      let hits = [];
+      try { hits = await invoke('launchbox_search', { path: lbDir(), term, console: a.origin || null }); } catch (e) { return fail(e); }
+      const same = hits.find((x) => nameKey(x.title) === nameKey(term)) || null;
+      if (!same) return toast(tf('Your LaunchBox has no game called {name}.', { name: term }), true);
+      if (!same.notes) return toast(t('LaunchBox has no description for it.'), true);
+      const d = $('#cz-d', box);
+      if (!d) return;
+      d.value = same.notes.slice(0, 2000);
+      d.dispatchEvent(new Event('input'));
+    }
+
     // A game that isn't installed (or a game's key) keeps its pictures beside the Library.
     function keep(x, r) {
       if (!r) return;
@@ -364,7 +440,7 @@
       switch (x.dataset.x) {
         case 'tab': return show(x.dataset.k);
         case 'save': return save(close);
-        case 'back': browse = null; return show(tab);
+        case 'back': browse = null; lb = null; return show(tab);
         case 'file': {
           const p = await pickFile({ title: t('A picture'), directory: false, multiple: false, filters: [{ name: t('Pictures'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }] }).catch(fail);
           if (p) take(spec, { path: typeof p === 'string' ? p : p.path });
@@ -374,6 +450,17 @@
         case 'sg-go': { const q = $('#cz-q', box).value.trim(); if (!q) return; browse = { term: q, games: null, sel: 0, art: browse ? browse.art : {} }; return sgdb(spec); }
         case 'sg-game': browse.sel = Number(x.dataset.i); return paintGames(spec);
         case 'sg-pick': return take(spec, { url: x.dataset.u });
+        case 'lb': return lbox(spec);
+        case 'lb-use': return lbSet(x.dataset.path, spec);
+        case 'lb-pick': {
+          const p = await pickFile({ title: t('LaunchBox\'s folder'), directory: true }).catch(fail);
+          if (p) return lbSet(typeof p === 'string' ? p : p.path, spec);
+          return;
+        }
+        case 'lb-go': { const q = $('#cz-lq', box).value.trim(); if (!q) return; lb = { term: q, games: null, sel: 0, pics: {} }; return lbox(spec); }
+        case 'lb-game': lb.sel = Number(x.dataset.i); return paintLb(spec);
+        case 'lb-take': { const pic = ((lb && lb.pics[lb.sel + ':' + spec.k]) || [])[Number(x.dataset.i)]; if (pic) take(spec, { path: pic.path }); return; }
+        case 'lb-about': return lbAbout();
         case 'key-save': { const v = ($('#cz-key', box) || {}).value || ''; if (!v.trim()) return; await saveUi({ sgdb_key: v.trim() }); return sgdb(spec); }
         case 'reset': {
           const had = (S.library[id] || (S.arts || {})[id] || {})[spec.k + '_file'];

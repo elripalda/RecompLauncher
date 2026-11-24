@@ -17,5 +17,6 @@
 ## Checklist
 
 - [ ] One change per pull request
+- [ ] Not a fix for one recomp's own quirks (those go in that recomp's project, see CONTRIBUTING.md)
 - [ ] No version bump or patch notes (those are done at release time)
 - [ ] If it changes what developers can write in `recomplauncher.json`: the schema and docs are updated too

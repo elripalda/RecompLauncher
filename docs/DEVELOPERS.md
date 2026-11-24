@@ -1,5 +1,12 @@
 # Works with RecompLauncher
 
+Adding support to a recomp? [ADD-SUPPORT.md](ADD-SUPPORT.md) has the steps, the rules and the
+report to finish with.
+
+This guide is the standard. When your release doesn't fit it (its folder layout, an AppImage entry
+point, file names), the fix goes in your recomp, not in the launcher: RecompLauncher doesn't add
+special code for one recomp. If the guide is missing something many recomps need, open an issue.
+
 For multiple discs, DLC slots and explicitly conditional shared keys, see
 [Named Easy Setup inputs](SETUP-INPUTS.md). That extension is limited to game inputs and three
 shared key types. BIOS/firmware management and multidisc hashing are explicitly deferred.
@@ -53,7 +60,9 @@ through us, and every release you publish reaches players the next time the laun
   (for example `MyRecomp-v1.2.0-Linux-x64.tar.xz`). Build it once, portably, so it runs on older
   systems too: in a GitHub Actions `ubuntu:22.04` container, or the Steam Runtime's `sniper` SDK.
   Then pack that one folder both ways. Either way the game plays from a plain folder (see
-  [AppImages](#appimages)), and players who want a single file to keep get the AppImage.
+  [AppImages](#appimages)), and players who want a single file to keep get the AppImage. So both
+  have to run from wherever they're unpacked: see
+  [Your AppImage has to run unpacked](#your-appimage-has-to-run-unpacked).
 - **One folder on top is fine.** A zip with everything inside `MyRecomp-v1.2.0/` is unwrapped, so
   your program lands in the game's folder either way.
 - **Keep extras out of the way.** Files with `debug`, `symbols`, `pdb` or `source` in the name, and
@@ -143,16 +152,47 @@ not from the internal filesystem.
 AppImage is unpacked at install with the launcher's own reader (no FUSE, and nothing of the image
 runs), the AppImage file is deleted, and the game starts from its `AppRun`. SquashFS AppImages and
 DwarFS ones (what pkgforge's Anylinux tooling and Tauri's portable AppImage write) both work. This is the
-same in the AppImage, .deb and Flatpak builds of the launcher (the sandbox's other differences are
-in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
+same in the AppImage, .deb, Arch, Nix and Flatpak builds of the launcher (the sandbox's other
+differences are in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
+
+**Why a plain folder.** An AppImage normally runs by mounting itself, and that gets in the way of
+a game a launcher looks after:
+
+- **It needs FUSE, and the Flatpak can't mount at all.** An AppImage mounts its files through
+  FUSE, which not every system has set up (older runtimes want FUSE 2, which many current
+  distributions no longer install). Inside the RecompLauncher Flatpak's sandbox nothing can be
+  mounted. An unpacked folder needs neither.
+- **A mount is read-only and moves.** Every start mounts the image at a new `/tmp/.mount_*` path,
+  and nothing can be written there. A game or setup step that writes next to itself (a settings
+  file, a cache, a downloaded SDK) stops with "Read-only file system", and a path saved during one
+  run points nowhere the next time. An unpacked folder stays put and can be written to, like your
+  tarball's.
+- **Updates, saves and mods need files they can reach.** The launcher updates a game file by file
+  and all at once (an update that's cut off leaves the game exactly as it was), keeps a game's
+  `{data}`, settings and saves with it, backs saves up and syncs them, and installs mods into the
+  game's folder. All of that works on a folder, not on a sealed image.
+- **Nothing to mount, nothing left behind.** Play starts the game straight away, with no mount
+  first, and a crash never leaves a mount hanging.
+
+So your AppImage is, for the launcher, a way to ship the same folder as your tarball. It has to run
+from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-run-unpacked).
 
 - The AppImage's contents (`AppRun`, `usr/`, the `.desktop` file, an embedded
   `recomplauncher.json`) become the game's folder.
-- The game starts from `AppRun`, with `APPDIR` set to the game's folder and `ARGV0` to `AppRun`,
-  as the AppImage runtime would set them. **`APPIMAGE` is not set**, since there's no AppImage file.
-  Find your files from `APPDIR` or your own program's path (`/proc/self/exe`), never from
-  `APPIMAGE` or a mount point, and don't update yourself through `APPIMAGE`: updates come from
-  your releases through the launcher.
+- The game starts from `AppRun`, with `APPDIR` set to the game's folder, `OWD` to the folder it
+  starts in and `ARGV0` to `AppRun`, as the AppImage runtime would set them. **`APPIMAGE` is not
+  set**, since there's no AppImage file. Find your files from `APPDIR` or your own program's path
+  (`/proc/self/exe`), never from `APPIMAGE` or a mount point, and don't update yourself through
+  `APPIMAGE`: updates come from your releases through the launcher.
+- A `start.program` or `prepare.program` that names a program inside the AppImage instead (`mkw`,
+  `usr/bin/game`) starts without your `AppRun`. It gets `APPDIR` and `OWD` the same way, and the
+  library folders your AppImage brings (`lib`, `lib64`, `usr/lib`, `usr/lib64` and
+  `usr/lib/<arch>-linux-gnu`, those that exist) go first on `LD_LIBRARY_PATH`, as most `AppRun`s
+  do. Anything else your `AppRun` sets up, it doesn't get: set it in `start.env`, or link your
+  program with an rpath of `$ORIGIN/lib`. Naming the AppImage is safer: name a program inside it
+  only when that program runs on its own, and developer tools warn when you do.
+- Links inside your AppImage are kept when they stay inside it. A link to an absolute path or out
+  of the AppImage (`../../`) is left out, and the launcher's log names it.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
   release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.
@@ -184,12 +224,44 @@ compression are supported, and DwarFS with Zstandard (its usual compression). Mi
 adjacent manifest and then the catalog. Replacing the image is reflected on the next read;
 there is no extracted copy to become stale.
 
-Developer tools identify the embedded source and check the profile actually in use.
+Developer tools identify the embedded source and check the profile actually in use. When
+`start.program` or `prepare.program` names a program inside your unpacked AppImage instead of the
+AppImage, they say so in yellow: it starts without your `AppRun`.
 
 The same file uploaded twice, once without the version for `releases/latest/download` links
 (`Game-1.2.0-x86_64.AppImage` and `Game-x86_64.AppImage`), is one build: the launcher installs
 the one that names its version and doesn't ask the player to choose. GitHub's SHA-256 of each file
 says they're the same.
+
+#### Your AppImage has to run unpacked
+
+Pack the same folder as your tarball, and make sure it runs from wherever it's unpacked. If your
+tarball does, the AppImage made from the same folder does too.
+
+Try it the way the launcher runs it, from a terminal in some other folder:
+
+```sh
+./MyGame-x86_64.AppImage --appimage-extract    # unpacks into squashfs-root/
+cd /tmp
+env -u APPIMAGE ~/squashfs-root/AppRun         # the path where it unpacked
+```
+
+Start any program your `recomplauncher.json` names inside the AppImage the same way
+(`env -u APPIMAGE ~/squashfs-root/usr/bin/game`), and run your setup step too if you have one.
+
+- **Find your files from where you are.** Use `APPDIR` or `/proc/self/exe`, never `APPIMAGE`
+  (it isn't set) or a `/tmp/.mount_*` path (there's no mount).
+- **Bring your libraries, and find them however you're started.** Start through your `AppRun`
+  (name the AppImage in `start.program`), or link your program with an rpath of `$ORIGIN/lib`
+  (`-Wl,-rpath,'$ORIGIN/lib'`) so it finds what you ship without `LD_LIBRARY_PATH`. If your
+  `AppRun` does set `LD_LIBRARY_PATH`, it reaches every program it runs, the system's `cp` and
+  `mkdir` too: leave system libraries such as `libpcre2` out of what you bundle.
+- **Your folder can be written to.** Unpacked, it's a plain folder in the player's library. Don't
+  copy your program somewhere else to run it, or assume your own folder is read-only: a game
+  that moves itself to `~/.local/share` keeps its build, settings and saves outside the launcher's
+  folder, and starts differently depending on how it's started. Write where
+  [Where your game writes](#where-your-game-writes) says.
+- **Keep links relative and inside the AppImage.** Ones that point out of it are left out.
 
 ### Mac apps
 
@@ -1044,7 +1116,7 @@ CHD is the format most disc-based backups come in, and the one players ask for m
 
 - **Tag every release with a version** (`v1.2.0`) and attach the builds to the GitHub release, not just to the README or Actions.
 - **Ship one program, and keep it the one players start.** Don't ship a builder that makes the game's program. If the game has to be built on the player's PC, the program you ship (`MyRecomp.exe`) builds it and then runs it, and the player never sees the built binary. Don't name it "builder", "compiler" or the like, and never change what the player starts after the build: `start.program`, their shortcut and their Steam entry stay on the program you shipped. [LostOdysseyRecomp](https://github.com/freefrank/LostOdysseyRecomp/blob/main/recomplauncher.json) works this way: `LostOdysseyRecomp.exe --prepare-content` is its setup step, and the same `LostOdysseyRecomp.exe` is the game.
-- **Name every file for what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.tar.gz` and `-linux-x86_64.AppImage`, `-macos-arm64.zip`. [Releases that install cleanly](#releases-that-install-cleanly) has the rest: the words a launcher picks a file by, one portable Linux build packed both ways, `source` in a source archive's name, and staying out of Program Files.
+- **Name every file for what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.tar.gz` and `-linux-x86_64.AppImage`, `-macos-arm64.zip`. [Releases that install cleanly](#releases-that-install-cleanly) has the rest: the words a launcher picks a file by, one portable Linux build packed both ways that runs from wherever it's unpacked ([Your AppImage has to run unpacked](#your-appimage-has-to-run-unpacked)), `source` in a source archive's name, and staying out of Program Files.
 - **Build for Linux and Mac too** when you can. A lot of players are on Steam Deck.
 - **Say what changed** in the release notes, even in one line.
 

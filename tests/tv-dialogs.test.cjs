@@ -216,3 +216,14 @@ test('without the desktop\'s controller handling, up and down still scroll a dia
   tv.press('up');
   assert.deepEqual(d.box.scrolls, [200, -200]);
 });
+
+test('Big Picture picks a build with the controller, in a sheet of its own', () => {
+  assert.match(tvJs, /window\.tvPickBuild = \(id, builds, current, go\) => \{/);
+});
+
+test('every Big Picture hook the desktop asks for is there in tv.js', () => {
+  const appJs = read('app.js');
+  const asked = new Set([...appJs.matchAll(/window\.(tv[A-Z]\w*)/g)].map((m) => m[1]));
+  const missing = [...asked].filter((n) => !new RegExp(`window\\.${n} *=`).test(tvJs));
+  assert.deepEqual(missing, []);
+});
