@@ -205,6 +205,21 @@ function sideOnce() {
   }
   saveUi({ side_v26: true, side_order: order }, true);
 }
+// Choices made once, for a new install only: nothing seen yet and setup not done. It runs at start,
+// before What's New (more.js) keeps seen_version, so a player who runs setup again is never one.
+function newInstallDefaults() {
+  const ui = S.settings.ui || {};
+  const newInstall = !ui.seen_version && !S.settings.setup_done;
+  if (!newInstall) return;
+  if (bannerTooBig()) saveUi({ hide_hero: true }, true);
+}
+// The Featured Banner on Home is at least 340px tall, up to 520px (40% of the width, app.css
+// .slider). On a small screen (a 1366×768 laptop, 1080p at 125% scaling) that is more than half of
+// it, so a new install there starts with the banner off; Settings → Appearance turns it back on.
+function bannerTooBig() {
+  const banner = Math.min(520, Math.max(340, screen.width * 0.4));
+  return banner > screen.height / 2;
+}
 function based(a) { return a.game && !a.parent ? `<div class="based">${DISC_S}<span>${htmlFill(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span></div>` : ''; }
 // A recomp that needs things on the PC first (Python, build tools, a long build): it says so, and
 // its main button is a yellow Set Up with its developer's steps until the player says it's done.
@@ -10331,7 +10346,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   catAsk.catch(() => {});
   try { await refreshState(); } catch (e) { loaded = false; fail(e); }
   // Settings that didn't load are never saved over (they'd be lost).
-  if (loaded) { try { sideOnce(); } catch (e) { /* the sidebar keeps its order */ } sendLimits(); }
+  if (loaded) { try { sideOnce(); } catch (e) { /* the sidebar keeps its order */ } newInstallDefaults(); sendLimits(); }
   const lang = (S.settings.ui || {}).lang;
   await loadLang(lang && lang !== 'auto' ? lang : systemLang());
   tDom();

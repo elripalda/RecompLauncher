@@ -29,25 +29,12 @@ T.event.listen('self-update', ({ payload: p }) => {
   if (bar) bar.style.width = (p.installing ? 100 : pct) + '%';
   if (st) st.textContent = p.installing ? t('Installing. RecompLauncher opens again in a moment.') : p.total ? tf('{done} of {total}', { done: fmtB(p.done), total: fmtB(p.total) }) : t('Downloading…');
 });
-// The Featured Banner on Home is at least 340px tall, up to 520px (40% of the width, app.css
-// .slider). On a small screen (a 1366×768 laptop, 1080p at 125% scaling) that is more than half of
-// it, so a new install there starts with the banner off; Settings → Appearance turns it back on.
-// Asked only for a new install (below), so a player who runs setup again keeps the banner they had.
-function bannerTooBig() {
-  const banner = Math.min(520, Math.max(340, screen.width * 0.4));
-  return banner > screen.height / 2;
-}
 // What's new: once, the first time a new version opens.
 async function whatsNew() {
   const ui = S.settings.ui || {};
   if (ui.seen_version === S.version) return;
   // A new install has nothing to compare with: just remember this version.
-  const newInstall = !ui.seen_version && !S.settings.setup_done;
-  if (newInstall) {
-    const first = { seen_version: S.version };
-    if (bannerTooBig()) first.hide_hero = true;
-    return saveUi(first);
-  }
+  if (!ui.seen_version && !S.settings.setup_done) return saveUi({ seen_version: S.version });
   const from = ui.seen_version;
   // Show What's New After an Update off (Settings → Updates and Downloads): the notes stay in
   // Settings → Changelog.

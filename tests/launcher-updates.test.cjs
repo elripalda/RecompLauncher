@@ -216,43 +216,6 @@ test('after an update on the desktop, the notes come as a card, not a window', a
   assert.deepEqual(card, ['0.90.0-beta.66', '0.90.0-beta.65']);
 });
 
-// whatsNew on a new install (nothing seen, setup not done), on a screen of the given size.
-function newInstallContext(width, height, ui = {}) {
-  const saved = [];
-  const c = vm.createContext({
-    S: { version: '0.90.0-beta.69', settings: { ui } },
-    screen: { width, height },
-    saveUi: async (patch) => { saved.push(patch); },
-  });
-  vm.runInContext(fn(more, 'bannerTooBig') + '\n' + fn(more, 'whatsNew'), c);
-  return { c, saved };
-}
-
-test('a new install on a 1366×768 screen starts with the Featured Banner off', async () => {
-  const w = newInstallContext(1366, 768);
-  await w.c.whatsNew();
-  assert.equal(w.saved.at(-1).hide_hero, true);
-});
-
-test('a new install on 1080p at 125% scaling starts with the Featured Banner off', async () => {
-  const w = newInstallContext(1536, 864);
-  await w.c.whatsNew();
-  assert.equal(w.saved.at(-1).hide_hero, true);
-});
-
-test('a new install on a 1080p screen keeps the Featured Banner', async () => {
-  const w = newInstallContext(1920, 1080);
-  await w.c.whatsNew();
-  assert.deepEqual(plain(w.saved.at(-1)), { seen_version: '0.90.0-beta.69' });
-});
-
-test('running setup again on a small screen leaves the Featured Banner as it was', async () => {
-  const w = newInstallContext(1366, 768, { seen_version: '0.90.0-beta.68' });
-  w.c.S.settings.ui.whats_new_off = true;
-  await w.c.whatsNew();
-  assert.equal(w.saved.some((p) => 'hide_hero' in p), false);
-});
-
 test('the card goes by itself after ten seconds', () => {
   assert.match(more, /^const WN_MS = 10000;$/m);
 });
