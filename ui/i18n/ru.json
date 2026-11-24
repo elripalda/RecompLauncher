@@ -1286,6 +1286,8 @@
  "That copy didn't work": "Эта копия не подошла",
  "Setup Didn't Finish": "Настройка не завершена",
  "Its setup step stopped with code {code}.": "Шаг настройки остановился с кодом {code}.",
+ "Open Full Log": "Открыть весь журнал",
+ "There's no setup log for it yet.": "Журнала настройки пока нет.",
  "That copy is gone.": "Этой копии больше нет.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Этот образ диска не читается: возможно, он неполный, сжатый или это не диск Xbox. Используйте полный несжатый .iso вашего диска.",
  "That disc image isn't the game this recomp reads.": "Этот образ диска — не та игра, которую использует эта рекомпиляция.",

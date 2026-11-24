@@ -1286,6 +1286,8 @@
  "That copy didn't work": "そのゲームデータは使えませんでした",
  "Setup Didn't Finish": "セットアップが完了しませんでした",
  "Its setup step stopped with code {code}.": "セットアップ手順がコード {code} で停止しました。",
+ "Open Full Log": "ログ全体を開く",
+ "There's no setup log for it yet.": "セットアップのログはまだありません。",
  "That copy is gone.": "そのコピーはもうありません。",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "このディスクイメージは読み込めません。不完全か圧縮されているか、Xbox のディスクではない可能性があります。ディスクの完全な非圧縮 .iso を使ってください。",
  "That disc image isn't the game this recomp reads.": "そのディスクイメージは、このリコンパイル版が読み込むゲームではありません。",

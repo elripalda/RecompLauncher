@@ -1286,6 +1286,8 @@
  "That copy didn't work": "สำเนานั้นใช้ไม่ได้",
  "Setup Didn't Finish": "การตั้งค่าไม่เสร็จสิ้น",
  "Its setup step stopped with code {code}.": "ขั้นตอนการตั้งค่าหยุดทำงานด้วยรหัส {code}",
+ "Open Full Log": "เปิดบันทึกทั้งหมด",
+ "There's no setup log for it yet.": "ยังไม่มีบันทึกการตั้งค่า",
  "That copy is gone.": "สำเนานั้นไม่มีแล้ว",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "อ่านอิมเมจดิสก์นั้นไม่ได้ อาจไม่ครบ ถูกบีบอัด หรือไม่ใช่ดิสก์ Xbox ใช้ไฟล์ .iso ของดิสก์ที่ครบและไม่บีบอัด",
  "That disc image isn't the game this recomp reads.": "ดิสก์อิมเมจนั้นไม่ใช่เกมที่ Recomp นี้ใช้",

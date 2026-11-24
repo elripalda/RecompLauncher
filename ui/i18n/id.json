@@ -1286,6 +1286,8 @@
  "That copy didn't work": "Salinan itu tidak berhasil",
  "Setup Didn't Finish": "Penyiapan Tidak Selesai",
  "Its setup step stopped with code {code}.": "Langkah penyiapannya berhenti dengan kode {code}.",
+ "Open Full Log": "Buka Log Lengkap",
+ "There's no setup log for it yet.": "Belum ada log penyiapan untuknya.",
  "That copy is gone.": "Salinan itu sudah tidak ada.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Image disk itu tidak bisa dibaca: mungkin tidak lengkap, terkompresi, atau bukan disk Xbox. Gunakan .iso lengkap tanpa kompresi dari disk-mu.",
  "That disc image isn't the game this recomp reads.": "Image disc itu bukan game yang dibaca recomp ini.",

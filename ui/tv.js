@@ -2274,7 +2274,18 @@
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = 'steps'; TS.named = Object.assign({}, TS.named, { copy: '', busy: false }); setTimeout(tsDraw, 0); } }];
-      body = `${med('ghost')}<div class="tt"><h2>${esc(setupFailTitle(TS.err))}</h2>${setupFailHtml(TS.err, 'err', 'tv-tail')}</div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
+      // Copy and Open Full Log: items like the rest, so A presses them.
+      const runs = {
+        copy: () => setupFailAct('copy', id, TS.err),
+        open: () => setupFailAct('open', id, TS.err),
+      };
+      const button = (act, label) => {
+        items.push({ run: runs[act] });
+        const at = items.length - 1;
+        return `<button type="button" class="tv-btn" data-f data-key="ts:fail-${act}" data-sheet="${at}"><span>${esc(label)}</span></button>`;
+      };
+      const failHtml = setupFailHtml(TS.err, { p: 'err', row: 'tv-logb', tail: 'tv-tail', button });
+      body = `${med('ghost')}<div class="tt"><h2>${esc(setupFailTitle(TS.err))}</h2>${failHtml}</div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;

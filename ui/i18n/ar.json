@@ -1286,6 +1286,8 @@
  "That copy didn't work": "لم تنجح تلك النسخة",
  "Setup Didn't Finish": "لم يكتمل الإعداد",
  "Its setup step stopped with code {code}.": "توقفت خطوة الإعداد الخاصة بها بالرمز {code}.",
+ "Open Full Log": "فتح السجل الكامل",
+ "There's no setup log for it yet.": "لا يوجد سجل إعداد لها بعد.",
  "That copy is gone.": "هذه النسخة لم تعد موجودة.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "لا يمكن قراءة صورة القرص هذه: ربما تكون ناقصة أو مضغوطة أو ليست قرص Xbox. استخدم ملف .iso كاملًا وغير مضغوط من قرصك.",
  "That disc image isn't the game this recomp reads.": "صورة القرص هذه ليست اللعبة التي تقرؤها هذه اللعبة المعاد تجميعها.",

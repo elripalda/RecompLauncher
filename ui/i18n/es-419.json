@@ -1275,6 +1275,8 @@
  "That copy didn't work": "Esa copia no funcionó",
  "Setup Didn't Finish": "La configuración no terminó",
  "Its setup step stopped with code {code}.": "Su paso de configuración se detuvo con el código {code}.",
+ "Open Full Log": "Abrir registro completo",
+ "There's no setup log for it yet.": "Todavía no hay un registro de configuración.",
  "That copy is gone.": "Esa copia ya no está.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Esa imagen de disco no se puede leer: puede estar incompleta, comprimida o no ser un disco de Xbox. Usa una .iso completa y sin comprimir de tu disco.",
  "That disc image isn't the game this recomp reads.": "Esa imagen de disco no es del juego que lee este recomp.",

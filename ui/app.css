@@ -787,7 +787,9 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ni-content,.ni-tv{display:flex;flex-direction:column;min-height:0;gap:18px}
 .ni-notice p{margin:0 0 10px;color:var(--muted)}
 .su-err{color:#ffc2c2;white-space:pre-line}
-/* The last lines a setup step printed, as it printed them: a few lines, never the whole log. */
+/* A failed setup step's last lines, as it printed them (a few, never the whole log: Open Full
+   Log has that), then its Copy and Open Full Log. */
+.su-logb{display:flex;flex-wrap:wrap;gap:8px}
 .su-tail{margin:0;padding:10px 12px;border-radius:10px;background:var(--fill2);color:var(--muted);font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:14em;overflow:auto;user-select:text}
 /* ---------- Easy Setup in steps (setup-steps.js) ----------
    One height for every step, the list scrolling inside it, so Back, the line by the button and
