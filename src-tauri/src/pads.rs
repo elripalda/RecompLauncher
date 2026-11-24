@@ -323,7 +323,8 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 /// SDL started and is reading controllers.
 static READY: AtomicBool = AtomicBool::new(false);
 /// The right stick's last position (SDL's -32768..32767, Y positive downwards), for Big Picture's
-/// box tilt: the window can't ask for its own controllers without upsetting them (see `native`).
+/// box tilt: on Windows the window can't ask for its own controllers without upsetting them
+/// (see `window_stays_off`).
 static RIGHT_STICK: [AtomicI16; 2] = [AtomicI16::new(0), AtomicI16::new(0)];
 
 fn keep_right_stick(axis: sdl::SDL_GamepadAxis, value: i16) {
@@ -341,11 +342,16 @@ pub fn right_stick() -> [f32; 2] {
     RIGHT_STICK.each_ref().map(|v| (v.load(Ordering::Relaxed) as f32 / 32767.0).clamp(-1.0, 1.0))
 }
 
-/// Whether the launcher reads controllers itself, waiting a moment if SDL is still starting.
-/// While it does, the window must not ask for gamepads (navigator.getGamepads): that starts
-/// WebView2's own controller reading, raw input beside SDL's XInput, and on Windows that pair
-/// switches off a controller reconnecting through the Xbox Wireless Adapter (issue #496).
-pub fn native() -> bool {
+/// Whether the window must leave controllers to the launcher, waiting a moment if SDL is still
+/// starting. On Windows, while SDL reads them, the window must not ask for gamepads
+/// (navigator.getGamepads): that starts WebView2's own controller reading, raw input beside
+/// SDL's XInput, and that pair switches off a controller reconnecting through the Xbox Wireless
+/// Adapter (issue #496). Elsewhere the window's reading does no harm and stays as the fallback
+/// for a controller SDL doesn't open.
+pub fn window_stays_off() -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
     let t = std::time::Instant::now();
     while RUNNING.load(Ordering::Relaxed) && !READY.load(Ordering::Relaxed) && t.elapsed() < std::time::Duration::from_secs(3) {
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -668,6 +674,14 @@ mod tests {
             assert!(sdl::SDL_DetachVirtualJoystick(nid));
             sdl::SDL_Quit();
         }
+    }
+
+    /// Only Windows has the Xbox Wireless Adapter trouble (#496): elsewhere the window keeps
+    /// its own controller reading as the fallback.
+    #[test]
+    #[cfg(not(windows))]
+    fn the_window_reads_controllers_outside_windows() {
+        assert!(!window_stays_off());
     }
 
     #[test]

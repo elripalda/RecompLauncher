@@ -9,15 +9,15 @@ const start = tv.indexOf('  const STD = ');
 const end = tv.indexOf('  // F11 switches', start);
 assert.ok(start >= 0 && end > start, 'the controller fallback is present');
 
-// The fallback starts once the core has said whether it reads controllers itself (`native`).
-async function controller(settings = {}, native = false) {
+// The fallback starts once the core has said whether the window must leave controllers to it (`windowOff`).
+async function controller(settings = {}, windowOff = false) {
   let time = 0;
   const timers = [], presses = [];
   const asked = { gamepads: 0 };
   const gp = { index: 0, id: 'standard controller', axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false })) };
   const getGamepads = () => { asked.gamepads++; return [gp]; };
   const context = vm.createContext({
-    S: { settings }, TV: { on: true }, nativeSeen: false, padsAnswer: Promise.resolve(native),
+    S: { settings }, TV: { on: true }, nativeSeen: false, padsAnswer: Promise.resolve(windowOff),
     navigator: { getGamepads }, document: { hasFocus: () => true },
     performance: { now: () => time }, setTimeout: fn => timers.push(fn),
     pad: button => presses.push(button),
@@ -62,7 +62,7 @@ test('turning stick navigation off stops a held fallback direction from repeatin
   assert.deepEqual(c.presses, ['right']);
 });
 
-test('the window never asks for gamepads while the core reads controllers', async () => {
+test('on Windows the window never asks for gamepads while SDL reads controllers', async () => {
   const c = await controller({}, true);
   assert.equal(c.timers.length, 0);
   assert.equal(c.asked.gamepads, 0);
