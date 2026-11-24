@@ -2479,6 +2479,7 @@ body.mac .tile .glow{display:none}
 .sup-star{width:13px;height:13px}
 .sup-ask{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:14px;border-radius:14px;background:var(--card2)}
 .sup-ask p{margin:0;font-size:13px;color:var(--muted)}
+.sup-ask .sup-err{color:var(--ink);font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
 /* The crash window: the game's own last error line */
 .modal .fatal-line{display:flex;flex-direction:column;gap:4px;margin:0}
 .modal .fatal-line code{font-size:12.5px;padding:8px 10px;border-radius:10px;background:var(--card2);color:var(--text);overflow-wrap:anywhere;white-space:pre-wrap}

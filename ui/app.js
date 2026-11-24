@@ -1355,6 +1355,11 @@ const SUP_KEYS = { easy_setup: '`game` and `start`', settings: '`config` and `se
 function supportIssue(ask) {
   const lines = ['Hi! I play this through RecompLauncher.', ''];
   if (ask.kind === 'repo') lines.push('Your repo has a `recomplauncher.json`, but your releases don\'t include it yet, so players don\'t get it. Could you put it at the top of your next release zip, next to the executable?');
+  if (ask.kind === 'broken') {
+    lines.push(`RecompLauncher can't read the \`recomplauncher.json\` in ${ask.game} ${ask.version}, so it skips the whole file: no Easy Setup, settings or save backups from it. The game still installs and plays as it is.`, '');
+    lines.push(`The problem: ${ask.error}`, '');
+    lines.push('To check a fix before you release it, turn on Developer tools in RecompLauncher (Settings → Developers) and add your build: its Developer tab reads the file and marks problems in red.');
+  }
   if (ask.kind === 'none') lines.push('Could you add a `recomplauncher.json` to your releases? Then RecompLauncher sets the game up from the player\'s copy, shows its settings and backs up its saves.');
   if (ask.kind === 'gaps' || ask.kind === 'ours') {
     lines.push('Your `recomplauncher.json` already does a lot. These would finish it:');
@@ -1362,7 +1367,7 @@ function supportIssue(ask) {
   }
   if (ask.kind === 'verify') lines.push('Your game already gets its setup from your own `recomplauncher.json`. Thank you!');
   lines.push('');
-  if (ask.kind !== 'verify') {
+  if (ask.kind !== 'verify' && ask.kind !== 'broken') {
     lines.push('The quickest way: ask your AI coding agent to read this and follow it. It writes the file and adds it to your release:', 'https://recomplauncher.com/sdk-files/recomplauncher-agent.md', '');
     lines.push('The guide, if you\'d rather do it yourself: https://recomplauncher.com/sdk', '');
   }
@@ -1372,7 +1377,8 @@ function supportIssue(ask) {
 // A new issue on the recomp's own page, asking for what Launcher Support says is missing. Opened for
 // the player to send themselves; nothing is sent from here.
 function askSupportUrl(a, ask) {
-  const title = ask.kind === 'verify' ? 'RecompLauncher: verify as the developer' : 'RecompLauncher support';
+  const titles = { verify: 'RecompLauncher: verify as the developer', broken: `RecompLauncher can't read recomplauncher.json in ${ask.version}` };
+  const title = titles[ask.kind] || 'RecompLauncher support';
   const body = supportIssue(ask);
   if (isSF(a.repo)) return repoIssues(a.repo);
   if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
@@ -1512,10 +1518,24 @@ function supLocalFor(id) {
   }).catch(() => {});
   return null;
 }
+// The release's recomplauncher.json is there, but the launcher can't read it, so Play and Easy
+// Setup skip it. The box says why instead of showing features, and the player can pass the
+// problem on to the developer. The game still installs and plays as a plain install.
+function supportProblemCard(a, problem) {
+  const d = devOf(a);
+  const g = S.library[a.id];
+  const version = (g && g.tag) || a.tag || a.version || '';
+  const ask = { kind: 'broken', verified: !!(d && d.verified), todo: [], game: a.name || a.id, version, error: problem };
+  const tell = a.repo ? `<button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(t('Tell the Developer'))}</button>` : '';
+  return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3><span class="tag paused">${esc(t('File Problem'))}</span></div>
+    <div class="sup-src">${byDev(a)}</div>
+    <div class="sup-ask sup-problem"><p>${esc(t('This game\'s recomplauncher.json has a problem, so the launcher can\'t use it and sets nothing up from it. It still installs and plays; set it up the way its project explains.'))}</p><p class="sup-err">${esc(problem)}</p>${tell}</div></div>`;
+}
 function supportCard(a) {
   if (!a || a.soon) return '';
   const id = a.id;
   const local = supLocalFor(id);
+  if (local && local.problem) return supportProblemCard(a, String(local.problem));
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
   const source = supportSource(a, local, sup);
   const st = supportStates(a, local, sup, source);

@@ -95,6 +95,44 @@ test('a release file the catalog has no copy of is read once installed, and nobo
   assert.doesNotMatch(html, /sup-ask/);
 });
 
+// Installed: support_local read the release's file and says what's wrong with it.
+const PROBLEM = { problem: '"config[0].file" should be a list.' };
+
+test("an installed release file the launcher can't read shows the problem, not Full Support", () => {
+  const html = render({ support: ALL_DEV, launcher: COMPLETE }, PROBLEM, { name: 'Dev', verified: true });
+  assert.match(html, /recomplauncher\.json has a problem/);
+  assert.match(html, /&quot;config\[0\]\.file&quot; should be a list\./);
+  assert.doesNotMatch(html, /Full Support<\/span>/);
+});
+
+test("an installed release file the launcher can't read shows no feature", () => {
+  const html = render({ support: ALL_DEV, launcher: COMPLETE }, PROBLEM, { name: 'Dev', verified: true });
+  assert.doesNotMatch(html, /sup-row/);
+  assert.doesNotMatch(html, /From the project/);
+});
+
+test('Tell the Developer opens an issue with the game, its release and the problem', () => {
+  const html = render({ name: 'MTF Recomp', support: ALL_DEV }, PROBLEM, { name: 'Dev', verified: true });
+  assert.match(html, /Tell the Developer/);
+  const issue = issueOf(html);
+  assert.match(issue, /recomplauncher\.json` in MTF Recomp v1\.0\.0/);
+  assert.match(issue, /The problem: "config\[0\]\.file" should be a list\./);
+  assert.match(decodeURIComponent(html.match(/title=([^"&]*)/)[1]), /can't read recomplauncher\.json in v1\.0\.0/);
+});
+
+test('an installed release without a file of its own keeps the catalog fallback', () => {
+  // support_local gives null for a folder with no recomplauncher.json: that isn't a problem.
+  const html = render({ launcher: COMPLETE, support: ALL_DEV }, null, { name: 'Dev', verified: true });
+  assert.doesNotMatch(html, /has a problem/);
+  assert.match(html, /sup-full[^]*Full Support/);
+});
+
+test('an installed release file the launcher reads, with everything in it, is Full Support', () => {
+  const html = render({ support: ALL_DEV }, EVERYTHING, { name: 'Dev', verified: true });
+  assert.doesNotMatch(html, /has a problem/);
+  assert.match(html, /sup-full[^]*Full Support/);
+});
+
 test('Easy Setup is not the project\'s when Install does not offer it', () => {
   const html = render({ launcher: COMPLETE, support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
   assert.match(rowOf(html, 'Easy Setup'), /sup-no/);

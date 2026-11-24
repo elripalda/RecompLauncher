@@ -1772,11 +1772,15 @@ fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
     support_in(&dir)
 }
 
-/// What the recomplauncher.json in a game's folder covers. Null when there is none, and also when
-/// the launcher can't read it: Play and Easy Setup skip such a file, so it sets up nothing.
+/// What the recomplauncher.json in a game's folder covers. Null when there is none. A file the
+/// launcher can't read sets nothing up (Play and Easy Setup skip it): `{"problem": …}` says why,
+/// for the box to show instead of the catalog's labels.
 fn support_in(dir: &Path) -> Option<Value> {
-    let p = profile::release_profile(dir)?.profile;
-    Some(profile_covers(&p))
+    if let Some(owned) = profile::release_profile(dir) {
+        return Some(profile_covers(&owned.profile));
+    }
+    let problem = profile::release_file_problem(dir)?;
+    Some(json!({ "problem": problem }))
 }
 
 /// Each Launcher Support feature a recomplauncher.json sets up itself.
@@ -10539,10 +10543,20 @@ mod tests {
     }
 
     #[test]
-    fn launcher_support_gives_nothing_for_a_file_the_launcher_cant_read() {
+    fn launcher_support_gives_only_the_problem_for_a_file_the_launcher_cant_read() {
         let dir = folder_with_file("unreadable", unreadable_like_mtf());
-        assert!(super::support_in(&dir).is_none());
+        let found = super::support_in(&dir);
         let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(found, Some(serde_json::json!({ "problem": "\"config[0].file\" should be a list." })));
+    }
+
+    #[test]
+    fn launcher_support_gives_nothing_for_a_folder_without_a_file() {
+        let dir = std::env::temp_dir().join(format!("rl-support-none-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let found = super::support_in(&dir);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(found, None);
     }
 
     #[test]
