@@ -48,8 +48,8 @@ fn gather(st: &App) -> Vec<(String, Vec<u8>)> {
     out
 }
 
-/// One game's logs, under games/<id>/: how the launcher last started it, what it printed, ReShade's
-/// log and the newest log the game wrote itself.
+/// One game's logs, under games/<id>/: how the launcher last started it, what it printed, what
+/// its setup step printed on its last run, ReShade's log and the newest log the game wrote itself.
 fn game_files(st: &App, id: &str) -> Vec<(String, Vec<u8>)> {
     let folder = format!("games/{}", safe(id));
     let mut out = vec![];
@@ -60,7 +60,8 @@ fn game_files(st: &App, id: &str) -> Vec<(String, Vec<u8>)> {
     let reshade = st.dir.join("looks").join(id).join("ReShade.log");
     // The game's own log, unless the newest one is what it printed or ReShade's (already in).
     let own = crate::recent_log_path(st, id, 0).filter(|p| p != &printed && p != &reshade);
-    let mut files = vec![(printed, "game-output.log".to_string()), (reshade, "ReShade.log".to_string())];
+    let setup = crate::setup_output_path(&st.dir, id);
+    let mut files = vec![(printed, "game-output.log".to_string()), (setup, "setup-output.log".to_string()), (reshade, "ReShade.log".to_string())];
     if let Some(p) = own {
         let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "game.log".into());
         files.push((p, name));
