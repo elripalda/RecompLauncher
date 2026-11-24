@@ -36,7 +36,10 @@ dump. Verification works with either.
 Game pages have a Launcher Support box. Each feature in it is marked as coming from your own
 `recomplauncher.json`, from RecompLauncher, or not there yet. A file that is only in your repo
 doesn't reach players, except on a Forgejo or Gitea server (see
-[Where the file goes](#where-the-file-goes)). When everything you can control comes from
+[Where the file goes](#where-the-file-goes)). Only what the launcher can use counts: a file that
+doesn't fit the format is skipped whole (the box says the launcher can't read it), Easy Setup
+needs `start` with `game` (or a required game input), and Verified Copies needs `game.dumps` or
+`game.check.ids`, not only a `check.file`. When everything you can control comes from
 your own file, the box says Full Support. A free
 [developer account](https://recomplauncher.com/developers?signup=1) puts the verified tick next to
 your name there.
