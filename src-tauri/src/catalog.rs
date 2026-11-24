@@ -1198,7 +1198,14 @@ async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
     if !r.status().is_success() {
         return None;
     }
-    let v: Value = r.json().await.ok()?;
+    let bytes = r.bytes().await.ok()?;
+    repo_profile_reply(&bytes)
+}
+
+/// What a project's recomplauncher.json from its repo gives: the file, or "none" when it isn't one
+/// the launcher reads. A body that isn't JSON at all is a failed answer, asked again later.
+fn repo_profile_reply(bytes: &[u8]) -> Option<Value> {
+    let v = crate::profile::parse_json_bytes(bytes)?;
     Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
 }
 
@@ -1299,6 +1306,12 @@ pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_repo_profile_saved_with_a_byte_order_mark_is_read() {
+        let v = super::repo_profile_reply(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
     #[test]
     fn a_backup_release_keeps_only_checked_files_for_this_pc() {
         let sha = "a".repeat(64);

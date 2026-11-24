@@ -229,7 +229,7 @@ fn loose_images(home: &Path, data_home: &Path, skip: &[PathBuf]) -> Vec<PathBuf>
 #[cfg(any(target_os = "linux", test))]
 fn image_repo(image: &Path) -> String {
     let bytes = crate::appimage::manifest(image).unwrap_or_default();
-    let profile: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let profile = crate::profile::parse_json_bytes(&bytes).unwrap_or(Value::Null);
     profile.get("repo").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
@@ -328,7 +328,7 @@ pub fn library_roots() -> Vec<PathBuf> {
 /// its settings is lost and the games in it look missing).
 fn lib_json(file: &Path) -> Option<Value> {
     let b = std::fs::read(file).ok()?;
-    serde_json::from_slice(b.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&b)).ok()
+    crate::profile::parse_json_bytes(&b)
 }
 
 pub fn is_library(dir: &Path) -> bool {
@@ -606,7 +606,7 @@ pub async fn migrate_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
 fn read_repo(dir: &Path) -> String {
     crate::profile::release_profile(dir).map(|p| p.profile.repo)
         .or_else(|| std::fs::read(dir.join("recomplauncher.json")).ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|b| crate::profile::parse_json_bytes(&b))
             .and_then(|v| v.get("repo").and_then(Value::as_str).map(String::from)))
         .unwrap_or_default()
 }
