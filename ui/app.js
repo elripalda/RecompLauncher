@@ -6659,6 +6659,7 @@ function gameMenu(id) {
         { act: 'report', id, label: t('Report to RecompLauncher…'), icon: 'page' },
         ...devReportItem(x),
       ] },
+      ...(hasOwnPlaytime(id) ? [{ act: 'play-reset', id, label: t('Reset Play Time…'), icon: 'history' }] : []),
     ] : links.length ? ['-', ...links] : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
@@ -6697,6 +6698,34 @@ function ownFolder(g) {
   const made = String(g.id || '').replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
   return !!g.asset && norm(g.path).split('/').pop() === made;
 }
+// Play time this PC counted for it (a setup that starts the game counts too, issue #487).
+function hasOwnPlaytime(id) {
+  const play = localPlaytime(id);
+  return !!(play && play.played_secs);
+}
+// Its play time back to zero on this PC, and this PC's share on the account when signed in. The
+// same in Big Picture: ask() shows a controller sheet there.
+async function resetPlaytime(id) {
+  const g = S.library[id];
+  if (!g || !hasOwnPlaytime(id)) return;
+  if (S.running.has(id)) return toast(t('Close the game first.'), true);
+  const signedIn = !!(S.account && S.account.signedIn);
+  const text = signedIn ? t('Its play time and sessions on this PC go back to zero, on your account too. Time played on your other PCs stays.')
+    : t('Its play time and sessions on this PC go back to zero.');
+  const buttons = [{ label: t('Keep it'), sub: t('Nothing changes'), v: 'no', focus: true }, { label: t('Reset Play Time'), v: 'yes', main: true, last: true }];
+  const v = await ask(tf('Reset play time for {name}?', { name: g.name }), `<p>${esc(text)}</p>`, buttons);
+  if (v !== 'yes') return;
+  let r = {};
+  try { r = (await invoke('playtime_reset', { id })) || {}; } catch (err) { return fail(err); }
+  await refreshState();
+  if (r.account) await playSync([]);
+  render(true);
+  if (window.tvRefresh) window.tvRefresh();
+  if (r.account === false) return toast(tf('{name}\'s play time is reset on this PC. Your account couldn\'t be reached, so it still counts the old time: clear it on recomplauncher.com, under Account.', { name: g.name }), true);
+  toast(tf('{name}\'s play time is reset.', { name: g.name }));
+}
+window.resetPlaytime = resetPlaytime;
+window.hasOwnPlaytime = hasOwnPlaytime;
 function confirmUninstall(id) {
   id = parentId(id);
   const g = S.library[id];
@@ -9356,6 +9385,7 @@ async function act(el, e) {
       } catch (err) { fail(err); }
       return;
     case 'uninstall': return confirmUninstall(parentId(id));
+    case 'play-reset': return resetPlaytime(id);
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
       const ids = S.ids || await invoke('data_ids');
