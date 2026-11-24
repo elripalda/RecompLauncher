@@ -7816,19 +7816,41 @@ fn launcher_platform_entry(v: &Value, os: &str, arch: &str) -> Option<Value> {
     }
 }
 
-/// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0 < 0.5.1: a beta comes before its release.
-fn version_key(s: &str) -> (u64, u64, u64, u64, u64, u64) {
+/// How far along a pre-release's label is: an rc.1 is past a beta.5 whatever their numbers.
+/// A label we don't know sits with beta, so it's never taken for older than an alpha or newer
+/// than an rc.
+fn prerelease_stage(label: &str) -> u64 {
+    let label = label.to_ascii_lowercase();
+    let starts = |prefixes: &[&str]| prefixes.iter().any(|p| label.starts_with(p));
+    if starts(&["dev", "nightly", "snapshot"]) {
+        return 0;
+    }
+    if starts(&["alpha"]) {
+        return 1;
+    }
+    // Before "pre": "preview" starts with it.
+    if starts(&["beta", "preview"]) {
+        return 2;
+    }
+    if starts(&["rc", "pre"]) {
+        return 3;
+    }
+    2
+}
+
+/// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0-rc.1 < 0.5.0 < 0.5.1: a pre-release comes before its release.
+fn version_key(s: &str) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
     let s = s.trim().trim_start_matches(['v', 'V']);
     let (core, pre) = s.split_once('-').unwrap_or((s, ""));
     // Each part's leading digits ("10a" is 10).
     let mut n = core.split('.').map(|p| p.trim().chars().take_while(char::is_ascii_digit).collect::<String>().parse::<u64>().unwrap_or(0));
-    let (a, b, c) = (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0));
+    let (a, b, c, d) = (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0));
     if pre.is_empty() {
-        return (a, b, c, 1, 0, 0);
+        return (a, b, c, d, 1, 0, 0, 0);
     }
     // beta.3.1: 3, then 1.
     let mut nums = pre.split(|ch: char| !ch.is_ascii_digit()).filter(|p| !p.is_empty()).map(|p| p.parse::<u64>().unwrap_or(0));
-    (a, b, c, 0, nums.next().unwrap_or(0), nums.next().unwrap_or(0))
+    (a, b, c, d, 0, prerelease_stage(pre), nums.next().unwrap_or(0), nums.next().unwrap_or(0))
 }
 
 /// A game's releases that have a version for this PC, newest first: for going back to an older
@@ -10754,6 +10776,39 @@ mod tests {
         assert!(!super::older_version("1.1", "1.0"));
         assert!(!super::older_version("nightly-2026", "1.0"));
         assert!(super::older_version("v1.9", "v1.10a"));
+    }
+
+    #[test]
+    fn a_release_candidate_is_newer_than_a_later_numbered_beta() {
+        assert!(!super::older_version("v2.0.0-rc.1", "v2.0.0-beta.5"));
+        assert!(super::older_version("v2.0.0-beta.5", "v2.0.0-rc.1"));
+    }
+
+    #[test]
+    fn a_preview_is_newer_than_an_alpha() {
+        assert!(super::older_version("1.0.0-alpha.1", "1.0.0-preview.2"));
+    }
+
+    #[test]
+    fn a_pre_is_newer_than_a_beta() {
+        assert!(super::older_version("1.0.0-beta.3", "1.0.0-pre.1"));
+    }
+
+    #[test]
+    fn a_nightly_is_older_than_an_alpha() {
+        assert!(super::older_version("1.0.0-nightly.5", "1.0.0-alpha.1"));
+    }
+
+    #[test]
+    fn an_unknown_label_sits_between_alpha_and_rc() {
+        assert!(super::older_version("1.0.0-alpha.1", "1.0.0-foo.1"));
+        assert!(super::older_version("1.0.0-foo.1", "1.0.0-rc.1"));
+    }
+
+    #[test]
+    fn a_fourth_version_part_counts() {
+        assert!(super::older_version("1.2.3.4", "1.2.3.5"));
+        assert!(!super::older_version("1.2.3.5", "1.2.3.4"));
     }
 
     #[test]
