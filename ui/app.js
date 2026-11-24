@@ -2544,7 +2544,9 @@ function igVariant() {
 // (Beta 68) Where the card sits on the game's page, picked per game on the site: the right column
 // under Before You Play (side), under the stats (strip) or under Your Play Time (play). Never beside
 // Play. A game with no play time yet shows a play card under the stats instead.
-const IG_PLACES = ['side', 'strip', 'play'];
+// (Beta 69) Or the top of the right column, above Ready to Play (top). Launchers older than this
+// don't know 'top' and show the card in 'side', so the site can offer it before everyone updates.
+const IG_PLACES = ['top', 'side', 'strip', 'play'];
 const igPlace = (e) => (IG_PLACES.includes(e && e.at) ? e.at : 'side');
 function igSlot(a, where, alt) {
   return `<div class="ig-slot ig-at-${where}" data-ig="${esc(a.id)}" data-place="${where}"${alt ? ' data-alt="1"' : ''}>${igCard(a, where, alt)}</div>`;
@@ -2556,7 +2558,9 @@ function igCard(a, where, alt) {
   if (where && at !== where && !(alt && where === 'strip' && at === 'play')) return '';
   const sale = Number(e.pct) > 0;
   const price = e.price ? `<span class="ig-price">${sale ? `<b class="ig-pct">-${fmtNum(Number(e.pct))}%</b>${e.old ? `<s>${esc(e.old)}</s>` : ''}` : ''}<b>${esc(e.price)}</b></span>` : '';
-  return `<div class="ig-card${where && where !== 'side' ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
+  // The right column (top and side) is narrow; the other places span the main column.
+  const wide = where === 'strip' || where === 'play';
+  return `<div class="ig-card${wide ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
     <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div></div>`;
 }
 // One view per game per launch, when the card is actually on screen.
@@ -3022,6 +3026,11 @@ function playersText(a) {
   const n = Number(a.players);
   return n > 0 ? tn(n, '1 PC, last 90 days', '{n} PCs, last 90 days') : '';
 }
+// (Beta 69) The top of the game's right column, above Ready to Play: a spot for an affiliate card
+// placed there on the site, and for other things later. Empty when nothing is placed in it.
+function topSpot(a) {
+  return igSlot(a, 'top');
+}
 function gameRail(a) {
   const facts = [
     [t('Latest version'), verText(a.version)], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
@@ -3030,7 +3039,7 @@ function gameRail(a) {
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   // Who made it is under the title; adding it somewhere, its project page and reporting are in the
   // "…" menu. Overview has what it needs to play, and what the launcher can do for it.
-  const overview = S.tab === 'overview' ? readyCard(a) + igSlot(a, 'side') + supportCard(a) : '';
+  const overview = S.tab === 'overview' ? topSpot(a) + readyCard(a) + igSlot(a, 'side') + supportCard(a) : '';
   return `<div class="stack">${overview}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
     </div>`;
