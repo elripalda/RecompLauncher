@@ -1067,7 +1067,9 @@ pub const CHANGED_SINCE_CHECK: &str = "Your saves on this PC changed while the c
 
 /// `restore`, but only over the saves that were checked: `checked` is their set's checksum as
 /// `current` gave it. A game opened outside the launcher can save while a cloud save downloads,
-/// and that newer save would be replaced without the player being asked.
+/// and that newer save would be replaced without the player being asked. A save made in the
+/// milliseconds between this check and `restore`'s own backup isn't seen: accepted, as that
+/// backup still keeps what was there.
 pub fn restore_if_unchanged(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g: &Installed, checked: &str) -> Result<usize, Error> {
     let (_, _, now, _) = current(spots_now, g);
     if now != checked {

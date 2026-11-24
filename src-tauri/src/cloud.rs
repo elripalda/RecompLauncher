@@ -670,16 +670,23 @@ const NOT_RESTORED: &str = "Your cloud save couldn't be put in place.";
 /// The cloud save downloaded, but it couldn't be kept in the folder of the game's save copies.
 const CLOUD_NOT_KEPT: &str = "The cloud save couldn't be kept on this PC.";
 
-/// Already translated: the same words the launcher says for a game it started itself.
-const CLOSE_GAME_FIRST: &str = "Close the game first.";
-
-/// A game started outside the launcher (its program opened straight from its folder) isn't in
-/// `running`, but it writes saves all the same: a save put in place under it could replace what
-/// it just saved. Not seen on macOS, or under Wine where the program is Wine's own; the saves are
-/// checked again just before anything replaces them (`saves::restore_if_unchanged`) for those.
-async fn open_outside(g: &Installed) -> Res<bool> {
+/// The file name of a program running from the game's folder that this launcher didn't start: the
+/// game opened straight from its .exe, or a mod tool kept beside it. A save put in place under the
+/// game could replace what it just saved. Named, because it isn't always the game. Not while the
+/// launcher's own setup step runs: its tools run from the game's folder too. Not seen on macOS, or
+/// under Wine where the program is Wine's own; the saves are checked again just before anything
+/// replaces them (`saves::restore_if_unchanged`) for those.
+async fn open_outside(id: &str, g: &Installed) -> Res<Option<String>> {
+    if crate::setup_busy(id) {
+        return Ok(None);
+    }
     let dir = g.path.clone();
-    blocking(move || crate::still_running_in(&dir)).await
+    blocking(move || crate::program_running_in(&dir)).await
+}
+
+/// Sync Now and restores: what to close before trying again.
+fn still_open(program: &str) -> Error {
+    Error::Msg(format!("A program from this game's folder is still running ({program}). Close it, then try again."))
 }
 
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
@@ -1100,8 +1107,8 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&s
     let g = game(&st, id)?;
     // Checked after the download too: a big save takes a while, and the game can be opened
     // from its folder meanwhile.
-    if open_outside(&g).await? {
-        return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
+    if let Some(program) = open_outside(id, &g).await? {
+        return Err(still_open(&program));
     }
     let d = copies_dir(&st, id);
     let not_kept = |path: &Path, e: std::io::Error| Error::Msg(format!("{CLOUD_NOT_KEPT}\n{}: {e}", path.display()));
@@ -1272,9 +1279,15 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        // Before Play too: the game is open already, so starting it again isn't what's needed.
-        if open_outside(&g).await? {
-            return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
+        // Before Play it doesn't stop the game: the program may be a mod tool, not the game. The
+        // player is asked whether to play with this PC's save, as when a restore fails.
+        if let Some(program) = open_outside(&id, &g).await? {
+            if manual {
+                return Err(still_open(&program));
+            }
+            crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place: {program} runs from its folder"));
+            let why = format!("A program from this game's folder is already running ({program}). Close it to get your cloud save.");
+            return Ok(json!({"action": "not-restored", "why": why, "cloud": top}));
         }
         let taken = take_cloud(&app, &id, top, Some(&local)).await;
         // Sync Now says why. Before Play the player is asked whether to play with this PC's save
@@ -1782,8 +1795,8 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
         return Err(Error::Msg("That isn't one of its save copies.".into()));
     }
     let g = game(&st, &id)?;
-    if open_outside(&g).await? {
-        return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
+    if let Some(program) = open_outside(&id, &g).await? {
+        return Err(still_open(&program));
     }
     let spots = spots_of(&st, &id, &g);
     let (dir, id2) = (st.dir.clone(), id.clone());
