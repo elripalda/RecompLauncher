@@ -832,7 +832,7 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
 /// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
 /// instead. The one in a folder named after the AppImage first (a release with several), else the
 /// one at the top.
-fn to_apprun(p: &mut Profile, dir: &Path) {
+pub(crate) fn to_apprun(p: &mut Profile, dir: &Path) {
     if dir.as_os_str().is_empty() {
         return;
     }

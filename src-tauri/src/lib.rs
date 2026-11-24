@@ -3257,9 +3257,9 @@ fn start_game_with_monitor_context(
             cmd.env(k, v);
         }
     }
-    // An unpacked AppImage's AppRun: what its runtime would have set (APPDIR, ARGV0).
+    // A program in an unpacked AppImage: what its runtime would have set (APPDIR, OWD, ...).
     #[cfg(target_os = "linux")]
-    appimage_env(&mut cmd, &exe);
+    appimage_env(&mut cmd, &exe, &g.path);
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
     let mut ach_id = full_id.clone();
     let ach_session = {
@@ -4193,15 +4193,66 @@ fn human_size(b: u64) -> String {
     }
 }
 
-/// An AppImage unpacked at install starts from its AppRun, which may look for its files through
-/// APPDIR (the AppImage's runtime sets it when the AppImage starts itself): set it here.
+/// A program in an AppImage unpacked at install gets what the AppImage's runtime would have set
+/// (see `appimage_vars`).
 #[cfg(target_os = "linux")]
-fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
-    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
-        if let Some(dir) = exe.parent() {
-            cmd.env("APPDIR", dir).env("ARGV0", exe);
-        }
+fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path, install: &Path) {
+    for (k, v) in appimage_vars(exe, install, sysenv::for_games("LD_LIBRARY_PATH")) {
+        cmd.env(k, v);
     }
+}
+
+/// The unpacked AppImage a program is in: the nearest folder above it, inside the game's folder,
+/// that has an AppRun.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn appimage_root(exe: &Path, install: &Path) -> Option<PathBuf> {
+    let mut folders = exe.ancestors().skip(1).take_while(|d| d.starts_with(install));
+    folders.find(|d| d.join("AppRun").is_file()).map(Path::to_path_buf)
+}
+
+/// What the AppImage runtime sets for the program it starts, for a program in an unpacked
+/// AppImage: APPDIR (the AppImage's folder, where programs look for their own files), OWD (the
+/// folder it starts in) and, for its AppRun, ARGV0. A program named by itself instead of its
+/// AppRun also gets the AppImage's libraries (`appimage_libs`). Nothing for a program in a plain
+/// folder. APPIMAGE is never set: there's no AppImage file anymore.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_vars(exe: &Path, install: &Path, pc_libs: Option<std::ffi::OsString>) -> Vec<(&'static str, std::ffi::OsString)> {
+    let apprun = exe.file_name().is_some_and(|n| n == "AppRun");
+    let root = if apprun { exe.parent().map(Path::to_path_buf) } else { appimage_root(exe, install) };
+    let Some(root) = root else { return vec![] };
+    let starts_in = exe.parent().unwrap_or(&root).as_os_str().to_os_string();
+    let mut vars = vec![("APPDIR", root.into_os_string()), ("OWD", starts_in)];
+    if apprun {
+        vars.push(("ARGV0", exe.as_os_str().to_os_string()));
+    }
+    if let Some(libs) = appimage_libs(exe, install, pc_libs) {
+        vars.push(("LD_LIBRARY_PATH", libs));
+    }
+    vars
+}
+
+/// Where an AppImage keeps the libraries it brings, inside its folder.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const APPIMAGE_LIB_DIRS: [&str; 6] = ["lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu", "usr/lib/aarch64-linux-gnu"];
+
+/// A program inside an unpacked AppImage, started by itself instead of through its AppRun (a
+/// profile that names it, like mkw-recomp's `mkw`): the library folders the AppImage brings, which
+/// its AppRun would have put first. Without them it stops at once ("libvpx.so.6: cannot open
+/// shared object file", code 127). The PC's own list comes after them. None for its AppRun, which
+/// sets its own, and for a program in a folder that isn't an AppImage's.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_libs(exe: &Path, install: &Path, pc: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
+    if exe.file_name().is_some_and(|n| n == "AppRun") {
+        return None;
+    }
+    let root = appimage_root(exe, install)?;
+    let mut dirs: Vec<PathBuf> = APPIMAGE_LIB_DIRS.iter().map(|d| root.join(d)).filter(|d| d.is_dir()).collect();
+    if dirs.is_empty() {
+        return None;
+    }
+    let pc = pc.unwrap_or_default();
+    dirs.extend(std::env::split_paths(&pc).filter(|p| !p.as_os_str().is_empty()));
+    std::env::join_paths(dirs).ok()
 }
 
 /// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
@@ -4508,11 +4559,11 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     for (k, v) in temp.env() {
         c.env(k, as_given(v));
     }
-    // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
-    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
-        if let Some(dir) = exe.parent() {
-            c.env("APPDIR", dir).env("ARGV0", &exe);
-        }
+    // A setup step in an unpacked AppImage (its AppRun, or a program named inside it): what the
+    // AppImage's runtime would have set.
+    #[cfg(target_os = "linux")]
+    for (k, v) in appimage_vars(&exe, install, sysenv::for_games("LD_LIBRARY_PATH")) {
+        c.env(k, v);
     }
     c.args(&args).current_dir(exe.parent().unwrap_or(install)).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     #[cfg(windows)]
@@ -11437,6 +11488,81 @@ mod tests {
         let with = prepare_args(&pr, install, Some(Path::new("/roms/game.nup")), &extra);
         assert_eq!(with[2], "--game=/roms/game.nup");
         assert_eq!(with.len(), 6);
+    }
+
+    fn fresh_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// An unpacked AppImage like mkw-recomp's: AppRun, the program beside it, and lib/.
+    fn unpacked_appimage(name: &str) -> PathBuf {
+        let d = fresh_dir(name);
+        std::fs::write(d.join("AppRun"), "#!/bin/sh\n").unwrap();
+        std::fs::write(d.join("mkw"), "").unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_gets_its_libraries() {
+        let d = unpacked_appimage("appimage-libs-program");
+        let libs = appimage_libs(&d.join("mkw"), &d, None).unwrap();
+        assert_eq!(std::env::split_paths(&libs).collect::<Vec<_>>(), [d.join("lib")]);
+    }
+
+    #[test]
+    fn the_pcs_own_library_folders_come_after_the_appimages() {
+        let d = unpacked_appimage("appimage-libs-pc");
+        let libs = appimage_libs(&d.join("mkw"), &d, Some("/opt/mine/lib".into())).unwrap();
+        assert_eq!(std::env::split_paths(&libs).collect::<Vec<_>>(), [d.join("lib"), PathBuf::from("/opt/mine/lib")]);
+    }
+
+    #[test]
+    fn an_appimages_apprun_sets_its_own_libraries() {
+        let d = unpacked_appimage("appimage-libs-apprun");
+        assert!(appimage_libs(&d.join("AppRun"), &d, None).is_none());
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_gets_no_libraries_added() {
+        let d = fresh_dir("appimage-libs-plain");
+        std::fs::write(d.join("game"), "").unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        assert!(appimage_libs(&d.join("game"), &d, None).is_none());
+    }
+
+    fn var(vars: &[(&str, std::ffi::OsString)], k: &str) -> Option<PathBuf> {
+        vars.iter().find(|(name, _)| *name == k).map(|(_, v)| PathBuf::from(v))
+    }
+
+    #[test]
+    fn an_unpacked_appimages_apprun_gets_appdir_owd_and_argv0() {
+        let d = unpacked_appimage("appimage-vars-apprun");
+        let vars = appimage_vars(&d.join("AppRun"), &d, None);
+        assert_eq!(var(&vars, "APPDIR"), Some(d.clone()));
+        assert_eq!(var(&vars, "OWD"), Some(d.clone()));
+        assert_eq!(var(&vars, "ARGV0"), Some(d.join("AppRun")));
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_gets_its_appdir() {
+        let d = unpacked_appimage("appimage-vars-program");
+        std::fs::create_dir_all(d.join("usr/bin")).unwrap();
+        std::fs::write(d.join("usr/bin/game"), "").unwrap();
+        let vars = appimage_vars(&d.join("usr/bin/game"), &d, None);
+        assert_eq!(var(&vars, "APPDIR"), Some(d.clone()));
+        assert_eq!(var(&vars, "OWD"), Some(d.join("usr/bin")));
+        assert!(var(&vars, "ARGV0").is_none());
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_gets_nothing_of_an_appimage() {
+        let d = fresh_dir("appimage-vars-plain");
+        std::fs::write(d.join("game"), "").unwrap();
+        assert!(appimage_vars(&d.join("game"), &d, None).is_empty());
     }
 
     #[test]
