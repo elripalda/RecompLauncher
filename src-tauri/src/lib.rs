@@ -4654,8 +4654,8 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     }
 }
 
-/// Skip Easy Setup for every game (the Settings switch). Each game keeps its own mode under it, so
-/// turning it off again leaves every game as it was.
+/// Easy Setup off for new games (the Settings switch, stored as `easy_skip_all`). A game takes it as
+/// its own mode when it's installed; games already installed keep theirs, whichever way it goes.
 fn easy_skipped_for_all(ui: &Value) -> bool {
     ui.get("easy_skip_all").and_then(Value::as_bool).unwrap_or(false)
 }
@@ -4675,20 +4675,19 @@ fn take_skip_choice(ui: &mut Value, id: &str) -> bool {
 }
 
 /// A game being installed for the first time skips Easy Setup: its own tick (taken off the list),
-/// or the Settings switch for every game.
+/// or Easy Setup off for new games in Settings.
 fn fresh_install_skips(ui: &mut Value, id: &str) -> bool {
     let ticked = take_skip_choice(ui, id);
     ticked || easy_skipped_for_all(ui)
 }
 
 /// The player sets this game up their own way (Skip Easy Setup): its own mode once installed, or
-/// the tick in its menu before. A game of several in one recomp follows its recomp.
+/// its tick or the Settings switch before. A game of several in one recomp follows its recomp.
 fn player_sets_up(st: &App, id: &str) -> bool {
     let rid = setup_record_id(st, id);
     let l = st.lib.lock().unwrap();
-    let all = easy_skipped_for_all(&l.settings.ui);
     match l.installed.get(&rid) {
-        Some(g) => g.player_sets_up(all),
+        Some(g) => g.player_sets_up(),
         None => easy_skipped(&l.settings.ui, id),
     }
 }

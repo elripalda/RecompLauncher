@@ -56,9 +56,12 @@ test('the Easy Setup switch sits above Game Executable and shows whether Easy Se
   assert.match(easyRowHtml(true, false), /aria-checked="false"/);
 });
 
-test('no Easy Setup switch on a game Easy Setup can\'t do, or while it\'s skipped for every game', () => {
+test('no Easy Setup switch on a game Easy Setup can\'t do', () => {
   assert.equal(easyRowHtml(false, false), '');
-  assert.equal(easyRowHtml(true, false, { easy_skip_all: true }), '');
+});
+
+test('the game\'s Easy Setup switch stays while Easy Setup is off for new games in Settings', () => {
+  assert.match(easyRowHtml(true, false, { easy_skip_all: true }), /data-act="easy-skip"/);
 });
 
 test('turning Easy Setup off says it in the switch\'s words once installed, and how it installs before', () => {
@@ -70,7 +73,7 @@ test('turning Easy Setup off says it in the switch\'s words once installed, and 
 
 test('the setup window offers Skip Easy Setup on its first step, for a game Easy Setup does', () => {
   const steps = fs.readFileSync(path.join(__dirname, '../ui/setup-steps.js'), 'utf8');
-  assert.match(steps, /const skippable = m\.at === 0 && S\.easyAll && S\.easyAll\.has\(id\) && !\(S\.settings\.ui \|\| \{\}\)\.easy_skip_all;/);
+  assert.match(steps, /const skippable = m\.at === 0 && S\.easyAll && S\.easyAll\.has\(id\);/);
   assert.match(steps, /data-ss="skip-easy">\$\{esc\(t\('Skip Easy Setup'\)\)\}/);
   assert.match(steps, /if \(act === 'skip-easy'\) return 'skip';/);
 });
@@ -90,8 +93,8 @@ test('a game Easy Setup can\'t do goes back with Use Default', () => {
   assert.match(row(MINE, false), /data-act="forget-program"[^>]*>Use Default</);
 });
 
-test('with Easy Setup skipped for every game, the way back is Use Default', () => {
-  assert.match(row(MINE, true, undefined, { easy_skip_all: true }), /data-act="forget-program"[^>]*>Use Default</);
+test('with Easy Setup off for new games, the way back is still the game\'s own switch, not Use Default', () => {
+  assert.doesNotMatch(row(MINE, true, undefined, { easy_skip_all: true }), /forget-program/);
 });
 
 test('Easy Setup skipped on a game it can do: Set Up by You, saying what the launcher still does', () => {
@@ -168,8 +171,6 @@ test('who sets a game up is its own mode: nothing is worked out again at start',
   assert.doesNotMatch(app, /skipOwnPrograms|easyForEveryGame|own_program_games/);
   assert.doesNotMatch(rust, /fn own_program_games/);
   assert.match(fn(app, 'loadEasy'), /applyEasySkip\(\);\r?\n\s+if \(!quiet\) render\(true\);/);
-  // Skip Easy Setup for every game sits over each game's mode: turned off, every game is as it was.
-  assert.match(app, /case 'ui-toggle':\r?\n(\s+\/\/[^\n]*\n)+\s+return saveUi\(\{ \[el\.dataset\.k\]: !\(S\.settings\.ui \|\| \{\}\)\[el\.dataset\.k\] \}\);/);
 });
 
 test('an installed game\'s Easy Setup switch reads its mode', () => {
@@ -177,10 +178,30 @@ test('an installed game\'s Easy Setup switch reads its mode', () => {
   const S = { settings: { ui: { easy_skip: ['planned'] } }, easyAll: new Set(['hopper', 'skyracer', 'planned']), library: { hopper: { mode: 'own' }, skyracer: {} } };
   run(S)();
   assert.deepEqual([...S.easy], ['skyracer'], 'hopper is the player\'s own; planned was ticked before installing');
-  S.settings.ui.easy_skip_all = true;
+});
+
+test('Easy Setup off in Settings is for new games: an installed Easy Setup game keeps it', () => {
+  const run = new Function('S', `${fn(app, 'applyEasySkip')}; return applyEasySkip;`);
+  const S = { settings: { ui: { easy_skip_all: true } }, easyAll: new Set(['skyracer', 'newgame']), library: { skyracer: {} } };
   run(S)();
-  assert.deepEqual([...S.easy], []);
-  assert.equal(S.library.skyracer.mode, undefined, 'the switch for every game leaves each game\'s mode as it is');
+  assert.deepEqual([...S.easy], ['skyracer']);
+});
+
+test('Easy Setup in Settings asks before it goes off, and not before it goes back on', () => {
+  const sw = app.match(/case 'easy-all': \{[^]*?\n    \}/)[0];
+  assert.match(sw, /const off = !\(S\.settings\.ui \|\| \{\}\)\.easy_skip_all;/);
+  assert.match(sw, /if \(off && !\(await askEasyAllOff\(\)\)\) return;/);
+  assert.match(sw, /return saveUi\(\{ easy_skip_all: off \}\);/);
+});
+
+test('the question says what turning Easy Setup off does, with Turn Off and Not Now', async () => {
+  const run = new Function('t', 'esc', 'ask', `${fn(app, 'askEasyAllOff')}; return askEasyAllOff;`);
+  let asked;
+  const ask = async (title, html, buttons) => { asked = { title, html, buttons }; return 'yes'; };
+  assert.equal(await run((x) => x, (x) => x, ask)(), true);
+  assert.equal(asked.title, 'Turn Off Easy Setup?');
+  assert.match(asked.html, /New games then install as they come[^<]*Games you already have keep how they're set up\./);
+  assert.deepEqual(asked.buttons.map((b) => b.label), ['Turn Off', 'Not Now']);
 });
 
 test('Choose Program is called Set Game Executable everywhere', () => {

@@ -170,7 +170,7 @@ function stepsView(id, su, ns, game) {
   }
   // Rather set it up yourself: Easy Setup off for this game, from its first step. Its Manage tab
   // has the switch to turn it back on.
-  const skippable = m.at === 0 && S.easyAll && S.easyAll.has(id) && !(S.settings.ui || {}).easy_skip_all;
+  const skippable = m.at === 0 && S.easyAll && S.easyAll.has(id);
   if (skippable) body += `<p class="ss-alt">${esc(t('Rather set it up yourself?'))} <button type="button" data-ss="skip-easy">${esc(t('Skip Easy Setup'))}</button></p>`;
   // The check mark only on the lines that say it's ready.
   const ok = [t('Everything it needs is here.'), t('Ready to set up.')].includes(status);
