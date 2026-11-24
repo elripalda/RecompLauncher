@@ -7555,11 +7555,28 @@ async fn update_info(st: State<'_, App>, id: String) -> Res<Value> {
 
 /// Saves the release a game is on as `tag`, unless it was moved or changed since `g` was read.
 fn keep_tag(st: &App, g: &mut Installed, tag: String) {
+    let old = g.tag.clone();
     if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id).filter(|x| !x.local && x.repo == g.repo && x.path == g.path) {
-        x.tag = tag.clone();
+        retag(x, &old, &tag);
     }
     st.save();
-    g.tag = tag;
+    retag(g, &old, &tag);
+}
+
+/// A game's tag spelled as `new`, with every other field that names the same release (the release
+/// its setup finished on, each game's own, the one before, a waiting installer's): left as `old`,
+/// an Easy Setup game would read as a new release and build again for nothing.
+fn retag(g: &mut Installed, old: &str, new: &str) {
+    let fix = |t: &mut String| {
+        if same_tag(t, old) {
+            *t = new.to_string();
+        }
+    };
+    g.tag = new.to_string();
+    fix(&mut g.set_up);
+    fix(&mut g.prev_tag);
+    fix(&mut g.installer_tag);
+    g.games.values_mut().for_each(|p| fix(&mut p.set_up));
 }
 
 /// Which release a game added from the player's folder is: the newest one published by the day its
@@ -10507,6 +10524,42 @@ mod tests {
     #[test]
     fn a_tag_spelled_like_its_release_isnt_rewritten() {
         assert_eq!(super::exact_tag(&[tagged_release("v1.0.0", false)], "v1.0.0"), None);
+    }
+
+    #[test]
+    fn a_game_set_up_on_a_tag_without_its_v_isnt_set_up_again_after_the_rewrite() {
+        let (d, game) = take_pick_dir("retag");
+        let copy = d.join("My Games/Combo");
+        std::fs::create_dir_all(&copy).unwrap();
+        let mut p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
+            "format": 1,
+            "game": { "kind": "iso_or_folder", "label": "Your Combo dump" },
+            "prepare": { "program": ["builder.sh"], "args": ["--game={game}"] },
+            "start": { "program": ["play.sh"] }
+        }))
+        .unwrap();
+        p.lift_game();
+        let mut g = Installed { id: "combo".into(), repo: "a/b".into(), path: game, tag: "1.0.0".into(), set_up: "1.0.0".into(), ..Default::default() };
+        g.setup_inputs.insert("game".into(), copy);
+        let mut lib = Library::default();
+        lib.put("combo", g.clone());
+        let st = app_in(&d, lib);
+        super::keep_tag(&st, &mut g, "v1.0.0".into());
+        let saved = st.lib.lock().unwrap().installed["combo"].clone();
+        assert_eq!((saved.tag.as_str(), saved.set_up.as_str()), ("v1.0.0", "v1.0.0"));
+        let rows = crate::inputs::rows(&p, &saved, &d).unwrap();
+        let facts = crate::setup_state::Facts { profile: &p, game: &saved, rows: &rows, set_up: &saved.set_up, cut: false, own_program: false, skipped: false };
+        let status = crate::setup_state::of(&facts);
+        assert!(status.ready, "{status:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_rewrite_reaches_every_field_naming_the_same_release() {
+        let mut g = Installed { tag: "1.0.0".into(), prev_tag: "1.0.0".into(), installer_tag: "v1.1.0".into(), ..Default::default() };
+        g.games.insert("one".into(), crate::games::Played { set_up: "1.0.0".into(), ..Default::default() });
+        super::retag(&mut g, "1.0.0", "v1.0.0");
+        assert_eq!((g.prev_tag.as_str(), g.installer_tag.as_str(), g.games["one"].set_up.as_str()), ("v1.0.0", "v1.1.0", "v1.0.0"));
     }
 
     #[test]
