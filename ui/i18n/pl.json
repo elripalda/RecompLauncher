@@ -2284,6 +2284,8 @@
  "Game File": "Plik gry",
  "Drop your ROM here": "Upuść tutaj swój ROM",
  "Drop your game file here": "Upuść tutaj plik gry",
+ "This game takes a folder, not a file.": "Ta gra wymaga folderu, a nie pliku.",
+ "Drop your game's folder here": "Upuść tutaj folder gry",
  "The file you made from your own copy": "Plik utworzony z twojej własnej kopii",
  "What the game needs from your copy": "Czego gra potrzebuje z twojej kopii",
  "Reading your copy": "Odczytywanie twojej kopii",

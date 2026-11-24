@@ -2284,6 +2284,8 @@
  "Game File": "Файл игры",
  "Drop your ROM here": "Перетащите ROM сюда",
  "Drop your game file here": "Перетащите файл игры сюда",
+ "This game takes a folder, not a file.": "Этой игре нужна папка, а не файл.",
+ "Drop your game's folder here": "Перетащите папку игры сюда",
  "The file you made from your own copy": "Файл, созданный из вашей собственной копии",
  "What the game needs from your copy": "Что нужно игре из вашей копии",
  "Reading your copy": "Чтение вашей копии",

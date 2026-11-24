@@ -2284,6 +2284,8 @@
  "Game File": "Gamebestand",
  "Drop your ROM here": "Sleep je ROM hierheen",
  "Drop your game file here": "Sleep je gamebestand hierheen",
+ "This game takes a folder, not a file.": "Deze game heeft een map nodig, geen bestand.",
+ "Drop your game's folder here": "Sleep de map van je game hierheen",
  "The file you made from your own copy": "Het bestand dat je van je eigen exemplaar hebt gemaakt",
  "What the game needs from your copy": "Wat de game nodig heeft van je exemplaar",
  "Reading your copy": "Je exemplaar wordt gelezen",

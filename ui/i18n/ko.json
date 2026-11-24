@@ -2284,6 +2284,8 @@
  "Game File": "게임 파일",
  "Drop your ROM here": "여기에 ROM을 놓으세요",
  "Drop your game file here": "여기에 게임 파일을 놓으세요",
+ "This game takes a folder, not a file.": "이 게임은 파일이 아니라 폴더가 필요합니다.",
+ "Drop your game's folder here": "여기에 게임 폴더를 놓으세요",
  "The file you made from your own copy": "내 게임 사본으로 만든 파일",
  "What the game needs from your copy": "게임 사본에서 필요한 것",
  "Reading your copy": "게임 사본을 읽는 중",

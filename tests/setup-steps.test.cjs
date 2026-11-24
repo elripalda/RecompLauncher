@@ -68,13 +68,61 @@ test('the copy box keeps the same buttons empty or filled', () => {
   assert.doesNotMatch(filled, /data-ss="clear"/, 'choosing again is how the copy changes');
 });
 
+// A Switch recomp whose input takes only a folder (exefs and romfs): its picker shows no .nsp, so
+// the box says why. Only the manifest's formats decide it.
+const FOLDER_HINT = /<span class="ss-hint">This game takes a folder, not a file\.<\/span>/;
+const SWITCH_FILES = () => ({ type: 'file', exts: ['xci', 'nsp', 'nup', 'nca'], folder: false });
+const folderInput = (x) => Object.assign({ id: 'base', label: 'The folder with exefs and romfs', role: 'game', file: false, folder: true, active: true, path: null, extensions: [] }, x);
+const named = (inputs) => ({ needs: 'x', kind: '', inputs, prepare_options: [] });
+// The whole window (stepsShell) draws the game's media too.
+const withMedia = () => context({}, { MediaArt: require('../ui/media-art.js') });
+
+test('an input that takes only a folder says so in its box, under its label', () => {
+  const c = context();
+  const html = c.stepsView('g', named([folderInput()]), {}, { name: 'R', game: 'G' });
+  assert.match(html, FOLDER_HINT);
+  assert.match(html, /<span title="The folder with exefs and romfs">The folder with exefs and romfs<\/span>/);
+});
+
+test('an input that takes a file or a folder has no folder hint', () => {
+  const c = context();
+  const either = folderInput({ file: true, extensions: ['nsp', 'xci'] });
+  const html = c.stepsView('g', named([either]), {}, { name: 'R', game: 'G' });
+  assert.doesNotMatch(html, FOLDER_HINT);
+  assert.match(html, /<span class="fmt">\.nsp<\/span>/);
+});
+
+test('the folder hint goes once a folder is chosen', () => {
+  const c = context();
+  const html = c.stepsView('g', named([folderInput({ path: '/r/switch/Game' })]), {}, { name: 'R', game: 'G' });
+  assert.doesNotMatch(html, FOLDER_HINT);
+});
+
+test('a folder-only row among several says it takes a folder too', () => {
+  const c = context();
+  const su = named([folderInput(), disc(2)]);
+  const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.match(html, /<div class="ss-row"><span class="st">.*?<b>The folder with exefs and romfs<\/b><div class="line"><span class="ss-hint">/);
+});
+
 test('a folder-only copy shows none of its console\'s file types', () => {
-  // (a Switch recomp whose copy is the folder with exefs and romfs: no .nsp to show)
-  const switchFiles = () => ({ type: 'file', exts: ['xci', 'nsp', 'nup', 'nca'], folder: false });
-  const c = context({}, { copyFormats: switchFiles });
+  const c = context({}, { copyFormats: SWITCH_FILES });
   const su = { needs: 'The folder with exefs and romfs', kind: 'folder', copy: null, inputs: [], prepare_options: [] };
   const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.match(html, FOLDER_HINT);
   assert.doesNotMatch(html, /\.nsp/);
+});
+
+test('the drop area asks for a folder when that is all the copy takes', () => {
+  const c = withMedia();
+  const html = c.stepsShell('g', named([folderInput()]), {}, { name: 'R', game: 'G' }, false);
+  assert.match(html, /<b>Drop your game&#39;s folder here<\/b>/);
+});
+
+test('Big Picture shows the same folder hint', () => {
+  const c = withMedia();
+  const html = c.stepsShell('g', named([folderInput()]), {}, { name: 'R', game: 'G' }, true);
+  assert.match(html, FOLDER_HINT);
 });
 
 test('a required extra that is off holds Set Up, and marks the Extras step', () => {

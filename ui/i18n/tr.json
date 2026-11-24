@@ -2284,6 +2284,8 @@
  "Game File": "Oyun dosyası",
  "Drop your ROM here": "ROM'unuzu buraya bırakın",
  "Drop your game file here": "Oyun dosyanızı buraya bırakın",
+ "This game takes a folder, not a file.": "Bu oyun dosya değil, klasör istiyor.",
+ "Drop your game's folder here": "Oyun klasörünüzü buraya bırakın",
  "The file you made from your own copy": "Kendi kopyanızdan oluşturduğunuz dosya",
  "What the game needs from your copy": "Oyunun kopyanızdan ihtiyaç duydukları",
  "Reading your copy": "Kopyanız okunuyor",

@@ -2284,6 +2284,8 @@
  "Game File": "遊戲檔案",
  "Drop your ROM here": "將 ROM 拖放到這裡",
  "Drop your game file here": "將遊戲檔案拖放到這裡",
+ "This game takes a folder, not a file.": "此遊戲需要資料夾，而不是檔案。",
+ "Drop your game's folder here": "將遊戲資料夾拖放到這裡",
  "The file you made from your own copy": "您從自己的副本製作的檔案",
  "What the game needs from your copy": "遊戲需要您副本中的哪些內容",
  "Reading your copy": "正在讀取您的副本",
