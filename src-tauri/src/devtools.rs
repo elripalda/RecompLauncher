@@ -132,7 +132,7 @@ fn name_main_input(key: &str, v: &mut Value) {
 
 fn read_raw(dir: &Path) -> Option<Value> {
     profile::release_profile(dir).map(|p| p.raw)
-        .or_else(|| std::fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()))
+        .or_else(|| std::fs::read(dir.join(FILE)).ok().and_then(|b| profile::parse_json_bytes(&b)))
 }
 
 /// The program Play starts: the file's own `start.program`, or the likeliest one in the folder.
@@ -200,7 +200,7 @@ fn add_appimage(st: &App, image: &Path) -> Res<Installed> {
 #[cfg(target_os = "linux")]
 fn add_image_record(st: &App, image: &Path) -> Res<String> {
     let dir = image.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
-    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| profile::parse_json_bytes(&b));
     let said = |k: &str| raw.as_ref().and_then(|v| v.get(k)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
     let name = said("name").unwrap_or_else(|| crate::plain::image_title(image));
     let mut l = st.lib.lock().unwrap();
@@ -351,7 +351,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
         let text = embedded.as_ref().map(|p| Ok(p.raw.to_string())).unwrap_or_else(|| std::fs::read_to_string(&file));
         match text {
             Err(e) => error = format!("It can't be read: {e}"),
-            Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(text) => match serde_json::from_slice::<Value>(profile::without_bom(text.as_bytes())) {
                 Err(e) => error = format!("It isn't valid JSON: {e}."),
                 Ok(v) => {
                     conv = converted(&v).and_then(|c| serde_json::to_string_pretty(&c).ok());

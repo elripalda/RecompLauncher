@@ -1117,6 +1117,18 @@ fn bind_image(raw: &mut Value, image: &Path) -> Option<()> {
     Some(())
 }
 
+/// JSON bytes without the UTF-8 byte order mark some Windows editors put in front. The mark belongs
+/// to the encoding and JSON doesn't allow it, so a recomplauncher.json saved that way would fail to
+/// parse and the game would lose its launcher support.
+pub(crate) fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes)
+}
+
+/// A recomplauncher.json, or another JSON file a person may have saved, read from bytes, BOM or not.
+pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> {
+    serde_json::from_slice(without_bom(bytes)).ok()
+}
+
 /// Embedded metadata belongs to the installed image and wins over a stale
 /// sidecar. Unsupported, missing or unreadable metadata keeps the old fallback.
 pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
@@ -1124,9 +1136,7 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
         return None;
     }
     let parse = |bytes: &[u8], image: Option<&Path>| -> Option<ReleaseProfile> {
-        // Some Windows editors start a UTF-8 file with a byte order mark, which JSON doesn't allow.
-        let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
-        let mut raw: Value = serde_json::from_slice(bytes).ok()?;
+        let mut raw = parse_json_bytes(bytes)?;
         if let Some(image) = image {
             bind_image(&mut raw, image)?;
         }
@@ -2705,6 +2715,18 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn json_bytes_without_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn json_bytes_with_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
 
     #[test]
     fn a_manifest_saved_with_a_byte_order_mark_is_still_read() {
