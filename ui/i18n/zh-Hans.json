@@ -3390,5 +3390,8 @@
  "Syncs when you press Play": "按“开始游戏”时同步",
  "syncs when you press Play": "按“开始游戏”时同步",
  "Saved {time}. What's there now is kept as a backup first.": "保存于{time}。当前存档会先保留为备份。",
- "A newer save is in the cloud": "云端有较新的存档"
+ "A newer save is in the cloud": "云端有较新的存档",
+ "A program from this game's folder is still running. Close it, then try again.": "这个游戏文件夹中的某个程序仍在运行。请关闭它，然后重试。",
+ "A program from this game's folder is already running. Close it to get your cloud save.": "这个游戏文件夹中的某个程序已在运行。关闭它即可获取你的云存档。",
+ "Your saves on this PC changed while the cloud save was downloading, so they weren't replaced. Sync again to choose which one to keep.": "下载云存档期间，此电脑上的存档发生了变化，因此没有替换它们。请再次同步，选择要保留的那一份。"
 }

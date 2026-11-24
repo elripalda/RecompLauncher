@@ -3390,5 +3390,8 @@
  "Syncs when you press Play": "Si sincronizza quando premi Gioca",
  "syncs when you press Play": "si sincronizza quando premi Gioca",
  "Saved {time}. What's there now is kept as a backup first.": "Salvato {time}. Quello attuale viene prima conservato come backup.",
- "A newer save is in the cloud": "C'è un salvataggio più recente nel cloud"
+ "A newer save is in the cloud": "C'è un salvataggio più recente nel cloud",
+ "A program from this game's folder is still running. Close it, then try again.": "Un programma della cartella di questo gioco è ancora in esecuzione. Chiudilo, poi riprova.",
+ "A program from this game's folder is already running. Close it to get your cloud save.": "Un programma della cartella di questo gioco è già in esecuzione. Chiudilo per avere il tuo salvataggio nel cloud.",
+ "Your saves on this PC changed while the cloud save was downloading, so they weren't replaced. Sync again to choose which one to keep.": "I tuoi salvataggi su questo PC sono cambiati mentre si scaricava il salvataggio nel cloud, quindi non sono stati sostituiti. Sincronizza di nuovo per scegliere quale tenere."
 }

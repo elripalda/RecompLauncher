@@ -684,9 +684,15 @@ async fn open_outside(id: &str, g: &Installed) -> Res<Option<String>> {
     blocking(move || crate::program_running_in(&dir)).await
 }
 
-/// Sync Now and restores: what to close before trying again.
+/// Sync Now and restores, when a program runs from the game's folder. Fixed texts so the window
+/// can translate them; the program's name goes on the line under it, as it is.
+const PROGRAM_OPEN: &str = "A program from this game's folder is still running. Close it, then try again.";
+
+/// Before Play, said in the prompt that offers to play with this PC's save instead.
+const PROGRAM_OPEN_PLAY: &str = "A program from this game's folder is already running. Close it to get your cloud save.";
+
 fn still_open(program: &str) -> Error {
-    Error::Msg(format!("A program from this game's folder is still running ({program}). Close it, then try again."))
+    Error::Msg(format!("{PROGRAM_OPEN}\n{program}"))
 }
 
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
@@ -1286,7 +1292,7 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
                 return Err(still_open(&program));
             }
             crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place: {program} runs from its folder"));
-            let why = format!("A program from this game's folder is already running ({program}). Close it to get your cloud save.");
+            let why = format!("{PROGRAM_OPEN_PLAY}\n{program}");
             return Ok(json!({"action": "not-restored", "why": why, "cloud": top}));
         }
         let taken = take_cloud(&app, &id, top, Some(&local)).await;

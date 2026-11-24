@@ -3390,5 +3390,8 @@
  "Syncs when you press Play": "Синхронізується, коли ви натиснете «Грати»",
  "syncs when you press Play": "синхронізується після натискання «Грати»",
  "Saved {time}. What's there now is kept as a backup first.": "Збережено {time}. Поточне спершу збережеться як копія.",
- "A newer save is in the cloud": "У хмарі є новіше збереження"
+ "A newer save is in the cloud": "У хмарі є новіше збереження",
+ "A program from this game's folder is still running. Close it, then try again.": "Програма з папки цієї гри досі запущена. Закрий її, а потім спробуй ще раз.",
+ "A program from this game's folder is already running. Close it to get your cloud save.": "Програма з папки цієї гри вже запущена. Закрий її, щоб отримати хмарне збереження.",
+ "Your saves on this PC changed while the cloud save was downloading, so they weren't replaced. Sync again to choose which one to keep.": "Твої збереження на цьому ПК змінилися, поки завантажувалося хмарне збереження, тож їх не замінено. Синхронізуй ще раз, щоб вибрати, яке залишити."
 }
