@@ -115,6 +115,12 @@ impl From<reqwest::Error> for Error {
                 Some(h) => Error::Net(format!("{h} took too long to answer. Try again in a minute.")),
                 None => Error::Net("A site took too long to answer. Try again in a minute.".into()),
             }
+        } else if e.is_connect() && net::tls_failed(&e) {
+            // Something answered, but not with a secure connection: whatever stepped in between
+            // the player and the site (a proxy too, when there is one) is what to look at.
+            // Checking their connection or waiting wouldn't help.
+            let h = site.unwrap_or_else(|| "the site".into());
+            Error::Net(format!("Couldn't open a secure connection to {h}. Something on your network or PC may be blocking it: a router's security filter, an antivirus or a VPN."))
         } else if e.is_connect() && net::proxy_shown().is_some() {
             // Through a proxy that didn't answer: that's what to check, not the site.
             Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Network, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
