@@ -8313,8 +8313,9 @@ fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     Ok(programs_in(&g))
 }
 
-/// Start With (hold Play): the program Play starts by the game's recomplauncher.json, and the one the
-/// player picked; a game without one offers every program in its folder, as before (#464).
+/// Start With, in the game's "…" menu and Big Picture's Options sheet: the program Play starts by
+/// the game's recomplauncher.json, and the one the player picked; a game without one offers every
+/// program in its folder, as before (#464).
 #[tauri::command(async)]
 fn start_with_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
