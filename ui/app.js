@@ -7485,11 +7485,16 @@ async function askProgram(id) {
   if (!full.length) { S.nextTab = 'installed'; go('game', id); return toast(t('The launcher couldn\'t tell which program starts the game. Pick it in the game\'s settings.'), true); }
   return confirmProgram(id, (libApp(g) || g).name || id, full, true);
 }
+// Start With is for a game the launcher doesn't set up, or one the player sets up their own way
+// (Skip Easy Setup). A game Easy Setup runs is made to start through the launcher as it is: there's
+// no other program for the player to pick, on the desktop or in Big Picture.
+const startWithOffered = (id) => !!S.library[id] && !S.easy.has(id);
 // Hold Play: pick which of the game's programs starts this time (the game itself, or its own
 // launcher or tools). A normal press starts the usual one.
 window.startWith = async function startWith(id) {
   const g = S.library[id];
   if (!g) return;
+  if (!startWithOffered(id)) return playGame(id);
   let list = [];
   // Only the programs its recomplauncher.json starts, when it names them: not its own tools.
   try { list = (await invoke('start_with_programs', { id })) || []; } catch (e) { /* none */ }
@@ -7515,7 +7520,8 @@ window.startWith = async function startWith(id) {
   let held = null;
   document.addEventListener('pointerdown', (e) => {
     const b = e.target.closest('[data-act="play"][data-id]');
-    if (!b || e.button !== 0 || !S.library[b.dataset.id]) return;
+    // A game without Start With plays on a normal press, however long it's held.
+    if (!b || e.button !== 0 || !startWithOffered(b.dataset.id)) return;
     clearTimeout(held && held.t);
     held = { b, t: setTimeout(() => { b.dataset.held = '1'; startWith(b.dataset.id); }, 600) };
   });
