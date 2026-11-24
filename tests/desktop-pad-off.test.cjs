@@ -85,7 +85,7 @@ function desktopView() {
   };
   const root = { id: 'app', querySelectorAll: () => [button], contains: (el) => el === button };
   const main = { contains: (el) => el === button, getBoundingClientRect: () => ({ top: 0, bottom: 500 }) };
-  const window = {};
+  const window = { addEventListener: () => {} };
   const c = vm.createContext({
     window, document, SU: {}, S: { back: [], view: 'settings' },
     $: (s) => (s === '#app' ? root : s === '#main' ? main : null), $$: () => [], MutationObserver: class { observe() {} },
