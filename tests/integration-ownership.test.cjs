@@ -74,25 +74,25 @@ test('a release file the launcher reads, with everything in it, is Full Support'
   assert.match(rowOf(html, 'Easy Setup'), /sup-p/);
 });
 
-// Mario Tennis Fever: its release ships a file with every section, so the store labels them all
-// the project's, but the launcher can't read it (config.file is one path, not a list). The
-// catalog then carries no copy of it, Install offers no Easy Setup and Play skips the file.
-test("a release file the launcher can't read is not Full Support", () => {
+// Mario Tennis Fever before install: its release ships a file with every section, so the store
+// labels them all the project's, but the catalog carries no copy (the launcher can't read the
+// file: config.file is one path, not a list). Install offers no Easy Setup.
+test('a release file the catalog has no copy of is not Full Support before install', () => {
   const html = render({ support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
   assert.doesNotMatch(html, /Full Support<\/span>/);
   assert.doesNotMatch(html, /From the project/);
 });
 
-test("a release file the launcher can't read ticks none of its features", () => {
+test('a release file the catalog has no copy of ticks none of its features before install', () => {
   const html = render({ support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
   for (const name of ['Easy Setup', 'Game Settings', 'Full Setup Step', 'Verified Copies', 'Cloud Saves']) assert.match(rowOf(html, name), /sup-no/, name);
 });
 
-test("a release file the launcher can't read says so and asks for it to be checked", () => {
+test('a release file the catalog has no copy of is read once installed, and nobody is asked anything', () => {
+  // The copy can be missing for a reason other than a broken file, so the developer isn't blamed.
   const html = render({ support: ALL_DEV }, null, { name: 'Dev', verified: true }, []);
-  assert.match(html, /In the release, but the launcher can't read it/);
-  assert.match(html, /can't read it, so it sets nothing up yet/);
-  assert.match(issueOf(html), /RecompLauncher can't read it/);
+  assert.match(html, /In the release, read once it's installed/);
+  assert.doesNotMatch(html, /sup-ask/);
 });
 
 test('Easy Setup is not the project\'s when Install does not offer it', () => {
