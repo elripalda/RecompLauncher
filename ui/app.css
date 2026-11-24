@@ -788,7 +788,7 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ni-notice p{margin:0 0 10px;color:var(--muted)}
 .su-err{color:#ffc2c2;white-space:pre-line}
 /* The last lines a setup step printed, as it printed them: a few lines, never the whole log. */
-.su-tail{margin:0;padding:10px 12px;border-radius:10px;background:var(--fill2);color:var(--muted);font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:9em;overflow:auto;user-select:text}
+.su-tail{margin:0;padding:10px 12px;border-radius:10px;background:var(--fill2);color:var(--muted);font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:14em;overflow:auto;user-select:text}
 /* ---------- Easy Setup in steps (setup-steps.js) ----------
    One height for every step, the list scrolling inside it, so Back, the line by the button and
    Next/Set Up never move. The copy's box keeps its size and buttons whether it's empty or filled. */
