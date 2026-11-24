@@ -1284,6 +1284,8 @@
  "That cloud save is gone.": "Tego zapisu w chmurze już nie ma.",
  "That code ran out.": "Ten kod wygasł.",
  "That copy didn't work": "Ta kopia nie zadziałała",
+ "Setup Didn't Finish": "Konfiguracja nie została ukończona",
+ "Its setup step stopped with code {code}.": "Jej krok konfiguracji zatrzymał się z kodem {code}.",
  "That copy is gone.": "Tej kopii już nie ma.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Tego obrazu płyty nie da się odczytać: może być niepełny, skompresowany albo to nie jest płyta Xbox. Użyj pełnego, nieskompresowanego pliku .iso swojej płyty.",
  "That disc image isn't the game this recomp reads.": "Ten obraz płyty to nie ta gra, której używa ten port.",

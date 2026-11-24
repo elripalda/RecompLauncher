@@ -1284,6 +1284,8 @@
  "That cloud save is gone.": "Bu bulut kaydı artık yok.",
  "That code ran out.": "Bu kodun süresi doldu.",
  "That copy didn't work": "Bu kopya işe yaramadı",
+ "Setup Didn't Finish": "Kurulum Tamamlanmadı",
+ "Its setup step stopped with code {code}.": "Kurulum adımı {code} koduyla durdu.",
  "That copy is gone.": "Bu kopya artık yok.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Bu disk görüntüsü okunamıyor: eksik, sıkıştırılmış ya da bir Xbox diski olmayabilir. Diskinin tam ve sıkıştırılmamış bir .iso dosyasını kullan.",
  "That disc image isn't the game this recomp reads.": "Bu disk görüntüsü, bu recomp'un okuduğu oyun değil.",

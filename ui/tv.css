@@ -912,6 +912,8 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+/* The last lines a setup step printed, as on the desktop: read from the couch, so larger. */
+.tv-setup .tt pre.tv-tail{margin:0;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.07);color:var(--tvsoft,#c9d3e0);font:19px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;max-width:1100px;max-height:7.5em;overflow:hidden}
 .tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */

@@ -1284,6 +1284,8 @@
  "That cloud save is gone.": "그 클라우드 저장 데이터는 더 이상 없습니다.",
  "That code ran out.": "코드가 만료되었습니다.",
  "That copy didn't work": "그 사본은 작동하지 않았습니다",
+ "Setup Didn't Finish": "설정을 완료하지 못했습니다",
+ "Its setup step stopped with code {code}.": "설정 단계가 코드 {code}(으)로 중지되었습니다.",
  "That copy is gone.": "그 사본은 더 이상 없습니다.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "이 디스크 이미지를 읽을 수 없습니다. 불완전하거나 압축되었거나 Xbox 디스크가 아닐 수 있습니다. 디스크의 완전한 비압축 .iso를 사용하세요.",
  "That disc image isn't the game this recomp reads.": "그 디스크 이미지는 이 리컴프가 읽는 게임이 아닙니다.",

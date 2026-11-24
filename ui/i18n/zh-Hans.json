@@ -1284,6 +1284,8 @@
  "That cloud save is gone.": "该云端存档已不存在。",
  "That code ran out.": "该代码已过期。",
  "That copy didn't work": "该副本无法使用",
+ "Setup Didn't Finish": "设置未完成",
+ "Its setup step stopped with code {code}.": "它的设置步骤以代码 {code} 停止。",
  "That copy is gone.": "该副本已不存在。",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "无法读取这个光盘映像：它可能不完整、经过压缩，或不是 Xbox 光盘。请使用你光盘的完整、未压缩的 .iso。",
  "That disc image isn't the game this recomp reads.": "该光盘镜像不是此重编译游戏所需的游戏。",

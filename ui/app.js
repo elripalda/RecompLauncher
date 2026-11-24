@@ -3851,6 +3851,36 @@ async function suAfterCopy() {
   SU.stage = 'ready';
   suDraw();
 }
+// How many of the lines a setup step printed last show under its error: the reason, not the log.
+const SETUP_TAIL_LINES = 4;
+// A setup that stopped, as the core says it: the launcher's line first, then what the recomp's
+// setup step printed last, on lines of their own. The launcher's line is translated (with the
+// step's code in it); the step's own words stay as it printed them.
+function setupFail(text) {
+  const [head, ...printed] = String(text || '').split('\n');
+  const coded = /^Its setup step stopped with code (.+?)\.(?: (.+))?$/.exec(head);
+  if (!coded) return { head: t(head), printed, step: false };
+  const said = tf('Its setup step stopped with code {code}.', { code: coded[1] });
+  return { head: coded[2] ? `${said} ${t(coded[2])}` : said, printed, step: true };
+}
+// The error screen's text, desktop and Big Picture alike: the reason, then the last few lines the
+// step printed in a box of their own.
+function setupFailHtml(text, pClass, tailClass) {
+  const f = setupFail(text);
+  const tail = f.printed.slice(-SETUP_TAIL_LINES);
+  const box = tail.length ? `<pre class="${tailClass}">${esc(tail.join('\n'))}</pre>` : '';
+  return `<p class="${pClass}">${esc(f.head)}</p>${box}`;
+}
+// The error screen's heading: a setup step that stopped didn't fail because of the copy.
+function setupFailTitle(text) {
+  return setupFail(text).step ? t('Setup Didn\'t Finish') : t('That copy didn\'t work');
+}
+// For a toast: the reason and the last line the step printed.
+function setupFailShort(text) {
+  const f = setupFail(text);
+  const last = f.printed[f.printed.length - 1];
+  return last ? `${f.head} ${last}` : f.head;
+}
 // Steps that finish quickly still show for a moment, so each one can be seen.
 function suPump() {
   clearTimeout(SU.timer);
@@ -3887,7 +3917,7 @@ T.event.listen('setup', ({ payload: p }) => {
     buildLeft(p.id);
     setTimeout(nextInLine, 0);
     if (!SU.el || SU.id !== p.id) {
-      toast(p.text || t("Setup didn't finish."), true);
+      toast(p.text ? setupFailShort(p.text) : t("Setup didn't finish."), true);
       render(true);
       if (S.view === 'game') refreshGame();
     }
@@ -3982,7 +4012,7 @@ function suDraw() {
       <p class="muted">${esc(t('The launcher can make a plain copy beside it and set the game up with that. Your own file stays as it is.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="convert">${esc(t('Make a Plain Copy'))}</button><button type="button" class="btn big" data-su="again">${esc(t('Try another copy'))}</button></div>`;
   } else {
-    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(setupFailTitle(SU.err))}</h2>${setupFailHtml(SU.err, 'su-err', 'su-tail')}
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>`;
   }
   const keepDisc = $('.su-media .mdisc', box);

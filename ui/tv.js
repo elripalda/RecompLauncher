@@ -2274,7 +2274,7 @@
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = 'steps'; TS.named = Object.assign({}, TS.named, { copy: '', busy: false }); setTimeout(tsDraw, 0); } }];
-      body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
+      body = `${med('ghost')}<div class="tt"><h2>${esc(setupFailTitle(TS.err))}</h2>${setupFailHtml(TS.err, 'err', 'tv-tail')}</div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;

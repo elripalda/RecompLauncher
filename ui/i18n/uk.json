@@ -1284,6 +1284,8 @@
  "That cloud save is gone.": "Цього хмарного збереження більше немає.",
  "That code ran out.": "Термін дії коду минув.",
  "That copy didn't work": "Ця копія не підійшла",
+ "Setup Didn't Finish": "Налаштування не завершено",
+ "Its setup step stopped with code {code}.": "Крок налаштування зупинився з кодом {code}.",
  "That copy is gone.": "Цієї копії більше немає.",
  "That disc image can't be read: it may be incomplete, compressed or not an Xbox disc. Use a full, uncompressed .iso of your disc.": "Цей образ диска не читається: можливо, він неповний, стиснений або це не диск Xbox. Використайте повний нестиснений .iso вашого диска.",
  "That disc image isn't the game this recomp reads.": "Цей образ диска — не та гра, яку використовує ця рекомпіляція.",
