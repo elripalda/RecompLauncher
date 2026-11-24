@@ -32,13 +32,14 @@ test('each place shows the card only where the site put it', () => {
   assert.match(cardAt('beside-play').igCard(g, 'side'), /ig-card/);
 });
 
-test('the top place sits above Ready to Play, in the narrow right column', () => {
+test('the top place is a narrow spot above Ready to Play', () => {
   const g = { id: 'g' };
   const top = cardAt('top');
   assert.match(top.igCard(g, 'top'), /class="ig-card"/);
   assert.equal(top.igCard(g, 'side'), '');
   assert.equal(cardAt('side').igCard(g, 'top'), '');
-  assert.match(app, /igSlot\(a, 'top'\) \+ readyCard\(a\) \+ igSlot\(a, 'side'\)/);
+  assert.match(fn(app, 'topSpot'), /igSlot\(a, 'top'\)/);
+  assert.match(app, /topSpot\(a\) \+ readyCard\(a\) \+ igSlot\(a, 'side'\)/);
 });
 
 test('play times are short in English', () => {

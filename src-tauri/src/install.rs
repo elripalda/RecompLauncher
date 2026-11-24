@@ -314,6 +314,21 @@ pub async fn download(
     download_with_api(http, asset, dir, id, cancel, report, api).await
 }
 
+/// A download that couldn't connect, as the player sees it: named for the server that really
+/// failed (a project's link is often sent on to another server for the file), and written to the
+/// trail with its cause, so a report says which server and why without asking the player.
+async fn connect_failure(name: &str, src: &str, e: reqwest::Error) -> Error {
+    if !e.is_connect() && !e.is_timeout() {
+        return e.into();
+    }
+    let hop = crate::net::failed_hop(src).await.filter(|h| h.is_connect() || h.is_timeout());
+    let e = hop.unwrap_or(e);
+    let host = e.url().and_then(|u| u.host_str()).unwrap_or("its server").to_string();
+    let what = if crate::net::tls_failed(&e) { "no secure connection to" } else { "couldn't connect to" };
+    crate::trail::note(format!("{name}: {what} {host} ({})", crate::net::cause(&e)));
+    e.into()
+}
+
 async fn download_with_api(
     http: &reqwest::Client,
     asset: &Asset,
@@ -411,7 +426,7 @@ async fn download_with_api(
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(connect_failure(&asset.name, &src, e).await),
         };
         if !r.status().is_success() {
             // GitHub's busy moments (502, 503, 504, or "slow down"): wait a little longer each time and
