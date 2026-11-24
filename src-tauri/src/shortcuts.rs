@@ -615,7 +615,7 @@ pub fn launcher_to_steam(steam: &Path, art: &[(&str, Vec<u8>, &str)]) -> Result<
 /// How a shortcut starts the launcher: the program and the arguments that go before its own.
 /// Run as a Flatpak, the program inside the sandbox isn't on the PC at all: a shortcut starts it
 /// with `flatpak run <app id>`.
-fn start_command() -> (PathBuf, Vec<String>) {
+pub fn start_command() -> (PathBuf, Vec<String>) {
     if crate::flatpak::sandboxed() {
         if let Ok(id) = std::env::var("FLATPAK_ID") {
             return (PathBuf::from("/usr/bin/flatpak"), vec!["run".into(), id]);

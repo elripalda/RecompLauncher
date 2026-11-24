@@ -13,7 +13,7 @@ test('every console has its own media, and anything else is a disc', () => {
   }
   for (const k of MediaArt.KINDS) {
     const out = MediaArt.render(k.id, { cover: 'c.jpg', hero: 'h.jpg', logo: 'l.png' });
-    assert.match(out, new RegExp(`class="md md-(cart|disc|umd) md-k-${k.id}"`), k.id);
+    assert.match(out, new RegExp(`class="mdisc md-(cart|disc|umd) md-k-${k.id}"`), k.id);
     assert.equal((out.match(/<svg /g) || []).length, (out.match(/<\/svg>/g) || []).length, k.id);
     assert.match(MediaArt.ghost(k.id), /md-ghost/);
   }
@@ -109,7 +109,7 @@ test('Console Labels on Covers: a setting, the site\'s PNG over the top, badges 
 
 test('the media moves only when the player allows motion', () => {
   const m = read('media-art.css');
-  assert.match(m, /@media \(prefers-reduced-motion:reduce\)\{\.md,\.md \*\{animation:none!important\}\}/);
+  assert.match(m, /@media \(prefers-reduced-motion:reduce\)\{\.mdisc,\.mdisc \*\{animation:none!important\}\}/);
   assert.match(m, /\.md-disc\.is-busy \.md-spin,\.md-umd\.is-busy \.md-spin\{animation:mdSpin/);
   assert.match(m, /\.md-cart\.is-in\{animation:mdSlide/);
 });

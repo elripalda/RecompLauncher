@@ -5,25 +5,26 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
-test("setup's fingerprint is made from the player's files, never the serialized profile", () => {
+test("no fingerprint: a game is set up on the release its last setup finished on", () => {
   const src = read('src-tauri/src/inputs.rs');
-  const body = src.match(/^pub fn signature\([^]*?^}/m)[0];
-  assert.doesNotMatch(body, /serde_json::to_vec/);
-  assert.doesNotMatch(body, /format!\("\{:\?\}"/);
-  assert.match(body, /Ok\(format!\("v2:\{\}"/);
-  // Older fingerprints are only checked, as two variants, and rewritten as v2.
-  assert.match(src, /\[true, false\]\.into_iter\(\)\.any\(\|o\| signature_legacy\(/);
-  assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| \{\n\s*let st = h\.state::<App>\(\);\n\s*upgrade_fingerprints\(&st, None\);/);
+  assert.doesNotMatch(src, /pub fn signature/);
+  assert.match(read('src-tauri/src/setup_state.rs'), /f\.set_up == g\.tag/);
+  // A setup from an older launcher is read once, at start.
+  assert.match(read('src-tauri/src/lib.rs'), /std::thread::spawn\(move \|\| \{\n\s*let st = h\.state::<App>\(\);\n\s*upgrade_setups\(&st\);/);
 });
 
-test('prepare.version is in the schema, the developer guide and the profile', () => {
+test('prepare.version is out of the schema and the guide: every new release builds again', () => {
   const schema = JSON.parse(read('docs/recomplauncher.schema.json'));
-  const find = (o) => (o && typeof o === 'object' ? (o.timeout && o.options && o.version ? o : Object.values(o).map(find).find(Boolean)) : null);
-  assert.equal(find(schema).version.type, 'string');
-  assert.match(read('docs/DEVELOPERS.md'), /`"version"` \(optional\)/);
+  const find = (o) => (o && typeof o === 'object' ? (o.keeps_copy && o.options && o.done ? o : Object.values(o).map(find).find(Boolean)) : null);
+  assert.equal(find(schema).version, undefined);
+  assert.doesNotMatch(read('docs/DEVELOPERS.md'), /`"version"` \(optional\)/);
+  assert.match(read('docs/DEVELOPERS.md'), /\*\*Every new release builds again\.\*\*/);
   assert.match(read('src-tauri/src/profile.rs'), /skip_serializing_if = "Vec::is_empty"\)\]\n    pub options: Vec<PrepareOption>/);
 });
 
 test("an update doesn't open the game's setup by itself", () => {
-  assert.match(read('ui/app.js'), /else if \(S\.easy\.has\(id\) && wasInstalled\) toast\(tf\('\{name\} is updated\.'/);
+  // (A game's Build Again After Updates builds in the background; it never opens a window.)
+  const app = read('ui/app.js');
+  assert.match(app, /else if \(S\.easy\.has\(id\) && wasInstalled\) afterUpdate\(id, name\);/);
+  assert.doesNotMatch(app.slice(app.indexOf('async function afterUpdate'), app.indexOf('async function toggleRebuildAfterUpdate')), /setupModal|updateBuildModal/);
 });

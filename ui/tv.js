@@ -31,7 +31,9 @@
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>',
     user: '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
-    close: '<path d="m6 6 12 12M18 6 6 18"/>',
+    // A list with one item ticked: cloud saves for only the games picked (account.js cloudAllChoices).
+    picklist: '<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/>',
+    close:'<path d="m6 6 12 12M18 6 6 18"/>',
     shot: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6l1.5-2h5L16 6"/><circle cx="12" cy="13" r="3.5"/>',
     puzzle: '<path d="M9 4h4v2.5a1.5 1.5 0 0 0 3 0V4h4v6h-2.5a1.5 1.5 0 0 0 0 3H20v7h-6v-2.5a1.5 1.5 0 0 0-3 0V20H4v-6h2.5a1.5 1.5 0 0 0 0-3H4V4z"/>',
     more: '<circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/>',
@@ -41,7 +43,7 @@
     history: '<path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/><path d="M12 8v4.5l3 2"/>',
     pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-    findfolder: '<path d="M10.5 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2.5"/><circle cx="16.5" cy="15.5" r="3"/><path d="m18.7 17.7 2.3 2.3"/>',
+    openfolder: '<path d="M3 17.5V7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h7.5A1.5 1.5 0 0 1 20 9.5V11"/><path d="M3 17.5 5.4 12a1.5 1.5 0 0 1 1.4-1H21a1 1 0 0 1 .9 1.4l-2.3 5.7a1.5 1.5 0 0 1-1.4.9H4.5A1.5 1.5 0 0 1 3 17.5z"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
@@ -378,8 +380,8 @@
   // Setup Required: a yellow badge on the cover until the player says it's set up.
   // Only on a game in the player's Library, as a to-do: nothing that reads as a warning on the rest.
   const sreqBadge = (a) => S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? `<span class="tv-badge sreq">${svg('wrench', 16)}${esc(t('Setup Required'))}</span>` : '';
-  // What a Setup Required recomp needs before it plays, as a sheet: its developer's steps, the
-  // README, its folder, and Done, Play (after which Play is back for good).
+  // What a Setup Required recomp needs on the PC, as a sheet to read: its developer's steps, the
+  // README and its folder. A note, never a gate: Play is on the game's page and just runs.
   function tvSetupReq(id) {
     const a = byId(id);
     if (!a) return;
@@ -391,8 +393,8 @@
       ${inst ? '' : `<p class="tv-sreq-p dim">${esc(t('Install it first, then come back here.'))}</p>`}`;
     const items = [readme ? { label: t('Open the README'), icon: 'page', run: () => invoke('open_url', { url: readme }).catch(fail) } : null];
     if (inst) items.push({ label: t('Open its folder'), icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
-      { label: t('Done, Play'), icon: 'play', cls: 'warn', run: async () => { await saveUi({ setup_ok: Object.assign({}, (S.settings.ui || {}).setup_ok || {}, { [id]: true }) }, true); draw(true); playGame(id); } },
-      { label: t('Not yet'), icon: 'chevL', run: () => {} });
+      { label: t('Play'), icon: 'play', run: () => playGame(id) },
+      { label: t('Close'), icon: 'chevL', run: () => {} });
     else items.push({ label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) }, { label: t('Close'), icon: 'chevL', run: () => {} });
     sheet(tf('Set up {name}', { name: a.name }), items.filter(Boolean), 'sreq', head);
   }
@@ -440,6 +442,21 @@
     ], 'tv-ask', head);
     return true;
   };
+  // Cloud saves for every game, asked once after signing in (account.js askCloudAll): true,
+  // false, or null when closed without an answer.
+  window.tvCloudAll = (title, lead, choices) => new Promise((res) => {
+    const show = () => {
+      if (!TV.on) return res(null);
+      if (TV.booting || TV.flying || !stage() || TV.sheet) return setTimeout(show, 400);
+      let done = false;
+      const fin = (v) => { if (!done) { done = true; res(v); } };
+      const head = `<h3>${esc(title)}</h3><p class="tv-sh-p">${esc(lead)}</p>`;
+      const items = choices.map((c) => ({ label: c.label, tag: c.tag, sub: c.sub, icon: c.tvIcon, run: () => fin(c.v) }));
+      sheet('', items, 'tv-ask', head);
+      TV.sheet.onClose = () => setTimeout(() => fin(null), 0);
+    };
+    show();
+  });
   window.tvSetupReq = (id) => {
     if (!TV.on) return false;
     if (TV.booting || TV.flying || !stage()) { setTimeout(() => window.tvSetupReq(id), 300); return true; }
@@ -452,19 +469,17 @@
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
-        if (sj) {
-          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-          return btn(key, 'setup-reopen', esc(tf('Setting up {pct}%', { pct: p })), { cls: 'main', id, g: 'a' });
-        }
+        // Said as on the desktop's game page and Downloads: "Building the game · 42%".
+        if (sj) return btn(key, 'setup-reopen', esc(setupLine(sj)), { cls: 'main', id, g: 'a' });
         return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Its setup is open'))}</span></button>`;
       }
       case 'busy': return `<button type="button" class="tv-btn wide" data-f data-key="${key}" data-tvact="cancel" data-id="${esc(id)}">${glyph('a', 'tv-keyg')}${progress(id)}</button>`;
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
-      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Set up')), { cls: 'main', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
+      case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Easy Setup')), { cls: 'main easy', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
       case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
-      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Install') : t('Install')) + (a.size ? ` <small>${esc(a.size)}</small>` : ''), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
+      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
     }
   }
 
@@ -568,21 +583,19 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
-      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => invoke('cancel', { id }) };
+      case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelDownload(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
-      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => startInstall(id).then(() => draw(true)) };
+      case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
       case 'installed': {
         if (setupDue(a)) return { label: t('Set Up'), sub: t('Setup Required'), icon: 'wrench', run: () => ((isInstallerApp(a) || installerDue(id)) ? installerModal(id) : tvSetupReq(id)) };
-        if (easyNotReady(id)) return { label: t('Set up'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
+        if (easyNotReady(id)) return { label: t('Easy Setup'), sub: t('Pick your copy of the game'), icon: 'disc', run: () => tvSetup(id) };
         return { label: isServer(byId(id) || { id }) ? t('Start Server') : t('Play'), icon: 'play', play: true, run: () => playGame(id), sub: updateBuildDue(id) ? t('Needs a new build after the update') : '' };
       }
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
-        if (sj) {
-          const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-          return { label: t('Setting up'), sub: `${p}%`, icon: 'disc', run: () => tvSetup(id) };
-        }
-        return null;
+        if (!sj) return null;
+        const sp = setupProg(sj);
+        return { label: sp.label, sub: sp.pct ? `${sp.pct}%` : '', icon: 'disc', run: () => tvSetup(id) };
       }
       case 'soon': case 'nobuild': return null;
       default: return isSaved(id) ? { label: t('Install'), sub: a.size || '', icon: 'down', run: () => startInstall(id).then(() => draw(true)) } : { label: t('Add to Library'), sub: t('Install it whenever you like'), icon: 'plus', run: () => addToLibrary(id).then(() => draw(true)) };
@@ -596,11 +609,7 @@
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
     if (st === 'settingup') {
       const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
-      if (sj) {
-        const p = Math.min(100, Math.max(0, Math.round((sj.pct || 0) * 100)));
-        return tf('Setting up {pct}%', { pct: p });
-      }
-      return t('Its setup is open');
+      return sj ? setupLine(sj) : t('Its setup is open');
     }
     const m = mainItem(a);
     return m ? m.label : t('Game page');
@@ -1181,7 +1190,7 @@
     // Recently installed, with how the store checked each one in the same pill as the desktop.
     // A opens the game.
     if (!S.dlHist && typeof loadDlHist === 'function') loadDlHist();
-    const done = (S.dlHist || []).filter((h) => h.tag).slice(0, 6).map((h) => {
+    const done = latestPerGame((S.dlHist || []).filter((h) => h.tag)).slice(0, 6).map((h) => {
       const info = scanInfo(h);
       if (!info) return '';
       const a = libAppOf(h.id);
@@ -1193,7 +1202,11 @@
     // badge points at a page with nothing to press. Same words and same selfUpdate() as the desktop.
     const lu = S.launcherUpd;
     const self = lu ? [`<button type="button" class="tv-item" data-f data-key="u:@launcher" data-tvact="selfupdate"><img class="mark" src="img/mark.svg" alt=""><span class="k">${esc(tf('RecompLauncher {version} is ready', { version: verName(lu.version) }))}<small>${esc(tf('You have {version}. It updates in a moment and opens again by itself.', { version: verName(S.version) }))}</small></span><span class="tv-pill on">${esc(t('Update now'))}</span></button>`] : [];
-    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id)))).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
+    // Builds, as on the desktop: the ones running with their bar, then the ones waiting their turn.
+    const builds = buildsNow();
+    const buildsWaiting = S.buildQ.filter((id) => !S.jobs[id] && !builds.includes(id));
+    const buildItems = builds.map((id) => item(id, '', 'b:' + id, buildBar(id))).concat(buildsWaiting.map((id) => item(id, esc(t('Waiting to build')), 'b:' + id)));
+    const items = self.concat(act.map((id) => item(id, '', 'd:' + id, progress(id))), buildItems).concat(ups.map((id) => item(id, esc(tf('Update ready: {from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] })), 'u:' + id, scanTag(id, S.updates[id], true)))).concat(rec.map((r) => item(r.id, r.phase === 'error' ? esc(cleanMsg(r.msg)) : r.phase === 'cancelled' ? esc(t('Cancelled')) : esc(t('Installed and ready to play')), 'r:' + r.id)));
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(t('Downloads'), t('Each download is checked against GitHub\'s checksum before it\'s installed.'))}
         <div class="tv-list">${items.length ? items.join('') : `<p class="tv-empty">${esc(t('Nothing downloading.'))}</p>`}</div>
@@ -1257,8 +1270,9 @@
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
+          ${S.canStartAtLogin ? sw('start_at_login', t('Start with your PC'), startAtLoginNote()) : ''}
           ${head(t('When you close the window'))}
-          ${sw('close_to_tray', t('Run in background'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
+          ${sw('close_to_tray', t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
           ${head(t('Games and updates'))}
           ${sw('notify', t('Notifications'), t('When a new recomp comes out for a game you own'))}
           ${sw('auto_update_all', t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one'))}
@@ -1266,6 +1280,7 @@
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in the Catalog'))}
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
+          ${(() => { const on = window.reviewAskOn ? window.reviewAskOn() : true; return `<button type="button" class="tv-item" data-f data-key="s:reviewask" data-tvact="reviewask"><span class="k">${esc(t('Ask After Playing'))}<small>${esc(t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>`; })()}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
           ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
@@ -1318,6 +1333,8 @@
   // without cloud saves: with them, Sync Now copies the save before it goes up.
   async function loadGameSaves(id) {
     try { TV.saves[id] = await invoke('saves_info', { id }); } catch (e) { TV.saves[id] = { error: String(e && e.message ? e.message : e) }; }
+    // The page asked the cloud just now: the status above the game's buttons says the same.
+    if (!TV.saves[id].error) S.saveNext[saveIdOf(id)] = TV.saves[id].incoming || null;
     // Whatever just changed the page changed its status too.
     loadSaveStatus(saveIdOf(id));
     if (TV.on && TV.view === 'gsaves' && TV.arg === id) draw(true);
@@ -1330,8 +1347,11 @@
     if (!b) return '';
     const sid = saveIdOf(id);
     const st = S.saveStat[sid] || {};
+    const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+    // A newer save from another PC that Play brings in: A syncs it now, as on the desktop.
+    const next = incomingSave(S.saveNext[sid], st, phase, running);
     const picked = (sv.spots || []).some((p) => p.from === 'player');
-    const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+    const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
     const act = step && !sv.busy && TV_STEP[step.act];
     // Reporting stays in the desktop view, and the account page needs a browser: said instead.
     const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
@@ -1349,9 +1369,13 @@
     const which = r.name ? `data-name="${esc(r.name)}"` : `data-v="${esc(r.v)}"`;
     // A cloud save that can be deleted carries its version, for the sheet's Delete.
     const del = r.deletable ? ` data-cv="${esc(r.v)}"` : '';
-    const act = r.current ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
+    // The save in the game now and the one Play brings in have nothing to restore: the status
+    // above gets the newer one now.
+    const act = r.current || r.incoming ? '' : ` data-tvact="gs-restore" data-id="${esc(id)}" ${which}${del}`;
     // The save in the game now is lit, and says so where the others say Restore.
-    const side = r.current ? `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
+    const cur = `<span class="tv-svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>`;
+    const next = `<span class="tv-svh-next">${NEXT_ICON}${esc(t(SYNCS_ON_PLAY))}</span>`;
+    const side = r.current ? cur : r.incoming ? next : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
     return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
   function pageGameSaves(id) {
@@ -1491,7 +1515,8 @@
     const chips = [originName(a.origin), GENRES[a.genre] ? t(GENRES[a.genre]) : ''].filter(Boolean).map(esc);
     // Who made it, under "Based on" as on the desktop page: their picture, their name, Verified.
     const who = (dv && dv.name) || a.author;
-    const pic = dv && dv.avatar ? `<img class="tv-dev-pic" src="${esc(dv.avatar)}" alt="">` : '';
+    const face = devPic(a);
+    const pic = face ? `<img class="tv-dev-pic" src="${esc(face)}" alt="">` : '';
     const vchip = dv && dv.verified ? `<em class="tv-vchip">${TICK(20)}${esc(t('Verified developer'))}</em>` : '';
     const byLine = who ? `<p class="tv-based tv-by">${pic}<span>${htmlIn(t('By {who}'), { who: `<b>${esc(who)}</b>` })}</span>${vchip}</p>` : '';
     const ps = projectState(a);
@@ -1516,8 +1541,8 @@
     const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
       mainButton(a, 'g-main'),
-      !g && needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
-      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'findfolder' }) : '',
+      needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
+      !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'openfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
       devOf(a) ? btn('g-follow', 'follow', esc(follows().includes(devOf(a).slug) ? t('Following') : t('Follow')), { id, icon: follows().includes(devOf(a).slug) ? 'check' : 'user' }) : '',
       verGroup(a) ? btn('g-vers', 'versions', esc(tn(verGroup(a).list.length, '1 version', '{n} versions')), { id, icon: 'layers' }) : '',
@@ -1786,14 +1811,14 @@
     focus($('[data-sheet="0"]', el), true);
     sfx('open');
   }
-  // How it runs, in one line and a bar: what players said about it.
+  // Reviews, in one line and a bar: what players said about how it runs.
   function tvRuns(a) {
     // The release out now once 3 or more of its players said, with every report under it.
     const sc = scoreOf((S.runCounts || {})[a.id], (S.latestCounts || {})[a.id]), r = sc.r;
-    if (!sc.all.n) return `<div class="tv-runs none"><span class="k">${esc(t('How it runs'))}</span><b>${esc(t('No reports yet'))}</b></div>`;
+    if (!sc.all.n) return `<div class="tv-runs none"><span class="k">${esc(t('Reviews'))}</span><b>${esc(t('No reviews yet'))}</b></div>`;
     const under = sc.cur ? `${tf('This version ({v})', { v: sc.v })} · ${tf('All versions: {pct}%', { pct: sc.all.pct('runs') })}`
-      : sc.v && sc.l ? `${tn(sc.all.n, '1 report', '{n} reports')} · ${sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 report so far', '{n} reports so far')}` : tf('{v}: no reports yet', { v: sc.v })}` : tn(r.n, '1 report', '{n} reports');
-    return `<div class="tv-runs"><span class="k">${esc(t('How it runs'))}</span><div class="tv-runs-l"><b>${esc(tf('{pct}% plays great', { pct: r.pct('runs') }))}</b><small>${esc(under)}</small></div>${runBar(r)}</div>`;
+      : sc.v && sc.l ? `${tn(sc.all.n, '1 review', '{n} reviews')} · ${sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 review so far', '{n} reviews so far')}` : tf('{v}: no reviews yet', { v: sc.v })}` : tn(r.n, '1 review', '{n} reviews');
+    return `<div class="tv-runs"><span class="k">${esc(t('Reviews'))}</span><div class="tv-runs-l"><b>${esc(tf('{pct}% plays great', { pct: r.pct('runs') }))}</b><small>${esc(under)}</small></div>${runBar(r)}</div>`;
   }
   // X on any game: everything you can do with it, in a sheet from the side.
   function gameSheet(id) {
@@ -1820,15 +1845,17 @@
         { label: t('Screenshots'), icon: 'shot', run: async () => { await loadAllShots(); go('shots', id); } },
         ...(S.mods[id] && S.mods[id] !== 'loading' ? [{ label: t('Mods'), icon: 'puzzle', run: () => go('mods', id) }] : []),
         ...(S.running.has(id) ? [{ label: t('Close the game'), sub: t('Anything you haven\'t saved is lost'), icon: 'stop', run: () => invoke('stop', { id }) }] : []),
-        { gap: true, ...(S.steam ? { label: t('Add to Steam'), sub: t('With its art'), icon: 'steam', run: () => addToSteam(id, false) } : { label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }) },
-        ...(S.steam ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
-        ...(S.account && S.account.signedIn ? [{ label: g.cloud ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: g.cloud ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); toast(g.cloud ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
+        // No Add to desktop on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
+        ...(S.steam || S.os !== 'macos' ? [{ gap: true, ...(S.steam ? { label: t('Add to Steam'), sub: t('With its art'), icon: 'steam', run: () => addToSteam(id, false) } : { label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }) }] : []),
+        ...(S.steam && S.os !== 'macos' ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
+        ...(S.account && S.account.signedIn ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
         // The same switch as the game's Manage tab on the desktop, and the same skip list under Settings.
         ...(!g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
         ...(!g.local && window.holdItem ? [(() => { const on = window.holdItem(id)[0]?.check; return { label: on ? t('Resume Updates') : t('Pause Updates'), sub: on ? ((S.held || {})[id] ? tf('{v} is out', { v: S.held[id] }) : t('It updates like the rest again')) : t('It stays on the version it has'), icon: 'pause', run: async () => { await window.toggleHold(id); draw(true); } }; })()] : []),
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
+        ...(!S.running.has(id) && window.hasOwnPlaytime(id) ? [{ label: t('Reset Play Time'), sub: t('Its play time on this PC starts again from zero'), icon: 'history', run: () => { closeSheet(); setTimeout(() => window.resetPlaytime(id), 250); } }] : []),
         ...(!S.running.has(id) && !S.jobs[id] ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
       ] : []),
     ];
@@ -2203,7 +2230,7 @@
       const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
-      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: s.verify && s.verify.text ? s.verify.text : s.verify && s.verify.total ? tf('{done} of {total}', { done: fmtB(s.verify.done), total: fmtB(s.verify.total) }) : t('Reading all of it'), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;
@@ -2231,17 +2258,6 @@
           toast(tf('Setup for {name} was cancelled.', { name: a.name }));
         } }
       ];
-    } else if (TS.stage === 'update') {
-      const pickU = async (folder) => {
-        const p = await pickFile(folder ? { title: t('The update\'s folder'), directory: true } : { title: t('The game\'s update'), directory: false, multiple: false, filters: [{ name: t('All files'), extensions: ['*'] }] }).catch(fail);
-        if (!p) return tsDraw();
-        try { await invoke('set_update_copy', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { TS.uerr = String(e && e.message ? e.message : e); sfx('back'); return tsDraw(); }
-        delete S.setup[id];
-        try { S.setup[id] = await invoke('game_setup', { id }); } catch (e) { S.setup[id] = null; }
-        TS.uerr = ''; TS.stage = 'ready'; TS.result = TS.result || { text: t('Checked') }; sfx('select'); tsDraw();
-      };
-      body = `${med('is-done')}<div class="tt"><h2>${esc(t('Add the Game\'s Update'))}</h2><p>${esc(su.update || '')}</p>${TS.uerr ? `<p class="err">${esc(t(TS.uerr))}</p>` : ''}</div>
-        <div class="opts">${su.update_file ? it(t('Choose the Update File'), t('The file, as it came'), () => pickU(false), 'main') : ''}${su.update_folder ? it(t('Choose the Update Folder'), t('A folder with its files'), () => pickU(true), su.update_file ? '' : 'main') : ''}${su.update_optional ? it(t('Skip for Now'), '', () => { TS.stage = 'ready'; setTimeout(tsDraw, 0); }) : ''}</div>`;
     } else if (TS.stage === 'ready' && TS.upd) {
       // The update's build is done: the game starts, as Play asked.
       closeSheet();
@@ -2355,10 +2371,13 @@
       if (!TS.id) return;
       if (w) { Object.assign(TS, { stage: 'wrong', path, wrong: w }); return tsDraw(); }
     }
+    // setup_copy turns away a game with named inputs too: those set up with the copy instead.
+    const named = ((S.setup[TS.id] || {}).inputs || []).length > 0;
     // No path: built again from what it kept, so there's no copy to read or check.
-    Object.assign(TS, { stage: 'run', path, kept: !path, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
+    Object.assign(TS, { stage: 'run', path, kept: !path && !named, step: 'read', steps: {}, q: [], at: Date.now(), extras: false });
     tsDraw();
-    try { await invoke('setup_copy', { id: TS.id, path }); } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
+    const run = named ? invoke('setup_inputs_run', { id: TS.id, copy: path || null }) : invoke('setup_copy', { id: TS.id, path });
+    try { await run; } catch (e) { TS.stage = 'error'; TS.err = String(e && e.message ? e.message : e); tsDraw(); }
   }
   const TS_ORDER = ['read', 'verify', 'extras', 'setup', 'done'];
   function tsPump() {
@@ -2379,8 +2398,7 @@
         const sid = TS.id;
         invoke('game_setup', { id: sid }).then((x) => { S.setup[sid] = x; }).catch(() => {}).finally(() => {
           if (TS.id !== sid) return;
-          const su = S.setup[sid];
-          TS.stage = su && su.update && !su.update_copy ? 'update' : 'ready';
+          TS.stage = 'ready';
           sfx('select'); tsDraw();
         });
         return;
@@ -2396,7 +2414,8 @@
     let list = [];
     try { list = await invoke('versions', { id }); } catch (e) { return fail(e); }
     const g = S.library[id];
-    const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.newest ? null : v.tag)) }));
+    // By name, the newest too: with no version the install goes to the one the store let out (#393).
+    const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.tag)) }));
     if (!items.length) return toast(t('No other versions for this PC.'));
     sheet(t('Other versions'), items);
   }
@@ -2897,6 +2916,7 @@
       setScroll(keepY, false);
       return;
     }
+    if (el.dataset.toggle === 'start_at_login') { sfx('select'); await startAtLogin(!S.settings.start_at_login); draw(true); return; }
     if (el.dataset.toggle) { sfx('select'); const k = el.dataset.toggle, on = k === 'sounds' || k === 'discord' || k === 'auto_install' ? S.settings[k] !== false : !!S.settings[k]; await saveSettings({ [k]: !on }); draw(true); if (k === 'steam_sync' && !on && window.steamSync) window.steamSync(false); if (k === 'auto_update_all' && !on) checkUpdates(); return; }
     if (el.dataset.shotI !== undefined) { sfx('select'); return shotView(Number(el.dataset.shotI)); }
     if (el.dataset.gset) return cycleSetting(el, 1);
@@ -2914,7 +2934,7 @@
     switch (act) {
       case 'play': sfx('select'); return playGame(id);
       case 'resume': sfx('select'); return invoke('resume_game').catch(fail);
-      case 'cancel': if ((S.paused || {})[id]) { delete S.paused[id]; draw(true); } return invoke('cancel', { id });
+      case 'cancel': return cancelDownload(id).then(() => draw(true));
       case 'dl-resume': sfx('select'); return resumeDl(id);
       case 'selfupdate': sfx('select'); return selfUpdate();
       case 'install': sfx('select'); return startInstall(id).then(() => draw(true));
@@ -2922,6 +2942,8 @@
       case 'back': return back();
       case 'leave': return leave();
       case 'monitor': sfx('open'); return tvMonitorSheet();
+      // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
+      case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');
@@ -3005,7 +3027,7 @@
       case 'gs-cloud': {
         sfx('select');
         const g = S.library[id] || {};
-        try { S.library[id] = await invoke('saves_cloud', { id, on: !g.cloud }); } catch (e) { fail(e); }
+        try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); } catch (e) { fail(e); }
         return loadGameSaves(id);
       }
       case 'gs-share': {

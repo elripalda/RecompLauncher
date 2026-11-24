@@ -26,23 +26,23 @@ function settingsContext(os, on) {
 }
 
 for (const os of ['windows', 'linux', 'macos']) {
-  test(`desktop exposes Run in background with the saved value on ${os}`, () => {
+  test(`desktop exposes Close to tray with the saved value on ${os}`, () => {
     const c = settingsContext(os, false);
     vm.runInContext(fn(app, 'pageSettings'), c);
     const off = c.pageSettings();
-    assert.match(off, /aria-checked="false" aria-label="Run in background" data-act="toggle" data-k="close_to_tray"/);
+    assert.match(off, /aria-checked="false" aria-label="Close to tray" data-act="toggle" data-k="close_to_tray"/);
     assert.match(off, /Quit always exits/);
     c.S.settings.close_to_tray = true;
-    assert.match(c.pageSettings(), /aria-checked="true" aria-label="Run in background" data-act="toggle" data-k="close_to_tray"/);
+    assert.match(c.pageSettings(), /aria-checked="true" aria-label="Close to tray" data-act="toggle" data-k="close_to_tray"/);
   });
 }
 
 test('Big Picture exposes the same background preference', () => {
   const c = settingsContext('linux', false);
   vm.runInContext(fn(tv, 'pageSettings', '  '), c);
-  assert.match(c.pageSettings(), /data-toggle="close_to_tray" data-sw="0"><span class="k">Run in background/);
+  assert.match(c.pageSettings(), /data-toggle="close_to_tray" data-sw="0"><span class="k">Close to tray/);
   c.S.settings.close_to_tray = true;
-  assert.match(c.pageSettings(), /data-toggle="close_to_tray" data-sw="1"><span class="k">Run in background/);
+  assert.match(c.pageSettings(), /data-toggle="close_to_tray" data-sw="1"><span class="k">Close to tray/);
 });
 
 test('the background toggle saves both choices through the existing settings command', async () => {

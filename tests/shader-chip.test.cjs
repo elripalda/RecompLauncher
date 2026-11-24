@@ -31,7 +31,7 @@ function gamePage() {
     gameBody: () => '',
     statePill: () => '',
     tagsOf: () => [],
-    ...Object.fromEntries(['reviveSoon', 'moveTabPill', 'paintLooks', 'fitTitles', 'layoutShelves', 'render'].map((k) => [k, () => {}])),
+    ...Object.fromEntries(['reviveSoon', 'moveTabPill', 'paintLooks', 'fitTitles', 'layoutShelves', 'render', 'loadSetup'].map((k) => [k, () => {}])),
     ...Object.fromEntries(['turnkey', 'greatOnDeck', 'greatHandheld', 'isAI'].map((k) => [k, () => false])),
     ...Object.fromEntries(['partOfLine', 'based', 'devLine', 'verPill'].map((k) => [k, () => ''])),
   });

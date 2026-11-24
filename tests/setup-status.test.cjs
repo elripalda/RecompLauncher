@@ -29,9 +29,9 @@ test('nothing is decided before the core answers, nor for a game Easy Setup does
 });
 
 test('the game page and Big Picture both ask the core', () => {
-  assert.match(app, /: easyNotReady\(a\.id\) \? b\('main', 'setup'/);
+  assert.match(app, /: easyNotReady\(a\.id\) \? b\('main easy', 'setup'/);
   assert.match(tv, /return easyNotReady\(id\) \? btn\(key, 'setup'/);
-  assert.match(tv, /if \(easyNotReady\(id\)\) return \{ label: t\('Set up'\)/);
+  assert.match(tv, /if \(easyNotReady\(id\)\) return \{ label: t\('Easy Setup'\)/);
   // No view works it out from the copy alone any more.
   assert.doesNotMatch(app, /S\.setup\[a\.id\]\.needs && \(!S\.setup\[a\.id\]\.copy/);
   assert.doesNotMatch(tv, /su\.needs && !su\.copy\)/);
@@ -56,17 +56,15 @@ test('a game built from a copy that is gone says it plays without it, instead of
   const { copyNotNeeded, copyGoneText } = load(S);
   assert.equal(copyNotNeeded('hookshot'), true);
   assert.equal(copyGoneText('hookshot'), "Your copy isn't here anymore. Hookshot doesn't need it: it's already built.");
-  // Its copy still there, a game that isn't set up, or the player's own build: not this case.
+  // Its copy still there, or a game that isn't set up: not this case.
   S.setup.hookshot = Object.assign({}, built, { copy: 'D:/hookshot.nup' });
   assert.equal(copyNotNeeded('hookshot'), false);
   S.setup.hookshot = Object.assign({}, built, { status: { ready: false, reason: 'copy' } });
   assert.equal(copyNotNeeded('hookshot'), false);
-  S.setup.hookshot = Object.assign({}, built, { status: { ready: true, reason: 'own_build' } });
-  assert.equal(copyNotNeeded('hookshot'), false);
 });
 
 test('every copy row uses it: Before You Play, the Manage tab and Big Picture', () => {
-  assert.match(app, /d: st\.reason === 'own_build' \? t\('Your own build'\) : copyGoneText\(id\)/);
+  assert.match(app, /d: copyGoneText\(id\)/);
   // Manage tab: said, and picking a copy isn't the main button then.
   assert.match(app, /const gone = copyNotNeeded\(id\), have = su\.copy \|\| gone;\r?\n\s+const sub = su\.copy \? su\.copy : gone \? copyGoneText\(id\) : su\.needs;/);
   assert.match(app, /class="btn\$\{have \? '' : ' main'\}" data-act="setup"/);

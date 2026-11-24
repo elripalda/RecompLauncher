@@ -938,6 +938,14 @@ fn moved_places(copy: &[String], now: &[Spot]) -> Option<Vec<Spot>> {
     same_kind.then(|| now.to_vec())
 }
 
+/// Said when a save file can't be written where the game reads it. The folder and the system's
+/// reason go on the line under it: "Read-only file system (os error 30)" alone named neither.
+pub const SAVE_NOT_WRITTEN: &str = "The save couldn't be written to its folder.";
+
+fn not_written(path: &Path, e: io::Error) -> Error {
+    Error::Msg(format!("{SAVE_NOT_WRITTEN}\n{}: {e}", path.display()))
+}
+
 /// Puts a copy's files back where the game reads them, on this PC. Saves that are there now and
 /// aren't in the copy are taken away, so the game sees exactly what was copied; what was there is
 /// kept as a copy first, so this can be undone.
@@ -978,9 +986,9 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // kept, and never in the game's own folder as a whole, where other files live too.
     if kept {
         // Where extra saves can go: places the game's developer, the catalog or the player named
-        // (never the game's whole folder), and places outside the game's folder. Not a place that
-        // was only a guess inside the game's folder, or one that holds programs: those can be part
-        // of the game (a runtime it downloaded).
+        // (never the game's whole folder), and places outside the game's folder. Not a place inside
+        // the game's folder that only the copy names (older launchers guessed those), or one that
+        // holds programs: those can be part of the game (a runtime it downloaded).
         let named = |t: &str| spots_now.iter().any(|s| s.template == t && matches!(s.from, "developer" | "catalog" | "player"));
         let may_clear: Vec<bool> = same
             .iter()
@@ -1034,12 +1042,15 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             root.join(rel)
         };
         if let Some(d) = dest.parent() {
-            fs::create_dir_all(d)?;
+            fs::create_dir_all(d).map_err(|why| not_written(d, why))?;
         }
         if crate::inputs::excluded(g, &dest) { continue; }
         let tmp = dest.with_extension("rl-part");
-        io::copy(&mut e, &mut fs::File::create(&tmp)?)?;
-        fs::rename(&tmp, &dest)?;
+        let mut out = fs::File::create(&tmp).map_err(|why| not_written(&dest, why))?;
+        io::copy(&mut e, &mut out).map_err(|why| not_written(&dest, why))?;
+        // Closed before the rename: Windows won't rename a file that's still open.
+        drop(out);
+        fs::rename(&tmp, &dest).map_err(|why| not_written(&dest, why))?;
         n += 1;
     }
     let mut st = state(app_dir, id);
@@ -2085,6 +2096,38 @@ mod tests {
         assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
         assert_eq!(fs::read_to_string(g.path.join("new/progress.sav")).unwrap(), "progress");
         assert!(!g.path.join("old").exists());
+    }
+
+    /// A copy of `{install}/sub/saves`, whose folder can't be made anymore: `sub` is a file now,
+    /// which stops it the way a read-only drive does.
+    fn copy_into_unwritable_folder(d: &Path) -> (Installed, PathBuf, Vec<Spot>) {
+        let g = game(&d.join("game"));
+        fs::create_dir_all(g.path.join("sub/saves")).unwrap();
+        fs::write(g.path.join("sub/saves/progress.sav"), "progress").unwrap();
+        let place = spots(&["{install}/sub/saves".into()], &[], &g);
+        let copy = backup(&d.join("app"), "g", &place, &g).unwrap().unwrap();
+        fs::remove_dir_all(g.path.join("sub")).unwrap();
+        fs::write(g.path.join("sub"), "not a folder").unwrap();
+        let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
+        (g, archive, place)
+    }
+
+    #[test]
+    fn restore_that_cant_write_says_so_first() {
+        let d = tmp("restore-unwritable-first");
+        let (g, archive, place) = copy_into_unwritable_folder(&d);
+        let why = restore(&d.join("app"), "g", &archive, &place, &g).unwrap_err().to_string();
+        assert_eq!(why.lines().next(), Some(SAVE_NOT_WRITTEN));
+    }
+
+    #[test]
+    fn restore_that_cant_write_names_the_folder() {
+        let d = tmp("restore-unwritable-folder");
+        let (g, archive, place) = copy_into_unwritable_folder(&d);
+        let why = restore(&d.join("app"), "g", &archive, &place, &g).unwrap_err().to_string();
+        let second = why.lines().nth(1).unwrap_or_default();
+        assert!(second.starts_with(&g.path.display().to_string()), "{why}");
+        assert!(second.contains("saves"), "{why}");
     }
 
     #[test]

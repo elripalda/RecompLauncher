@@ -31,6 +31,11 @@ struct WindowState {
 
 static BIG_PICTURE_WINDOW: Mutex<Option<WindowState>> = Mutex::new(None);
 
+/// The main window is in Big Picture mode now.
+pub fn in_big_picture() -> bool {
+    BIG_PICTURE_WINDOW.lock().unwrap().is_some()
+}
+
 /// Returns the monitors Tauri currently reports as connected.
 pub fn enumerate_monitors(app: &AppHandle) -> Vec<MonitorInfo> {
     let Some(window) = app.get_webview_window("main") else {

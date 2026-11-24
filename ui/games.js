@@ -31,14 +31,23 @@ function subOf(id) {
 }
 const parentId = (id) => { const s = subOf(id); return s ? s.rid : id; };
 
+// One game's pictures of a kind, game and project (app.js pickArt picks between them): the game's,
+// else the recomp's. Its project picture only when the game has no picture of its own, or the
+// recomp's one project cover would make every game of a series look the same.
+function childArt(c, a, g, k) {
+  const pk = 'project_' + k;
+  c[k] = g[k] || gameArt(a, k);
+  c[pk] = g[pk] || (g[k] ? '' : a[pk] || '');
+}
+
 // One game as an app the pages and tiles can show: the recomp's details, the game's name and art
 // (falling back to the recomp's). Not part of the version groups; Discover lists it through withGames.
 function childApp(a, g) {
   const c = Object.assign({}, a, {
     id: a.id + GAME_SEP + g.id, name: g.name, game: g.name, parent: a.id, parentName: a.name, sub: g.id,
-    cover: g.cover || a.cover, hero: g.hero || a.hero, logo: g.logo || a.logo, icon: g.icon || a.icon,
     menuPick: !(Array.isArray(g.args) && g.args.length),
   });
+  for (const k of ['cover', 'hero', 'logo', 'icon']) childArt(c, a, g, k);
   // The recomp's game info is about one game of them (Red's for all of Gen 1): a game's page asks
   // for its own instead, unless the catalog gives it one.
   if (g.about) c.about = g.about; else delete c.about;
@@ -205,7 +214,7 @@ function playtimeRows(a, total) {
 // folder, settings): those get the recomp's id. Playing it, its setup, shortcuts and achievements
 // go by the game's own id, and so do its saves when it keeps its own.
 const GAME_CMDS = new Set(['play', 'game_info', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game', 'ach_set_disc', 'ach_set_folder']);
-const SAVE_CMDS = new Set(['saves_check', 'saves_pick', 'saves_info', 'saves_status', 'saves_upload_now', 'saves_backup', 'saves_restore', 'saves_cloud_delete', 'saves_open', 'saves_open_backups']);
+const SAVE_CMDS = new Set(['saves_check', 'saves_pick', 'saves_play_without_cloud', 'saves_info', 'saves_status', 'saves_peek', 'saves_upload_now', 'saves_backup', 'saves_restore', 'saves_cloud_delete', 'saves_open', 'saves_open_backups']);
 function gameArgs(cmd, args) {
   if (!args || typeof args.id !== 'string') return args;
   const s = subOf(args.id);

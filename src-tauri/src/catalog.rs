@@ -69,7 +69,7 @@ fn age_of(p: &Path) -> Option<u64> {
     Some(SystemTime::now().duration_since(m).unwrap_or_default().as_secs())
 }
 
-fn save(p: &Path, v: &Value) {
+pub(crate) fn save(p: &Path, v: &Value) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -79,7 +79,7 @@ fn save(p: &Path, v: &Value) {
     }
 }
 
-fn load(p: &Path) -> Option<Value> {
+pub(crate) fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
@@ -1276,6 +1276,27 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
     cat.get("apps")?.as_array()?.iter().find(|a| a.get("id").and_then(Value::as_str) == Some(id))
 }
 
+/// The picture of a kind (cover, hero, logo, icon) a recomp shows from its catalog entry, the same
+/// pick as ui/app.js pickArt: the project's own (project_<kind>, the look its developer gave it on
+/// their website page) first, else the game's. `game_only` (Show Game Names): the game's only, to
+/// match the names. A picture at the same address as developer_avatar is left out: a safety net
+/// only, the catalog itself takes old avatar icons out.
+pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
+    let field = |k: &str| -> &'a str { entry.get(k).and_then(Value::as_str).unwrap_or("") };
+    let avatar = field("developer_avatar");
+    let not_avatar = |u: &'a str| if u == avatar { "" } else { u };
+    let game = not_avatar(field(kind));
+    if game_only {
+        return game;
+    }
+    let project = not_avatar(field(&format!("project_{kind}")));
+    if project.is_empty() {
+        game
+    } else {
+        project
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1434,6 +1455,33 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_recomp_shows_its_project_art_first() {
+        let a = serde_json::json!({ "icon": "/game.png", "project_icon": "/project.png" });
+        assert_eq!(art_url(&a, "icon", false), "/project.png");
+    }
+
+    #[test]
+    fn missing_project_art_falls_back_to_the_games() {
+        let a = serde_json::json!({ "cover": "/game.jpg", "project_cover": "", "hero": "/hero.jpg" });
+        assert_eq!(art_url(&a, "cover", false), "/game.jpg");
+        assert_eq!(art_url(&a, "hero", false), "/hero.jpg");
+        assert_eq!(art_url(&a, "logo", false), "");
+    }
+
+    #[test]
+    fn show_game_names_shows_the_games_art_only() {
+        let a = serde_json::json!({ "cover": "/game.jpg", "project_cover": "/project.jpg" });
+        assert_eq!(art_url(&a, "cover", true), "/game.jpg");
+    }
+
+    #[test]
+    fn the_developers_picture_is_never_a_recomps_icon() {
+        let a = serde_json::json!({ "icon": "https://avatars.example/dev.png", "project_icon": "https://avatars.example/dev.png", "developer_avatar": "https://avatars.example/dev.png" });
+        assert_eq!(art_url(&a, "icon", false), "");
+        assert_eq!(art_url(&a, "icon", true), "");
+    }
 
     #[test]
     fn a_forgejo_entry_gets_its_repo_the_launchers_way() {
@@ -1782,19 +1830,6 @@ mod tests {
         assert_eq!(latest(&[r("v2", true, false)]).unwrap().tag_name, "v2");
         assert!(latest(&[r("v2", false, true)]).is_none());
     }
-}
-
-/// A recomp that needs things on the PC before it plays (Python, build tools, a long first build),
-/// going by the copy of the list on disk: true until the player has said it's set up.
-pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
-    let done = ui.get("setup_ok").and_then(|o| o.get(id)).and_then(Value::as_bool).unwrap_or(false);
-    if done {
-        return false;
-    }
-    load(&list_file(dir))
-        .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
-        .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

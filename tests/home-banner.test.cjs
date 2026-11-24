@@ -24,12 +24,15 @@ function home(ui) {
     notPC: () => true, byDl: () => 0, byNew: () => 0, byId: () => a, withGames: same, turnkey: () => false,
     jumpRecs: list, libApp: same, foundInFolders: none, haveAny: () => false, favs: none, follows: none,
     recentlyUpdated: none, devOf: () => null, foundSection: () => '', foundCallout: () => '',
-    trendShelf: () => '', newsSection: () => '', offlineNote: () => '',
+    trendShelf: () => '', newsSection: () => '', offlineNote: () => '', sponsBand: () => '',
     t: same, tf: same, esc: same, ago: same,
+    homeBanner: () => '', homeBox: () => '',
     slider: () => '[banner]',
     shelf: (key) => `[${key}]`
   });
   vm.runInContext(fn('pageHome'), c);
+  vm.runInContext(app.slice(app.indexOf('const HOME_ROWS'), app.indexOf('\n', app.indexOf('const HOME_ROWS'))), c);
+  vm.runInContext(fn('homePlan') + fn('homeLayout'), c);
   return vm.runInContext('pageHome()', c).replace(/\s+/g, '');
 }
 

@@ -32,10 +32,8 @@ test("GitHub's note boxes become boxes, and a quote keeps its lines together", (
   assert.equal(md('> one\n> two'), '<blockquote><p>one two</p></blockquote>');
 });
 
-test('the History notes preview long notes with Show All and a way to the game', () => {
-  assert.match(app, /function updClamp\(html, u\)/);
-  assert.match(app, /data-act="upd-all" hidden>/);
-  assert.match(app, /case 'upd-game': S\.nextTab = 'updates'; return go\('game', id\);/);
+test('Patch Notes on Downloads opens the game on its Updates tab', () => {
+  assert.match(app, /case 'upd-game': S\.nextTab = 'updates'; S\.toTabs = true; return go\('game', id\);/);
   assert.match(read('titlecase.js'), /, \.md';/);
 });
 
@@ -52,7 +50,6 @@ test('a Python game without Python gets a window with Get Python', () => {
 
 test('a build that went missing opens Easy Setup with a note', () => {
   assert.match(app, /\^NEED_BUILD\\\|/);
-  assert.match(app, /byhandoff: \[N_\('Use the Launcher\\'s Way'\)/);
 });
 
 test('Discover can list games instead of recomps', () => {

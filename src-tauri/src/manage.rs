@@ -71,29 +71,107 @@ pub fn move_dir(from: &Path, to: &Path, report: &dyn Fn(u64, u64)) -> Result<(),
 }
 
 fn copy_tree(from: &Path, to: &Path, done: &mut u64, total: u64, report: &dyn Fn(u64, u64)) -> io::Result<()> {
+    let real_from = fs::canonicalize(from).unwrap_or_else(|_| from.to_path_buf());
+    let roots = Roots { from: from.to_path_buf(), real_from, to: to.to_path_buf() };
+    copy_folder(from, to, &roots, done, total, report)
+}
+
+/// The game's folder and where it goes, so a link that points into the folder by full path can be
+/// pointed at the new place. Its real path counts too: on Bazzite /home is a link to /var/home.
+#[cfg_attr(not(unix), allow(dead_code))]
+struct Roots {
+    from: PathBuf,
+    real_from: PathBuf,
+    to: PathBuf,
+}
+
+fn copy_folder(from: &Path, to: &Path, roots: &Roots, done: &mut u64, total: u64, report: &dyn Fn(u64, u64)) -> io::Result<()> {
     fs::create_dir_all(to)?;
     for e in fs::read_dir(from)? {
         let e = e?;
         let (src, dst) = (e.path(), to.join(e.file_name()));
-        if e.file_type()?.is_dir() {
-            copy_tree(&src, &dst, done, total, report)?;
-        } else {
-            let mut i = fs::File::open(&src)?;
-            let mut o = fs::File::create(&dst)?;
-            let mut buf = vec![0u8; 1 << 20];
-            loop {
-                let n = io::Read::read(&mut i, &mut buf)?;
-                if n == 0 {
-                    break;
-                }
-                o.write_all(&buf[..n])?;
-                *done += n as u64;
-                report(*done, total);
-            }
-            if let Ok(m) = e.metadata() {
-                let _ = fs::set_permissions(&dst, m.permissions());
-            }
+        let kind = e.file_type()?;
+        #[cfg(unix)]
+        if kind.is_symlink() && copy_link(&src, &dst, roots)? {
+            continue;
         }
+        if kind.is_dir() {
+            copy_folder(&src, &dst, roots, done, total, report)?;
+            continue;
+        }
+        copy_file(&src, &dst, done, total, report)?;
+    }
+    Ok(())
+}
+
+/// A link copied as a link, the way a move on the same drive keeps it: a Mac app's frameworks are
+/// links its signature checks, and a Linux game's libraries often are too. Copied as files, a link
+/// to a folder stopped the move. false when the drive can't hold links (FAT32, exFAT): a link to a
+/// file is then copied as that file, as before.
+#[cfg(unix)]
+fn copy_link(src: &Path, dst: &Path, roots: &Roots) -> io::Result<bool> {
+    let target = moved_target(src, fs::read_link(src)?, roots);
+    match std::os::unix::fs::symlink(&target, dst) {
+        Ok(()) => Ok(true),
+        Err(_) if src.is_file() => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// Where the link at `src` points once the game moves, so it reaches what it reached before. One
+/// into the game follows it to the new place (relative ones already do); one out of it keeps
+/// pointing at the same place by full path, since `..` from the new place leads somewhere else.
+#[cfg(unix)]
+fn moved_target(src: &Path, target: PathBuf, roots: &Roots) -> PathBuf {
+    if target.is_absolute() {
+        let inside = target.strip_prefix(&roots.from).or_else(|_| target.strip_prefix(&roots.real_from));
+        return match inside {
+            Ok(rest) => roots.to.join(rest),
+            Err(_) => target,
+        };
+    }
+    // Followed from the game's real folder, where no part of the path is a link that would change
+    // what `..` means.
+    let Some(folder) = src.parent().and_then(|p| p.strip_prefix(&roots.from).ok()) else { return target };
+    let reached = without_dots(&roots.real_from.join(folder).join(&target));
+    if reached.starts_with(&roots.real_from) {
+        return target;
+    }
+    reached
+}
+
+/// The path with its `.` and `..` worked out, without asking the drive (the link may point nowhere).
+#[cfg(unix)]
+fn without_dots(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+fn copy_file(src: &Path, dst: &Path, done: &mut u64, total: u64, report: &dyn Fn(u64, u64)) -> io::Result<()> {
+    let mut i = fs::File::open(src)?;
+    let mut o = fs::File::create(dst)?;
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = io::Read::read(&mut i, &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        o.write_all(&buf[..n])?;
+        *done += n as u64;
+        report(*done, total);
+    }
+    // A drive that can't keep them (FAT32, exFAT) is no reason to stop the move.
+    if let Ok(m) = fs::metadata(src) {
+        let _ = fs::set_permissions(dst, m.permissions());
     }
     Ok(())
 }
@@ -371,6 +449,157 @@ mod tests {
         let mut done = 0;
         copy_tree(&d.join("b/game"), &d.join("c/game"), &mut done, 5, &|_, _| {}).unwrap();
         assert_eq!(done, 5);
+    }
+
+    /// A Mac app's framework, the way it ships: a version folder and links to it.
+    #[cfg(unix)]
+    fn app_with_framework(d: &Path) -> PathBuf {
+        use std::os::unix::fs::symlink;
+        let app = d.join("source/Game.app");
+        let framework = app.join("Contents/Frameworks/Engine.framework");
+        fs::create_dir_all(framework.join("Versions/A")).unwrap();
+        fs::write(framework.join("Versions/A/Engine"), b"library").unwrap();
+        symlink("A", framework.join("Versions/Current")).unwrap();
+        symlink("Versions/Current/Engine", framework.join("Engine")).unwrap();
+        app
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn copying_to_another_drive_keeps_links_as_links() {
+        let d = tmp("copy-links");
+        let app = app_with_framework(&d);
+        let to = d.join("dest/Game.app");
+        let mut done = 0;
+        copy_tree(&app, &to, &mut done, dir_size(&app), &|_, _| {}).unwrap();
+        let framework = to.join("Contents/Frameworks/Engine.framework");
+        assert_eq!(fs::read_link(framework.join("Versions/Current")).unwrap(), PathBuf::from("A"));
+        assert_eq!(fs::read_link(framework.join("Engine")).unwrap(), PathBuf::from("Versions/Current/Engine"));
+        assert_eq!(fs::read(framework.join("Engine")).unwrap(), b"library");
+        assert_eq!(done, 7, "what a link points to is copied once, not again through the link");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_link_that_points_nowhere_is_copied_too() {
+        let d = tmp("copy-dangling");
+        let game = d.join("game");
+        fs::create_dir_all(&game).unwrap();
+        std::os::unix::fs::symlink("missing", game.join("optional")).unwrap();
+        let mut done = 0;
+        copy_tree(&game, &d.join("dest"), &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read_link(d.join("dest/optional")).unwrap(), PathBuf::from("missing"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_link_into_the_game_by_full_path_points_at_the_new_place() {
+        let d = tmp("copy-full-link");
+        let game = d.join("game");
+        fs::create_dir_all(game.join("lib")).unwrap();
+        fs::write(game.join("lib/libgame.so.1"), b"library").unwrap();
+        std::os::unix::fs::symlink(game.join("lib/libgame.so.1"), game.join("libgame.so")).unwrap();
+        let to = d.join("dest");
+        let mut done = 0;
+        copy_tree(&game, &to, &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read_link(to.join("libgame.so")).unwrap(), to.join("lib/libgame.so.1"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_link_into_the_games_real_path_points_at_the_new_place() {
+        // The game is reached through a link (Bazzite's /home), its link names the real path.
+        let d = fs::canonicalize(tmp("copy-real-link")).unwrap();
+        let game = d.join("real/game");
+        fs::create_dir_all(&game).unwrap();
+        fs::write(game.join("data.pak"), b"data").unwrap();
+        std::os::unix::fs::symlink(game.join("data.pak"), game.join("current.pak")).unwrap();
+        std::os::unix::fs::symlink(d.join("real"), d.join("home")).unwrap();
+        let to = d.join("dest");
+        let mut done = 0;
+        copy_tree(&d.join("home/game"), &to, &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read_link(to.join("current.pak")).unwrap(), to.join("data.pak"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_link_outside_the_game_stays_as_it_is() {
+        let d = tmp("copy-outside-link");
+        let game = d.join("game");
+        fs::create_dir_all(&game).unwrap();
+        std::os::unix::fs::symlink("/", game.join("z:")).unwrap();
+        let mut done = 0;
+        copy_tree(&game, &d.join("dest"), &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read_link(d.join("dest/z:")).unwrap(), PathBuf::from("/"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// A game beside a Shared folder, its asset.dat a relative link into it (../Shared/asset.dat).
+    #[cfg(unix)]
+    fn game_linking_beside_it(d: &Path) -> PathBuf {
+        fs::create_dir_all(d.join("source/Shared")).unwrap();
+        fs::write(d.join("source/Shared/asset.dat"), b"shared").unwrap();
+        let game = d.join("source/Game");
+        fs::create_dir_all(&game).unwrap();
+        std::os::unix::fs::symlink("../Shared/asset.dat", game.join("asset.dat")).unwrap();
+        game
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_relative_link_out_of_the_game_still_reaches_its_file() {
+        let d = tmp("copy-relative-out");
+        let game = game_linking_beside_it(&d);
+        let mut done = 0;
+        copy_tree(&game, &d.join("dest/Game"), &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read(d.join("dest/Game/asset.dat")).unwrap(), b"shared");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_relative_link_out_of_the_game_points_there_by_full_path() {
+        // The real path: on a Mac the temp folder is reached through /var, a link to /private/var.
+        let d = fs::canonicalize(tmp("copy-relative-full")).unwrap();
+        let game = game_linking_beside_it(&d);
+        let mut done = 0;
+        copy_tree(&game, &d.join("dest/Game"), &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read_link(d.join("dest/Game/asset.dat")).unwrap(), d.join("source/Shared/asset.dat"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_relative_link_up_and_back_into_the_game_stays_relative() {
+        let d = tmp("copy-relative-in");
+        let game = d.join("game");
+        fs::create_dir_all(game.join("lib")).unwrap();
+        fs::create_dir_all(game.join("data")).unwrap();
+        fs::write(game.join("data/level.pak"), b"level").unwrap();
+        std::os::unix::fs::symlink("../data/level.pak", game.join("lib/level.pak")).unwrap();
+        let mut done = 0;
+        copy_tree(&game, &d.join("dest"), &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::read_link(d.join("dest/lib/level.pak")).unwrap(), PathBuf::from("../data/level.pak"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_copied_program_can_still_run() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("copy-mode");
+        let game = d.join("game");
+        fs::create_dir_all(&game).unwrap();
+        fs::write(game.join("Game"), b"program").unwrap();
+        fs::set_permissions(game.join("Game"), fs::Permissions::from_mode(0o755)).unwrap();
+        let mut done = 0;
+        copy_tree(&game, &d.join("dest"), &mut done, 0, &|_, _| {}).unwrap();
+        assert_eq!(fs::metadata(d.join("dest/Game")).unwrap().permissions().mode() & 0o777, 0o755);
+        let _ = fs::remove_dir_all(&d);
     }
 }
 

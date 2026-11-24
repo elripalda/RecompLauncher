@@ -64,7 +64,7 @@ pub use imp::*;
 mod imp {
     use std::path::{Path, PathBuf};
     use windows::core::{Interface, HSTRING, PCWSTR, PWSTR};
-    use windows::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, HANDLE};
+    use windows::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, HANDLE};
     pub use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER as HKCU, HKEY_LOCAL_MACHINE as HKLM};
     use windows::Win32::System::Registry::*;
 
@@ -97,6 +97,41 @@ mod imp {
         let mut len = 4u32;
         let r = unsafe { RegGetValueW(root, &HSTRING::from(key), &HSTRING::from(name), RRF_RT_REG_DWORD, None, Some((&mut v as *mut u32).cast()), Some(&mut len)) };
         (r == ERROR_SUCCESS).then_some(v)
+    }
+
+    /// A value's bytes as stored (empty when it isn't there).
+    pub fn reg_bytes(root: HKEY, key: &str, name: &str) -> Vec<u8> {
+        let (k, n) = (HSTRING::from(key), HSTRING::from(name));
+        let mut len = 0u32;
+        if unsafe { RegGetValueW(root, &k, &n, RRF_RT_REG_BINARY, None, None, Some(&mut len)) } != ERROR_SUCCESS {
+            return vec![];
+        }
+        let mut buf = vec![0u8; len as usize];
+        if unsafe { RegGetValueW(root, &k, &n, RRF_RT_REG_BINARY, None, Some(buf.as_mut_ptr().cast()), Some(&mut len)) } != ERROR_SUCCESS {
+            return vec![];
+        }
+        buf.truncate(len as usize);
+        buf
+    }
+
+    /// Writes a text value, making the key if it isn't there.
+    pub fn reg_set_str(root: HKEY, key: &str, name: &str, value: &str) -> Result<(), String> {
+        let wide: Vec<u16> = value.encode_utf16().chain([0]).collect();
+        let bytes = (wide.len() * 2) as u32;
+        let r = unsafe { RegSetKeyValueW(root, &HSTRING::from(key), &HSTRING::from(name), REG_SZ.0, Some(wide.as_ptr().cast()), bytes) };
+        if r != ERROR_SUCCESS {
+            return Err(format!("Windows didn't save it ({})", r.0));
+        }
+        Ok(())
+    }
+
+    /// Removes a value. One that isn't there is already gone.
+    pub fn reg_delete(root: HKEY, key: &str, name: &str) -> Result<(), String> {
+        let r = unsafe { RegDeleteKeyValueW(root, &HSTRING::from(key), &HSTRING::from(name)) };
+        if r != ERROR_SUCCESS && r != ERROR_FILE_NOT_FOUND {
+            return Err(format!("Windows didn't remove it ({})", r.0));
+        }
+        Ok(())
     }
 
     /// The names of a registry key's subkeys.

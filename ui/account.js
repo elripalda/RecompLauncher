@@ -1,15 +1,15 @@
 'use strict';
 // The RecompStore account and cloud saves: signing in (browser or phone), Settings > Account, the
-// sidebar's account button, a game's Saves tab, and what happens before Play (turn cloud saves on?
-// a newer save from another PC? which save to keep?). Works the same in Big Picture mode, with its
-// own sheets. Uses app.js's helpers and state (S).
+// sidebar's account button, a game's Saves tab, cloud saves for every game (asked once), and what
+// happens before Play (a newer save from another PC? which save to keep?). Works the same in Big
+// Picture mode, with its own sheets. Uses app.js's helpers and state (S).
 
 const ACC_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>';
 const CLOUD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/></svg>';
 const SITE = 'https://recomplauncher.com';
 S.account = { signedIn: false };
 S.saves = {};
-// The signed-in player's reports (Settings > Account > Your Reports), with developers' answers.
+// The signed-in player's reports (Settings > Reviews > Your Reviews), with developers' answers.
 S.myReports = null;
 
 const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), timeOpts({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : '');
@@ -29,6 +29,10 @@ async function loadAccount(fresh) {
   if (S.account.signedIn && !S.account.offline && typeof libSync === 'function') libSync();
   // Playtime over all the account's PCs (or back to this PC's own when signed out).
   if (typeof playSync === 'function') playSync().then((changed) => changed && render(true));
+  // Sponsor spots for this account (none when signed out).
+  if (typeof sponsSync === 'function') sponsSync();
+  // Signed in and not asked yet: cloud saves for every game, or only the ones they pick.
+  askCloudAll();
 }
 
 // ---------- your reports ----------
@@ -37,7 +41,8 @@ async function loadMyReports() {
   if (S.myReports && S.myReports.loading) return;
   const had = (S.myReports && S.myReports.list) || null;
   S.myReports = { list: had, loading: true };
-  try { const r = await invoke('my_reports'); S.myReports = { list: (r && r.reports) || [] }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
+  // A review just deleted stays out while the website's list may still have it.
+  try { const r = await invoke('my_reports'); S.myReports = { list: ((r && r.reports) || []).filter((x) => !(window.reviewGone && window.reviewGone(x.app))) }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
   renderAccountBits();
 }
 window.loadMyReports = loadMyReports;
@@ -57,10 +62,10 @@ function renderAccountBits() {
   const b = $('#acc-btn');
   if (b) {
     const a = S.account || {};
-    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your report'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
+    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your review'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
     b.title = a.signedIn ? t('Account') : t('Sign in');
   }
-  if (S.view === 'settings' && S.setTab === 'account' && window.setSection) window.setSection('account', false);
+  if (S.view === 'settings' && ['account', 'reviews'].includes(S.setTab) && window.setSection) window.setSection(S.setTab, false);
   // A game's page (its Saves tab, the cloud card) and the Saves page show it straight away.
   if (S.view === 'game') refreshGame();
   if (S.view === 'saves' || S.view === 'achievements') render(true);
@@ -142,14 +147,30 @@ function accountSection(group, row) {
       + group(t('Save backups'), row(t('On this PC'), t('After every session the launcher keeps a copy of each game\'s saves, the newest ten. They\'re on each game\'s Saves tab.'), ''));
   }
   const used = a.used || 0, quota = a.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
+  // Back Up Every Game says what it does now, like a game's own switch in its Manage tab.
+  const all = (S.settings.ui || {}).cloud_all === true;
+  const allNow = all ? t('On. Cloud saves are activated for all games. Turning it off disables cloud saves for every game. Saves stay intact.') : t('Off. Cloud saves are only active for the games you turn on in their Manage tab. Turning it on activates them for every game.');
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
-      <p class="set-note" style="margin:12px 0 0">${esc(t('Each game asks the first time you play it. Turn it on or off on a game\'s Saves tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Ask for Each New Game'), t('Off: games you play for the first time keep their saves on this PC without asking. You can still turn cloud saves on for one on its Saves tab.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)
+      <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
+      + row(t('Back Up Every Game'), allNow, `<button type="button" class="switch" role="switch" aria-checked="${all}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
       + deviceNameRow())
-    + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
+}
+// ---------- Settings > Reviews ----------
+// The player's own reviews have their own section, so they're found without looking under Account.
+// On top, whether the launcher asks for one after a long session: the same switch as Don't Ask Me
+// Again on that question, the other way round. Signed out there are no reviews to show: what
+// signing in is for, and the button.
+function reviewsSection(group, row) {
+  const on = window.reviewAskOn ? window.reviewAskOn() : true;
+  const label = t('Ask After Playing');
+  const sw = `<button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-act="acc-review-ask"></button>`;
+  const ask = group(t('Asking for Reviews'), row(label, t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), sw));
+  if (S.account && S.account.signedIn) return ask + myReportsGroup(group, row);
+  const signIn = `<button type="button" class="btn sm main" data-act="acc-signin">${esc(t('Sign in'))}</button>`;
+  return ask + group(t('Your Reviews'), row(t('Sign In to Write Reviews'), t('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.'), signIn));
 }
 // The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
 // computer's own name. Only copies made after a change carry the new name.
@@ -160,30 +181,114 @@ function deviceNameRow() {
   const field = `<input class="field sm" id="device-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(name)}" placeholder="${esc(t('Computer name'))}" aria-label="${esc(label)}">`;
   return `<div class="set-row"><div class="k"><b>${esc(label)}</b><span>${esc(help)}</span></div><span class="acts">${field}<button type="button" class="btn sm" data-act="acc-device-save">${esc(t('Save'))}</button></span></div>`;
 }
-// Your Reports: what you said about each game, and what its developer answered. Looking at it
+// Your Reviews: what you said about each project, and what its developer answered. Looking at it
 // counts as having seen the answers.
+// Each review names and pictures the project (reviews are per project), opens its page, and can be
+// changed (installed: the same window as the game page's Edit Your Review) or deleted from here.
+// Ones with a developer's answer the player hasn't seen come first. 30 show until Show All.
+const MYREP_FIRST = 30;
+// What the search looks in: the project's name, the game's, and the id.
+const myRepText = (r) => { const a = byId(r.app); return fold([r.name, a && a._name, a && a.name, a && a.game, r.app].filter(Boolean).join(' ')); };
 function myReportsGroup(group, row) {
   const m = S.myReports;
-  if (!m || (!m.list && m.loading)) return group(t('Your Reports'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
-  if (!m.list) return group(t('Your Reports'), row(t('Your reports couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
-  if (!m.list.length) return group(t('Your Reports'), row(t('No reports yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
-  setTimeout(markReportsSeen, 0);
+  if (!m || (!m.list && m.loading)) return group(t('Your Reviews'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
+  if (!m.list) return group(t('Your Reviews'), row(t('Your reviews couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
+  if (!m.list.length) return group(t('Your Reviews'), row(t('No reviews yet'), t('When you review a project, it shows here with any answer from its developer.'), ''));
+  // What was new when the section opened stays marked while it's open (it counts as seen at once).
   const seen = repSeen();
+  if (!S.myRepNew) S.myRepNew = new Set(m.list.filter((r) => lastDevReply(r) > (seen[r.id] || 0)).map((r) => r.id));
+  const isFresh = (r) => S.myRepNew.has(r.id);
+  setTimeout(markReportsSeen, 0);
   const when = (w) => { const ts = Date.parse(w) / 1000; return ts ? ago(ts) : ''; };
-  const item = (r) => {
-    const fresh = lastDevReply(r) > (seen[r.id] || 0);
+  const list = m.list.filter(isFresh).concat(m.list.filter((r) => !isFresh(r)));
+  const newN = list.filter(isFresh).length;
+  // Every review is in the page: searching and the answer chips show and hide them in place.
+  const item = (r, i) => {
+    const a = byId(r.app);
+    const name = a ? reviewName(r.app, { name: r.name || r.app }) : (r.name || r.app);
+    const own = (k) => (a ? pickArt(a, k, false) : '');
+    const cover = media(thumbOf(own('cover'), 160));
+    const fresh = isFresh(r);
     const replies = (r.replies || []).map((x) => `<div class="rep-reply${x.dev ? ' dev' : ''}"><div class="who">${x.dev ? `<b>${esc(x.name || t('Developer'))}</b><span class="dev-badge">${esc(t('Developer'))}</span>` : `<b>${esc(t('You'))}</b>`}<small>${esc(when(x.when))}</small></div><p dir="auto">${esc(x.text)}</p></div>`).join('');
     const answer = (r.replies || []).some((x) => x.dev) ? `<div class="myrep-ans"><textarea class="field" rows="2" maxlength="2000" data-myrep="${r.id}" placeholder="${esc(t('Answer the developer'))}" aria-label="${esc(t('Answer the developer'))}"></textarea><button type="button" class="btn sm" data-act="myrep-send" data-id="${r.id}">${esc(t('Send'))}</button></div>` : '';
-    return `<div class="myrep${fresh ? ' fresh' : ''}"><div class="myrep-h"><b>${esc(r.name || r.app)}</b><span class="rverdict v-${esc(r.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[r.verdict] || ''))}</span><small>${esc([r.version, when(r.when)].filter(Boolean).join(' · '))}</small></div>
-      ${r.note ? `<p class="rep-note" dir="auto">${esc(r.note)}</p>` : ''}${replies ? `<div class="rep-replies">${replies}</div>` : ''}${answer}</div>`;
+    const long = !!r.note && [...r.note].length > REP_LONG;
+    const note = r.note ? `<p class="rep-note${long ? ' long' : ''}" dir="auto">${esc(r.note)}</p>${long ? `<button type="button" class="linkbtn rep-open" data-act="rep-open">${esc(t('Show more'))}</button>` : ''}` : '';
+    const g = S.library[r.app];
+    const canEdit = !!(g && !g.local);
+    const edit = canEdit ? `<button type="button" class="btn sm" data-act="myrep-edit" data-id="${esc(r.app)}">${esc(t('Edit'))}</button>` : '';
+    const del = `<button type="button" class="btn sm danger" data-act="myrep-del" data-id="${esc(r.app)}">${esc(t('Delete'))}</button>`;
+    const verdict = `<span class="rverdict v-${esc(r.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[r.verdict] || ''))}</span>`;
+    const meta = `${repSys(r)}${r.version ? `<span class="rep-ver">${esc(r.version)}</span>` : ''}<small>${esc(when(r.when))}</small>`;
+    const freshTag = fresh ? `<span class="myrep-new">${esc(t('New answer'))}</span>` : '';
+    const open = a ? ` data-act="myrep-game" data-id="${esc(r.app)}"` : ' disabled';
+    const pic = `<button type="button" class="myrep-pic${cover ? '' : ' plain'}"${open} tabindex="-1" aria-hidden="true">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ''}</button>`;
+    const title = `<button type="button" class="myrep-name"${open}>${esc(name)}</button>`;
+    const q = myRepText(r);
+    const at = ` data-q="${esc(q)}" data-v="${esc(r.verdict)}"${fresh ? ' data-new="1"' : ''}${myRepShows(q, r.verdict, fresh, i) ? '' : ' hidden'}`;
+    return `<div class="myrep${fresh ? ' fresh' : ''}"${at}>${pic}<div class="myrep-in"><div class="myrep-h">${title}${verdict}${freshTag}<span class="myrep-acts">${edit}${del}</span></div>
+      <div class="myrep-meta sub">${meta}</div>${note}${replies ? `<div class="rep-replies">${replies}</div>` : ''}${answer}</div></div>`;
   };
-  return group(t('Your Reports'), `<p class="set-note" style="margin:0 0 6px">${esc(t('What you said about each game, and what its developer answered.'))}</p>${m.list.slice(0, 30).map(item).join('')}`);
+  const lead = newN ? tn(newN, 'A developer answered one of your reviews.', 'Developers answered {n} of your reviews.') : t('What you said about each project, and what its developer answered.');
+  const all = `<div class="acts myrep-more"${myRepMore(list.length) ? '' : ' hidden'}><button type="button" class="btn" data-act="myrep-all">${esc(tf('Show All {n}', { n: list.length }))}</button></div>`;
+  // A redraw (answers marked seen, a review sent) keeps the count and the "none match" note.
+  const hit = list.filter((r, i) => myRepShows(myRepText(r), r.verdict, isFresh(r), i)).length;
+  return group(tf('Your Reviews ({n})', { n: list.length }), `<p class="set-note${newN ? ' myrep-lead' : ''}" style="margin:0 0 6px">${esc(lead)}</p>${myRepBar(list, newN, hit)}<div class="myreps">${list.map(item).join('')}</div>
+    <div class="myrep-none"${hit ? ' hidden' : ''}><b>${esc(myRepNone())}</b><button type="button" class="btn sm" data-act="myrep-clear">${esc(t('Show All Reviews'))}</button></div>${all}`);
 }
+// Searching Your Reviews: by name (the project's or the game's), and by answer with the chips.
+// Typing changes nothing but which reviews show, so the field keeps its focus and what's typed.
+const myRepQ = () => fold(S.myRepQ || '').trim();
+const myRepNarrowed = () => !!(myRepQ() || S.myRepV);
+const myRepMore = (n) => !S.myRepAll && !myRepNarrowed() && n > MYREP_FIRST;
+function myRepShows(q, v, fresh, i) {
+  const words = myRepQ().split(/\s+/).filter(Boolean);
+  if (words.some((w) => !q.includes(w))) return false;
+  if (S.myRepV === 'new' ? !fresh : S.myRepV && S.myRepV !== v) return false;
+  return myRepNarrowed() || S.myRepAll || i < MYREP_FIRST;
+}
+const myRepNone = () => (myRepQ() ? tf('No reviews match “{q}”', { q: S.myRepQ.trim() }) : t('No reviews with that answer'));
+const myRepHits = (hit, all) => (myRepNarrowed() ? tf('{n} of {total}', { n: hit, total: all }) : '');
+function myRepBar(list, newN, hit) {
+  const n = (v) => list.filter((r) => r.verdict === v).length;
+  const chip = (v, label, count, dot) => `<button type="button" class="myrep-chip${dot ? ` v-${v}` : ''}${(S.myRepV || '') === v ? ' on' : ''}" data-act="myrep-v" data-v="${v}" aria-pressed="${(S.myRepV || '') === v}"${count || !v ? '' : ' disabled'}>${dot ? '<i aria-hidden="true"></i>' : ''}<span>${esc(label)}</span><b>${fmtNum(count)}</b></button>`;
+  const chips = [chip('', t('All'), list.length),
+    chip('runs', t(RUN_WORD.runs), n('runs'), true), chip('issues', t(RUN_WORD.issues), n('issues'), true), chip('broken', t(RUN_WORD.broken), n('broken'), true),
+    newN ? chip('new', t('New answer'), newN) : ''].join('');
+  const label = t('Search your reviews');
+  return `<div class="myrep-bar"><label class="myrep-q${S.myRepQ ? ' has' : ''}">${SEARCH}<input id="myrep-q" type="search" autocomplete="off" spellcheck="false" placeholder="${esc(label)}" aria-label="${esc(label)}" value="${esc(S.myRepQ || '')}"><span class="myrep-hits" aria-live="polite">${esc(myRepHits(hit, list.length))}</span><button type="button" class="myrep-x" data-act="myrep-clear" aria-label="${esc(t('Clear'))}" title="${esc(t('Clear'))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></label>
+    <div class="myrep-chips" role="group" aria-label="${esc(t('Filter by answer'))}">${chips}</div></div>`;
+}
+// Shows and hides the reviews in place, and says how many match (or that none do).
+function myRepFilter() {
+  const box = $('.myreps');
+  if (!box) return;
+  const items = [...box.children];
+  let hit = 0;
+  items.forEach((el, i) => { const on = myRepShows(el.dataset.q || '', el.dataset.v, !!el.dataset.new, i); el.hidden = !on; if (on) hit++; });
+  const hits = $('.myrep-hits');
+  if (hits) hits.textContent = myRepHits(hit, items.length);
+  const q = $('.myrep-q');
+  if (q) q.classList.toggle('has', !!S.myRepQ);
+  const none = $('.myrep-none');
+  if (none) { none.hidden = !!hit; $('b', none).textContent = myRepNone(); }
+  const more = $('.myrep-more');
+  if (more) more.hidden = !myRepMore(items.length);
+  for (const c of document.querySelectorAll('.myrep-chip')) { const on = (S.myRepV || '') === c.dataset.v; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on); }
+}
+document.addEventListener('input', (e) => { if (e.target.id === 'myrep-q') { S.myRepQ = e.target.value; myRepFilter(); } });
+// Escape empties the search first (and only closes things once it's empty).
+document.addEventListener('keydown', (e) => {
+  if (e.target.id !== 'myrep-q' || e.key !== 'Escape' || !e.target.value) return;
+  e.preventDefault(); e.stopPropagation();
+  e.target.value = S.myRepQ = ''; myRepFilter();
+}, true);
 
 // ---------- a game's Saves tab ----------
 async function loadSaves(id) {
   S.saves[id] = S.saves[id] && S.saves[id] !== 'loading' ? Object.assign(S.saves[id], { busy: true }) : 'loading';
   try { S.saves[id] = await invoke('saves_info', { id }); } catch (e) { S.saves[id] = { error: String(e && e.message ? e.message : e) }; }
+  // The tab asked the cloud just now: the badge above Play says the same.
+  if (S.saves[id] && !S.saves[id].error) S.saveNext[saveIdOf(id)] = S.saves[id].incoming || null;
   if (S.view === 'game' && S.arg === id && S.tab === 'saves') refreshGame();
   // Whatever just changed the tab (Sync Now, Back Up Now, the cloud switch) changed the badge too.
   loadSaveStatus(saveIdOf(id));
@@ -236,6 +341,8 @@ function saveStatusCard(id, s) {
   if (!b) return '';
   const sid = saveIdOf(id);
   const st = S.saveStat[sid] || {};
+  const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+  const next = incomingSave(S.saveNext[sid], st, phase, running);
   const picked = s.spots.some((p) => p.from === 'player');
   const note = b.note ? ` <small>· ${esc(b.note)}</small>` : '';
   const rows = b.rows.map(([k, v]) => `${k}: ${v}`).join(' · ');
@@ -243,12 +350,31 @@ function saveStatusCard(id, s) {
   const offline = st.problem && st.problem.kind === 'offline' && s.status;
   const help = offline ? `<p class="set-note">${esc(t('Still no answer. Check whether the website is having trouble:'))} <button type="button" class="linkish" data-act="url" data-url="${esc(s.status)}">${esc(s.status.replace(/^https:\/\//, ''))}</button></p>` : '';
   const space = s.signedIn && s.cloudOn === true ? cloudSpace() : '';
-  const step = saveNextStep(st, S.savePhase[sid], S.running.has(parentId(sid)), picked);
+  const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
   const url = step && step.url ? ` data-url="${esc(step.url)}"` : '';
   const btn = step ? `<button type="button" class="btn sm main" data-act="${step.act}" data-id="${esc(id)}"${url}${s.busy ? ' disabled' : ''}>${esc(t(step.label))}</button>` : '';
   return `<div class="card svs sb-${b.tone}" role="status"><div class="svs-row"><span class="svs-ico">${badgeIcon(b.mark, 30)}</span>
     <div class="k"><b>${esc(b.label)}${note}</b>${text ? `<span>${esc(text)}</span>` : ''}${rows ? `<small>${esc(rows)}</small>` : ''}</div>
     <span class="acts">${btn}</span></div>${help}${space}</div>`;
+}
+
+// The cloud save another PC made that Play puts in place by itself (S.saveNext), when nothing else
+// is going on, or null. This PC's own notes still call that "Up to date", and a Restore button on
+// the newest save reads like a step to do on every PC: the status and its row say it syncs when
+// you press Play instead.
+function incomingSave(next, st, phase, running) {
+  if (!next || phase || running || st.known === false) return null;
+  if (st.state !== 'up-to-date' && st.state !== 'none') return null;
+  return next;
+}
+// Sync Now gets it before playing, the same button as when it's up to date.
+const INCOMING_STEP = { act: 'saves-sync', label: N_('Sync Now') };
+const SYNCS_ON_PLAY = N_('Syncs when you press Play');
+
+function incomingBadge(c) {
+  const label = c.device ? tf('Newer save from {device}', { device: c.device }) : t('Newer save in the cloud');
+  const text = tf('Saved {time}. What\'s there now is kept as a backup first.', { time: sinceText(c.made) });
+  return { tone: 'cy', mark: 'next', label, note: t('syncs when you press Play'), head: t('A newer save is in the cloud'), text, rows: [] };
 }
 
 // The status's line on the tab: the badge's, except where the badge points somewhere else.
@@ -315,6 +441,9 @@ function saveHistory(s) {
   rows.sort((p, q) => q.when - p.when);
   const now = s.current && rows.find((r) => r.hash === s.current);
   if (now) now.current = true;
+  // The cloud save Play brings in by itself is marked so, not offered as a Restore.
+  const next = s.incoming ? s.incoming.v : null;
+  for (const r of rows) r.incoming = !r.current && !!next && r.v === next;
   // Any cloud save but the newest can be deleted (saves_cloud_delete says why not that one).
   const newestCloud = Array.isArray(s.cloud) && s.cloud.length ? s.cloud.reduce((p, q) => (q.made > p.made ? q : p)).v : '';
   for (const r of rows) r.deletable = !!r.v && r.v !== newestCloud;
@@ -337,6 +466,7 @@ const MARK_ICONS = {
 
 const BIN_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 const CURRENT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+const NEXT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m0 0-5.5-5.5M12 19l5.5-5.5"/></svg>';
 
 // Details under a save: how long the game had been played then, its files and size.
 function historyDetails(r) {
@@ -352,7 +482,9 @@ function historyRow(id, r, s) {
   const put = `<button type="button" class="btn sm" data-act="saves-restore" data-id="${esc(id)}" ${which}>${esc(t('Restore'))}</button>`;
   // The save in the game now has nothing to restore: its row is lit instead, and says so where
   // the others have their button.
-  const side = r.current ? `<span class="svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>` : put;
+  const cur = `<span class="svh-cur">${CURRENT_ICON}${esc(t('In the game now'))}</span>`;
+  const next = `<span class="svh-next">${NEXT_ICON}${esc(t(SYNCS_ON_PLAY))}</span>`;
+  const side = r.current ? cur : r.incoming ? next : put;
   // Deleting from the cloud is quieter than Restore: an icon, with its name on hover.
   const del = r.deletable ? `<button type="button" class="icon-btn svh-del" data-act="saves-cloud-delete" data-id="${esc(id)}" data-v="${esc(r.v)}" title="${esc(t('Delete from the cloud'))}" aria-label="${esc(t('Delete from the cloud'))}">${BIN_ICON}</button>` : '';
   return `<div class="set-row svh-row${r.current ? ' cur' : ''}"><div class="k"><b>${esc(whenText(r.when))}</b><span class="svh-marks">${marks}</span><span>${esc(historyDetails(r))}</span></div><span class="acts">${del}${side}</span></div>`;
@@ -436,7 +568,11 @@ const savesChanged = (id) => { delete S.saves[id]; if (S.view === 'game' && S.ar
 // when something runs or ends, and the status is asked again then.
 S.saveStat = {};
 S.savePhase = {};
+// A newer save another PC made, that Play brings in by itself (saves_peek, or the Saves tab's
+// saves_info): the one thing the status needs the website for.
+S.saveNext = {};
 const statLoading = new Set();
+const peekLoading = new Set();
 
 // A game of several that keeps its own saves goes by its own id; any other by its recomp's.
 function saveIdOf(id) {
@@ -450,6 +586,23 @@ async function loadSaveStatus(sid) {
   statLoading.add(sid);
   try { S.saveStat[sid] = await invoke('saves_status', { id: sid }); } catch (e) { S.saveStat[sid] = null; }
   statLoading.delete(sid);
+  paintSaveBadges(sid);
+  refreshSavesTab(sid);
+  const st = S.saveStat[sid];
+  if (st && (st.state === 'up-to-date' || st.state === 'none')) peekSave(sid);
+}
+
+// Asks the website whether another PC saved after this one. The core asks at most every few
+// minutes per game, and says nothing new while offline.
+async function peekSave(sid) {
+  if (peekLoading.has(sid)) return;
+  peekLoading.add(sid);
+  let next = null;
+  try { next = await invoke('saves_peek', { id: sid }); } catch (e) { next = null; }
+  peekLoading.delete(sid);
+  const was = S.saveNext[sid] ? S.saveNext[sid].v : null;
+  S.saveNext[sid] = next;
+  if ((next ? next.v : null) === was) return;
   paintSaveBadges(sid);
   refreshSavesTab(sid);
 }
@@ -538,6 +691,8 @@ const BADGE_MARKS = {
   'check-run': '<path class="sb-spin" d="M14.6 13a2.6 2.6 0 1 1-1-2"/>',
   up: '<path class="sb-bob" d="M12 16.2v-5.4m0 0-2.3 2.3M12 10.8l2.3 2.3"/>',
   down: '<path class="sb-bob" d="M12 10.8v5.4m0 0-2.3-2.3M12 16.2l2.3-2.3"/>',
+  // The same arrow, still: a save that comes down at the next Play, not one coming down now.
+  next: '<path d="M12 10.8v5.4m0 0-2.3-2.3M12 16.2l2.3-2.3"/>',
   clock: '<path d="M12 11v2.4l1.6 1"/>',
   alert: '<path d="M12 10.6v2.8M12 15.7h.01"/>',
   conflict: '<path d="M10 10.6v5.2m-1.6-1.6L10 15.8l1.6-1.6M14 15.8v-5.2m-1.6 1.6L14 10.6l1.6 1.6"/>',
@@ -557,7 +712,9 @@ function saveBadgeFor(id) {
   const st = S.saveStat[sid];
   if (st === undefined) loadSaveStatus(sid);
   if (!st) return null;
-  const b = saveBadgeInfo(st, S.savePhase[sid], S.running.has(parentId(sid)));
+  const phase = S.savePhase[sid], running = S.running.has(parentId(sid));
+  const next = incomingSave(S.saveNext[sid], st, phase, running);
+  const b = next ? incomingBadge(next) : saveBadgeInfo(st, phase, running);
   return { ...b, tip: badgeTip(b) };
 }
 
@@ -595,6 +752,7 @@ function refreshSavesTab(sid) {
 function forgetSaveStatus() {
   S.saveStat = {};
   S.savePhase = {};
+  S.saveNext = {};
   paintSaveBadges();
 }
 
@@ -671,20 +829,103 @@ function pageSaves() {
 window.pageSaves = pageSaves;
 window.loadSavesAll = loadSavesAll;
 
+// ---------- cloud saves for every game ----------
+// Asked once: right after signing in (first-run setup asks on a step of its own instead), and on
+// the first start after the update for players who were signed in already. ui.cloud_all: true,
+// every game's saves go up; false, only the games switched on in their Manage tab; not set, not
+// asked yet (off). A game either follows this or was switched in its Manage tab since it was
+// picked: picking again (here or in Settings, Account) makes every game follow it.
+const CA_SVG = (paths, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const CA = {
+  pc: CA_SVG('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
+  any: CA_SVG('<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 19h19"/>'),
+  cloud: CA_SVG('<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="M12 15.5v-5m-2.2 2.2L12 10.5l2.2 2.2"/>', 40),
+  all: CA_SVG('<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2 2 3.2-3.6"/>', 26),
+  pick: CA_SVG('<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/>', 26),
+  chev: CA_SVG('<path d="m9 6 6 6-6 6"/>', 18),
+};
+const CLOUD_ALL_LEAD = N_('After you play, a game\'s saves can go to your account, ready on any PC. A copy always stays on this PC.');
+let cloudAsked = false;
+
+async function setCloudAll(on) {
+  try { await invoke('saves_cloud_follow_all'); } catch (e) { return fail(e); }
+  for (const g of Object.values(S.library)) g.cloud = null;
+  await saveUi({ cloud_all: on }, true);
+  // Each game's Saves tab and badge knew the old answer.
+  S.saves = {}; S.savesAll = null; forgetSaveStatus();
+}
+
+// Waits until nothing else covers the window (setup, signing in, another question).
+function noModal() {
+  const free = () => !document.querySelector('.scrim, .oob');
+  if (free()) return Promise.resolve();
+  return new Promise((ok) => {
+    const o = new MutationObserver(() => { if (free()) { o.disconnect(); ok(); } });
+    o.observe(document.body, { childList: true });
+  });
+}
+
+// The two answers, the same words on the desktop and in Big Picture mode.
+function cloudAllChoices() {
+  return [
+    { v: true, icon: CA.all, tvIcon: 'cloud', label: t('Every game'), tag: t('Recommended'), sub: t('Backed up after you play. Turn it off for one game in its Manage tab.') },
+    { v: false, icon: CA.pick, tvIcon: 'picklist', label: t('Only games I pick'), sub: t('Saves stay on this PC. Turn cloud saves on for a game in its Manage tab.') },
+  ];
+}
+
+// true, false, or null when closed without an answer.
+async function pickCloudAll() {
+  const choices = cloudAllChoices();
+  const name = (S.account.user && S.account.user.username) || '';
+  const lead = `${tf('Signed in as {name}.', { name })} ${t(CLOUD_ALL_LEAD)}`;
+  if (inTV() && window.tvCloudAll) return window.tvCloudAll(t('Back up your saves?'), lead, choices);
+  const foot = t('You can change this any time in Settings → Account.');
+  const row = (c, i) => `<button type="button" class="ca-pick${c.tag ? ' rec' : ''}" data-x="c${i}"><span class="ic">${c.icon}</span><span class="k"><b>${esc(c.label)}${c.tag ? `<em>${esc(c.tag)}</em>` : ''}</b><span>${esc(c.sub)}</span></span>${CA.chev}</button>`;
+  const art = `<div class="ca-art" aria-hidden="true"><span class="dev">${CA.pc}<small>${esc(t('This PC'))}</small></span><i class="ln"></i><span class="cl">${CA.cloud}</span><i class="ln"></i><span class="dev">${CA.any}<small>${esc(t('Any PC'))}</small></span></div>`;
+  return new Promise((res) => {
+    let picked = null;
+    const box = modal(`${art}<div class="ca-body"><h2>${esc(t('Back up your saves?'))}</h2><p>${esc(lead)}</p><div class="ca-picks">${choices.map(row).join('')}</div><p class="ca-foot">${esc(foot)}</p></div>`, (x, close) => {
+      const c = choices[Number(String(x.dataset.x).slice(1))];
+      if (c) { picked = c.v; close(); }
+    }, t('Back up your saves?'));
+    $('.modal', box).classList.add('ca');
+    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); res(picked); } }).observe(document.body, { childList: true });
+  });
+}
+
+async function askCloudAll() {
+  const ui = S.settings.ui || {};
+  if (cloudAsked || ui.cloud_all != null || !S.settings.setup_done) return;
+  if (!(S.account && S.account.signedIn) || document.body.classList.contains('first-run')) return;
+  cloudAsked = true;
+  await noModal();
+  if ((S.settings.ui || {}).cloud_all != null) return;
+  const v = await pickCloudAll();
+  // Closed without an answer: asked again the next time the launcher opens.
+  if (v == null) return;
+  await setCloudAll(v);
+  toast(v ? t('Every game\'s saves go to your account after you play.') : t('Only the games you turn on back up to your account.'));
+  if (['settings', 'game', 'saves'].includes(S.view)) render(true);
+}
+window.askCloudAll = askCloudAll;
+window.setCloudAll = setCloudAll;
+window.cloudAllChoices = cloudAllChoices;
+
 // ---------- before Play ----------
-// Asks once per game, while signed in, whether its saves go to the cloud; then brings in a newer
-// save from another PC, or asks which to keep. false: don't start it.
+// Brings in a newer save from another PC, or asks which to keep. false: don't start it.
 // `cards`: on the desktop the choices are big cards to click (a heading, a green tag such as
 // Newer, and their `lines`), not buttons under the text. Big Picture's sheet is the same either way.
-async function ask(title, text, buttons, cards) {
+// `tvHead`: text for Big Picture's sheet over its choices (escaped already, its title included);
+// without it the sheet shows the title alone.
+async function ask(title, text, buttons, cards, tvHead) {
   if (inTV() && window.tvAsk) {
     // A button marked last (one that changes things for good) goes to the end of the list, away from the first focus.
     const list = buttons.filter((b) => !b.last).concat(buttons.filter((b) => b.last));
-    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, tag: b.tag, icon: b.icon })));
+    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, tag: b.tag, icon: b.icon })), tvHead);
     return i == null || i < 0 ? null : list[i].v;
   }
   const card = (b, i) => `<button type="button" class="pick-card pick-btn" data-x="b${i}"><b>${esc(b.label)}${b.tag ? ` <em class="pick-newer">${esc(b.tag)}</em>` : ''}</b>${(b.lines || []).map((l) => `<span>${esc(l)}</span>`).join('')}</button>`;
-  const button = (b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`;
+  const button = (b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}${b.bad ? ' bad' : ''}" data-x="b${i}">${esc(b.label)}</button>`;
   const choices = cards ? `<div class="pick-two">${buttons.map(card).join('')}</div>` : `<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map(button).join('')}</div>`;
   return new Promise((res) => {
     let picked = null;
@@ -722,28 +963,38 @@ async function beforePlay(id) {
   }
   return true;
 }
+// A newer save from another PC is put in place before the game starts. Nothing is asked here:
+// whether a game's saves go up was picked once for every game (askCloudAll), or in its Manage tab.
 async function beforeCloudPlay(id) {
   const g = S.library[id];
   if (!g || !(S.account && S.account.signedIn)) return true;
-  // Asked once per game, unless the player said not to ask (Settings, Account).
-  if (g.cloud == null && (S.settings.ui || {}).cloud_ask !== false) {
-    const v = await ask(tf('Cloud saves for {name}?', { name: g.name }), `<p>${esc(t('After you play, its saves go to your account, so they\'re safe and ready on any PC. You can change this on its Saves tab.'))}</p>`,
-      [{ label: t('Don\'t Ask Again'), v: 'never', last: true }, { label: t('Not now'), sub: t('Its saves stay on this PC'), icon: 'chevL', v: 'no', focus: true }, { label: t('Turn on'), sub: t('Back them up to your account'), icon: 'check', v: 'yes', main: true }]);
-    if (v == null) return false;
-    if (v === 'never') { await saveUi({ cloud_ask: false }); toast(t('Games won\'t ask about cloud saves anymore. Turn it back on in Settings → Account.')); }
-    try { S.library[id] = await invoke('saves_cloud', { id, on: v === 'yes' }); } catch (e) { fail(e); }
-    savesChanged(id);
-    if (v !== 'yes') return true;
-  }
-  if (S.library[id].cloud !== true) return true;
+  if (!cloudOn(g)) return true;
   let r;
   try { r = await invoke('saves_check', { id }); } catch (e) { fail(e); return false; }
   if (r.action === 'restored') toast(tf('Your newer save from {device} is in place.', { device: r.cloud.device || t('another PC') }));
   else if (r.action === 'offline') toast(t('Cloud saves can\'t be reached right now. Playing with this PC\'s save.'), true);
+  // Its cloud save couldn't be written here (a read-only folder, say): the player says whether to
+  // play with this PC's save instead. Nothing about the sync changes unless they do.
+  else if (r.action === 'not-restored') {
+    if (!(await playWithoutCloud(id, r))) return false;
+  }
   else if (r.action === 'conflict') {
     try { if (!(await pickCloudSave(id, r))) return false; } catch (e) { fail(e); return false; }
   }
   savesChanged(id);
+  return true;
+}
+
+// The cloud's save couldn't be put in place before Play: why (the folder and the system's reason),
+// and whether to play with this PC's save instead. false: don't start the game.
+async function playWithoutCloud(id, r) {
+  const title = t('Play Without Your Cloud Save?');
+  const lines = [t('Your cloud save couldn\'t be put in place.'), t(r.why), t('You can play with this PC\'s save instead. Your cloud save stays in the cloud, and nothing replaces it without asking you.')];
+  const text = lines.map((l, i) => `<p${i === 1 ? ' class="muted"' : ''}>${esc(l)}</p>`).join('');
+  const tvHead = `<h3>${esc(title)}</h3>${lines.map((l) => `<p class="tv-sreq-p">${esc(l)}</p>`).join('')}`;
+  const buttons = [{ label: t('Play with this PC\'s save'), icon: 'play', v: 'play', main: true, focus: true }, { label: t('Cancel'), icon: 'chevL', v: null }];
+  if ((await ask(title, text, buttons, false, tvHead)) !== 'play') return false;
+  try { await invoke('saves_play_without_cloud', { id, v: r.cloud.v, hash: r.cloud.hash || '', why: r.why }); } catch (e) { fail(e); return false; }
   return true;
 }
 
@@ -812,14 +1063,43 @@ window.accountAct = async (act, el) => {
       try { await syncCloudNow(id); } catch (e) { fail(e); }
       return loadSaves(id);
     }
-    case 'acc-cloud-ask': { const on = (S.settings.ui || {}).cloud_ask !== false; await saveUi({ cloud_ask: !on }); return render(true); }
+    case 'acc-cloud-all': {
+      const on = (S.settings.ui || {}).cloud_all === true;
+      await setCloudAll(!on);
+      return render(true);
+    }
     case 'acc-device-save': {
       const v = (($('#device-name') || {}).value || '').trim();
       await saveUi({ device_name: v });
       return toast(v ? t('Saved. New saves from this PC carry that name.') : t('Back to the computer\'s own name.'));
     }
-    case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
+    // The dot on the account button is a developer's answer: it opens Reviews, where the answer is.
+    case 'acc-btn': if (S.account && S.account.signedIn) { const unread = reportsUnread(); S.setTab = unread ? 'reviews' : 'account'; if (unread) loadMyReports(); return go('settings'); } return signIn(false);
+    case 'acc-review-ask': {
+      const on = el.getAttribute('aria-checked') !== 'true';
+      await window.setReviewAsk(on);
+      return render(true);
+    }
     case 'myrep-load': return loadMyReports();
+    case 'myrep-all': S.myRepAll = true; return myRepFilter();
+    case 'myrep-v': S.myRepV = el.dataset.v || null; return myRepFilter();
+    case 'myrep-clear': {
+      S.myRepQ = ''; S.myRepV = null;
+      const f = $('#myrep-q');
+      if (f) { f.value = ''; f.focus(); }
+      return myRepFilter();
+    }
+    case 'myrep-game': S.tab = 'overview'; return go('game', id);
+    case 'myrep-edit': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
+    case 'myrep-del': {
+      const a = byId(id), r = myReviewOf(id);
+      const name = a ? reviewName(id, { name: (r && r.name) || id }) : ((r && r.name) || id);
+      const yes = await ask(t('Delete your review?'), `<p>${esc(tf('Your review of {name} comes off its page and out of Your Reviews, with any answers on it. This can\'t be undone.', { name }))}</p>`,
+        [{ label: t('Cancel'), v: false, focus: true }, { label: t('Delete Review'), v: true, main: true, bad: true, last: true }]);
+      if (!yes) return;
+      try { await deleteReview(id); } catch (e) { return fail(e); }
+      return;
+    }
     case 'myrep-send': {
       const ta = $(`textarea[data-myrep="${CSS.escape(String(id))}"]`);
       const text = ta ? ta.value.trim() : '';

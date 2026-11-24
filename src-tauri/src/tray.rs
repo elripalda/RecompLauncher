@@ -16,7 +16,7 @@ fn word(key: &str) -> String {
 }
 
 /// Quit from inside the window (Big Picture's way out on Home), the same as the tray's Quit: it
-/// closes even with Run in background on.
+/// closes even with Close to tray on.
 #[tauri::command]
 pub fn quit_launcher(app: AppHandle) {
     app.exit(0);
@@ -112,9 +112,6 @@ fn picked(app: &AppHandle, id: &str) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let rid = crate::recomp_of(&app.state::<crate::App>(), &id);
-                if crate::setup_first(&app, &rid) {
-                    return;
-                }
                 crate::ready_look(&app, &rid).await;
                 let sync = crate::cloud::sync_quiet(&app, &id).await;
                 if let Err(e) = sync.and_then(|()| crate::start_game(&app, &id)) {

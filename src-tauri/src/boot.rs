@@ -81,8 +81,10 @@ fn rel(p: &str) -> Option<PathBuf> {
     Some(PathBuf::from(p))
 }
 
-/// What this launcher can do with a profile, by name: a profile's `"requires"` lists the ones it
-/// uses. Kept in step with docs/DEVELOPERS.md and recomplauncher.schema.json.
+/// What this launcher can do with a store profile, by name: a catalog profile's `"requires"` lists
+/// the ones it uses, and `fit` leaves out what this launcher doesn't have. The store sends one
+/// catalog to every launcher version; a developer's manifest ships in its own release and never
+/// needs this (it isn't in the developer SDK).
 pub const FEATURES: &[&str] = &[
     "start", "start.linux", "start.macos", "setup", "console", "clone", "makes", "player_note", "installer", "needs", "exit_codes",
     "files.folder", "files.flag", "files.env", "files.setup", "files.accepts", "files.contains", "files.sha256", "files.update",

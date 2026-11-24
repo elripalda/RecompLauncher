@@ -102,12 +102,11 @@ pub struct Brought {
 }
 
 /// The AppImage a game in the Library starts, when it starts one: the program the player picked
-/// (by hand, or added as it), the one the launcher picked, or with none picked the only AppImage at
+/// (Game Executable, or added as it), the one the launcher picked, or with none picked the only AppImage at
 /// the top of its folder (one an older launcher installed, which its recomplauncher.json names).
 pub fn image_of(g: &Installed) -> Option<PathBuf> {
     let full = |e: &PathBuf| if e.is_absolute() { e.clone() } else { g.path.join(e) };
-    let picked = [g.manual.as_ref().and_then(|m| m.exe.clone()), g.exe.clone()];
-    if let Some(found) = picked.iter().flatten().map(full).find(|p| is_image(p)) {
+    if let Some(found) = g.exe.as_ref().map(full).filter(|p| is_image(p)) {
         return Some(found);
     }
     if g.exe.is_some() || g.path.as_os_str().is_empty() {
@@ -183,11 +182,7 @@ pub fn bring_in(st: &App, id: &str, image: &Path) -> Result<Brought, Error> {
     }
     let target = if in_place { g.path.clone() } else { new_folder(&default_lib, &next) };
     next.path = target.clone();
-    // A program picked by hand that was the AppImage: its AppRun now. A setup that was it too is
-    // nothing to run anymore.
-    if let Some(m) = next.manual.as_mut().filter(|m| m.exe.as_deref().is_some_and(|e| g.path.join(e) == image)) {
-        m.exe = Some(target.join(&start));
-    }
+    // A setup that was the AppImage is nothing to run anymore.
     if next.setup.as_deref().is_some_and(|s| g.path.join(s) == image) {
         next.setup = None;
     }
