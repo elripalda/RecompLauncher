@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "この PC で LaunchBox がゲーム用に保存済みのボックスアート、ロゴ、背景を使います。ここで読み込むだけで、どこにも送信しません。",
  "Your LaunchBox": "あなたの LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "あなたの LaunchBox にはその名前のゲームがありません。別の名前で試してください。",
- "Your LaunchBox has no game called {name}.": "あなたの LaunchBox には {name} というゲームがありません。"
+ "Your LaunchBox has no game called {name}.": "あなたの LaunchBox には {name} というゲームがありません。",
+ "Game info from LaunchBox Games Database": "ゲーム情報: LaunchBox Games Database"
 }

@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "이 PC에서 LaunchBox가 게임용으로 이미 저장한 박스 아트, 로고, 배경을 사용합니다. 여기서 읽기만 하고 아무 데도 보내지 않습니다.",
  "Your LaunchBox": "내 LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "내 LaunchBox에 그 이름의 게임이 없습니다. 다른 이름으로 시도해 보세요.",
- "Your LaunchBox has no game called {name}.": "내 LaunchBox에 {name}(이)라는 게임이 없습니다."
+ "Your LaunchBox has no game called {name}.": "내 LaunchBox에 {name}(이)라는 게임이 없습니다.",
+ "Game info from LaunchBox Games Database": "게임 정보 출처: LaunchBox Games Database"
 }

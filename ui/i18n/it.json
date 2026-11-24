@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "Usa le copertine, i loghi e gli sfondi che LaunchBox ha già salvato per i tuoi giochi su questo PC. Vengono solo letti qui, non viene inviato nulla.",
  "Your LaunchBox": "Il tuo LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "Il tuo LaunchBox non ha giochi con quel nome. Prova con un altro.",
- "Your LaunchBox has no game called {name}.": "Il tuo LaunchBox non ha nessun gioco chiamato {name}."
+ "Your LaunchBox has no game called {name}.": "Il tuo LaunchBox non ha nessun gioco chiamato {name}.",
+ "Game info from LaunchBox Games Database": "Informazioni sul gioco da LaunchBox Games Database"
 }

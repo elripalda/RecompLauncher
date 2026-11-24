@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "Используйте обложки, логотипы и фоны, которые LaunchBox уже сохранил для ваших игр на этом ПК. Они только читаются здесь, ничего никуда не отправляется.",
  "Your LaunchBox": "Ваш LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "В вашем LaunchBox нет игры с таким названием. Попробуйте другое.",
- "Your LaunchBox has no game called {name}.": "В вашем LaunchBox нет игры {name}."
+ "Your LaunchBox has no game called {name}.": "В вашем LaunchBox нет игры {name}.",
+ "Game info from LaunchBox Games Database": "Информация об игре из LaunchBox Games Database"
 }

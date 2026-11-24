@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "使用 LaunchBox 已在这台电脑上为你的游戏保存的封面、标志和背景。只在这里读取，不会发送到任何地方。",
  "Your LaunchBox": "你的 LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "你的 LaunchBox 里没有这个名字的游戏。换个名字试试。",
- "Your LaunchBox has no game called {name}.": "你的 LaunchBox 里没有名为 {name} 的游戏。"
+ "Your LaunchBox has no game called {name}.": "你的 LaunchBox 里没有名为 {name} 的游戏。",
+ "Game info from LaunchBox Games Database": "游戏信息来自 LaunchBox Games Database"
 }

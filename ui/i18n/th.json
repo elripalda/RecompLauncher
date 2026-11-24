@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "ใช้ภาพกล่อง โลโก้ และพื้นหลังที่ LaunchBox บันทึกไว้แล้วสำหรับเกมของคุณบนพีซีเครื่องนี้ ระบบแค่อ่านที่นี่ ไม่มีการส่งอะไรออกไป",
  "Your LaunchBox": "LaunchBox ของคุณ",
  "Your LaunchBox has no game by that name. Try another.": "LaunchBox ของคุณไม่มีเกมชื่อนี้ ลองชื่ออื่น",
- "Your LaunchBox has no game called {name}.": "LaunchBox ของคุณไม่มีเกมชื่อ {name}"
+ "Your LaunchBox has no game called {name}.": "LaunchBox ของคุณไม่มีเกมชื่อ {name}",
+ "Game info from LaunchBox Games Database": "ข้อมูลเกมจาก LaunchBox Games Database"
 }

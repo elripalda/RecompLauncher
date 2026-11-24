@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "LaunchBox'ın bu bilgisayarda oyunların için zaten kaydettiği kutu resimlerini, logoları ve arka planları kullan. Yalnızca burada okunur, hiçbir yere bir şey gönderilmez.",
  "Your LaunchBox": "LaunchBox'ın",
  "Your LaunchBox has no game by that name. Try another.": "LaunchBox'ında bu adda bir oyun yok. Başka bir ad dene.",
- "Your LaunchBox has no game called {name}.": "LaunchBox'ında {name} adlı bir oyun yok."
+ "Your LaunchBox has no game called {name}.": "LaunchBox'ında {name} adlı bir oyun yok.",
+ "Game info from LaunchBox Games Database": "Oyun bilgileri LaunchBox Games Database'den"
 }

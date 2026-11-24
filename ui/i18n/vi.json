@@ -3410,5 +3410,6 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "Dùng ảnh bìa, logo và ảnh nền mà LaunchBox đã lưu cho các trò của bạn trên máy này. Chỉ được đọc ở đây, không gửi đi đâu cả.",
  "Your LaunchBox": "LaunchBox của bạn",
  "Your LaunchBox has no game by that name. Try another.": "LaunchBox của bạn không có trò nào tên như vậy. Hãy thử tên khác.",
- "Your LaunchBox has no game called {name}.": "LaunchBox của bạn không có trò nào tên {name}."
+ "Your LaunchBox has no game called {name}.": "LaunchBox của bạn không có trò nào tên {name}.",
+ "Game info from LaunchBox Games Database": "Thông tin trò chơi từ LaunchBox Games Database"
 }
