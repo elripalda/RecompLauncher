@@ -583,16 +583,18 @@
       return '';
     });
   }
-  // An info box from the website's list, as wide as a row. Its button and its close button (when
+  // An info box from the website's list, as wide as a row, in the player's language when it's
+  // translated (homeWord, as on the desktop). Its button and its close button (when
   // it has them) are picked with the controller like any other; one with neither shows above the
   // row under it (keepInView), since nothing in it can take the focus.
   function tvHomeBox(x) {
     if (!homeBoxShows(x)) return '';
     const id = String(Number(x.id) || 0);
-    const goBtn = homeBoxAct(x) ? `<button type="button" class="tv-btn sm" data-f data-key="hb:${id}:go" data-tvact="hbgo" data-id="${id}"><span>${esc(x.btn)}</span></button>` : '';
+    const title = homeWord(x, 'title'), text = homeWord(x, 'text'), label = homeWord(x, 'btn');
+    const goBtn = homeBoxAct(x) ? `<button type="button" class="tv-btn sm" data-f data-key="hb:${id}:go" data-tvact="hbgo" data-id="${id}"><span>${esc(label)}</span></button>` : '';
     const close = x.close ? `<button type="button" class="tv-btn sm tv-hbox-x" data-f data-key="hb:${id}:x" data-tvact="hbclose" data-id="${id}" aria-label="${esc(t('Close'))}">${svg('stop', 20)}</button>` : '';
     const acts = goBtn || close ? `<div class="tv-acts">${goBtn}${close}</div>` : '';
-    const words = `${x.title ? `<b dir="auto">${esc(x.title)}</b>` : ''}${x.text ? `<p dir="auto">${esc(x.text)}</p>` : ''}`;
+    const words = `${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<p dir="auto">${esc(text)}</p>` : ''}`;
     return `<section class="tv-sec tv-hbox${acts ? '' : ' still'}" data-sec="hb:${id}"><div class="tv-hbox-in"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${words}</div>${acts}</div></section>`;
   }
   // A banner spot from the website's list: what's booked in it, as wide as a row. A opens it; its

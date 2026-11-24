@@ -30,7 +30,7 @@ function ctx(S) {
   const games = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
   const c = vm.createContext({
     S: Object.assign({ settings: { ui: {} }, easy: new Set(['a', 'b', 'c', 'd']), news: [{ id: 'a', name: 'A', tag: 'v1', title: 'A v1', date: '' }], library: {} }, S),
-    esc: same, t: same, tf: same, accountId: () => '', byId: (id) => (id === 'game' || id === 'a' ? { id } : null), media: same, SITE: 'https://site',
+    esc: same, t: same, tf: same, curLang: () => c.lang || 'en', accountId: () => '', byId: (id) => (id === 'game' || id === 'a' ? { id } : null), media: same, SITE: 'https://site',
     DISC_L: '[disc]', svg: () => '[x]',
     httpsOnly: (u) => (/^https:\/\/\S+$/i.test(String(u || '')) ? String(u) : ''),
     row: (name) => `[${name}]`, poster: () => '', card: () => '', timeLine: () => '', date: () => '', ago: () => '',
@@ -39,8 +39,8 @@ function ctx(S) {
     HOME_ROW: 14,
   });
   vm.runInContext(line(app, 'const HOME_ROWS') + line(app, 'const HOME_GO') + line(app, 'const homeClosed') + line(app, 'const HOME_ICONS = {').replace('{', '{};'), c);
-  vm.runInContext(line(app, 'const homeIcon'), c);
-  vm.runInContext(fnApp('homePlan') + fnApp('homeBoxShows') + fnApp('homeBoxAct'), c);
+  vm.runInContext(line(app, 'const homeIcon') + line(app, 'const HOME_TR_BASE'), c);
+  vm.runInContext(fnApp('homePlan') + fnApp('homeBoxShows') + fnApp('homeWord') + fnApp('homeBoxAct'), c);
   vm.runInContext(line(tv, 'const TV_HOME_ROWS') + fnTv('tvHomeRows') + fnTv('tvHomeBox') + fnTv('tvHomeBanner'), c);
   return c;
 }
@@ -125,4 +125,20 @@ test('Big Picture\'s Home asks for the list again when it opens, and views of it
   assert.match(tv, /if \(view === 'home'\) homeMaybe\(\);/);
   assert.match(tv, /if \(v === 'home'\) sponsWatch\(\);/);
   assert.match(app, /for \(const el of \$\$\('\[data-sp\]'\)\) spObs\.observe\(el\);/);
+});
+
+test('An info box in Big Picture shows the player\'s language, as on the desktop', () => {
+  const box = { k: 'box', id: 4, title: 'Join us', text: 'Words', btn: 'Join', act: 'link', arg: 'https://discord.gg/x', tr: { es: { title: 'Únete', text: 'Palabras', btn: 'Entrar' } } };
+  const c = ctx({ home: { v: 1, items: [box], hide: ALL } });
+  c.dock = { kind: 'mine' };
+  c.lang = 'es-419';
+  const html = vm.runInContext('tvHomeRows(dock, pool()).join("")', c);
+  assert.match(html, /<b dir="auto">Únete<\/b><p dir="auto">Palabras<\/p>/);
+  assert.match(html, /<span>Entrar<\/span>/);
+});
+
+test('A box whose only button label is a translation still gets its button', () => {
+  const c = ctx({});
+  c.lang = 'fr';
+  assert.deepEqual({ ...vm.runInContext('homeBoxAct({ act: "go:library", tr: { fr: { btn: "Bibliothèque" } } })', c) }, { act: 'go', view: 'library' });
 });

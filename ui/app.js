@@ -1868,30 +1868,42 @@ function homeBoxShows(x) {
   if (x.when === 'signed_in') return !!accountId();
   return true;
 }
-// What an info box's button does, when it's one the launcher allows: add a ROM folder, open one
-// of its screens, a game it has, or an https link. Null leaves the button out. Home and Big
-// Picture's Home both ask here, so a box does the same thing in each.
+// An info box's words in the player's language (or its base one: es for es-419), where the website
+// translated them when the admin saved; else as the admin typed them. Only these regional languages
+// fall back, so zh-Hant never gets another script's words.
+const HOME_TR_BASE = { 'en-GB': 'en', 'es-419': 'es', 'fr-CA': 'fr', 'pt-BR': 'pt' };
+function homeWord(x, k) {
+  const tr = x.tr && typeof x.tr === 'object' ? x.tr : {};
+  const lang = String(curLang() || 'en');
+  const m = tr[lang] || (HOME_TR_BASE[lang] && tr[HOME_TR_BASE[lang]]);
+  const v = m && typeof m[k] === 'string' && m[k].trim() ? m[k] : x[k];
+  return typeof v === 'string' ? v : '';
+}
+// What an info box's button does, when it has a label and does something the launcher allows: add
+// a ROM folder, open one of its screens, a game it has, or an https link. Null leaves the button
+// out. Home and Big Picture's Home both ask here, so a box does the same thing in each.
 function homeBoxAct(x) {
-  if (!x || !x.btn) return null;
+  if (!x || !homeWord(x, 'btn')) return null;
   if (x.act === 'rom-add') return { act: 'rom-add' };
   if (HOME_GO[x.act]) return { act: 'go', view: HOME_GO[x.act] };
   if (x.act === 'game' && byId(x.arg)) return { act: 'game', id: String(x.arg) };
   const url = x.act === 'link' ? httpsOnly(x.arg) : '';
   return url ? { act: 'link', url } : null;
 }
-// An info box from the admin, in the same look as "It finds the games you already have". Its words
-// are the admin's own (not translated); the button does only what the launcher allows.
+// An info box from the admin, in the same look as "It finds the games you already have", in the
+// player's language when it's translated; the button does only what the launcher allows.
 function homeBox(x) {
   if (!homeBoxShows(x)) return '';
+  const title = homeWord(x, 'title'), text = homeWord(x, 'text'), label = homeWord(x, 'btn');
   const a = homeBoxAct(x);
   const attrs = !a ? ''
     : a.act === 'rom-add' ? 'data-act="rom-add"'
     : a.act === 'go' ? `data-act="home-go" data-v="${esc(a.view)}"`
     : a.act === 'game' ? `data-act="open" data-id="${esc(a.id)}"`
     : `data-act="note-url" data-url="${esc(a.url)}"`;
-  const btn = attrs ? `<button type="button" class="btn main" ${attrs}>${esc(x.btn)}</button>` : '';
+  const btn = attrs ? `<button type="button" class="btn main" ${attrs}>${esc(label)}</button>` : '';
   const close = x.close ? `<button type="button" class="tn-x" data-act="home-close" data-id="${esc(String(x.id))}" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}">${XMARK}</button>` : '';
-  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${x.title ? `<b dir="auto">${esc(x.title)}</b>` : ''}${x.text ? `<span dir="auto">${esc(x.text)}</span>` : ''}</div>${btn}${close}</div>`;
+  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<span dir="auto">${esc(text)}</span>` : ''}</div>${btn}${close}</div>`;
 }
 // A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
 function homeBanner(x) {
