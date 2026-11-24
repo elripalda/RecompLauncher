@@ -124,6 +124,11 @@ test('the desktop buttons go through Easy Setup\'s own actions', () => {
   for (const act of ['fail-copy', 'fail-open']) assert.ok(app.includes(`case '${act}':`), act);
 });
 
+test('a failed setup starts on Try Another Copy, not on Copy', () => {
+  assert.match(app, /const retry = SU\.stage === 'error' \? \$\('\.su-r \.btn\.main', box\) : null;/);
+  assert.match(tv, /const retry = TS\.stage === 'error' \? \$\('\[data-key="ts:0"\]', el\) : null;/);
+});
+
 test('the new texts are translated', () => {
   const de = JSON.parse(ui('i18n/de.json'));
   assert.ok(de['Its setup step stopped with code {code}.'].includes('{code}'));

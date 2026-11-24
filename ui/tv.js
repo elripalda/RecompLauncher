@@ -2347,7 +2347,9 @@
     // The same control again after a redraw; on a new step, its main button (Next or Set Up).
     const same = TS.stage === 'steps' && prevKey ? $$('[data-sheet]', el).find((x) => x.dataset.key === prevKey) : null;
     const main = TS.stage === 'steps' ? $('.ss-foot .btn.main[data-sheet]', el) : null;
-    const f = same || main || $('[data-sheet]', el);
+    // A failed setup: Try Another Copy, not the log's Copy above it.
+    const retry = TS.stage === 'error' ? $('[data-key="ts:0"]', el) : null;
+    const f = same || main || retry || $('[data-sheet]', el);
     if (f) focus(f, true);
   }
   // A button of the steps, pressed with A: the same actions as the desktop window's (ssAct).

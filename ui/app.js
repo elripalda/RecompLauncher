@@ -4047,7 +4047,9 @@ function suDraw() {
     box.dataset.stage = SU.stage;
     box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>
       <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive" aria-hidden="true"><i></i></div></div><div class="su-r">${right}</div></div>`;
-    const f = $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
+    // A failed setup: Try Another Copy, not the log's Copy above it.
+    const retry = SU.stage === 'error' ? $('.su-r .btn.main', box) : null;
+    const f = retry || $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
     $('.su-r', box).innerHTML = right;
