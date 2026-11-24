@@ -257,6 +257,8 @@ async function askRun(id, secs, asked_for) {
   try { pre = await invoke('report_preview', { id }); } catch (e) { pre = null; }
   const send = async (verdict, note, log) => {
     const r2 = await invoke('run_report', { id, verdict, note: note || null, mins, log: !!log });
+    // A new review after deleting one: it isn't hidden any more.
+    if (S.reviewGone) delete S.reviewGone[id];
     keep(Object.assign({}, r, { sent: true }));
     toast(r2 && r2.warning ? t(r2.warning) : t('Thanks! It\'s on the game\'s page on recomplauncher.com.'));
     delete S.reports[id];
@@ -293,11 +295,14 @@ async function askRun(id, secs, asked_for) {
 // Takes the player's review back: off the project's page and out of Your Reviews. The launcher still
 // doesn't ask about the game after a session (it was reviewed once; ran[id] keeps sent).
 async function deleteReview(id) {
+  const mine = myReviewOf(id);
   await invoke('review_delete', { id });
+  // Off the screen at once, and kept off while the website's lists catch up (goneReview).
+  goneReview(id, mine);
   if (S.myReports && S.myReports.list) S.myReports.list = S.myReports.list.filter((x) => x.app !== id);
-  delete S.reports[id];
   toast(t('Your review is deleted.'));
-  if (S.view === 'game' && S.arg === id) loadReports(id, true);
+  if (S.view === 'game' && S.arg === id) { refreshGame(); loadReports(id, true); }
+  if (S.view === 'home' || S.view === 'discover') render(true);
   if (S.view === 'settings') render(true);
   if (window.loadMyReports) setTimeout(() => window.loadMyReports(true), 1500);
 }

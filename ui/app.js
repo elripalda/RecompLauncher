@@ -2562,6 +2562,7 @@ async function loadCounts(force) {
   S.runCounts = rc || S.runCounts || {};
   S.deckScores = ds || S.deckScores || {};
   S.latestCounts = lc || S.latestCounts || {};
+  keepGoneCounts();
   // Nothing new: the page stays as it is (no second draw of a long list).
   if (JSON.stringify([S.runCounts, S.deckScores]) === before) return;
   if (S.view === 'game') refreshGame();
@@ -2571,9 +2572,61 @@ async function loadCounts(force) {
 }
 async function loadReports(id, force) {
   S.reports[id] = S.reports[id] && S.reports[id] !== 'loading' ? S.reports[id] : 'loading';
-  try { S.reports[id] = await invoke('play_reports', { id, force: !!force }); } catch (e) { S.reports[id] = { error: true, counts: {}, items: [] }; }
+  try { S.reports[id] = keepGoneOut(id, await invoke('play_reports', { id, force: !!force })); } catch (e) { S.reports[id] = { error: true, counts: {}, items: [] }; }
   if (S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
 }
+// A review the player deleted stays off the screen. The website's lists can be a few minutes old
+// (its cache keeps reviews for up to 5, counts for up to 2), so a list fetched right after could
+// bring it back. For 10 minutes, or until a list comes without it, it's left out of what's fetched
+// and its answer counts one less than when it was deleted.
+const GONE_MS = 10 * 60e3;
+function reviewGone(id) {
+  const all = S.reviewGone || (S.reviewGone = {}), g = all[id];
+  if (g && g.until < Date.now()) delete all[id];
+  return all[id] || null;
+}
+// The player's own review among everyone's (public ones carry no id): the same answer, words,
+// version and PC.
+const sameReview = (x, r) => x.verdict === r.verdict && String(x.note || '').trim() === String(r.note || '').trim()
+  && verNorm(x.version) === verNorm(r.version) && (!x.specs || !r.specs || x.specs === r.specs);
+const lessOne = (c, at, v) => (c && at ? Object.assign({}, c, { [v]: Math.max(0, Math.min(c[v] || 0, (at[v] || 0) - 1)) }) : c);
+function goneReview(id, mine) {
+  if (!mine) return;
+  const rep = S.reports[id] && S.reports[id] !== 'loading' ? S.reports[id] : null;
+  const latest = (S.latestCounts || {})[id];
+  (S.reviewGone || (S.reviewGone = {}))[id] = {
+    until: Date.now() + GONE_MS, r: mine,
+    // What the counts were with it in: anything fetched later counts it one less, at most.
+    at: { list: rep && rep.counts ? Object.assign({}, rep.counts) : null, listLatest: rep && rep.latest ? JSON.parse(JSON.stringify(rep.latest)) : null, all: Object.assign({}, (S.runCounts || {})[id] || {}),
+      latest: latest && verNorm(latest.version) === verNorm(mine.version) ? Object.assign({}, latest) : null },
+  };
+  if (rep) S.reports[id] = keepGoneOut(id, rep);
+  keepGoneCounts();
+}
+// One game's reviews as fetched, without the deleted one while the website still has it.
+function keepGoneOut(id, rep) {
+  const g = reviewGone(id);
+  if (!g || !rep || !Array.isArray(rep.items)) return rep;
+  const items = rep.items.filter((x) => !sameReview(x, g.r));
+  // A fresh list without it: the website caught up, nothing left to hide.
+  if (items.length === rep.items.length && !rep.offline) { delete S.reviewGone[id]; return rep; }
+  // This version's own counts too, when it's the version the review was about.
+  let latest = rep.latest;
+  if (latest && verNorm(latest.version) === verNorm(g.r.version)) {
+    const at = g.at.listLatest || latest;
+    latest = latest.counts ? Object.assign({}, latest, { counts: lessOne(latest.counts, at.counts || latest.counts, g.r.verdict) }) : lessOne(latest, at, g.r.verdict);
+  }
+  return Object.assign({}, rep, { items, latest, counts: lessOne(rep.counts, g.at.list || rep.counts, g.r.verdict) });
+}
+function keepGoneCounts() {
+  for (const id of Object.keys(S.reviewGone || {})) {
+    const g = reviewGone(id);
+    if (!g) continue;
+    if (S.runCounts && S.runCounts[id]) S.runCounts[id] = lessOne(S.runCounts[id], g.at.all, g.r.verdict);
+    if (g.at.latest && S.latestCounts && S.latestCounts[id] && verNorm(S.latestCounts[id].version) === verNorm(g.r.version)) S.latestCounts[id] = lessOne(S.latestCounts[id], g.at.latest, g.r.verdict);
+  }
+}
+Object.assign(window, { goneReview, reviewGone });
 // { n, runs, issues, broken, pct(k) } from counts.
 function runTally(c) {
   c = c || {};

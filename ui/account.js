@@ -41,7 +41,8 @@ async function loadMyReports() {
   if (S.myReports && S.myReports.loading) return;
   const had = (S.myReports && S.myReports.list) || null;
   S.myReports = { list: had, loading: true };
-  try { const r = await invoke('my_reports'); S.myReports = { list: (r && r.reports) || [] }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
+  // A review just deleted stays out while the website's list may still have it.
+  try { const r = await invoke('my_reports'); S.myReports = { list: ((r && r.reports) || []).filter((x) => !(window.reviewGone && window.reviewGone(x.app))) }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
   renderAccountBits();
 }
 window.loadMyReports = loadMyReports;

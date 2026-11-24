@@ -93,13 +93,49 @@ test('Delete Review shows only when changing a review already sent, never right 
   assert.match(dialog, /if \(act === 'del'\) \{ body\(\)\.outerHTML = confirmDel\(\); return; \}/);
 });
 
-test('deleting a review asks the site, then takes it out of Your Reviews', async () => {
-  const calls = [];
-  const S = { myReports: { list: [{ app: 'karpur' }, { app: 'longshot' }] }, reports: { karpur: {} }, view: 'home' };
-  const c = vm.createContext({ S, invoke: async (cmd, args) => { calls.push([cmd, args]); return true; }, toast: () => {}, t: (s) => s, loadReports: () => {}, render: () => {}, window: {}, setTimeout });
+test('deleting a review asks the site, then takes it out of Your Reviews and keeps it hidden', async () => {
+  const calls = [], gone = [];
+  const mine = { app: 'karpur', verdict: 'runs' };
+  const S = { myReports: { list: [mine, { app: 'longshot' }] }, reports: { karpur: {} }, view: 'home' };
+  const c = vm.createContext({ S, invoke: async (cmd, args) => { calls.push([cmd, args]); return true; }, toast: () => {}, t: (s) => s, loadReports: () => {}, render: () => {}, refreshGame: () => {}, window: {}, setTimeout,
+    myReviewOf: (id) => S.myReports.list.find((x) => x.app === id) || null, goneReview: (id, r) => gone.push([id, r]) });
   vm.runInContext(`${fn(more, 'deleteReview')}\nglobalThis.del = deleteReview;`, c);
   await c.del('karpur');
   assert.equal(JSON.stringify(calls), JSON.stringify([['review_delete', { id: 'karpur' }]]));
   assert.equal(S.myReports.list.map((x) => x.app).join(), 'longshot');
-  assert.equal(S.reports.karpur, undefined);
+  assert.deepEqual(gone, [['karpur', mine]]);
+});
+
+// The website's lists can be cached for minutes after a delete (Cloudflare): the review must not come back.
+const goneKit = (S) => {
+  const c = vm.createContext({ S, Date, Object, JSON, Math, String, Array });
+  vm.runInContext(`${line(app, 'verNorm')}\n${line(app, 'GONE_MS')}\n${fn(app, 'reviewGone')}\n${app.match(/^const sameReview = [^]*?;\n/m)[0]}${line(app, 'lessOne')}\n${fn(app, 'goneReview')}\n${fn(app, 'keepGoneOut')}\n${fn(app, 'keepGoneCounts')}\nObject.assign(globalThis, { goneReview, keepGoneOut, keepGoneCounts, reviewGone });`, c);
+  return c;
+};
+const MINE = { app: 'karpur', verdict: 'runs', note: 'Smooth', version: 'v0.4.0', specs: 'PC' };
+const OTHER = { verdict: 'issues', note: 'Crackles', version: 'v0.4.0', specs: 'PC2' };
+
+test('a deleted review stays out of a cached list, and its answer counts one less', () => {
+  const S = { reports: { karpur: { counts: { runs: 5, issues: 1 }, items: [Object.assign({}, MINE), OTHER] } }, runCounts: { karpur: { runs: 5, issues: 1 } }, latestCounts: {} };
+  const c = goneKit(S);
+  c.goneReview('karpur', MINE);
+  assert.equal(S.reports.karpur.items.length, 1);
+  assert.equal(S.reports.karpur.counts.runs, 4);
+  assert.equal(S.runCounts.karpur.runs, 4);
+  // The cache sends the old list again: still hidden, still one less.
+  const again = c.keepGoneOut('karpur', { counts: { runs: 5, issues: 1 }, items: [Object.assign({}, MINE), OTHER] });
+  assert.equal(again.items.length, 1);
+  assert.equal(again.counts.runs, 4);
+  S.runCounts = { karpur: { runs: 5, issues: 1 } };
+  c.keepGoneCounts();
+  assert.equal(S.runCounts.karpur.runs, 4);
+});
+
+test('a fresh list without the deleted review ends the hiding', () => {
+  const S = { reports: { karpur: { counts: { runs: 5 }, items: [Object.assign({}, MINE)] } }, runCounts: {}, latestCounts: {} };
+  const c = goneKit(S);
+  c.goneReview('karpur', MINE);
+  const fresh = c.keepGoneOut('karpur', { counts: { runs: 4 }, items: [OTHER] });
+  assert.equal(fresh.counts.runs, 4);
+  assert.equal(c.reviewGone('karpur'), null);
 });
