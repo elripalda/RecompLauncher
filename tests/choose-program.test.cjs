@@ -112,9 +112,15 @@ test('the pill sits under the game\'s name in place of Easy Setup, and no longer
   assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), size \? esc\(fmtB\(size\)\) : '—'\)/);
 });
 
-test('Big Picture says Set Up by You on an installed game where it would say Easy Setup', () => {
+test('a picked executable counts as Set Up by You even while Easy Setup is still on for the game', () => {
+  const run = new Function('S', `${['setupOf', 'selfManaged', 'setUpByYou'].map((n) => fn(app, n)).join(';\n')}; return setUpByYou;`);
+  const S = { setup: { g: MINE }, easyAll: new Set(['g']), easy: new Set(['g']) };
+  assert.equal(run(S)('g'), true);
+});
+
+test('Big Picture asks Set Up by You first, as the desktop does, then Easy Setup', () => {
   const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
-  assert.match(tv, /: S\.easy\.has\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : ''/);
+  assert.match(tv, /: S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : S\.easy\.has\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : ''/);
 });
 
 test('Use Default lets the pick go in the core', () => {
