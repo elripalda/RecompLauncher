@@ -3669,8 +3669,13 @@ static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 static INPUT_WORKERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static SETUP_STATUS: Mutex<Option<HashMap<String, SetupEv>>> = Mutex::new(None);
 
+/// A setup is going for `id`. For a recomp's id that counts a run kept under one of its games'
+/// ids too: every game of a recomp is set up in the same install, so two at once would each write
+/// the record back and the last one would drop the other's picks.
 fn setup_busy(id: &str) -> bool {
-    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id)) || INPUT_WORKERS.lock().unwrap().iter().any(|x| x == id)
+    let busy = |run: &str| run == id || games::split(run).is_some_and(|(recomp, _)| recomp == id);
+    let running = SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.keys().any(|k| busy(k)));
+    running || INPUT_WORKERS.lock().unwrap().iter().any(|x| busy(x))
 }
 
 fn setup_stopped(id: &str, run: u64) -> bool {
