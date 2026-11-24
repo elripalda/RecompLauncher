@@ -68,6 +68,15 @@ test('the copy box keeps the same buttons empty or filled', () => {
   assert.doesNotMatch(filled, /data-ss="clear"/, 'choosing again is how the copy changes');
 });
 
+test('a folder-only copy shows none of its console\'s file types', () => {
+  // (a Switch recomp whose copy is the folder with exefs and romfs: no .nsp to show)
+  const switchFiles = () => ({ type: 'file', exts: ['xci', 'nsp', 'nup', 'nca'], folder: false });
+  const c = context({}, { copyFormats: switchFiles });
+  const su = { needs: 'The folder with exefs and romfs', kind: 'folder', copy: null, inputs: [], prepare_options: [] };
+  const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.doesNotMatch(html, /\.nsp/);
+});
+
 test('a required extra that is off holds Set Up, and marks the Extras step', () => {
   const c = context();
   const su = copy({ copy: '/roms/G.iso', prepare_options: [vs(false)] });

@@ -29,8 +29,9 @@ function stepsRows(id, su, ns) {
   for (const r of rows) r.how = r.path ? (r.shared ? 'shared' : picked[r.id] ? '' : 'prev') : '';
   const game = rows.find((r) => r.legacy && r.id === 'game');
   if (!game) return rows;
+  // A copy that is only a folder takes no file types, whatever files its console has.
   const fm = copyFormats(id);
-  game.extensions = fm.exts;
+  game.extensions = game.file ? fm.exts : [];
   if (ns.copy) Object.assign(game, { path: ns.copy, how: '' });
   else if (!game.path && S.owned[id]) Object.assign(game, { path: S.owned[id].path, how: 'found' });
   return rows;
