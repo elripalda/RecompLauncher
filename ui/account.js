@@ -298,6 +298,20 @@ const FROM = { player: N_('You picked this folder'), developer: N_('Set by its d
 // shield, so the player sees there's nothing to set up. One the player picked is said plainly.
 const SET_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>';
 const spotSet = (p) => p.from === 'developer' || p.from === 'catalog';
+// A game set up without Easy Setup whose recomplauncher.json (or the catalog) names a folder it
+// doesn't save in anymore: the player can put their own in its place (saves_info's `override`,
+// null when that isn't offered). The named folder stays on the list, unused, to go back to.
+const FROM_CHANGED = N_('You changed this folder');
+const NAMED_UNUSED = {
+  developer: N_('Its developer names this folder. Not used while you use your own.'),
+  catalog: N_('RecompLauncher names this folder. Not used while you use your own.'),
+};
+const USE_NAMED = N_('Use This Folder');
+const overrideOn = (s) => !!(s && s.override && s.override.on);
+const spotFrom = (p, s) => (overrideOn(s) && p.from === 'player' ? FROM_CHANGED : FROM[p.from] || '');
+// Picking the save folder: in place of the named one when the player may change it, otherwise
+// the player's folder for a game nobody named one for.
+const placeCommand = (s) => (s && s.override ? 'saves_set_override' : 'saves_set_place');
 // Nobody (the player, its developer or RecompLauncher) has said where this game saves. Nothing is
 // guessed: the player picks the folder, and until then nothing of it is backed up.
 const SAVES_UNKNOWN = N_('The launcher doesn\'t know where this game saves');
@@ -538,24 +552,35 @@ function savesSettingsCard(id) {
 
 // Where the game keeps its saves. A folder its developer (or RecompLauncher) named is only shown,
 // with a way to open it: saying where is what recomplauncher.json is for, so there's nothing to
-// change. Changing it and more folders are for a folder the player picked, which only counts
+// change, unless the player set the game up themselves (Easy Setup skipped), where Change puts
+// their folder in its place. More folders are for folders the player picked, which only count
 // while nobody has named one (saves::spots).
 function whereCard(id, s) {
-  const picked = s.spots.filter((p) => p.from === 'player').length;
-  const rows = s.spots.map((p) => spotRow(id, p, picked > 1)).join('');
+  const changed = overrideOn(s);
+  const picked = changed ? 0 : s.spots.filter((p) => p.from === 'player').length;
+  const rows = s.spots.map((p) => spotRow(id, p, s, picked > 1)).join('');
+  const unused = changed ? namedRow(id, s.override) : '';
   const add = picked ? `<div class="set-row"><div class="k"><b>${esc(t('Saves in more than one folder?'))}</b><span>${esc(t('For a launcher with several games in it, each saving in its own folder. Backups and cloud saves cover every folder.'))}</span></div><span class="acts"><button type="button" class="btn sm" data-act="saves-place-add" data-id="${esc(id)}">${esc(t('Add a Folder'))}</button></span></div>` : '';
-  return `<div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${rows}${add}</div>`;
+  return `<div class="card"><h3 style="margin-bottom:6px">${esc(t('Where it saves'))}</h3>${rows}${unused}${add}</div>`;
 }
 
-function spotRow(id, p, many) {
-  const from = esc(t(FROM[p.from] || ''));
+function spotRow(id, p, s, many) {
+  const from = esc(t(spotFrom(p, s)));
   const notYet = p.exists ? '' : ` · ${esc(t('Not there yet'))}`;
   const said = spotSet(p) ? `<span class="svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${from}</span>${notYet}` : `${from}${notYet}`;
   const open = p.exists ? `<button type="button" class="btn sm" data-act="saves-open" data-id="${esc(id)}" title="${esc(t('Where the game keeps its saves'))}">${esc(t('Open'))}</button>` : '';
+  const change = `<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`;
   let acts = open;
   if (many) acts = `<button type="button" class="btn sm" data-act="saves-place-remove" data-id="${esc(id)}" data-t="${esc(p.template)}">${esc(t('Take Off the List'))}</button>`;
-  else if (p.from === 'player') acts = `${open}<button type="button" class="btn sm" data-act="saves-place" data-id="${esc(id)}">${esc(t('Change'))}</button>`;
+  else if (p.from === 'player' || s.override) acts = `${open}${change}`;
   return `<div class="set-row"><div class="k"><b class="path">${esc(p.path)}</b><span>${said}</span></div><span class="acts">${acts}</span></div>`;
+}
+
+// The folder its developer or RecompLauncher names, while the player's own is used: greyed, with
+// no shield (the player said it's not the right one), and the way back to it.
+function namedRow(id, o) {
+  const text = NAMED_UNUSED[o.by] || NAMED_UNUSED.developer;
+  return `<div class="set-row svp-unused"><div class="k"><b class="path">${esc(o.path)}</b><span>${esc(t(text))}</span></div><span class="acts"><button type="button" class="btn sm" data-act="saves-place-named" data-id="${esc(id)}">${esc(t(USE_NAMED))}</button></span></div>`;
 }
 
 const savesChanged = (id) => { delete S.saves[id]; if (S.view === 'game' && S.arg === id && S.tab === 'saves') loadSaves(id); };
@@ -1161,8 +1186,13 @@ window.accountAct = async (act, el) => {
       // The player knows better (a game that saves somewhere else): their folder from now on.
       const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
       if (!p) return;
-      try { S.library[id] = await invoke('saves_set_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+      try { S.library[id] = await invoke(placeCommand(S.saves[id]), { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
       toast(t('Saved. Backups and cloud saves use that folder now.'));
+      return loadSaves(id);
+    }
+    case 'saves-place-named': {
+      try { S.library[id] = await invoke('saves_set_override', { id, path: null }); } catch (e) { return fail(e); }
+      toast(t('Saved. Backups and cloud saves use that folder again.'));
       return loadSaves(id);
     }
     case 'saves-place-add': {

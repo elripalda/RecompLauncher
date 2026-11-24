@@ -1059,3 +1059,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-svp-set{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#3ee08f}
 .tv-svp-set svg{flex:none;width:20px;height:20px}
 .tv-svp-set.ours{color:#34F2E8}
+/* The named folder while the player's own is used instead: greyed, as on the desktop. */
+.tv-item.tv-svp-unused .k{opacity:.6}
