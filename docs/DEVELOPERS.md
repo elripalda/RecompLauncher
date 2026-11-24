@@ -1,5 +1,8 @@
 # Works with RecompLauncher
 
+Adding support to a recomp? [ADD-SUPPORT.md](ADD-SUPPORT.md) has the steps, the rules and the
+report to finish with.
+
 For multiple discs, DLC slots and explicitly conditional shared keys, see
 [Named Easy Setup inputs](SETUP-INPUTS.md). That extension is limited to game inputs and three
 shared key types. BIOS/firmware management and multidisc hashing are explicitly deferred.
