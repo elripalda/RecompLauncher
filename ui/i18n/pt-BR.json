@@ -867,7 +867,7 @@
  "Off. Saves for this game are not synced to the cloud.": "Desligado. Os dados salvos deste jogo não são sincronizados com a nuvem.",
  "Off: Windows' own window for picking files and folders. On: the launcher's, which marks the games it knows and can unzip.": "Desligado: a janela do próprio Windows para escolher arquivos e pastas. Ligado: a do launcher, que marca os jogos que ele conhece e consegue descompactar.",
  "Off: a game's desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your Look, cloud saves and play time along.": "Desligado: o atalho de um jogo na área de trabalho inicia o próprio jogo, para front-ends como o RetroBat. Ligado: abre o launcher, que traz seu Estilo, os saves na nuvem e o tempo de jogo.",
- "Off: the zip is deleted once it's unpacked. On: it stays in the library's .downloads folder.": "Desativado: o zip é excluído depois de extraído. Ativado: ele fica na pasta .downloads da biblioteca.",
+ "Off: the zip is deleted once it's unpacked. On: every zip stays as it came, an update's too, in its library's .downloads folder with the date it has on GitHub.": "Desativado: o zip é excluído depois de extraído. Ativado: cada zip fica como chegou, o de uma atualização também, na pasta .downloads da biblioteca dele, com a data que tem no GitHub.",
  "Offline": "Offline",
  "Older releases": "Lançamentos anteriores",
  "On": "Ativado",

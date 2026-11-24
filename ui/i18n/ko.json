@@ -878,7 +878,7 @@
  "Off. Saves for this game are not synced to the cloud.": "꺼짐. 이 게임의 저장 데이터가 클라우드와 동기화되지 않습니다.",
  "Off: Windows' own window for picking files and folders. On: the launcher's, which marks the games it knows and can unzip.": "끄기: 파일과 폴더를 고르는 Windows 기본 창을 사용합니다. 켜기: 런처의 창을 사용하며, 아는 게임을 표시하고 압축을 풀 수 있습니다.",
  "Off: a game's desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your Look, cloud saves and play time along.": "끄기: 게임의 바탕 화면 바로 가기가 게임을 바로 실행합니다. RetroBat 같은 프런트엔드용입니다. 켜기: 런처를 열어 스타일, 클라우드 저장, 플레이 시간도 함께 적용합니다.",
- "Off: the zip is deleted once it's unpacked. On: it stays in the library's .downloads folder.": "끔: zip 파일은 압축을 푼 뒤 삭제됩니다. 켬: 라이브러리의 .downloads 폴더에 남습니다.",
+ "Off: the zip is deleted once it's unpacked. On: every zip stays as it came, an update's too, in its library's .downloads folder with the date it has on GitHub.": "끔: zip 파일은 압축을 푼 뒤 삭제됩니다. 켬: 업데이트 파일을 포함한 모든 zip 파일이 받은 그대로, GitHub에 있는 날짜 그대로 라이브러리의 .downloads 폴더에 남습니다.",
  "Offline": "오프라인",
  "Older releases": "이전 릴리스",
  "On": "켬",

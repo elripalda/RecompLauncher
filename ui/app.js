@@ -5180,6 +5180,13 @@ function pageSettings() {
   const nOwned = ownedGames().length;
   const row = (b, s, ctl) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${esc(s)}</span></div>${ctl}</div>`;
   const group = (title, inner, extra = '') => `<section class="set-group"><div class="set-gh"><h3>${esc(title)}</h3>${extra}</div><div class="card">${inner}</div></section>`;
+  // Keep downloaded files: with it on, Open goes to the kept zips, which sit in a hidden folder
+  // players wouldn't find on their own.
+  const keepToggle = sw('keep_downloads', st.keep_downloads, t('Keep downloaded files'));
+  const libDir = String(st.library_dir || '');
+  const keptFolder = libDir.replace(/[\\/]+$/, '') + (libDir.includes('\\') ? '\\' : '/') + '.downloads';
+  const keptOpen = `<button type="button" class="btn sm" data-act="folder" data-path="${esc(keptFolder)}">${esc(t('Open'))}</button>`;
+  const keepCtl = st.keep_downloads && libDir ? `<span class="set-ctl2">${keptOpen}${keepToggle}</span>` : keepToggle;
   const shown = (k) => (k !== 'pc' || S.pc) && (k !== 'dev' || devAllowed());
   const sec = SET_SECTIONS.some(([k]) => k === S.setTab && shown(k)) ? S.setTab : 'general';
   let body = '';
@@ -5242,7 +5249,7 @@ function pageSettings() {
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Setup game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
-        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
+        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: every zip stays as it came, an update\'s too, in its library\'s .downloads folder with the date it has on GitHub.'), keepCtl)
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
         + networkGroup(group, row, st);

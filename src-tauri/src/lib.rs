@@ -7296,10 +7296,14 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
         let l = st.lib.lock().unwrap();
         match (id, path) {
             (Some(id), _) => l.installed.get(&id).map(|g| g.path.clone()).ok_or_else(|| Error::Msg("It isn't installed.".into()))?,
-            // Only folders the launcher knows about: libraries and ROM folders.
+            // Only folders the launcher knows about: libraries, their kept downloads and ROM folders.
             (None, Some(p)) => {
                 let p = PathBuf::from(p);
+                let named_downloads = p.file_name() == Some(std::ffi::OsStr::new(".downloads"));
+                let in_library = p.parent().is_some_and(|lib| l.settings.all_libraries().iter().any(|x| x == lib));
+                let kept_downloads = named_downloads && in_library;
                 let known = l.settings.all_libraries().contains(&p)
+                    || kept_downloads
                     || l.settings.rom_dirs.contains(&p)
                     || l.roms.iter().any(|r| r.path == p || r.path.parent() == Some(p.as_path()))
                     || p == st.dir
