@@ -5706,7 +5706,7 @@ function toggleSide() {
 }
 
 function go(view, arg, fromEl) {
-  if (view === 'settings') { loadLibs(); loadPads(); }
+  if (view === 'settings') { loadLibs(); loadPads(); if (S.view !== 'settings') S.myRepNew = S.myRepAll = S.myRepQ = S.myRepV = null; }
   if (view === 'shots') loadAllShots();
   if (view === 'saves' && window.loadSavesAll) window.loadSavesAll();
   if (view === S.view && arg === S.arg) { if (view === 'game' && S.nextTab) { S.tab = S.nextTab; S.nextTab = null; } return render(true); }
@@ -6031,6 +6031,8 @@ window.setLanguage = setLanguage;
 // left and the page around it stay as they are.
 function setSection(k, fade = true) {
   if (S.view !== 'settings') { S.setTab = k; return go('settings'); }
+  // Your Reviews opened again: what's new is worked out afresh, and it shows the first ones only.
+  if (k !== S.setTab) S.myRepNew = S.myRepAll = S.myRepQ = S.myRepV = null;
   S.setTab = k;
   const ob = $('#main .set-body');
   if (!ob) return render(true);
