@@ -75,7 +75,7 @@ const SWITCH_FILES = () => ({ type: 'file', exts: ['xci', 'nsp', 'nup', 'nca'], 
 const folderInput = (x) => Object.assign({ id: 'base', label: 'The folder with exefs and romfs', role: 'game', file: false, folder: true, active: true, path: null, extensions: [] }, x);
 const named = (inputs) => ({ needs: 'x', kind: '', inputs, prepare_options: [] });
 // The whole window (stepsShell) draws the game's media too.
-const withMedia = () => context({}, { MediaArt: require('../ui/media-art.js') });
+const withMedia = (extra) => context({}, Object.assign({ MediaArt: require('../ui/media-art.js') }, extra));
 
 test('an input that takes only a folder says so in its box, under its label', () => {
   const c = context();
@@ -105,6 +105,13 @@ test('a folder-only row among several says it takes a folder too', () => {
   assert.match(html, /<div class="ss-row"><span class="st">.*?<b>The folder with exefs and romfs<\/b><div class="line"><span class="ss-hint">/);
 });
 
+test('a folder-only update row says "This takes a folder", not "This game"', () => {
+  const c = context();
+  const update = folderInput({ id: 'upd', label: 'The update, extracted', role: 'update' });
+  const html = c.stepsView('g', named([folderInput(), update]), {}, { name: 'R', game: 'G' });
+  assert.match(html, /<b>The update, extracted<\/b><div class="line"><span class="ss-hint">This takes a folder, not a file\.<\/span>/);
+});
+
 test('a folder-only copy shows none of its console\'s file types', () => {
   const c = context({}, { copyFormats: SWITCH_FILES });
   const su = { needs: 'The folder with exefs and romfs', kind: 'folder', copy: null, inputs: [], prepare_options: [] };
@@ -116,6 +123,13 @@ test('a folder-only copy shows none of its console\'s file types', () => {
 test('the drop area asks for a folder when that is all the copy takes', () => {
   const c = withMedia();
   const html = c.stepsShell('g', named([folderInput()]), {}, { name: 'R', game: 'G' }, false);
+  assert.match(html, /<b>Drop your game&#39;s folder here<\/b>/);
+});
+
+test('the drop area still asks for a folder when the game needs an update too', () => {
+  const c = withMedia({ copyFormats: SWITCH_FILES, copyDrop: () => 'Drop your game file here' });
+  const update = { id: 'upd', label: 'The update', role: 'update', file: true, active: true, path: null, extensions: ['nsp'] };
+  const html = c.stepsShell('g', named([folderInput(), update]), {}, { name: 'R', game: 'G' }, false);
   assert.match(html, /<b>Drop your game&#39;s folder here<\/b>/);
 });
 

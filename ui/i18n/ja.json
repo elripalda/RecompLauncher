@@ -2285,6 +2285,7 @@
  "Drop your ROM here": "ここに ROM をドロップ",
  "Drop your game file here": "ここにゲームファイルをドロップ",
  "This game takes a folder, not a file.": "このゲームにはファイルではなくフォルダーが必要です。",
+ "This takes a folder, not a file.": "ここにはファイルではなくフォルダーが必要です。",
  "Drop your game's folder here": "ここにゲームのフォルダーをドロップ",
  "The file you made from your own copy": "お持ちのゲームから作成したファイル",
  "What the game needs from your copy": "ゲームに必要な、お持ちのゲームのデータ",

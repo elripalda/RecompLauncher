@@ -2285,6 +2285,7 @@
  "Drop your ROM here": "Suelta aquí tu ROM",
  "Drop your game file here": "Suelta aquí tu archivo del juego",
  "This game takes a folder, not a file.": "Este juego necesita una carpeta, no un archivo.",
+ "This takes a folder, not a file.": "Esto necesita una carpeta, no un archivo.",
  "Drop your game's folder here": "Suelta aquí la carpeta de tu juego",
  "The file you made from your own copy": "El archivo que has creado a partir de tu propia copia",
  "What the game needs from your copy": "Lo que el juego necesita de tu copia",

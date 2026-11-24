@@ -2285,6 +2285,7 @@
  "Drop your ROM here": "أفلت ملف ROM هنا",
  "Drop your game file here": "أفلت ملف اللعبة هنا",
  "This game takes a folder, not a file.": "هذه اللعبة تحتاج إلى مجلد، وليس ملفًا.",
+ "This takes a folder, not a file.": "هذا يحتاج إلى مجلد، وليس ملفًا.",
  "Drop your game's folder here": "أفلت مجلد اللعبة هنا",
  "The file you made from your own copy": "الملف الذي أنشأته من نسختك الخاصة",
  "What the game needs from your copy": "ما تحتاجه اللعبة من نسختك",
