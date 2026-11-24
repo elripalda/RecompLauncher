@@ -669,6 +669,33 @@ pub async fn report_reply(app: AppHandle, id: i64, text: String) -> Res<Value> {
     Ok(v)
 }
 
+/// The player deletes their own review of a recomp (Edit Your Review, Delete Review): the site takes
+/// back every review the account has of it, with its log and the answers on it. true when there was
+/// one to delete.
+#[tauri::command]
+pub async fn review_delete(app: AppHandle, id: String) -> Res<bool> {
+    let st = app.state::<App>();
+    let t = token(&st.dir).ok_or_else(|| Error::Msg("Sign in to delete your review.".into()))?;
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = pc_api();
+    let req = st.http.post(&url).json(&json!({"a": "feedback-delete", "id": id})).header("X-RL-Token", t).timeout(crate::net::QUICK);
+    let r = crate::net::send(req, &url, true).await?;
+    let code = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if let Some(e) = sign_in_needed(code, &v) {
+        return Err(e);
+    }
+    let ok = v.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    if code >= 400 || !ok {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("Your review couldn't be deleted. Try again later.").to_string()));
+    }
+    // The copy of its reviews kept on this PC has this one in it: asked again the next time.
+    let _ = std::fs::remove_file(st.dir.join("cache/reports").join(format!("{id}.json")));
+    Ok(v.get("removed").and_then(Value::as_bool).unwrap_or(false))
+}
+
 // ---------- Request a recomp: a project link the player wants in the launcher ----------
 
 /// The longest link and note a request carries. Anything longer is a paste gone wrong.
