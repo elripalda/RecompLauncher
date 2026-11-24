@@ -175,7 +175,8 @@ pub fn is_root(p: &Path) -> bool {
 }
 
 /// Where LaunchBox usually is: its installer puts it in the user's folder; people also keep it at
-/// the top of a drive or under Games. -> the first one that's really LaunchBox's folder.
+/// the top of a drive or under Games. The user's folder is looked at first, and only then the
+/// PC's own drives. -> the first one that's really LaunchBox's folder.
 fn guess() -> Option<PathBuf> {
     let mut maybe = Vec::new();
     if let Some(h) = dirs::home_dir() {
@@ -183,14 +184,38 @@ fn guess() -> Option<PathBuf> {
         maybe.push(h.join("Documents").join("LaunchBox"));
         maybe.push(h.join("Games").join("LaunchBox"));
     }
-    if cfg!(windows) {
-        for d in b'C'..=b'Z' {
-            let drive = PathBuf::from(format!("{}:\\", d as char));
-            maybe.push(drive.join("LaunchBox"));
-            maybe.push(drive.join("Games").join("LaunchBox"));
-        }
+    for drive in fixed_drives() {
+        maybe.push(drive.join("LaunchBox"));
+        maybe.push(drive.join("Games").join("LaunchBox"));
     }
     maybe.into_iter().find(|p| is_root(p))
+}
+
+/// The PC's own drives (C:\, D:\...). Network, removable and CD drives are left out: a mapped
+/// drive that's disconnected can take seconds to answer.
+#[cfg(windows)]
+fn fixed_drives() -> Vec<PathBuf> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
+    const DRIVE_FIXED: u32 = 3;
+    let mask = unsafe { GetLogicalDrives() };
+    let mut out = Vec::new();
+    for i in 0..26u32 {
+        if mask & (1 << i) == 0 {
+            continue;
+        }
+        let root = format!("{}:\\", (b'A' + i as u8) as char);
+        let wide: Vec<u16> = root.encode_utf16().chain(std::iter::once(0)).collect();
+        let kind = unsafe { GetDriveTypeW(PCWSTR(wide.as_ptr())) };
+        if kind == DRIVE_FIXED {
+            out.push(PathBuf::from(root));
+        }
+    }
+    out
+}
+#[cfg(not(windows))]
+fn fixed_drives() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 /// Every Platforms file with when it last changed, so the games read from them are read again
@@ -279,12 +304,18 @@ pub fn find(all: &[LbGame], term: &str, console: &str) -> Vec<LbGame> {
 
 /// A folder under `parent` whose name is `name`, matched by letters and numbers only (a console
 /// LaunchBox saved as "Sony Playstation" or with characters Windows doesn't allow in names).
+/// Only a plain name is joined on: one with a path in it ("..", "C:\\x", "a/b") is only ever
+/// compared with the folders that are really there, so nothing outside `parent` is looked at.
 fn child(parent: &Path, name: &str) -> Option<PathBuf> {
+    let plain = !name.contains(['/', '\\', ':']) && name != "." && name != "..";
     let exact = parent.join(name);
-    if exact.is_dir() {
+    if plain && !name.is_empty() && exact.is_dir() {
         return Some(exact);
     }
     let want = key(name);
+    if want.is_empty() {
+        return None;
+    }
     std::fs::read_dir(parent).ok()?.flatten().map(|e| e.path()).find(|p| p.is_dir() && p.file_name().is_some_and(|n| key(&n.to_string_lossy()) == want))
 }
 
@@ -498,6 +529,18 @@ mod tests {
         let t = thumb(&p).unwrap();
         let _ = std::fs::remove_file(&p);
         assert!(t.starts_with("data:image/jpeg;base64,"));
+    }
+
+    #[test]
+    fn a_console_name_never_leaves_the_folder() {
+        let root = std::env::temp_dir().join(format!("rl-lb-out-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("Images").join("Nintendo 64")).unwrap();
+        std::fs::create_dir_all(root.join("Outside")).unwrap();
+        let images = root.join("Images");
+        assert!(child(&images, "..").is_none());
+        assert!(child(&images, "../Outside").is_none());
+        assert_eq!(child(&images, "Nintendo 64"), Some(images.join("Nintendo 64")));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
