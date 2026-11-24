@@ -410,6 +410,26 @@
     sheet(title, items, 'where', `<h3>${esc(title)}</h3><p class="tv-sreq-p dim">${esc(t('Each game gets its own folder in your Recomp Library. Updates always go to the same place, and you can move a game to another drive later.'))}</p>`);
     return true;
   };
+  // Which build of a release to install (app.js pickBuild), as a sheet: the desktop's dialog has
+  // no way to move between its buttons with a controller, so only the highlighted one could be picked.
+  window.tvPickBuild = (id, builds, current, go) => {
+    if (!TV.on) return false;
+    const a = byId(id) || { name: id };
+    // Kinds of build (a Linux folder, a Windows zip): each says its kind, the usual one marked.
+    // Builds of one kind (one per region): just their names.
+    const kinds = new Set(builds.map((b) => b.label)).size > 1;
+    const pick = (name) => { go(name); draw(true); };
+    const items = builds.map((b) => ({ label: kinds ? t(b.label) : b.name, sub: kinds ? b.name : '', tag: kinds && b.best ? t('Usual') : '', icon: 'down', run: () => pick(b.name) }));
+    items.push({ label: t('Cancel'), icon: 'chevL', gap: true, run: () => {} });
+    const say = kinds ? t('This release comes in more than one kind of build. The usual one works for most players. You can switch later in its Manage tab.') : t('This release comes in more than one build, often one for each region. Pick the one that matches your copy of the game. You can switch later in its Manage tab.');
+    const title = tf('Which Version of {name}?', { name: a.name });
+    sheet(title, items, 'where', `<h3>${esc(title)}</h3><p class="tv-sreq-p dim">${esc(say)}</p>`);
+    // Start on the build it has now (Change Build), else the usual one, as the desktop lights it.
+    const lit = builds.findIndex((b) => b.name === current);
+    const start = lit >= 0 ? lit : kinds ? builds.findIndex((b) => b.best) : -1;
+    if (start > 0) focus($(`[data-sheet="${start}"]`, root), true);
+    return true;
+  };
   // A game whose folder isn't there (app.js missingModal), as a sheet for the controller.
   window.tvMissing = (id) => {
     if (!TV.on) return false;
