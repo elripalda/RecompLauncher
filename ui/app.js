@@ -418,7 +418,7 @@ function sponsBand(slot) {
   const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
   return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
-// One view per spot per launch, once it's on screen.
+// One view per spot per launch, once it's on screen (on Home, or Big Picture's Home).
 const SP_SEEN = new Set();
 let spObs = null;
 function sponsWatch() {
@@ -433,7 +433,15 @@ function sponsWatch() {
       invoke('spons_seen', { id }).catch(() => {});
     }
   }, { threshold: 0.5 });
-  for (const el of $$('.sp-tile')) spObs.observe(el);
+  for (const el of $$('[data-sp]')) spObs.observe(el);
+}
+// A folder with ROMs or game backups, picked by the player (with a controller in Big Picture), then
+// looked through for games that have a recomp.
+async function addRomFolder() {
+  const p = await pickFile({ title: t('A folder with your ROMs or game backups'), directory: true }).catch(fail);
+  if (!p) return;
+  await saveSettings({ rom_dirs: uniq([...(S.settings.rom_dirs || []), typeof p === 'string' ? p : p.path]) });
+  return scanRoms();
 }
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
@@ -1807,7 +1815,10 @@ async function homeSync() {
   let v = null;
   try { v = await invoke('home_layout'); } catch (e) { v = S.home || null; }
   S.home = v && Array.isArray(v.items) ? v : null;
-  if (JSON.stringify(S.home) !== before && S.view === 'home') render(true);
+  if (JSON.stringify(S.home) === before) return;
+  if (S.view === 'home') render(true);
+  // Big Picture's Home follows the same list.
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
 }
 function homeMaybe() { if (Date.now() - homeAt > 60 * 1000) homeSync(); }
 // The order to draw: the website's items, with any row this version has that the list doesn't name
@@ -1857,19 +1868,28 @@ function homeBoxShows(x) {
   if (x.when === 'signed_in') return !!accountId();
   return true;
 }
+// What an info box's button does, when it's one the launcher allows: add a ROM folder, open one
+// of its screens, a game it has, or an https link. Null leaves the button out. Home and Big
+// Picture's Home both ask here, so a box does the same thing in each.
+function homeBoxAct(x) {
+  if (!x || !x.btn) return null;
+  if (x.act === 'rom-add') return { act: 'rom-add' };
+  if (HOME_GO[x.act]) return { act: 'go', view: HOME_GO[x.act] };
+  if (x.act === 'game' && byId(x.arg)) return { act: 'game', id: String(x.arg) };
+  const url = x.act === 'link' ? httpsOnly(x.arg) : '';
+  return url ? { act: 'link', url } : null;
+}
 // An info box from the admin, in the same look as "It finds the games you already have". Its words
 // are the admin's own (not translated); the button does only what the launcher allows.
 function homeBox(x) {
   if (!homeBoxShows(x)) return '';
-  let btn = '';
-  if (x.btn) {
-    const go = HOME_GO[x.act];
-    const attrs = x.act === 'rom-add' ? 'data-act="rom-add"'
-      : go ? `data-act="home-go" data-v="${esc(go)}"`
-      : x.act === 'game' && byId(x.arg) ? `data-act="open" data-id="${esc(x.arg)}"`
-      : x.act === 'link' && httpsOnly(x.arg) ? `data-act="note-url" data-url="${esc(httpsOnly(x.arg))}"` : '';
-    if (attrs) btn = `<button type="button" class="btn main" ${attrs}>${esc(x.btn)}</button>`;
-  }
+  const a = homeBoxAct(x);
+  const attrs = !a ? ''
+    : a.act === 'rom-add' ? 'data-act="rom-add"'
+    : a.act === 'go' ? `data-act="home-go" data-v="${esc(a.view)}"`
+    : a.act === 'game' ? `data-act="open" data-id="${esc(a.id)}"`
+    : `data-act="note-url" data-url="${esc(a.url)}"`;
+  const btn = attrs ? `<button type="button" class="btn main" ${attrs}>${esc(x.btn)}</button>` : '';
   const close = x.close ? `<button type="button" class="tn-x" data-act="home-close" data-id="${esc(String(x.id))}" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}">${XMARK}</button>` : '';
   return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${x.title ? `<b dir="auto">${esc(x.title)}</b>` : ''}${x.text ? `<span dir="auto">${esc(x.text)}</span>` : ''}</div>${btn}${close}</div>`;
 }
@@ -9407,12 +9427,7 @@ async function act(el, e) {
       return loadLibs();
     }
     case 'lib-add': return addLibrary().then(loadLibs);
-    case 'rom-add': {
-      const p = await pickFile({ title: t('A folder with your ROMs or game backups'), directory: true }).catch(fail);
-      if (!p) return;
-      await saveSettings({ rom_dirs: uniq([...(S.settings.rom_dirs || []), typeof p === 'string' ? p : p.path]) });
-      return scanRoms();
-    }
+    case 'rom-add': return addRomFolder();
     case 'rom-remove': await saveSettings({ rom_dirs: (S.settings.rom_dirs || []).filter((d) => d !== el.dataset.path) }); return scanRoms();
     case 'rom-scan': return scanRoms();
     case 'rom-emus': return emuFolders();

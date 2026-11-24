@@ -238,3 +238,5 @@ how the separately hosted catalog service collects its metadata.
 
 The launcher (`homePlan` in app.js) skips kinds and rows it doesn't know, puts back a row the list doesn't name after the row it usually follows, and keeps its built-in order (with the `a=spons` banner) when there's no list or its `v` isn't 1. A closed box is remembered in settings (`ui.home_closed`).
 
+Big Picture's Home (`tvHomeRows` in tv.js) follows the same list under its row of your games. It has its own rows, matched by the same ids (`played` is Continue playing, shown when that row holds your pinned games; `found`, `ready`, `easy`, `news`, `updated`, `new`, `trend`); `favs` and `follow` aren't in Big Picture, so their place is skipped. Info boxes and banners are as wide as a row and picked with the controller (a box's button does what it does on the desktop, `homeBoxAct`); a box with nothing to press shows with the row under it. Without the list it keeps its own order, with no banner.
+
