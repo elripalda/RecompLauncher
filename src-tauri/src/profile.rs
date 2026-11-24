@@ -248,7 +248,7 @@ impl Prepare {
         if named.is_some() || cfg!(windows) {
             return named;
         }
-        self.program.iter().find_map(|p| native_twin(install, p))
+        self.program.iter().find_map(|p| twin_beside(install, p))
     }
 }
 
@@ -832,7 +832,7 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
 /// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
 /// instead. The one in a folder named after the AppImage first (a release with several), else the
 /// one at the top.
-fn to_apprun(p: &mut Profile, dir: &Path) {
+pub(crate) fn to_apprun(p: &mut Profile, dir: &Path) {
     if dir.as_os_str().is_empty() {
         return;
     }
@@ -874,6 +874,15 @@ pub fn named_program(path: PathBuf) -> Option<PathBuf> {
         return None;
     }
     crate::macos::bundle_executable(&path, crate::assets::arch_now())
+}
+
+/// The native twin of a program a profile names, looked for in the folder that name points into.
+/// A program in a subfolder (`Longshot/longshot`, built there by the setup step) must not match a
+/// tool at the top of the release that shares its name (`longshot-builder`).
+fn twin_beside(install: &Path, named: &str) -> Option<PathBuf> {
+    let path = install.join(named);
+    let folder = path.parent().unwrap_or(install);
+    native_twin(folder, named)
 }
 
 /// A native build's program for the Windows one a game's setup names: the same name without its
@@ -1548,7 +1557,7 @@ impl Profile {
 
     fn program_for(&self, install: &Path, windows_build: bool) -> Option<PathBuf> {
         let s = self.start.as_ref()?;
-        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
+        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| twin_beside(install, p)) };
         let program = (if windows_build { None } else { twin() })
             .or_else(|| s.program.iter().find_map(|p| named_program(install.join(p))))
             .or_else(twin)?;
@@ -3023,6 +3032,24 @@ mod tests {
         assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0.file_name().unwrap(), "parasite-eve-pc");
         // The plain call keeps the Windows-first behavior for callers that don't know the build.
         assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_program_built_into_a_subfolder_starts_not_the_builder_beside_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("twin-subfolder");
+        // Longshot's release: the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        let exe = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(exe, d.join("Longshot").join("longshot"));
         let _ = std::fs::remove_dir_all(&d);
     }
 

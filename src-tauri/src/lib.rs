@@ -33,6 +33,7 @@ pub mod ingame;
 pub mod install;
 pub mod library;
 pub mod library_convert;
+pub mod logs_zip;
 pub mod looks;
 pub mod mac_update;
 pub mod manage;
@@ -115,6 +116,12 @@ impl From<reqwest::Error> for Error {
                 Some(h) => Error::Net(format!("{h} took too long to answer. Try again in a minute.")),
                 None => Error::Net("A site took too long to answer. Try again in a minute.".into()),
             }
+        } else if e.is_connect() && net::tls_failed(&e) {
+            // Something answered, but not with a secure connection: whatever stepped in between
+            // the player and the site (a proxy too, when there is one) is what to look at.
+            // Checking their connection or waiting wouldn't help.
+            let h = site.unwrap_or_else(|| "the site".into());
+            Error::Net(format!("Couldn't open a secure connection to {h}. Something on your network or PC may be blocking it: a router's security filter, an antivirus or a VPN."))
         } else if e.is_connect() && net::proxy_shown().is_some() {
             // Through a proxy that didn't answer: that's what to check, not the site.
             Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Network, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
@@ -3250,9 +3257,9 @@ fn start_game_with_monitor_context(
             cmd.env(k, v);
         }
     }
-    // An unpacked AppImage's AppRun: what its runtime would have set (APPDIR, ARGV0).
+    // A program in an unpacked AppImage: what its runtime would have set (APPDIR, OWD, ...).
     #[cfg(target_os = "linux")]
-    appimage_env(&mut cmd, &exe);
+    appimage_env(&mut cmd, &exe, &g.path);
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
     let mut ach_id = full_id.clone();
     let ach_session = {
@@ -4186,15 +4193,66 @@ fn human_size(b: u64) -> String {
     }
 }
 
-/// An AppImage unpacked at install starts from its AppRun, which may look for its files through
-/// APPDIR (the AppImage's runtime sets it when the AppImage starts itself): set it here.
+/// A program in an AppImage unpacked at install gets what the AppImage's runtime would have set
+/// (see `appimage_vars`).
 #[cfg(target_os = "linux")]
-fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path) {
-    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
-        if let Some(dir) = exe.parent() {
-            cmd.env("APPDIR", dir).env("ARGV0", exe);
-        }
+fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path, install: &Path) {
+    for (k, v) in appimage_vars(exe, install, sysenv::for_games("LD_LIBRARY_PATH")) {
+        cmd.env(k, v);
     }
+}
+
+/// The unpacked AppImage a program is in: the nearest folder above it, inside the game's folder,
+/// that has an AppRun.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn appimage_root(exe: &Path, install: &Path) -> Option<PathBuf> {
+    let mut folders = exe.ancestors().skip(1).take_while(|d| d.starts_with(install));
+    folders.find(|d| d.join("AppRun").is_file()).map(Path::to_path_buf)
+}
+
+/// What the AppImage runtime sets for the program it starts, for a program in an unpacked
+/// AppImage: APPDIR (the AppImage's folder, where programs look for their own files), OWD (the
+/// folder it starts in) and, for its AppRun, ARGV0. A program named by itself instead of its
+/// AppRun also gets the AppImage's libraries (`appimage_libs`). Nothing for a program in a plain
+/// folder. APPIMAGE is never set: there's no AppImage file anymore.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_vars(exe: &Path, install: &Path, pc_libs: Option<std::ffi::OsString>) -> Vec<(&'static str, std::ffi::OsString)> {
+    let apprun = exe.file_name().is_some_and(|n| n == "AppRun");
+    let root = if apprun { exe.parent().map(Path::to_path_buf) } else { appimage_root(exe, install) };
+    let Some(root) = root else { return vec![] };
+    let starts_in = exe.parent().unwrap_or(&root).as_os_str().to_os_string();
+    let mut vars = vec![("APPDIR", root.into_os_string()), ("OWD", starts_in)];
+    if apprun {
+        vars.push(("ARGV0", exe.as_os_str().to_os_string()));
+    }
+    if let Some(libs) = appimage_libs(exe, install, pc_libs) {
+        vars.push(("LD_LIBRARY_PATH", libs));
+    }
+    vars
+}
+
+/// Where an AppImage keeps the libraries it brings, inside its folder.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const APPIMAGE_LIB_DIRS: [&str; 6] = ["lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu", "usr/lib/aarch64-linux-gnu"];
+
+/// A program inside an unpacked AppImage, started by itself instead of through its AppRun (a
+/// profile that names it, like mkw-recomp's `mkw`): the library folders the AppImage brings, which
+/// its AppRun would have put first. Without them it stops at once ("libvpx.so.6: cannot open
+/// shared object file", code 127). The PC's own list comes after them. None for its AppRun, which
+/// sets its own, and for a program in a folder that isn't an AppImage's.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_libs(exe: &Path, install: &Path, pc: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
+    if exe.file_name().is_some_and(|n| n == "AppRun") {
+        return None;
+    }
+    let root = appimage_root(exe, install)?;
+    let mut dirs: Vec<PathBuf> = APPIMAGE_LIB_DIRS.iter().map(|d| root.join(d)).filter(|d| d.is_dir()).collect();
+    if dirs.is_empty() {
+        return None;
+    }
+    let pc = pc.unwrap_or_default();
+    dirs.extend(std::env::split_paths(&pc).filter(|p| !p.as_os_str().is_empty()));
+    std::env::join_paths(dirs).ok()
 }
 
 /// Run a recomp's prepare program, reading `progress 0.4 text` lines from it.
@@ -4501,11 +4559,11 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     for (k, v) in temp.env() {
         c.env(k, as_given(v));
     }
-    // An unpacked AppImage's AppRun, run for its setup step: what its runtime would have set.
-    if exe.file_name().map(|n| n == "AppRun").unwrap_or(false) {
-        if let Some(dir) = exe.parent() {
-            c.env("APPDIR", dir).env("ARGV0", &exe);
-        }
+    // A setup step in an unpacked AppImage (its AppRun, or a program named inside it): what the
+    // AppImage's runtime would have set.
+    #[cfg(target_os = "linux")]
+    for (k, v) in appimage_vars(&exe, install, sysenv::for_games("LD_LIBRARY_PATH")) {
+        c.env(k, v);
     }
     c.args(&args).current_dir(exe.parent().unwrap_or(install)).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     #[cfg(windows)]
@@ -6241,7 +6299,7 @@ fn run_file(id: &str) -> String {
 }
 
 /// What `note_run` wrote down for the game's last start.
-fn last_run(dir: &Path, id: &str) -> Option<String> {
+pub(crate) fn last_run(dir: &Path, id: &str) -> Option<String> {
     std::fs::read_to_string(dir.join("cache/runs").join(format!("{}.txt", run_file(id)))).ok()
 }
 
@@ -6974,11 +7032,12 @@ fn say_why_it_stopped() {
         }
         let what = info.payload().downcast_ref::<String>().cloned().or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
         trail::note(format!("The launcher stopped: {what}"));
-        let low = what.to_lowercase();
-        let text = if low.contains("webview2") || low.contains("webview") {
-            format!("RecompLauncher couldn't open its window, because Microsoft Edge WebView2 is missing or broken on this PC.\n\nInstall the WebView2 Runtime from Microsoft (search for \"WebView2 Runtime\"), then open RecompLauncher again.\n\n{what}")
+        // Every window that fails to open reads "failed to create webview: WebView2 error", so the
+        // text can't tell a missing WebView2 from anything else: ask WebView2 for its version.
+        let text = if webview2_missing() {
+            format!("RecompLauncher couldn't open its window, because Microsoft Edge WebView2 isn't installed on this PC.\n\nInstall the WebView2 Runtime from Microsoft (search for \"WebView2 Runtime\"), then open RecompLauncher again.\n\n{what}")
         } else {
-            format!("RecompLauncher couldn't start.\n\n{what}")
+            format!("RecompLauncher couldn't start.\n\n{what}\n\nPlease report this at https://github.com/elripalda/RecompLauncher/issues and attach launcher-trail.log from %APPDATA%\\com.recomplauncher.app.")
         };
         #[link(name = "user32")]
         extern "system" {
@@ -6990,6 +7049,17 @@ fn say_why_it_stopped() {
         // SAFETY: both strings end with a zero and live until the call returns.
         unsafe { MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), 0x0000_0010 | 0x0001_0000) };
     }));
+}
+
+/// True only when WebView2 says for sure it isn't there. It asks from a thread of its own: a panic
+/// inside the panic hook would end the launcher without the box, and a helper's panic only fails
+/// the join. Anything it can't tell counts as not missing.
+#[cfg(windows)]
+fn webview2_missing() -> bool {
+    let Ok(asking) = std::thread::Builder::new().spawn(tauri::webview_version) else {
+        return false;
+    };
+    matches!(asking.join(), Ok(Err(_)))
 }
 
 /// Where what a game printed on its last start is kept.
@@ -8324,6 +8394,45 @@ fn run_program(st: State<'_, App>, id: String, rel: String) -> Res<()> {
     Ok(())
 }
 
+/// The PC, the installed games and a few settings, as launcher-and-pc.txt: in a report with
+/// "Include my PC and launcher info" on, and in the logs zip.
+pub(crate) fn launcher_and_pc(st: &App, pc: &usage::PcInfo) -> String {
+    // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
+    let drawing = if cfg!(target_os = "linux") {
+        let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
+        let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
+        format!(
+            "Graphics mode: {}{}{}\n",
+            if mode.is_empty() { "auto" } else { &mode },
+            if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
+            if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
+        )
+    } else {
+        String::new()
+    };
+    let mut txt = format!(
+        "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
+        env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
+    );
+    {
+        let lib = st.lib.lock().unwrap();
+        for (id, g) in lib.installed.iter().take(80) {
+            txt.push_str(&format!("- {id} {}{}\n", g.tag, if g.local { " (local build)" } else { "" }));
+        }
+        if lib.installed.is_empty() {
+            txt.push_str("(none)\n");
+        }
+        let s = &lib.settings;
+        txt.push_str(&format!("\nSettings: big picture at start {}, updates check {}, backups before updates {}, keep downloads {}\n", s.start_in_tv, s.check_updates, s.backup_before_update, s.keep_downloads));
+    }
+    if let Ok(h) = std::fs::read_to_string(st.dir.join("downloads.json")) {
+        let tail: String = h.chars().rev().take(6000).collect::<Vec<_>>().into_iter().rev().collect();
+        txt.push_str("\nRecent downloads (end of downloads.json):\n");
+        txt.push_str(&tail);
+    }
+    txt
+}
+
 /// Beta feedback from Settings > Beta: what it's about, what kind of note it is, how the beta is
 /// going, the player's words and, if they tick it, a short file about this PC and their games.
 /// It lands in the admin's Inbox with the other logs, under the app "launcher".
@@ -8376,41 +8485,8 @@ async fn beta_feedback(st: State<'_, App>, kind: String, area: String, mood: Opt
     if attach {
         let dir = st.dir.clone();
         let pc = tokio::task::spawn_blocking(move || usage::pc_info(&dir)).await.unwrap_or_default();
-        // Linux: how the window is drawn (Settings → Appearance → Graphics Mode).
-        let drawing = if cfg!(target_os = "linux") {
-            let mode = st.lib.lock().unwrap().settings.linux_graphics.clone();
-            let on = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
-            format!(
-                "Graphics mode: {}{}{}\n",
-                if mode.is_empty() { "auto" } else { &mode },
-                if on("WEBKIT_DISABLE_DMABUF_RENDERER") { ", DMABUF off" } else { "" },
-                if on("WEBKIT_DISABLE_COMPOSITING_MODE") { ", compositing off" } else { "" }
-            )
-        } else {
-            String::new()
-        };
-        let mut txt = format!(
-            "RecompLauncher {}\nSystem: {} ({})\nWindows/OS: {}\nCPU: {} ({} threads)\nRAM: {} GB\nGPU: {} {}\nSteam Deck: {}\n{drawing}\nInstalled games:\n",
-            env!("CARGO_PKG_VERSION"), assets::os_now(), assets::arch_now(), pc.osver, pc.cpu, pc.cores, pc.ram_gb, pc.gpu, pc.gpu_driver, shortcuts::is_steam_deck()
-        );
-        {
-            let lib = st.lib.lock().unwrap();
-            for (id, g) in lib.installed.iter().take(80) {
-                txt.push_str(&format!("- {id} {}{}\n", g.tag, if g.local { " (local build)" } else { "" }));
-            }
-            if lib.installed.is_empty() {
-                txt.push_str("(none)\n");
-            }
-            let s = &lib.settings;
-            txt.push_str(&format!("\nSettings: big picture at start {}, updates check {}, backups before updates {}, keep downloads {}\n", s.start_in_tv, s.check_updates, s.backup_before_update, s.keep_downloads));
-        }
-        if let Ok(h) = std::fs::read_to_string(st.dir.join("downloads.json")) {
-            let tail: String = h.chars().rev().take(6000).collect::<Vec<_>>().into_iter().rev().collect();
-            txt.push_str("\nRecent downloads (end of downloads.json):\n");
-            txt.push_str(&tail);
-        }
         form.push(("name[]".into(), "launcher-and-pc.txt".into()));
-        form.push(("text[]".into(), txt));
+        form.push(("text[]".into(), launcher_and_pc(&st, &pc)));
         if let Some(t) = game.as_ref().map(|g| trail::tail_for(&g.id, 24_000)).unwrap_or_else(|| trail::tail(24_000)) {
             form.push(("name[]".into(), "launcher-trail.txt".into()));
             form.push(("text[]".into(), t));
@@ -10256,14 +10332,14 @@ pub fn run() {
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_play_without_cloud, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -11412,6 +11488,81 @@ mod tests {
         let with = prepare_args(&pr, install, Some(Path::new("/roms/game.nup")), &extra);
         assert_eq!(with[2], "--game=/roms/game.nup");
         assert_eq!(with.len(), 6);
+    }
+
+    fn fresh_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// An unpacked AppImage like mkw-recomp's: AppRun, the program beside it, and lib/.
+    fn unpacked_appimage(name: &str) -> PathBuf {
+        let d = fresh_dir(name);
+        std::fs::write(d.join("AppRun"), "#!/bin/sh\n").unwrap();
+        std::fs::write(d.join("mkw"), "").unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_gets_its_libraries() {
+        let d = unpacked_appimage("appimage-libs-program");
+        let libs = appimage_libs(&d.join("mkw"), &d, None).unwrap();
+        assert_eq!(std::env::split_paths(&libs).collect::<Vec<_>>(), [d.join("lib")]);
+    }
+
+    #[test]
+    fn the_pcs_own_library_folders_come_after_the_appimages() {
+        let d = unpacked_appimage("appimage-libs-pc");
+        let libs = appimage_libs(&d.join("mkw"), &d, Some("/opt/mine/lib".into())).unwrap();
+        assert_eq!(std::env::split_paths(&libs).collect::<Vec<_>>(), [d.join("lib"), PathBuf::from("/opt/mine/lib")]);
+    }
+
+    #[test]
+    fn an_appimages_apprun_sets_its_own_libraries() {
+        let d = unpacked_appimage("appimage-libs-apprun");
+        assert!(appimage_libs(&d.join("AppRun"), &d, None).is_none());
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_gets_no_libraries_added() {
+        let d = fresh_dir("appimage-libs-plain");
+        std::fs::write(d.join("game"), "").unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        assert!(appimage_libs(&d.join("game"), &d, None).is_none());
+    }
+
+    fn var(vars: &[(&str, std::ffi::OsString)], k: &str) -> Option<PathBuf> {
+        vars.iter().find(|(name, _)| *name == k).map(|(_, v)| PathBuf::from(v))
+    }
+
+    #[test]
+    fn an_unpacked_appimages_apprun_gets_appdir_owd_and_argv0() {
+        let d = unpacked_appimage("appimage-vars-apprun");
+        let vars = appimage_vars(&d.join("AppRun"), &d, None);
+        assert_eq!(var(&vars, "APPDIR"), Some(d.clone()));
+        assert_eq!(var(&vars, "OWD"), Some(d.clone()));
+        assert_eq!(var(&vars, "ARGV0"), Some(d.join("AppRun")));
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_gets_its_appdir() {
+        let d = unpacked_appimage("appimage-vars-program");
+        std::fs::create_dir_all(d.join("usr/bin")).unwrap();
+        std::fs::write(d.join("usr/bin/game"), "").unwrap();
+        let vars = appimage_vars(&d.join("usr/bin/game"), &d, None);
+        assert_eq!(var(&vars, "APPDIR"), Some(d.clone()));
+        assert_eq!(var(&vars, "OWD"), Some(d.join("usr/bin")));
+        assert!(var(&vars, "ARGV0").is_none());
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_gets_nothing_of_an_appimage() {
+        let d = fresh_dir("appimage-vars-plain");
+        std::fs::write(d.join("game"), "").unwrap();
+        assert!(appimage_vars(&d.join("game"), &d, None).is_empty());
     }
 
     #[test]

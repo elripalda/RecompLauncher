@@ -325,6 +325,17 @@ fn unpack_dwarfs(file: File, offset: u64, to: &Path) -> io::Result<()> {
     out.finish()
 }
 
+/// The trail's line for links an unpack left out, naming the first few and where they pointed:
+/// a game that then won't start for a missing file is found by its name.
+#[cfg_attr(not(unix), allow(dead_code))]
+fn left_out_note(links: &[String]) -> String {
+    const SHOWN: usize = 5;
+    let named = links.iter().take(SHOWN).cloned().collect::<Vec<_>>().join(", ");
+    let more = links.len().saturating_sub(SHOWN);
+    let rest = if more > 0 { format!(" and {more} more") } else { String::new() };
+    format!("AppImage: {} links pointing outside the game's folder were left out: {named}{rest}", links.len())
+}
+
 /// Writing an AppImage's files out, whatever they were packed in: the same rules for both.
 #[cfg(unix)]
 struct Unpacking<'a> {
@@ -371,10 +382,10 @@ impl<'a> Unpacking<'a> {
 
     fn finish(self) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
-        let mut left_out = 0;
+        let mut left_out = vec![];
         for (rel, target) in self.links {
             if !link_stays_inside(&rel, &target) {
-                left_out += 1;
+                left_out.push(format!("{} -> {}", rel.display(), target.display()));
                 continue;
             }
             let dest = self.to.join(&rel);
@@ -383,8 +394,8 @@ impl<'a> Unpacking<'a> {
             }
             std::os::unix::fs::symlink(&target, &dest)?;
         }
-        if left_out > 0 {
-            crate::trail::note(format!("AppImage: {left_out} links pointing outside the game's folder were left out"));
+        if !left_out.is_empty() {
+            crate::trail::note(left_out_note(&left_out));
         }
         // Folders' own permissions last: a read-only folder in the image would stop its files going in.
         for (dir, mode) in self.folders.into_iter().rev() {
@@ -425,6 +436,20 @@ pub(crate) mod tests {
     use backhand::{FilesystemCompressor, FilesystemWriter, NodeHeader};
     use std::io::Cursor;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn links_left_out_are_named_with_where_they_pointed() {
+        let note = left_out_note(&["usr/lib/libfoo.so -> /usr/lib/libfoo.so".into()]);
+        assert_eq!(note, "AppImage: 1 links pointing outside the game's folder were left out: usr/lib/libfoo.so -> /usr/lib/libfoo.so");
+    }
+
+    #[test]
+    fn only_the_first_five_links_left_out_are_named() {
+        let links: Vec<String> = (1..=7).map(|i| format!("l{i} -> /x")).collect();
+        let note = left_out_note(&links);
+        assert!(note.starts_with("AppImage: 7 links"), "{note}");
+        assert!(note.ends_with("l5 -> /x and 2 more"), "{note}");
+    }
 
     pub(crate) struct TempDir(pub PathBuf);
     impl TempDir {
