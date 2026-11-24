@@ -418,7 +418,7 @@ async function playSync(ids) {
   } catch (e) { /* this PC's own numbers stay */ }
   return JSON.stringify(S.cloudPlay || null) !== before;
 }
-setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); } }, 10 * 60 * 1000);
+setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); homeSync(); } }, 10 * 60 * 1000);
 // Sponsor spots in the app for this account, from the website (Sponsors in the admin). Home shows
 // one between Ready to Play and Recently Updated when there is one.
 async function sponsSync() {
@@ -1797,18 +1797,119 @@ function pageHome() {
   const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;
   return `<div class="page home">${offlineNote()}
     ${showBanner ? slider(feats) : ''}
-    ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
-    ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
-    ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
-    ${sponsBand('app_home')}
-    ${shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
-    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
-    ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
-    ${trendShelf(pool)}
-    ${shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true })}
-    ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
-    ${newsSection()}
+    ${homeLayout({
+      played: () => (played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''),
+      favs: () => (fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''),
+      ready: () => (ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''),
+      updated: () => shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) }),
+      follow: () => (follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''),
+      found: () => (found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()),
+      trend: () => trendShelf(pool),
+      new: () => shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true }),
+      easy: () => (easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''),
+      news: () => newsSection(),
+    })}
   </div>`;
+}
+
+// ---------- Home's order, from the website (admin: Launcher > Home page) ----------
+// The rows in their built-in order. '@app_home' is where the App Home Banner sat before the website
+// could move it; it's used only when the website's list hasn't come (yet, or ever).
+const HOME_ROWS = ['played', 'favs', 'ready', '@app_home', 'updated', 'follow', 'found', 'trend', 'new', 'easy', 'news'];
+// The website's list ({v: 1, items, hide}): undefined until asked, null when there isn't one, and then
+// Home keeps its built-in order. It's asked for at start, every 10 minutes, and when Home opens
+// (at most once a minute), so a change in the admin shows the next time a player opens Home.
+let homeAt = 0;
+async function homeSync() {
+  homeAt = Date.now();
+  const before = JSON.stringify(S.home || null);
+  let v = null;
+  try { v = await invoke('home_layout'); } catch (e) { v = S.home || null; }
+  S.home = v && Array.isArray(v.items) ? v : null;
+  if (JSON.stringify(S.home) !== before && S.view === 'home') render(true);
+}
+function homeMaybe() { if (Date.now() - homeAt > 60 * 1000) homeSync(); }
+// The order to draw: the website's items, with any row this version has that the list doesn't name
+// (a row newer than the list) put back after the row it usually follows. Hidden rows stay out.
+function homePlan(home) {
+  const rowsOnly = HOME_ROWS.filter((k) => k[0] !== '@');
+  if (!home) return HOME_ROWS.map((k) => (k[0] === '@' ? { k: 'spot', slot: k.slice(1) } : { k: 'row', id: k }));
+  const known = (x) => x && (x.k === 'box' || x.k === 'banner' || (x.k === 'row' && rowsOnly.includes(x.id)));
+  const plan = home.items.filter(known);
+  const named = new Set([...plan.filter((x) => x.k === 'row').map((x) => x.id), ...(Array.isArray(home.hide) ? home.hide : [])]);
+  rowsOnly.forEach((id, i) => {
+    if (named.has(id)) return;
+    const before = rowsOnly.slice(0, i).reverse().find((r) => plan.some((x) => x.k === 'row' && x.id === r));
+    const at = before ? plan.findIndex((x) => x.k === 'row' && x.id === before) + 1 : 0;
+    plan.splice(at, 0, { k: 'row', id });
+  });
+  return plan;
+}
+// rows: id => a function that draws it (only rows that show are drawn).
+function homeLayout(rows) {
+  return homePlan(S.home).map((x) => {
+    if (x.k === 'row') return rows[x.id] ? rows[x.id]() : '';
+    if (x.k === 'spot') return sponsBand(x.slot);
+    if (x.k === 'banner') return homeBanner(x);
+    return homeBox(x);
+  }).join('');
+}
+const HOME_ICONS = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  gift: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 13h18M12 9v12M12 9c-2-4-6-4-6-1.5S9 9 12 9c3 0 6-1 6-1.5S14 5 12 9"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+  pad: '<rect x="2.5" y="7" width="19" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M15.5 12h.01M17.5 14h.01"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  sparkle: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+};
+const homeIcon = (k) => (k === 'disc' || !HOME_ICONS[k] ? (k === 'disc' ? DISC_L : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOME_ICONS.info}</svg>`) : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOME_ICONS[k]}</svg>`);
+const HOME_GO = { 'go:discover': 'discover', 'go:soon': 'soon', 'go:library': 'library', 'go:settings': 'settings' };
+const homeClosed = () => (S.settings.ui || {}).home_closed || [];
+// Whether an info box is for this player right now (the website can't know these, so it asks).
+function homeBoxShows(x) {
+  if (x.close && homeClosed().includes(Number(x.id))) return false;
+  if (x.when === 'no_folders') return !(S.settings.rom_dirs || []).length;
+  if (x.when === 'signed_out') return !accountId();
+  if (x.when === 'signed_in') return !!accountId();
+  return true;
+}
+// An info box's words in the player's language (or its base one: es for es-419), where the website
+// translated them when the admin saved; else as the admin typed them. Only these regional languages
+// fall back, so zh-Hant never gets another script's words.
+const HOME_TR_BASE = { 'en-GB': 'en', 'es-419': 'es', 'fr-CA': 'fr', 'pt-BR': 'pt' };
+function homeWord(x, k) {
+  const tr = x.tr && typeof x.tr === 'object' ? x.tr : {};
+  const lang = String(curLang() || 'en');
+  const m = tr[lang] || (HOME_TR_BASE[lang] && tr[HOME_TR_BASE[lang]]);
+  const v = m && typeof m[k] === 'string' && m[k].trim() ? m[k] : x[k];
+  return typeof v === 'string' ? v : '';
+}
+// An info box from the admin, in the same look as "It finds the games you already have", in the
+// player's language when it's translated; the button does only what the launcher allows.
+function homeBox(x) {
+  if (!homeBoxShows(x)) return '';
+  const title = homeWord(x, 'title'), text = homeWord(x, 'text'), label = homeWord(x, 'btn');
+  let btn = '';
+  if (label) {
+    const go = HOME_GO[x.act];
+    const attrs = x.act === 'rom-add' ? 'data-act="rom-add"'
+      : go ? `data-act="home-go" data-v="${esc(go)}"`
+      : x.act === 'game' && byId(x.arg) ? `data-act="open" data-id="${esc(x.arg)}"`
+      : x.act === 'link' && httpsOnly(x.arg) ? `data-act="note-url" data-url="${esc(httpsOnly(x.arg))}"` : '';
+    if (attrs) btn = `<button type="button" class="btn main" ${attrs}>${esc(label)}</button>`;
+  }
+  const close = x.close ? `<button type="button" class="tn-x" data-act="home-close" data-id="${esc(String(x.id))}" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}">${XMARK}</button>` : '';
+  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<span dir="auto">${esc(text)}</span>` : ''}</div>${btn}${close}</div>`;
+}
+// A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
+function homeBanner(x) {
+  const sp = x && x.sp;
+  if (!sp || !sp.id || !sp.img) return '';
+  const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
+  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(sp.id))}" data-sp="${esc(String(sp.id))}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
 
 // ---------- Trending This Week (the site's weekly chart of the most played recomps) ----------
@@ -1923,7 +2024,7 @@ function slideTitle(a) {
   return `<div class="sl-logo"><img src="${esc(src)}" alt=""><h2>${esc(a.name)}</h2></div>`;
 }
 function slider(feats) {
-  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(thumbOf(a.hero || a.cover, 960), 'bg')}
+  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(a.hero || a.cover, 'bg')}
       <div class="sl-in"><span class="kick">${esc(bannerInfo(a.id).tag || (a.featured ? t('Featured') : t('Popular right now')))}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span>${slideTitle(a)}${based(a)}${bannerInfo(a.id).text || a.blurb ? `<p>${esc(bannerInfo(a.id).text || a.blurb)}</p>` : ''}
         <div class="acts">${slideActs(a)}</div></div>
       <button type="button" class="sl-cover" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(t('Details'))}" tabindex="-1">${pic(thumbOf(a.cover))}</button></div>`).join('')}
@@ -2370,7 +2471,7 @@ function pageGame(id) {
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
-    <div class="gp-hero">${pic(thumbOf(a.hero || a.cover, 960))}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
+    <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
       <div class="gp-title">${gameTitle(a, id)}</div>
@@ -5782,6 +5883,7 @@ function toggleSide() {
 function go(view, arg, fromEl) {
   if (view === 'settings') { loadLibs(); loadPads(); if (S.view !== 'settings') S.myRepNew = S.myRepAll = S.myRepQ = S.myRepV = null; }
   if (view === 'shots') loadAllShots();
+  if (view === 'home') homeMaybe();
   if (view === 'saves' && window.loadSavesAll) window.loadSavesAll();
   if (view === S.view && arg === S.arg) { if (view === 'game' && S.nextTab) { S.tab = S.nextTab; S.nextTab = null; } return render(true); }
   S.back.push({ view: S.view, arg: S.arg, tab: S.tab, scroll: $('#main').scrollTop });
@@ -5902,7 +6004,7 @@ async function loadCatalog(force, asked) {
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
     // Kept for offline use, but not while the window is opening: a while later, at the sizes shown.
-    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => { const hero = catalogArt(a, 'hero'); return [thumbOf(catalogArt(a, 'cover'), tileThumb()), hero ? thumbOf(hero, 960) : '', catalogArt(a, 'logo')]; }).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [thumbOf(catalogArt(a, 'cover'), tileThumb()), catalogArt(a, 'hero') || '', catalogArt(a, 'logo')]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     if (urls.length) setTimeout(() => invoke('prefetch_images', { urls }).catch(() => {}), 15000);
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
@@ -9371,6 +9473,9 @@ async function act(el, e) {
     case 'deck-f': S.find.deckgreat = !S.find.deckgreat; return updateDiscover();
     case 'notify': return toggleNotify(id);
     case 'note-x': return closeNote(el.dataset.n);
+    // An info box from Home page: its screen, or closed for good on this PC.
+    case 'home-go': return HOME_GO['go:' + el.dataset.v] ? go(el.dataset.v) : null;
+    case 'home-close': { const id = Number(el.dataset.id); if (!id) return null; return saveUi({ home_closed: [...homeClosed().filter((x) => x !== id), id].slice(-50) }).then(() => render(true)); }
     case 'note-url': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
@@ -10367,6 +10472,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   await loadCatalog(false, catAsk);
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
+  homeSync();
   loadIg();
   enjoyDay();
   // Both read the list on disk, side by side. The window waits a moment for them, so the first

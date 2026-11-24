@@ -57,7 +57,7 @@ or a lost request never counts anything twice.
 | `POST ?a=play` | `{"pc", "games": [{"game", "secs", "last", "count", "longest", "recent"}]}`, up to 500 and 1 MB → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
 | `GET ?a=play` | `{"games": {ID: {"secs", "last", "count", "longest", "recent"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
 | `POST ?a=play-clear` | `{"pc", "games": [ID, ...]}`, up to 500 → `{"ok": true}`. Deletes this PC's rows for those games (its play ID's, and its sign-in's from before it sent one); other PCs keep theirs. Reset Play Time in a game's menu (`cloud::playtime_reset`): the launcher clears its own numbers, then this, then sends what's left with `POST ?a=play`. A site without it answers 400 and the launcher says the account still has the old time. |
-| `GET ?a=spons` | `{"s": [{"id", "slot", "img", "alt", "house"}]}`: sponsor spots for this account (Home's `app_home`, between Ready to Play and Recently Updated; `cloud::spons_mine`, `sponsSync` in app.js). Views go to `/api/spons.php?seen=<id>` (`cloud::spons_seen`) and a click opens `/api/spons.php?go=<id>`. Empty when there's nothing for this account. |
+| `GET ?a=spons` | `{"s": [{"id", "slot", "img", "alt", "house"}]}`: sponsor spots for this account (Home's `app_home`, between Ready to Play and Recently Updated; `cloud::spons_mine`, `sponsSync` in app.js). Views go to `/api/spons.php?seen=<id>` (`cloud::spons_seen`) and a click opens `/api/spons.php?go=<id>`. Empty when there's nothing for this account. Used only while the Home list below hasn't come. |
 
 `count`, `longest` and `recent` draw a game's "Your play time" card (this week, this month,
 sessions, longest, the last two weeks) over all the PCs:
@@ -230,3 +230,14 @@ same status and keep installation available.
 
 This fallback does not infer abandonment from repository activity and does not change
 how the separately hosted catalog service collects its metadata.
+
+## Home's order (`/api/home.php`)
+
+`GET /api/home.php?page=app` (signed out) or `?page=app&me=1` with the account's token (adds the blocks for App Testers): what goes on Home, in order, set on the website's admin (Launcher > Home page). `cloud::home_layout` asks for it at start, every 10 minutes, and when Home opens (at most once a minute), and keeps the last good answer in `cache/home.json` for offline use.
+
+`{"v": 1, "items": [...], "hide": [row ids]}`. Items: `{"k": "row", "id"}` (one of Home's own rows: `played`, `favs`, `ready`, `updated`, `follow`, `found`, `trend`, `new`, `easy`, `news`), `{"k": "box", "id", "title", "text", "icon", "btn", "act", "arg", "when", "close"}` (an info box; `act` is `link`, `game`, `rom-add` or `go:discover|soon|library|settings`; `when` is ``, `no_folders`, `signed_out` or `signed_in`), `{"k": "banner", "id", "slot", "sp": {"id", "img", "alt", "house"}}` (counted like the sponsor spots above).
+
+The launcher (`homePlan` in app.js) skips kinds and rows it doesn't know, puts back a row the list doesn't name after the row it usually follows, and keeps its built-in order (with the `a=spons` banner) when there's no list or its `v` isn't 1. A closed box is remembered in settings (`ui.home_closed`).
+
+A box can also have `"tr": {LANG: {"title", "text", "btn"}}`: its words in each language the website translated them into when the admin saved (any of them can be missing). `homeWord` in app.js shows the player's language, then its base language for the four regional ones (`es` for `es-419`; `zh-Hant` never falls back to `zh`), else the words as typed. The answer holds every language, so the copy in `cache/home.json` follows a language change offline too.
+

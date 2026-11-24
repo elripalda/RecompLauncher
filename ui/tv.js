@@ -267,7 +267,8 @@
   }
 
   // ---------- pieces ----------
-  const heroOf = (a) => (a ? media(thumbOf(a.hero || a.cover, 960)) : '');
+  // Full-screen art keeps its original resolution; the site's thumbnails stop at 960 pixels.
+  const heroOf = (a) => (a ? media(a.hero || a.cover) : '');
   // ---------- colour from the cover ----------
   // Each game's cover gives the page its colours: a light accent (buttons, the line over the
   // title, the glow) and a deep shade that tints the backdrop. Worked out once per cover from a
@@ -353,7 +354,7 @@
   function card(a, key, sub) {
     const g = S.library[a.id];
     return `<button type="button" class="tv-card" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}">
-      <span class="ph">${esc(a.name)}</span>${a.hero || a.cover ? `<img src="${esc(heroOf(a))}" alt="">` : ''}
+      <span class="ph">${esc(a.name)}</span>${a.hero || a.cover ? `<img src="${esc(media(thumbOf(a.hero || a.cover, 960)))}" alt="">` : ''}
       ${S.running.has(a.id) ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : S.updates[a.id] ? `<span class="tv-badge">${esc(t('Update'))}</span>` : sreqBadge(a)}
       <span class="cap"><b>${esc(a.name)}</b><span>${esc(sub != null ? sub : g ? timeLine(g) : a.game || '')}</span></span></button>`;
   }
@@ -565,7 +566,7 @@
     const dock = list.map((a) => {
       const st = status(a), j = S.jobs[a.id];
       const badge = st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : '';
-      const pic = wide ? (a.hero || a.cover ? heroOf(a) : '') : a.cover ? media(thumbOf(a.cover, 400)) : '';
+      const pic = wide ? (a.hero || a.cover ? media(thumbOf(a.hero || a.cover, 960)) : '') : a.cover ? media(thumbOf(a.cover, 400)) : '';
       return `<button type="button" class="tv-dk${wide ? ' wide' : ''}${TV.sort && TV.sort.id === a.id ? ' moving' : ''}" data-f data-key="c:${esc(a.id)}" data-hero="${esc(a.id)}" data-dock="${esc(a.id)}" aria-label="${esc(a.name)}"><span class="ph">${esc(a.name)}</span>${pic ? `<img src="${esc(pic)}" alt="" decoding="async">` : ''}${wide ? `<span class="cap">${esc(a.name)}</span>` : ''}${badge}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}${TV.sort && TV.sort.id === a.id ? `<span class="tv-mv">${svg('chevL', 26)}${svg('chevR', 26)}</span>` : ''}</button>`;
     }).join('');
     const label = d.kind === 'pinned' ? t('Pinned') : d.kind === 'mine' ? t('Continue playing') : d.kind === 'banner' ? t('Featured') : t('Most played recomps');
