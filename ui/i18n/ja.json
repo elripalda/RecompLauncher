@@ -1442,6 +1442,7 @@
  "Uninstall {name}": "{name} をアンインストール",
  "Uninstall {name}?": "{name} をアンインストールしますか？",
  "Uninstall, keep its folder": "アンインストールしてフォルダーは残す",
+ "Uninstalling…": "アンインストール中…",
  "Uninstall…": "アンインストール…",
  "Unknown file.": "不明なファイルです。",
  "Unlocks while you play": "プレイ中に解除",

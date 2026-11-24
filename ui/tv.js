@@ -363,7 +363,7 @@
     const st = status(a), j = S.jobs[a.id];
     const vers = TV.view !== 'library' && !j && verGroup(a);
     // One label: with a versions count on the poster, Setup Required stays on the game's page.
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'uninstalling' ? `<span class="tv-badge">${esc(t('Uninstalling…'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
@@ -466,6 +466,7 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
+      case 'uninstalling': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Uninstalling…'))}</span></button>`;
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
         // Said as on the desktop's game page and Downloads: "Building the game · 42%".
@@ -582,6 +583,7 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
+      case 'uninstalling': return null;
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelDownload(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
@@ -604,6 +606,7 @@
   function mainWords(a) {
     const st = status(a);
     if (st === 'busy') return progLabel(S.jobs[a.id])[0];
+    if (st === 'uninstalling') return t('Uninstalling…');
     if (st === 'soon') return t('Coming soon');
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
     if (st === 'settingup') {
@@ -1855,7 +1858,7 @@
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
         ...(!S.running.has(id) && window.hasOwnPlaytime(id) ? [{ label: t('Reset Play Time'), sub: t('Its play time on this PC starts again from zero'), icon: 'history', run: () => { closeSheet(); setTimeout(() => window.resetPlaytime(id), 250); } }] : []),
-        ...(!S.running.has(id) && !S.jobs[id] ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
+        ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
       ] : []),
     ];
     const st = S.running.has(id) ? t('Playing now') : g ? timeLine(g) : a.game ? tf('Based on {game}', { game: a.game }) : '';
@@ -1907,13 +1910,18 @@
   // Uninstall, from a controller: the same choices as on the desktop.
   function tvUninstall(id) {
     const g = S.library[id];
-    if (!g) return;
+    // Already on its way out: a second press would only fail once the first one is done.
+    if (!g || S.uninstalling.has(id)) return;
     if (S.running.has(id)) return toast(t('Close the game first.'), true);
     // keep: a copy of its saves first, as the desktop's tick does (on unless the player picks the
     // item that deletes them too).
     const run = (del, keep = true) => async () => {
+      if (S.uninstalling.has(id)) return;
+      S.uninstalling.add(id);
+      draw(true);
       let r = {};
-      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
+      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { S.uninstalling.delete(id); await refreshState(); draw(true); return fail(e); }
+      S.uninstalling.delete(id);
       if (window.usageUninstall) window.usageUninstall(id);
       if (window.keepOut) await window.keepOut(id);
       delete S.updates[id];
@@ -3009,7 +3017,7 @@
         if (!g) return;
         sfx('open');
         return sheet(g.name, [
-          ...(!S.running.has(id) && !S.jobs[id] ? [{ label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
+          ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
           { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
           { label: t('Game page'), icon: 'page', run: () => go('game', id) },
         ]);

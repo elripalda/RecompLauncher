@@ -59,3 +59,38 @@ test('every new uninstall text is in every language', () => {
     for (const s of texts) assert.ok(d[s], `${f}: ${s}`);
   }
 });
+
+test('a game being uninstalled says so, ahead of anything else it could show', () => {
+  const st = fn(app, 'status');
+  assert.match(st, /if \(S\.uninstalling\.has\(rid\)\) return 'uninstalling';/);
+  assert.match(fn(app, 'actions'), /case 'uninstalling': return `<div class="prog"><div class="track busy">/);
+});
+
+test('the desktop uninstall runs once, however many times it is pressed', () => {
+  const u = fn(app, 'confirmUninstall');
+  assert.match(u, /if \(!g \|\| S\.uninstalling\.has\(id\)\) return;/);
+  assert.match(u, /S\.uninstalling\.add\(id\);\n\s+render\(true\);\n\s+let r = \{\};\n\s+try \{ r = \(await invoke\('uninstall'/);
+  assert.match(u, /catch \(err\) \{ S\.uninstalling\.delete\(id\);/);
+});
+
+test('the desktop hides its Uninstall buttons while it runs', () => {
+  assert.match(fn(app, 'gameMenu'), /\.\.\.\(g && st !== 'uninstalling' \? \['-', \{ act: 'uninstall'/);
+  assert.match(fn(app, 'manageTab'), /S\.uninstalling\.has\(id\) \? `<button type="button" class="btn danger" disabled>/);
+});
+
+test('Big Picture uninstall runs once too, and says so on its button', () => {
+  const u = fn(tv, 'tvUninstall');
+  assert.match(u, /if \(!g \|\| S\.uninstalling\.has\(id\)\) return;/);
+  assert.match(u, /S\.uninstalling\.add\(id\);\n\s+draw\(true\);/);
+  assert.match(fn(tv, 'mainButton'), /case 'uninstalling': return `<button type="button" class="tv-btn" data-f data-key="\$\{key\}" disabled>/);
+});
+
+test('Uninstalling… is in every language', () => {
+  const dir = path.join(__dirname, '../ui/i18n');
+  // en-GB and fr-CA only hold what differs from English and French.
+  const overlays = ['en-GB.json', 'fr-CA.json'];
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json') && !overlays.includes(x))) {
+    const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    assert.ok(d['Uninstalling…'], f);
+  }
+});
