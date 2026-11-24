@@ -915,11 +915,13 @@ window.cloudAllChoices = cloudAllChoices;
 // Brings in a newer save from another PC, or asks which to keep. false: don't start it.
 // `cards`: on the desktop the choices are big cards to click (a heading, a green tag such as
 // Newer, and their `lines`), not buttons under the text. Big Picture's sheet is the same either way.
-async function ask(title, text, buttons, cards) {
+// `tvHead`: text for Big Picture's sheet over its choices (escaped already, its title included);
+// without it the sheet shows the title alone.
+async function ask(title, text, buttons, cards, tvHead) {
   if (inTV() && window.tvAsk) {
     // A button marked last (one that changes things for good) goes to the end of the list, away from the first focus.
     const list = buttons.filter((b) => !b.last).concat(buttons.filter((b) => b.last));
-    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, tag: b.tag, icon: b.icon })));
+    const i = await window.tvAsk(title, list.map((b) => ({ label: b.label, sub: b.sub, tag: b.tag, icon: b.icon })), tvHead);
     return i == null || i < 0 ? null : list[i].v;
   }
   const card = (b, i) => `<button type="button" class="pick-card pick-btn" data-x="b${i}"><b>${esc(b.label)}${b.tag ? ` <em class="pick-newer">${esc(b.tag)}</em>` : ''}</b>${(b.lines || []).map((l) => `<span>${esc(l)}</span>`).join('')}</button>`;
@@ -971,10 +973,28 @@ async function beforeCloudPlay(id) {
   try { r = await invoke('saves_check', { id }); } catch (e) { fail(e); return false; }
   if (r.action === 'restored') toast(tf('Your newer save from {device} is in place.', { device: r.cloud.device || t('another PC') }));
   else if (r.action === 'offline') toast(t('Cloud saves can\'t be reached right now. Playing with this PC\'s save.'), true);
+  // Its cloud save couldn't be written here (a read-only folder, say): the player says whether to
+  // play with this PC's save instead. Nothing about the sync changes unless they do.
+  else if (r.action === 'not-restored') {
+    if (!(await playWithoutCloud(id, r))) return false;
+  }
   else if (r.action === 'conflict') {
     try { if (!(await pickCloudSave(id, r))) return false; } catch (e) { fail(e); return false; }
   }
   savesChanged(id);
+  return true;
+}
+
+// The cloud's save couldn't be put in place before Play: why (the folder and the system's reason),
+// and whether to play with this PC's save instead. false: don't start the game.
+async function playWithoutCloud(id, r) {
+  const title = t('Play Without Your Cloud Save?');
+  const lines = [t('Your cloud save couldn\'t be put in place.'), t(r.why), t('You can play with this PC\'s save instead. Your cloud save stays in the cloud, and nothing replaces it without asking you.')];
+  const text = lines.map((l, i) => `<p${i === 1 ? ' class="muted"' : ''}>${esc(l)}</p>`).join('');
+  const tvHead = `<h3>${esc(title)}</h3>${lines.map((l) => `<p class="tv-sreq-p">${esc(l)}</p>`).join('')}`;
+  const buttons = [{ label: t('Play with this PC\'s save'), icon: 'play', v: 'play', main: true, focus: true }, { label: t('Cancel'), icon: 'chevL', v: null }];
+  if ((await ask(title, text, buttons, false, tvHead)) !== 'play') return false;
+  try { await invoke('saves_play_without_cloud', { id, v: r.cloud.v, hash: r.cloud.hash || '', why: r.why }); } catch (e) { fail(e); return false; }
   return true;
 }
 

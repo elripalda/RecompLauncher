@@ -2403,7 +2403,7 @@ function igCard(a, where, alt) {
   const sale = Number(e.pct) > 0;
   const price = e.price ? `<span class="ig-price">${sale ? `<b class="ig-pct">-${fmtNum(Number(e.pct))}%</b>${e.old ? `<s>${esc(e.old)}</s>` : ''}` : ''}<b>${esc(e.price)}</b></span>` : '';
   return `<div class="ig-card${where && where !== 'side' ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
-    <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div><small class="ig-aff">${esc(t('Affiliate link'))}</small></div>`;
+    <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div></div>`;
 }
 // One view per game per launch, when the card is actually on screen.
 function igWatch() {
@@ -5233,6 +5233,7 @@ function pageSettings() {
         <p class="muted" style="margin:0">${esc(t('RecompLauncher has no game files and never downloads any. Every recomp comes from its developer\'s own GitHub, and you set it up with your own copy of the game.'))}</p>`, `<button type="button" class="btn sm" data-act="about">${esc(t('More about it'))}</button>`)
         + group(t('Support'), row(t('Support RecompLauncher'), t('Help keep it running and growing, on Ko-fi'), `<button type="button" class="btn" data-act="url" data-url="${KOFI}">${HEART}${esc(t('Support Us'))}</button>`))
         + (discordUrl() ? group(t('Community'), row(t('Discord'), t('News, help with a game, and a place to send your logs.'), `<button type="button" class="btn" data-act="url" data-url="${esc(discordUrl())}">${DISCORD}${esc(t('Join the Discord'))}</button>`)) : '')
+        + group(t('Troubleshoot'), row(t('Export Logs'), t('Saves the launcher\'s and your games\' logs in one zip on your desktop, to attach wherever you ask for help.'), `<button type="button" class="btn" data-act="export-logs">${esc(t('Export Logs'))}</button>`))
         + group(t('Start over'), row(t('Reset settings'), t('Every setting goes back to how it started. Your games, saves, library folders and pinned games stay.'), `<button type="button" class="btn" data-act="reset" data-k="settings">${esc(t('Reset settings'))}</button>`)
           + row(t('First-time setup'), t('Go through first-time setup again. Nothing is deleted.'), `<button type="button" class="btn" data-act="reset" data-k="setup">${esc(t('Run it again'))}</button>`));
   }
@@ -6811,6 +6812,7 @@ function gameMenu(id) {
         { act: 'report', id, label: t('Report to RecompLauncher…'), icon: 'page' },
         ...devReportItem(x),
       ] },
+      ...(hasOwnPlaytime(id) ? [{ act: 'play-reset', id, label: t('Reset Play Time…'), icon: 'history' }] : []),
     ] : links.length ? ['-', ...links] : []),
     ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
@@ -6849,6 +6851,34 @@ function ownFolder(g) {
   const made = String(g.id || '').replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
   return !!g.asset && norm(g.path).split('/').pop() === made;
 }
+// Play time this PC counted for it (a setup that starts the game counts too, issue #487).
+function hasOwnPlaytime(id) {
+  const play = localPlaytime(id);
+  return !!(play && play.played_secs);
+}
+// Its play time back to zero on this PC, and this PC's share on the account when signed in. The
+// same in Big Picture: ask() shows a controller sheet there.
+async function resetPlaytime(id) {
+  const g = S.library[id];
+  if (!g || !hasOwnPlaytime(id)) return;
+  if (S.running.has(id)) return toast(t('Close the game first.'), true);
+  const signedIn = !!(S.account && S.account.signedIn);
+  const text = signedIn ? t('Its play time and sessions on this PC go back to zero, on your account too. Time played on your other PCs stays.')
+    : t('Its play time and sessions on this PC go back to zero.');
+  const buttons = [{ label: t('Keep it'), sub: t('Nothing changes'), v: 'no', focus: true }, { label: t('Reset Play Time'), v: 'yes', main: true, last: true }];
+  const v = await ask(tf('Reset play time for {name}?', { name: g.name }), `<p>${esc(text)}</p>`, buttons);
+  if (v !== 'yes') return;
+  let r = {};
+  try { r = (await invoke('playtime_reset', { id })) || {}; } catch (err) { return fail(err); }
+  await refreshState();
+  if (r.account) await playSync([]);
+  render(true);
+  if (window.tvRefresh) window.tvRefresh();
+  if (r.account === false) return toast(tf('{name}\'s play time is reset on this PC. Your account couldn\'t be reached, so it still counts the old time: clear it on recomplauncher.com, under Account.', { name: g.name }), true);
+  toast(tf('{name}\'s play time is reset.', { name: g.name }));
+}
+window.resetPlaytime = resetPlaytime;
+window.hasOwnPlaytime = hasOwnPlaytime;
 function confirmUninstall(id) {
   id = parentId(id);
   const g = S.library[id];
@@ -9410,6 +9440,13 @@ async function act(el, e) {
     case 'rel': return toggleRel(el);
     case 'upd-game': S.nextTab = 'updates'; S.toTabs = true; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
+    case 'export-logs': {
+      if (el.disabled) return;
+      el.disabled = true;
+      // The full path: the zip lands in Downloads on a PC with no desktop folder.
+      try { const p = await invoke('export_logs'); toast(tf('Saved {file}.', { file: p })); } catch (err) { fail(err); } finally { el.disabled = false; }
+      return;
+    }
     case 'dev-add': return devAdd();
     case 'dev-open': S.nextTab = 'dev'; return go('game', id);
     case 'dev-check': return devCheck(id, true);
@@ -9510,6 +9547,7 @@ async function act(el, e) {
       } catch (err) { fail(err); }
       return;
     case 'uninstall': return confirmUninstall(parentId(id));
+    case 'play-reset': return resetPlaytime(id);
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
       const ids = S.ids || await invoke('data_ids');
