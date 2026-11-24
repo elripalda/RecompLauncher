@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "wordt gesynchroniseerd als je op Spelen drukt",
  "Saved {time}. What's there now is kept as a backup first.": "Opgeslagen {time}. Wat er nu staat, wordt eerst als back-up bewaard.",
  "A newer save is in the cloud": "Er staat een nieuwere save in de cloud",
- "{n} people saved it or are waiting for it": "{n} mensen hebben het bewaard of wachten erop"
+ "{n} people saved it or are waiting for it": "{n} mensen hebben het bewaard of wachten erop",
+ "Saved": "Bewaard",
+ "Saved. We'll let you know here and by email when it comes out.": "Bewaard. We laten het je hier en per e-mail weten zodra het uit is.",
+ "Saved. We'll let you know when it comes out.": "Bewaard. We laten het je weten zodra het uit is.",
+ "Save it and we'll let you know here and by email when it comes out.": "Bewaar het en we laten het je hier en per e-mail weten zodra het uit is.",
+ "Save it and we'll let you know when it comes out.": "Bewaar het en we laten het je weten zodra het uit is.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} is bewaard. We laten het je weten zodra het uit is.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomps die eraan komen. Bewaar er een en we laten het je weten op de dag dat hij uitkomt."
 }

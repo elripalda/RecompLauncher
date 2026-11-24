@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "按「開始遊戲」時同步",
  "Saved {time}. What's there now is kept as a backup first.": "儲存於{time}。目前的存檔會先保留為備份。",
  "A newer save is in the cloud": "雲端有較新的存檔",
- "{n} people saved it or are waiting for it": "{n} 人已儲存或正在等待"
+ "{n} people saved it or are waiting for it": "{n} 人已儲存或正在等待",
+ "Saved": "已儲存",
+ "Saved. We'll let you know here and by email when it comes out.": "已儲存。推出時我們會在這裡和透過電子郵件通知你。",
+ "Saved. We'll let you know when it comes out.": "已儲存。推出時我們會通知你。",
+ "Save it and we'll let you know here and by email when it comes out.": "儲存後，推出時我們會在這裡和透過電子郵件通知你。",
+ "Save it and we'll let you know when it comes out.": "儲存後，推出時我們會通知你。",
+ "{name} is saved. We'll let you know when it comes out.": "已儲存 {name}。推出時我們會通知你。",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "即將推出的 Recomp。儲存一個，推出當天我們會通知你。"
 }

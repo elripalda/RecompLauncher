@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "يُزامَن عند الضغط على تشغيل",
  "Saved {time}. What's there now is kept as a backup first.": "حُفظ {time}. يُحتفظ بما هو موجود الآن كنسخة احتياطية أولًا.",
  "A newer save is in the cloud": "يوجد ملف حفظ أحدث في السحابة",
- "{n} people saved it or are waiting for it": "{n} شخصًا حفظوها أو ينتظرونها"
+ "{n} people saved it or are waiting for it": "{n} شخصًا حفظوها أو ينتظرونها",
+ "Saved": "محفوظ",
+ "Saved. We'll let you know here and by email when it comes out.": "تم الحفظ. سنُعلمك هنا وبالبريد عند صدورها.",
+ "Saved. We'll let you know when it comes out.": "تم الحفظ. سنُعلمك عند صدورها.",
+ "Save it and we'll let you know here and by email when it comes out.": "احفظها وسنُعلمك هنا وبالبريد عند صدورها.",
+ "Save it and we'll let you know when it comes out.": "احفظها وسنُعلمك عند صدورها.",
+ "{name} is saved. We'll let you know when it comes out.": "تم حفظ {name}. سنُعلمك عند صدورها.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "ريكومبات في الطريق. احفظ واحدة وسنُعلمك يوم صدورها."
 }

@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "ซิงก์เมื่อคุณกดเล่น",
  "Saved {time}. What's there now is kept as a backup first.": "บันทึกเมื่อ {time} เซฟที่มีอยู่ตอนนี้จะถูกเก็บเป็นข้อมูลสำรองก่อน",
  "A newer save is in the cloud": "มีเซฟที่ใหม่กว่าบนคลาวด์",
- "{n} people saved it or are waiting for it": "มี {n} คนบันทึกไว้หรือกำลังรอเกมนี้"
+ "{n} people saved it or are waiting for it": "มี {n} คนบันทึกไว้หรือกำลังรอเกมนี้",
+ "Saved": "บันทึกแล้ว",
+ "Saved. We'll let you know here and by email when it comes out.": "บันทึกแล้ว เราจะแจ้งที่นี่และทางอีเมลเมื่อเกมออก",
+ "Saved. We'll let you know when it comes out.": "บันทึกแล้ว เราจะแจ้งเมื่อเกมออก",
+ "Save it and we'll let you know here and by email when it comes out.": "บันทึกไว้ แล้วเราจะแจ้งที่นี่และทางอีเมลเมื่อเกมออก",
+ "Save it and we'll let you know when it comes out.": "บันทึกไว้ แล้วเราจะแจ้งเมื่อเกมออก",
+ "{name} is saved. We'll let you know when it comes out.": "บันทึก {name} แล้ว เราจะแจ้งเมื่อเกมออก",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomp ที่กำลังจะมา บันทึกไว้แล้วเราจะแจ้งในวันที่ออก"
 }

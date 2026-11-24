@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "sincroniza quando carregas em Jogar",
  "Saved {time}. What's there now is kept as a backup first.": "Gravada {time}. A que está lá agora é guardada primeiro como cópia.",
  "A newer save is in the cloud": "Há uma gravação mais recente na nuvem",
- "{n} people saved it or are waiting for it": "{n} pessoas guardaram ou estão à espera"
+ "{n} people saved it or are waiting for it": "{n} pessoas guardaram ou estão à espera",
+ "Saved": "Guardado",
+ "Saved. We'll let you know here and by email when it comes out.": "Guardado. Avisamos aqui e por e-mail quando sair.",
+ "Saved. We'll let you know when it comes out.": "Guardado. Avisamos quando sair.",
+ "Save it and we'll let you know here and by email when it comes out.": "Guarde e avisamos aqui e por e-mail quando sair.",
+ "Save it and we'll let you know when it comes out.": "Guarde e avisamos quando sair.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} está guardado. Avisamos quando sair.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomps a caminho. Guarde um e avisamos no dia em que sair."
 }

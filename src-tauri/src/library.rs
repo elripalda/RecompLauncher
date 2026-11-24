@@ -501,6 +501,9 @@ pub struct Library {
     /// For recomps by developers the player follows: the version last seen, to tell a new one apart.
     #[serde(default)]
     pub seen_versions: BTreeMap<String, String>,
+    /// Coming Soon recomps in the last catalog, so a saved one that came out can be told apart.
+    #[serde(default)]
+    pub seen_soon: Vec<String>,
     /// Mods the launcher put in, by game id.
     #[serde(default)]
     pub mods: BTreeMap<String, Vec<crate::mods::ModRec>>,
@@ -844,6 +847,7 @@ impl Library {
         l.roms = serde_json::from_value(field("roms")).unwrap_or_default();
         l.seen_apps = serde_json::from_value(field("seen_apps")).unwrap_or_default();
         l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
+        l.seen_soon = serde_json::from_value(field("seen_soon")).unwrap_or_default();
         l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
         l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
         l.removed_play_history = serde_json::from_value(field("removed_play_history")).unwrap_or_default();

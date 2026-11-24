@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "синхронизируется при нажатии «Играть»",
  "Saved {time}. What's there now is kept as a backup first.": "Сохранено {time}. Текущее сначала сохранится как копия.",
  "A newer save is in the cloud": "В облаке есть более новое сохранение",
- "{n} people saved it or are waiting for it": "{n} человек сохранили её или ждут"
+ "{n} people saved it or are waiting for it": "{n} человек сохранили её или ждут",
+ "Saved": "Сохранено",
+ "Saved. We'll let you know here and by email when it comes out.": "Сохранено. Мы сообщим здесь и по почте, когда она выйдет.",
+ "Saved. We'll let you know when it comes out.": "Сохранено. Мы сообщим, когда она выйдет.",
+ "Save it and we'll let you know here and by email when it comes out.": "Сохраните, и мы сообщим здесь и по почте, когда она выйдет.",
+ "Save it and we'll let you know when it comes out.": "Сохраните, и мы сообщим, когда она выйдет.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} сохранена. Мы сообщим, когда она выйдет.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Скоро выйдут. Сохраните рекомп, и мы сообщим в день выхода."
 }

@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "se synchronise quand vous appuyez sur Jouer",
  "Saved {time}. What's there now is kept as a backup first.": "Enregistrée {time}. Celle qui est là maintenant est d'abord gardée en copie.",
  "A newer save is in the cloud": "Une sauvegarde plus récente est dans le cloud",
- "{n} people saved it or are waiting for it": "{n} personnes l'ont enregistré ou l'attendent"
+ "{n} people saved it or are waiting for it": "{n} personnes l'ont enregistré ou l'attendent",
+ "Saved": "Enregistré",
+ "Saved. We'll let you know here and by email when it comes out.": "Enregistré. Nous vous préviendrons ici et par e-mail à sa sortie.",
+ "Saved. We'll let you know when it comes out.": "Enregistré. Nous vous préviendrons à sa sortie.",
+ "Save it and we'll let you know here and by email when it comes out.": "Enregistrez-le et nous vous préviendrons ici et par e-mail à sa sortie.",
+ "Save it and we'll let you know when it comes out.": "Enregistrez-le et nous vous préviendrons à sa sortie.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} est enregistré. Nous vous préviendrons à sa sortie.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Des recomps en route. Enregistrez-en un et nous vous préviendrons le jour de sa sortie."
 }

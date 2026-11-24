@@ -196,10 +196,22 @@ Everything the launcher asks this server goes to one address, `API_BASE` in `src
 - `api/gh.php?repo=`: kept on disk for 6 hours per repo. Asked for when the player opens a game's
   page, installs or updates, and on start for installed games whose copy is older than 6 hours.
 - `api/pc.php?a=counts` and `a=feedback`: only when a page that shows them opens, kept for 1 hour.
-- `api/pc.php?a=interest&id=`: `{n}`, how many saved the recomp or wait for its Notify Me email (each
-  account once), the number on its website page's Save button. Asked when its game page opens, kept
-  for 10 minutes (`cache/interest/`). The game page shows it after Notify Me and Add to Library, in
-  Big Picture too, from 10 (`wantCount` in app.js). A site without it answers 400, and nothing shows.
+- `api/pc.php?a=interest&id=`: `{n}`, how many saved the recomp or wait for its email (each account
+  once), the number on its website page's Save button. Asked when its game page opens, kept for 10
+  minutes (`cache/interest/`). The game page shows it on Save (Coming Soon games) and Add to
+  Library, in Big Picture too, from 10 (`wantCount` in app.js). A site without it answers 400, and
+  nothing shows.
+
+### Save on Coming Soon games
+
+A Coming Soon game has one button, Save, where Notify Me was. Save is Add to Library: the game waits
+under Not Installed and, signed in, goes to the account with the rest of the saved list
+(`api/launcher.php?a=library-save`). The website treats saving a Coming Soon recomp as signing up for
+its "it's out" email, so signed-in players get that too; the launcher no longer asks `api/pc.php`
+`a=notify` or `a=notifies` (the site still answers them, for older launchers, by saving or unsaving
+the game). When a catalog no longer has a saved game as Coming Soon, the launcher shows a
+notification that it's out (`saved_out_now` in `note_new_apps`, lib.rs; the last catalog's
+Coming Soon ids are kept as `seen_soon` in the library file). It follows the Notifications setting.
 - `launcher/version.json`: on start (an answer from the last hour is reused), then about every
   6 hours, or after a `launcher` push.
 - `api/launcher-ping.php`: on open, then every 30 minutes at the most often. A `next` (seconds) in

@@ -2312,8 +2312,10 @@ body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .tag.deck{color:#1a9fff;background:rgba(26,159,255,.1);border-color:rgba(26,159,255,.42)}
 .toggle.deck-t svg{color:#1a9fff}
 .badge.soon svg{margin-right:-1px}
-.btn.notify-on{background:transparent;color:var(--cyan);border:1.5px solid rgba(52,242,232,.6)}
-.btn.notify-on svg{color:var(--cyan)}
+/* A saved Coming Soon game's Save: outlined, filled heart, a soft glow (filled cyan until it's saved). */
+.btn.save-on{background:rgba(52,242,232,.08);color:var(--cyan);border:1.5px solid rgba(52,242,232,.6);box-shadow:0 0 24px -8px rgba(52,242,232,.55)}
+.btn.save-on svg{color:var(--cyan)}
+.gp-soon-note{margin:0;max-width:420px;text-align:right;font-size:13px;color:var(--muted)}
 /* How many want it, after Notify Me or Add to Library on a game's page: "Notify Me · 3,412". */
 .btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
 .btn .want::before{content:'·';margin-right:9px}

@@ -66,12 +66,12 @@ test('the number follows the label, with the full sentence on hover', () => {
   assert.match(tag, /^<span class="want" title="3,412 people saved it or are waiting for it">3,412<\/span>$/);
 });
 
-test('Notify Me and Add to Library carry the count on the game page only', () => {
+test('Save and Add to Library carry the count on the game page only', () => {
   const acts = fn(app, 'actions');
   assert.match(acts, /function actions\(a, size = 'big', \{ want = false \} = \{\}\)/);
   assert.match(acts, /want && !a\.custom \? wantTag\(wantCount\(a\.id\)\)/);
-  assert.match(acts, /'Notify Me'\)\), BELL\(18\), wants\(\)\)/);
-  assert.match(acts, /'We\\'ll Email You'\)\), BELL\(18\), wants\(\)\)/);
+  assert.match(acts, /'Save'\)\), SAVE_ICON\(18\), wants\(\)\)/);
+  assert.match(acts, /'Saved'\)\), SAVE_ICON\(18, true\), wants\(\)\)/);
   assert.match(acts, /'Add to Library'\)\), PLUS, wants\(\)\)/);
   // Install, Play and the rest have no count.
   assert.equal((acts.match(/wants\(\)\)/g) || []).length, 3);

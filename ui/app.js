@@ -288,6 +288,7 @@ async function addToLibrary(id) {
   libSend(id, true);
   const a = byId(id);
   render(true);
+  if (a && a.soon) return toast(tf('{name} is saved. We\'ll let you know when it comes out.', { name: a.name }));
   toast(tf('{name} is in your Library. Install it whenever you like.', { name: a ? a.name : id }));
 }
 async function removeFromLibrary(id) {
@@ -1144,7 +1145,7 @@ function poster(a, mine, inst, wide, w, rank) {
   const badge = S.missing && S.missing.has(a.id) ? `<span class="badge tr miss">${esc(t('Missing'))}</span>`
     : st === 'update' ? `<span class="badge tr">${esc(t('Update'))}</span>`
     : st === 'running' ? `<span class="badge tr">${esc(t('Playing'))}</span>`
-      : st === 'soon' ? `<span class="badge tr soon"${notifyOn(a.id) ? ` title="${esc(t('We\'ll email you when it comes out.'))}"` : ''}>${notifyOn(a.id) ? BELL(12) : ''}${esc(t('Soon'))}</span>`
+      : st === 'soon' ? `<span class="badge tr soon"${savedSoon(a) ? ` title="${esc(soonNoteText(a))}"` : ''}>${savedSoon(a) ? SAVE_ICON(12, true) : ''}${esc(t('Soon'))}</span>`
         : st === 'installed' && !mine ? `<span class="badge tl">${esc(t('Installed'))}</span>`
           : !S.library[a.id] && isSaved(a.id) && !mine ? `<span class="badge tl lib">${esc(t('In Library'))}</span>`
             : own ? `<span class="badge tl">${esc(t('You have it'))}</span>` : '';
@@ -1289,7 +1290,7 @@ const withBuildLine = (a, size, html) => (size === 'big' && updateBuildDue(a.id)
   ? `<span class="play-wrap">${html}<span class="play-line">${esc(t('Needs a new build after the update'))}</span></span>` : html);
 
 // The main button for a game, whatever state it's in.
-// `want`: the game's own page, where Notify Me and Add to Library carry how many want it.
+// `want`: the game's own page, where Save (Coming Soon) and Add to Library carry how many want it.
 function actions(a, size = 'big', { want = false } = {}) {
   const st = status(a), id = esc(a.id), sq = size === 'big' ? 'btn sq glass' : 'btn sq sm';
   // Asked for only when one of those buttons shows, and never for a game added by its link (the
@@ -1317,7 +1318,7 @@ function actions(a, size = 'big', { want = false } = {}) {
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
     case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main easy', 'setup', esc(t('Easy Setup')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY))}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY)) + more;
-    case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18), wants()) : b('main', 'notify', esc(t('Notify Me')), BELL(18), wants())) + more;
+    case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : isSaved(a.id) ? b('save-on', 'unsave', esc(t('Saved')), SAVE_ICON(18, true), wants()) : b('main', 'addlib', esc(t('Save')), SAVE_ICON(18), wants())) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy. The size is
     // on the game page (Size), not on the button. Locate Installed is a square button like "…",
@@ -2359,7 +2360,7 @@ function pageGame(id) {
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
       <div class="gp-title">${gameTitle(a, id)}</div>
-      <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a, 'big', { want: true })}</div>${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}</div></div>
+      <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a, 'big', { want: true })}</div>${soonNote(a)}${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
@@ -2654,57 +2655,24 @@ const playsGreat = (a) => { const r = runTally((S.runCounts || {})[a.id]); retur
 const greatOnDeck = (a) => { const d = a && (S.deckScores || {})[a.id]; return !!d && Number(d.n) >= 3 && Number(d.score) >= 80; };
 const onHandheld = () => !!(S.deck || (S.handheld && S.os === 'linux'));
 const DECK_ICON = (n = 13) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.9 7.2a2.6 2.6 0 0 0 2.6 2.9c1 0 1.7-.5 2.3-1.3L8 15.5h8l1.3 1.9c.6.8 1.3 1.3 2.3 1.3a2.6 2.6 0 0 0 2.6-2.9l-.9-7.2a4 4 0 0 0-4-3.6z"/></svg>`;
-const BELL = (n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>`;
 
-// ---------- Notify Me on Coming Soon games ----------
-// The games the signed-in player asked to hear about: one email from the site when each comes out.
-// `seq` goes up with every look and every press, so an answer that comes back after a newer one
-// (or after a press) is left out.
-const NOTIFY = { set: new Set(), pending: null, seq: 0 };
-const notifyOn = (id) => NOTIFY.set.has(id);
-async function loadNotifies() {
-  const before = [...NOTIFY.set].sort().join();
-  const seq = ++NOTIFY.seq;
-  if (!(S.account && S.account.signedIn)) NOTIFY.set = new Set();
-  else {
-    try {
-      const list = await invoke('notifies');
-      if (seq !== NOTIFY.seq) return;
-      NOTIFY.set = new Set(list || []);
-    } catch (e) { /* kept as it was */ }
-  }
-  if ([...NOTIFY.set].sort().join() !== before) notifyRedraw();
+// ---------- Save on Coming Soon games ----------
+// A Coming Soon game has one button, Save (it was Notify Me): it's Add to Library, so the game waits
+// under Not Installed, goes with the account when signed in, and the launcher says when it comes out
+// (saved_out_now in lib.rs). Signed in, the website emails them too: saving a Coming Soon recomp
+// there is its email (the site's rs_acct_saved_set). The heart is filled once it's saved.
+const SAVE_ICON = (n = 18, on = false) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.3s-7.8-4.6-7.8-10.2A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.8 2.8c0 5.6-7.8 10.2-7.8 10.2z"/></svg>`;
+const savedSoon = (a) => !!a && !!a.soon && !a.custom && isSaved(a.id);
+// What saving it does, said under the button on its page.
+function soonNoteText(a) {
+  const mail = !!(S.account && S.account.signedIn);
+  if (savedSoon(a)) return mail ? t('Saved. We\'ll let you know here and by email when it comes out.') : t('Saved. We\'ll let you know when it comes out.');
+  return mail ? t('Save it and we\'ll let you know here and by email when it comes out.') : t('Save it and we\'ll let you know when it comes out.');
 }
-function notifyRedraw() {
-  if (S.view === 'game') refreshGame(); else if (S.view === 'discover' && $('#dlist')) morphList($('#dlist'), discoverGrid()); else render(true);
-  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
-}
-async function toggleNotify(id) {
-  // Not signed in: the sign-in first, and it's turned on once that's done.
-  if (!(S.account && S.account.signedIn)) { NOTIFY.pending = id; return signIn(false); }
-  const on = !notifyOn(id);
-  let r;
-  try { r = await invoke('notify', { id, on }); } catch (e) { return fail(e); }
-  NOTIFY.seq++;
-  if (r) NOTIFY.set.add(id); else NOTIFY.set.delete(id);
-  toast(r ? t('We\'ll email you when it comes out.') : t('You won\'t get an email about it.'));
-  notifyRedraw();
-}
-window.toggleNotify = toggleNotify;
-window.notifyOn = notifyOn;
-// Just signed in (or the launcher started signed in): their list, and the one they pressed first.
-// The sign-in they started for it was cancelled, refused or ran out: nothing turns on later.
-window.notifyForget = () => { NOTIFY.pending = null; };
-window.afterSignIn = async () => {
-  await loadNotifies();
-  if (!(S.account && S.account.signedIn)) return;
-  const id = NOTIFY.pending;
-  NOTIFY.pending = null;
-  if (id && !notifyOn(id)) toggleNotify(id);
-};
+const soonNote = (a) => (a && a.soon && !a.custom ? `<p class="gp-soon-note" dir="auto">${esc(soonNoteText(a))}</p>` : '');
 
 // ---------- How many want a recomp, on its page's buttons ----------
-// Everyone who added it to their Library while signed in or is waiting for its Notify Me email, each
+// Everyone who saved it (Save or Add to Library) while signed in or is waiting for its email, each
 // account once: the number on the Save button of its page on recomplauncher.com. The site counts it
 // (api/pc.php?a=interest) and the launcher keeps each answer 10 minutes, so a game's page asks again
 // at most that often. Shown from 10, like the website, so a new recomp doesn't say "· 2". Pressing a
@@ -2727,7 +2695,7 @@ function wantCount(id) {
   const n = w ? w.n : 0;
   return n >= WANT_MIN ? n : 0;
 }
-// After the button's label: "Notify Me · 3,412".
+// After the button's label: "Save · 3,412".
 const wantTag = (n) => (n ? `<span class="want" title="${esc(tf('{n} people saved it or are waiting for it', { n: fmtNum(n) }))}">${esc(fmtNum(n))}</span>` : '');
 
 // ---------- notes from the RecompStore team, on top of Discover ----------
@@ -3235,6 +3203,9 @@ function refreshGame() {
   $$('.tabs-in button').forEach((b) => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
   const acts = $(`.gp-acts`);
   if (acts) morph(acts, actions(a, 'big', { want: true }));
+  // A Coming Soon game, saved or not: the line under Save says what it does.
+  const sn = a.soon ? $('.gp-soon-note') : null;
+  if (sn) sn.textContent = soonNoteText(a);
   const title = $('.gp-title');
   if (title) morph(title, gameTitle(a, id));
   // The cloud save badge: the game started or closed, or its saves changed.
@@ -7798,7 +7769,7 @@ function pageSoon() {
   const req = `<button type="button" class="btn main" data-act="recomp-req">${PLUS}${esc(t('Request a Recomp'))}</button>`;
   // The count sits beside the title, small, where Discover puts its own above the grid.
   const count = list.length ? `<span class="count-line soon-n">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</span>` : '';
-  return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
+  return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Save one and we\'ll let you know the day it comes out.'))}</p></div>${req}</div>
     ${list.length ? `<div class="grid" data-n="${list.length}">${list.map((a) => tile(a)).join('')}</div>`
       : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAL_CLOCK}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Press Request a Recomp to ask for it.'))}</p></div>`}
   </div>`;
@@ -9377,7 +9348,6 @@ async function act(el, e) {
     case 'play-pick': { const a = byId(id); return menu(el, [a, ...otherInstalled(a)].map((v) => ({ act: 'play', id: v.id, label: tf('Play {name}', { name: v.name }), icon: 'play' }))); }
     case 'great': S.find.great = !S.find.great; return updateDiscover();
     case 'deck-f': S.find.deckgreat = !S.find.deckgreat; return updateDiscover();
-    case 'notify': return toggleNotify(id);
     case 'note-x': return closeNote(el.dataset.n);
     case 'note-url': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();

@@ -3391,5 +3391,12 @@
  "syncs when you press Play": "Oyna'ya basınca eşitlenir",
  "Saved {time}. What's there now is kept as a backup first.": "{time} kaydedildi. Şu anki kayıt önce yedek olarak saklanır.",
  "A newer save is in the cloud": "Bulutta daha yeni bir kayıt var",
- "{n} people saved it or are waiting for it": "{n} kişi kaydetti ya da bekliyor"
+ "{n} people saved it or are waiting for it": "{n} kişi kaydetti ya da bekliyor",
+ "Saved": "Kaydedildi",
+ "Saved. We'll let you know here and by email when it comes out.": "Kaydedildi. Çıktığında burada ve e-postayla haber vereceğiz.",
+ "Saved. We'll let you know when it comes out.": "Kaydedildi. Çıktığında haber vereceğiz.",
+ "Save it and we'll let you know here and by email when it comes out.": "Kaydet, çıktığında burada ve e-postayla haber verelim.",
+ "Save it and we'll let you know when it comes out.": "Kaydet, çıktığında haber verelim.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} kaydedildi. Çıktığında haber vereceğiz.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Yoldaki recomp'lar. Birini kaydet, çıktığı gün haber verelim."
 }
