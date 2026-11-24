@@ -1806,28 +1806,20 @@ impl Profile {
         })
     }
 
-    /// Start With's programs, out of every program `found` in the game's folder (relative to
-    /// `install`): the ones its start names, and the one the player picked in its settings. A
-    /// recomp that ships its own tools (a setup worker, a compiler, each kept build's game) offered
-    /// them all to start by hand. With no start program, or none of them found, every program.
-    pub fn start_with(&self, install: &Path, picked: Option<&Path>, found: Vec<String>) -> Vec<String> {
-        let named = self.start.as_ref().is_some_and(|s| !s.program.is_empty());
-        if !named {
-            return found;
-        }
-        let is_picked = |full: &Path| picked.is_some_and(|p| p == full);
-        let ours: Vec<String> = found
-            .iter()
-            .filter(|rel| {
-                let full = install.join(rel);
-                self.starts_program(&full) || is_picked(&full)
-            })
-            .cloned()
-            .collect();
-        if ours.is_empty() {
-            return found;
-        }
-        ours
+    /// Start With's programs, relative to `install`: the one Play starts, and the one the player
+    /// picked in the game's settings. A recomp that ships its own tools (a setup worker, a
+    /// compiler, each kept build's game) offered them all to start by hand (#464). It's the program
+    /// Play resolves, not every file sharing its name: a kept build or a builder named like the
+    /// game isn't the game. None when the start names no program that's there: Start With then
+    /// offers every program in the folder, as before.
+    pub fn start_with(&self, install: &Path, picked: Option<&Path>) -> Option<Vec<String>> {
+        let started = self.program_for(install, self.windows_build.unwrap_or(true))?;
+        let rel = |p: &Path| p.strip_prefix(install).ok().map(|r| r.to_string_lossy().to_string());
+        let mut out = vec![rel(&started)?];
+        // Held Play only starts a program inside the game's folder, so one picked elsewhere can't be offered.
+        let own = picked.filter(|p| p.is_file() && *p != started.as_path()).and_then(rel);
+        out.extend(own);
+        Some(out)
     }
 
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
@@ -2863,46 +2855,85 @@ mod tests {
     }
 
     // A release folder like Cubic.Heroes' in #464: the game, the launcher's setup worker, a
-    // compiler and a kept build's game binary.
-    fn cubic_found() -> Vec<String> {
-        ["CubicHeroes.exe", "setup/worker.exe", "setup/zig/zig.exe", "builds/1.0.2/cubic.exe"].map(String::from).to_vec()
+    // compiler and a kept build of the game under the same name.
+    fn cubic_folder(n: &str) -> PathBuf {
+        let d = tmp(n);
+        for rel in ["CubicHeroes.exe", "setup/worker.exe", "setup/zig/zig.exe", "builds/1.0.2/CubicHeroes.exe"] {
+            let file = d.join(rel);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, b"MZ").unwrap();
+        }
+        d
+    }
+
+    fn cubic_profile() -> Profile {
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        p
     }
 
     #[test]
-    fn start_with_offers_only_the_program_its_start_names() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
-        let got = p.start_with(std::path::Path::new("/games/cubic"), None, cubic_found());
-        assert_eq!(got, vec!["CubicHeroes.exe".to_string()]);
+    fn start_with_offers_only_the_program_play_starts() {
+        let d = cubic_folder("sw-only");
+        let got = cubic_profile().start_with(&d, None);
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn start_with_keeps_the_program_the_player_picked() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
-        let picked = std::path::Path::new("/games/cubic/builds/1.0.2/cubic.exe");
-        let got = p.start_with(std::path::Path::new("/games/cubic"), Some(picked), cubic_found());
-        assert_eq!(got, vec!["CubicHeroes.exe".to_string(), "builds/1.0.2/cubic.exe".to_string()]);
+        let d = cubic_folder("sw-picked");
+        let picked = d.join("builds").join("1.0.2").join("CubicHeroes.exe");
+        let got = cubic_profile().start_with(&d, Some(&picked)).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(Path::new(&got[1]), Path::new("builds/1.0.2/CubicHeroes.exe"));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn start_with_finds_a_native_build_by_the_name_its_start_gives() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Hopper.AppImage","HopperBuilder.exe"]}}"#).unwrap();
-        let found = ["Hopper-nightly-80-x86_64.AppImage", "tools/appimagetool.AppImage"].map(String::from).to_vec();
-        let got = p.start_with(std::path::Path::new("/games/hopper"), None, found);
-        assert_eq!(got, vec!["Hopper-nightly-80-x86_64.AppImage".to_string()]);
+    fn start_with_leaves_out_a_pick_outside_the_games_folder() {
+        let d = cubic_folder("sw-elsewhere");
+        let elsewhere = tmp("sw-elsewhere-pick").join("Other.exe");
+        std::fs::write(&elsewhere, b"MZ").unwrap();
+        let got = cubic_profile().start_with(&d, Some(&elsewhere));
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(elsewhere.parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn start_with_offers_a_program_built_into_a_subfolder_not_the_builder() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("sw-subfolder");
+        // Longshot's release (#494): the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        p.windows_build = Some(false);
+        assert_eq!(p.start_with(&d, None), Some(vec!["Longshot/longshot".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn start_with_offers_every_program_without_a_start_program() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
-        let got = p.start_with(std::path::Path::new("/games/cubic"), None, cubic_found());
-        assert_eq!(got, cubic_found());
+        let d = cubic_folder("sw-nostart");
+        let p: Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn start_with_offers_every_program_when_the_named_one_isnt_there() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Renamed.exe"]}}"#).unwrap();
-        let got = p.start_with(std::path::Path::new("/games/cubic"), None, cubic_found());
-        assert_eq!(got, cubic_found());
+        let d = cubic_folder("sw-renamed");
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Renamed.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

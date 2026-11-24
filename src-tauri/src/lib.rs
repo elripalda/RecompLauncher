@@ -8313,17 +8313,16 @@ fn game_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     Ok(programs_in(&g))
 }
 
-/// Start With (hold Play): the programs the game's recomplauncher.json starts, and the one the
+/// Start With (hold Play): the program Play starts by the game's recomplauncher.json, and the one the
 /// player picked; a game without one offers every program in its folder, as before (#464).
 #[tauri::command(async)]
 fn start_with_programs(st: State<'_, App>, id: String) -> Res<Vec<String>> {
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
-    let found = programs_in(&g);
-    let Some(p) = profile_of(&st, &id, &g) else { return Ok(found) };
     // Only a program the player picked in the game's settings (as picked_program reads it), not the
     // one the launcher found for itself: that can be the bare game a start script wraps.
     let picked = g.exe.as_ref().filter(|_| g.exe_rules == u8::MAX).map(|e| if e.is_absolute() { e.clone() } else { g.path.join(e) });
-    Ok(p.start_with(&g.path, picked.as_deref(), found))
+    let named = profile_of(&st, &id, &g).and_then(|p| p.start_with(&g.path, picked.as_deref()));
+    Ok(named.unwrap_or_else(|| programs_in(&g)))
 }
 
 /// Every program in a game's folder, three folders down at most, relative to it.
