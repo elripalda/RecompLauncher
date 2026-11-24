@@ -182,7 +182,8 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
   library folders your AppImage brings (`lib`, `lib64`, `usr/lib`, `usr/lib64` and
   `usr/lib/<arch>-linux-gnu`, those that exist) go first on `LD_LIBRARY_PATH`, as most `AppRun`s
   do. Anything else your `AppRun` sets up, it doesn't get: set it in `start.env`, or link your
-  program with an rpath of `$ORIGIN/lib`. Naming the AppImage is safer.
+  program with an rpath of `$ORIGIN/lib`. Naming the AppImage is safer: name a program inside it
+  only when that program runs on its own, and developer tools warn when you do.
 - Links inside your AppImage are kept when they stay inside it. A link to an absolute path or out
   of the AppImage (`../../`) is left out, and the launcher's log names it.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
@@ -216,7 +217,9 @@ compression are supported, and DwarFS with Zstandard (its usual compression). Mi
 adjacent manifest and then the catalog. Replacing the image is reflected on the next read;
 there is no extracted copy to become stale.
 
-Developer tools identify the embedded source and check the profile actually in use.
+Developer tools identify the embedded source and check the profile actually in use. When
+`start.program` or `prepare.program` names a program inside your unpacked AppImage instead of the
+AppImage, they say so in yellow: it starts without your `AppRun`.
 
 The same file uploaded twice, once without the version for `releases/latest/download` links
 (`Game-1.2.0-x86_64.AppImage` and `Game-x86_64.AppImage`), is one build: the launcher installs

@@ -4198,7 +4198,7 @@ fn appimage_env(cmd: &mut tokio::process::Command, exe: &Path, install: &Path) {
 /// The unpacked AppImage a program is in: the nearest folder above it, inside the game's folder,
 /// that has an AppRun.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn appimage_root(exe: &Path, install: &Path) -> Option<PathBuf> {
+pub(crate) fn appimage_root(exe: &Path, install: &Path) -> Option<PathBuf> {
     let mut folders = exe.ancestors().skip(1).take_while(|d| d.starts_with(install));
     folders.find(|d| d.join("AppRun").is_file()).map(Path::to_path_buf)
 }
