@@ -768,19 +768,21 @@ fn is_version(part: &str) -> bool {
 /// Words a number after is that disc, part or build of this game, not a sequel.
 const NUMBERED: [&str; 8] = ["disc", "disk", "part", "vol", "volume", "version", "ver", "build"];
 
-/// The number a sequel is named with: 2 to 99, or a Roman numeral "ii" to "xx" (so "Hopper II"
-/// is "Hopper 2"). One isn't: "Hopper 1" is still Hopper.
+/// The number a sequel is named with that words() drops: a lone digit 2 to 9, or a Roman numeral
+/// "ii" to "xx" (so "Hopper II" is "Hopper 2"). One isn't: "Hopper 1" is still Hopper. Two digits
+/// are left to words(), which keeps them: shortcuts glue them on ("MarioKart64", "MaddenNFL08"),
+/// and a glued number can't be told from a project's name ("Zelda64Recompiled" for Zelda Recomp).
 fn sequel_number(part: &str) -> Option<u32> {
     const ROMAN: [&str; 19] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"];
     let lower = part.to_ascii_lowercase();
     if let Some(i) = ROMAN.iter().position(|r| *r == lower) {
         return Some(i as u32 + 2);
     }
-    if part.len() > 2 || !part.chars().all(|c| c.is_ascii_digit()) {
+    if part.len() != 1 || !part.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
     let n: u32 = part.parse().ok()?;
-    (2..=99).contains(&n).then_some(n)
+    (2..=9).contains(&n).then_some(n)
 }
 
 /// A lone digit glued to the end of a word ("hopper3"), which words() already reads as a sequel.
@@ -1154,6 +1156,17 @@ mod tests {
     #[test]
     fn a_glued_sequel_digit_matches_the_same_number_written_apart() {
         assert!(is_ours(&want_of(&["Hopper 3 Port", "Hopper 3"]), "Hopper3Port"));
+    }
+
+    #[test]
+    fn a_two_digit_title_number_matches_glued_on() {
+        assert!(is_ours(&want_of(&["Mario Kart 64"]), "MarioKart64Recompiled"));
+        assert!(is_ours(&want_of(&["Madden NFL 08", "MaddenNFL08"]), "MaddenNFL08"));
+    }
+
+    #[test]
+    fn another_two_digit_title_number_isnt_ours() {
+        assert!(!is_ours(&want_of(&["Madden NFL 08"]), "Madden NFL 25"));
     }
 
     #[test]
