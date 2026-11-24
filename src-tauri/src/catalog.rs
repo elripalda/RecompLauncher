@@ -69,7 +69,7 @@ fn age_of(p: &Path) -> Option<u64> {
     Some(SystemTime::now().duration_since(m).unwrap_or_default().as_secs())
 }
 
-fn save(p: &Path, v: &Value) {
+pub(crate) fn save(p: &Path, v: &Value) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -79,7 +79,7 @@ fn save(p: &Path, v: &Value) {
     }
 }
 
-fn load(p: &Path) -> Option<Value> {
+pub(crate) fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
