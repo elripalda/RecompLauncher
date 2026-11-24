@@ -9817,17 +9817,21 @@ window.deskPad = (b) => {
   }
   return false;
 };
-// The mouse moving again: no highlight.
-document.addEventListener('mousemove', (e) => {
-  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+// The controller lets go: no highlight, and A waits for a direction before it presses anything.
+function padRest() {
   PAD.armed = false;
   if (!document.body.classList.contains('pad-nav')) return;
   document.body.classList.remove('pad-nav');
   if (PAD.el) PAD.el.classList.remove('pad-focus');
   PAD.el = null;
+}
+// The mouse moving again.
+document.addEventListener('mousemove', (e) => {
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+  padRest();
 }, true);
-// A game or another app took over: coming back, A waits for a direction so it can't press Play again.
-window.addEventListener('blur', () => { PAD.armed = false; });
+// A game or another app took over: coming back, a lit Play that A ignores would look broken.
+window.addEventListener('blur', padRest);
 
 // The window has no system title bar, so these are its buttons.
 const W = T.window.getCurrentWindow();

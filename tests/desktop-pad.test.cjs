@@ -85,6 +85,15 @@ test('losing window focus disarms A until another direction is pressed', () => {
   assert.equal(d.clicks, 2);
 });
 
+test('losing window focus removes the controller highlight', () => {
+  const d = desktop();
+  d.window.deskPad('down');
+  assert.ok(d.button.classList.contains('pad-focus'));
+  d.windowListeners.blur();
+  assert.equal(d.body.classList.contains('pad-nav'), false);
+  assert.equal(d.button.classList.contains('pad-focus'), false);
+});
+
 test('A can activate a dialog without first navigating the desktop', () => {
   const d = desktop(true);
   d.document.querySelectorAll = selector => selector === '.scrim, .oob' ? [d.dialog] : [];
