@@ -3236,18 +3236,54 @@
     if (!box) return;
     box.scrollBy({ top: dir * 200, behavior: 'smooth' });
   }
+  // Up or down in a dialog whose text goes on past its edge that way (What's New) scrolls the text
+  // while nothing to pick shows up on screen that way, instead of jumping the highlight past it.
+  function dialogReads(dlg, dir) {
+    const box = $('.md', dlg) || $('.modal', dlg);
+    if (!box) return false;
+    const more = dir > 0 ? box.scrollTop + box.clientHeight < box.scrollHeight - 2 : box.scrollTop > 2;
+    if (!more) return false;
+    const lit = $('.pad-focus', dlg) || document.activeElement;
+    if (!lit || !dlg.contains(lit)) return true;
+    const from = lit.getBoundingClientRect(), view = box.getBoundingClientRect();
+    const shown = (el) => {
+      const r = el.getBoundingClientRect();
+      const ahead = dir > 0 ? r.top >= from.bottom - 4 : r.bottom <= from.top + 4;
+      return ahead && r.height > 2 && r.top >= view.top && r.bottom <= view.bottom;
+    };
+    return !$$('button, a[href], input, select, textarea, [data-x]', box).some(shown);
+  }
+  // A dialog from the desktop view (one without a sheet of its own): the desktop's own controller
+  // handling moves the highlight between its buttons, switches and lists, so every choice in it
+  // can be picked, not just its main button.
+  function dialogPad(dlg, name) {
+    if (name === 'b') { if (!dlg.dataset.busy) dlg.remove(); return; }
+    const dir = { up: -1, down: 1, left: 0, right: 0 }[name];
+    if (name !== 'a' && dir === undefined) return;
+    if (!window.deskPad) {
+      if (dir) dialogScroll(dlg, dir);
+      return;
+    }
+    // Nothing lit yet: the first press lights its main button, and A presses it at once, as before.
+    const active = document.activeElement;
+    const lit = $('.pad-focus', dlg) || (active && active !== dlg && dlg.contains(active));
+    if (!lit) {
+      window.deskPad('down');
+      if (name !== 'a') return;
+    }
+    if (dir && dialogReads(dlg, dir)) return dialogScroll(dlg, dir);
+    window.deskPad(name);
+  }
 
   function press(name) {
     if (!TV.on) return false;
     // While the camera is flying into or out of a game, it finishes first.
     if (TV.flying) return true;
-    // A dialog on top (Restart Steam, Switch games): A picks its main button, B closes it.
-    const dlg = $('.scrim');
+    // A dialog on top (Restart Steam, Switch games): the d-pad moves between its choices, A picks,
+    // B closes it. The newest one, when one opened another.
+    const dlg = [...document.querySelectorAll('.scrim')].pop();
     if (dlg) {
-      // Up and down scroll a dialog's long text (What's New), which a controller can't reach otherwise.
-      if (name === 'up' || name === 'down') { dialogScroll(dlg, name === 'down' ? 1 : -1); return true; }
-      if (name === 'b') { if (!dlg.dataset.busy) dlg.remove(); }
-      else if (name === 'a') { const b = $('[data-x="yes"], .btn.main', dlg) || $('[data-x]', dlg); if (b) b.click(); }
+      dialogPad(dlg, name);
       return true;
     }
     if ($('.tv-boot', root)) return true;
