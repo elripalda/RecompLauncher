@@ -238,3 +238,5 @@ how the separately hosted catalog service collects its metadata.
 
 The launcher (`homePlan` in app.js) skips kinds and rows it doesn't know, puts back a row the list doesn't name after the row it usually follows, and keeps its built-in order (with the `a=spons` banner) when there's no list or its `v` isn't 1. A closed box is remembered in settings (`ui.home_closed`).
 
+A box can also have `"tr": {LANG: {"title", "text", "btn"}}`: its words in each language the website translated them into when the admin saved (any of them can be missing). `homeWord` in app.js shows the player's language, then its base language (`es` for `es-419`), else the words as typed. The answer holds every language, so the copy in `cache/home.json` follows a language change offline too.
+

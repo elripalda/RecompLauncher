@@ -1857,21 +1857,31 @@ function homeBoxShows(x) {
   if (x.when === 'signed_in') return !!accountId();
   return true;
 }
-// An info box from the admin, in the same look as "It finds the games you already have". Its words
-// are the admin's own (not translated); the button does only what the launcher allows.
+// An info box's words in the player's language (or its base one: es for es-419), where the website
+// translated them when the admin saved; else as the admin typed them.
+function homeWord(x, k) {
+  const tr = x.tr && typeof x.tr === 'object' ? x.tr : {};
+  const lang = String(curLang() || 'en');
+  const m = tr[lang] || tr[lang.split('-')[0]];
+  const v = m && typeof m[k] === 'string' && m[k].trim() ? m[k] : x[k];
+  return typeof v === 'string' ? v : '';
+}
+// An info box from the admin, in the same look as "It finds the games you already have", in the
+// player's language when it's translated; the button does only what the launcher allows.
 function homeBox(x) {
   if (!homeBoxShows(x)) return '';
+  const title = homeWord(x, 'title'), text = homeWord(x, 'text'), label = homeWord(x, 'btn');
   let btn = '';
-  if (x.btn) {
+  if (label) {
     const go = HOME_GO[x.act];
     const attrs = x.act === 'rom-add' ? 'data-act="rom-add"'
       : go ? `data-act="home-go" data-v="${esc(go)}"`
       : x.act === 'game' && byId(x.arg) ? `data-act="open" data-id="${esc(x.arg)}"`
       : x.act === 'link' && httpsOnly(x.arg) ? `data-act="note-url" data-url="${esc(httpsOnly(x.arg))}"` : '';
-    if (attrs) btn = `<button type="button" class="btn main" ${attrs}>${esc(x.btn)}</button>`;
+    if (attrs) btn = `<button type="button" class="btn main" ${attrs}>${esc(label)}</button>`;
   }
   const close = x.close ? `<button type="button" class="tn-x" data-act="home-close" data-id="${esc(String(x.id))}" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}">${XMARK}</button>` : '';
-  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${x.title ? `<b dir="auto">${esc(x.title)}</b>` : ''}${x.text ? `<span dir="auto">${esc(x.text)}</span>` : ''}</div>${btn}${close}</div>`;
+  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<span dir="auto">${esc(text)}</span>` : ''}</div>${btn}${close}</div>`;
 }
 // A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
 function homeBanner(x) {
