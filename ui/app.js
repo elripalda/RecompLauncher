@@ -5752,10 +5752,8 @@ T.event.listen('catalog-fresh', async () => {
   const before = approvedReleases();
   try { await loadCatalog(false); } catch (e) { return; }
   render(true);
-  if (S.settings?.check_updates === false || approvedReleases() === before) return;
-  // The check at startup read the old list. Retire it so its late answer can't undo this one.
-  updateCheckRevision++;
-  await checkUpdates();
+  if (approvedReleases() === before) return;
+  await afterCatalog();
 });
 // A Forgejo project's own setup file came in: Easy Setup can show for it now.
 T.event.listen('profiles-fresh', () => loadCatalog(false).then(() => loadEasy(true)).then(() => render(true)).catch(() => {}));
@@ -5814,7 +5812,6 @@ for (const ev of ['pointerover', 'focusin']) {
   });
 }
 
-let updateCheckRevision = 0;
 // Free Up Space, on the Your Copy card: the copy the game doesn't read anymore goes to the bin.
 const binName = () => S.os === 'windows' ? t('Recycle Bin') : t('Trash');
 function spareRow(id, su) {
@@ -5903,6 +5900,15 @@ function readyLine(ids) {
   if (n > 1) return tf('Updates are ready for {n} games.', { n });
   const name = updateName(ids);
   return name ? tf('An update is ready for {name}.', { name }) : t('An update is ready for a game.');
+}
+let updateCheckRevision = 0;
+// The update check for the catalog that just came in: the saved one at startup, a fresh one later.
+// A fresh one can land while the startup check still waits on its answer. Moving the revision on
+// retires that older check, so its late answer (from the old list) can't undo this one.
+function afterCatalog() {
+  if (S.settings?.check_updates === false) return Promise.resolve();
+  updateCheckRevision++;
+  return checkUpdates();
 }
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
@@ -10174,7 +10180,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   S.anim = 'enter';
   render(true);
   // Update check first (it keeps the release info on disk current), then the news reads from it.
-  const upd = S.settings.check_updates !== false ? checkUpdates() : Promise.resolve();
+  const upd = afterCatalog();
   applyLighter();
   watchSlow();
   // Handheld or not is worked out in the background when the launcher starts.
