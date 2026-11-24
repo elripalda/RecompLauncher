@@ -6,7 +6,7 @@
 //
 // Then start the launcher with RL_API=http://<this machine>:8787 and sign in from Settings,
 // Account: it signs in straight away to one fake account, with each launcher as its own PC.
-// The two playtime calls (docs/LAUNCHER-API.md, "Playtime") work as the website does them.
+// The playtime calls (docs/LAUNCHER-API.md, "Playtime") work as the website does them.
 // Every other call made with a fake token gets an empty answer, so cloud saves, the saved list and
 // the inbox stay quiet. Anything else (the list of games, pictures) comes from the real site.
 //
@@ -190,6 +190,16 @@ async function launcherCall(req, res, url) {
       return send(res, 200, { ok: true });
     }
     return send(res, 200, totals());
+  }
+  // Reset Play Time: this PC's rows for those games go; other PCs keep theirs.
+  if (a === 'play-clear') {
+    if (NO_PLAY || !pc) return send(res, 400, { ok: false, error: 'Unknown request.' });
+    const body = await readBody(req);
+    const owner = playOwner(pc, body.pc);
+    const games = Array.isArray(body.games) ? body.games.slice(0, 500) : [];
+    const cleared = games.filter((game) => rows.delete(`${owner}|${game}`)).length;
+    console.log(`Playtime cleared from ${pc} (${owner}): ${cleared} row(s)`);
+    return send(res, 200, { ok: true, cleared });
   }
   if (!pc) return proxy(req, res, url);
   if (a === 'me') return send(res, 200, { ok: true, account: ACCOUNT, saves: { used: 0, quota: 150 * 1024 * 1024 } });
