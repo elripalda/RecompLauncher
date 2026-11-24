@@ -58,7 +58,7 @@ pub fn console_of(topics: &[String], description: &str, readme: &str) -> Option<
     let topics = topics.iter().map(|t| t.replace('-', " ")).collect::<Vec<_>>().join(" , ").to_lowercase();
     let readme_top: String = readme.chars().take(3000).collect();
     // Words that mean other things in a sentence count only as topics.
-    let unsure = ["switch", "switch 2", "switch2", "saturn", "genesis", "pc engine", "android version"];
+    let unsure = ["switch", "switch 2", "switch2", "saturn", "genesis", "pc engine", "ios version", "android version"];
     for (n, text) in [topics, description.to_lowercase(), readme_top.to_lowercase()].into_iter().enumerate() {
         // The earliest mention wins ("a PS2 game, also on GameCube" is a PS2 recomp).
         let mut best: Option<(usize, &str)> = None;
@@ -382,6 +382,8 @@ mod tests {
         assert_eq!(console_of(&[], "A rewrite of the PC engine", ""), None);
         assert_eq!(console_of(&[], "Bounce, the 2002 Nokia Java phone game", ""), Some("mobile"));
         assert_eq!(console_of(&[], "Builds for Windows, Linux and Android", ""), None);
+        assert_eq!(console_of(&[], "A PC port of Doom. iOS version planned", ""), None);
+        assert_eq!(console_of(&["ios-version".into()], "", ""), Some("mobile"));
         assert_eq!(console_of(&[], "a snes game", ""), Some("snes"));
     }
 
