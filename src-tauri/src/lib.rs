@@ -331,7 +331,8 @@ fn catalog_tag(entry: &Value) -> Option<String> {
 /// fell back to, or the one the store let out (`store`) is where updates go anyway, so never.
 fn picked_by_player(tag: &str, newest: &str, fell_back: bool, store: Option<&str>, have: (&str, bool)) -> bool {
     let (have_tag, have_pinned) = have;
-    if !have_tag.is_empty() && tag == have_tag {
+    // The installed tag can lack the release's "v" (imported from another launcher).
+    if !have_tag.is_empty() && same_tag(tag, have_tag) {
         return have_pinned;
     }
     if fell_back || tag == newest {
@@ -344,6 +345,25 @@ fn picked_by_player(tag: &str, newest: &str, fell_back: bool, store: Option<&str
 fn same_tag(a: &str, b: &str) -> bool {
     let n = |s: &str| s.trim().trim_start_matches(['v', 'V']).trim_start_matches('.').to_ascii_lowercase();
     !a.trim().is_empty() && n(a) == n(b)
+}
+
+/// The release an installed or saved tag names, give or take a "v": a game imported from another
+/// launcher can say 1.0.0 for the release v1.0.0.
+fn release_on<'a>(rels: &'a [Release], tag: &str) -> Option<&'a Release> {
+    rels.iter().find(|r| same_tag(&r.tag_name, tag))
+}
+
+/// A tag as its release spells it, when that's spelled differently (1.0.0 for v1.0.0). None when
+/// it already matches exactly or no release has it.
+fn exact_tag(rels: &[Release], tag: &str) -> Option<String> {
+    release_on(rels, tag).map(|r| r.tag_name.clone()).filter(|t| t != tag)
+}
+
+/// The release to install instead of one that was taken down: the newest with a build for this PC
+/// (`fits`), stable unless the one taken down was a pre-release, and never the one installed.
+fn replacement<'a>(fresh: &'a [Release], was_pre: bool, have: &str, fits: impl Fn(&Release) -> bool) -> Option<&'a Release> {
+    let r = fresh.iter().filter(|r| !r.draft && (!r.prerelease || was_pre)).find(|r| fits(r))?;
+    (!same_tag(&r.tag_name, have)).then_some(r)
 }
 
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
@@ -412,7 +432,8 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
     let rel = match &tag {
-        Some(t) => rels.iter().find(|r| &r.tag_name == t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
+        // Change Build sends the installed tag, which can lack the release's "v".
+        Some(t) => release_on(&rels, t).ok_or_else(|| Error::Msg(format!("{t} isn't one of its releases.")))?,
         None if listed.is_some() => {
             fell_back = true;
             listed.unwrap()
@@ -598,7 +619,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
             let same = fresh.iter().find(|r| r.tag_name == rel.tag_name);
             let have_tag = st.lib.lock().unwrap().installed.get(id).map(|g| g.tag.clone()).unwrap_or_default();
             let newest_now = if same.is_none() && !pinned && !fresh.is_empty() {
-                fresh.iter().filter(|r| !r.draft && (!r.prerelease || rel.prerelease)).find(|r| assets::pick(&r.assets, os, arch, pattern).is_some()).filter(|r| r.tag_name != have_tag)
+                replacement(&fresh, rel.prerelease, &have_tag, |r| assets::pick(&r.assets, os, arch, pattern).is_some())
             } else {
                 None
             };
@@ -1214,7 +1235,7 @@ async fn release_builds(st: State<'_, App>, id: String) -> Res<Value> {
     let entry = catalog::app(&cat, &id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let rels: Vec<Release> = serde_json::from_value(catalog::releases(&st.http, &st.dir, str_of(&entry, "repo"), false).await?.data)?;
     let have = st.lib.lock().unwrap().installed.get(&id).map(|g| (g.tag.clone(), g.asset.clone())).unwrap_or_default();
-    let rel = rels.iter().find(|r| r.tag_name == have.0).or_else(|| catalog::latest(&rels)).ok_or_else(|| Error::Msg("It has no releases yet.".into()))?;
+    let rel = release_on(&rels, &have.0).or_else(|| catalog::latest(&rels)).ok_or_else(|| Error::Msg("It has no releases yet.".into()))?;
     let os = os_for(&st, &entry, &id);
     let pattern = entry.get("assets").and_then(|a| a.get(os)).and_then(Value::as_str);
     let arch = assets::arch_now();
@@ -7407,15 +7428,13 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
         let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
         // Added from the player's own folder without a version: the release out when its program
         // was made is the one they have, so an update isn't offered for the version they're on.
+        // One with a tag spelled differently from its release (1.0.0 for v1.0.0, from another
+        // launcher): saved as the release spells it, so every place that compares tags after
+        // this, in the launcher and its window, sees the release it's on.
         let mut g = g;
-        if g.tag.is_empty() {
-            if let Some(tag) = version_from_files(&g, &rels) {
-                if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id).filter(|x| !x.local && x.repo == g.repo && x.path == g.path) {
-                    x.tag = tag.clone();
-                }
-                st.save();
-                g.tag = tag;
-            }
+        let found = if g.tag.is_empty() { version_from_files(&g, &rels) } else { exact_tag(&rels, &g.tag) };
+        if let Some(tag) = found {
+            keep_tag(st, &mut g, tag);
         }
         // The waiting installer ran outside the launcher (the player built the new version
         // themselves): its version is the one they have now.
@@ -7532,6 +7551,15 @@ async fn update_info(st: State<'_, App>, id: String) -> Res<Value> {
     let pattern = entry.and_then(|e| e.get("assets")).and_then(|a| a.get(os_g)).and_then(Value::as_str);
     let builds: Vec<&str> = rels.iter().filter(|r| assets::pick(&r.assets, os_g, assets::arch_now(), pattern).is_some()).map(|r| r.tag_name.as_str()).collect();
     Ok(json!({ "offered": offered_update(&g, entry, &rels), "checked": entry.and_then(catalog_tag), "builds": builds }))
+}
+
+/// Saves the release a game is on as `tag`, unless it was moved or changed since `g` was read.
+fn keep_tag(st: &App, g: &mut Installed, tag: String) {
+    if let Some(x) = st.lib.lock().unwrap().installed.get_mut(&g.id).filter(|x| !x.local && x.repo == g.repo && x.path == g.path) {
+        x.tag = tag.clone();
+    }
+    st.save();
+    g.tag = tag;
 }
 
 /// Which release a game added from the player's folder is: the newest one published by the day its
@@ -7865,22 +7893,28 @@ async fn news_for(st: &App) -> Res<Vec<News>> {
             if when.map(|w| w < cutoff).unwrap_or(true) {
                 continue;
             }
-            let notes: String = r.body.clone().unwrap_or_default().chars().take(1200).collect();
-            out.push(News {
-                id: g.id.clone(),
-                name: g.name.clone(),
-                tag: r.tag_name.clone(),
-                title: r.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| r.tag_name.clone()),
-                date,
-                notes,
-                url: r.html_url.clone().unwrap_or_default(),
-                have: r.tag_name == g.tag,
-            });
+            out.push(news_item(&g, r));
         }
     }
     out.sort_by(|a, b| b.date.cmp(&a.date));
     out.truncate(10);
     Ok(out)
+}
+
+/// A release of an installed game, as news.
+fn news_item(g: &Installed, r: &Release) -> News {
+    let notes: String = r.body.clone().unwrap_or_default().chars().take(1200).collect();
+    News {
+        id: g.id.clone(),
+        name: g.name.clone(),
+        tag: r.tag_name.clone(),
+        title: r.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| r.tag_name.clone()),
+        date: r.published_at.clone().unwrap_or_default(),
+        notes,
+        url: r.html_url.clone().unwrap_or_default(),
+        // The installed tag can lack the release's "v" (imported from another launcher).
+        have: same_tag(&r.tag_name, &g.tag),
+    }
 }
 
 /// About the original game, from Wikipedia.
@@ -10430,6 +10464,49 @@ mod tests {
         let g = super::Installed { id: "g".into(), tag: "2.0.0-beta.1".into(), ..Default::default() };
         let rels = vec![tagged_release("v2.0.0-beta.1", true), tagged_release("v1.9.0", false)];
         assert_eq!(super::offered_update(&g, None, &rels), None);
+    }
+
+    #[test]
+    fn news_marks_a_release_installed_without_its_v_as_installed() {
+        let g = super::Installed { id: "g".into(), tag: "1.0.0".into(), ..Default::default() };
+        assert!(super::news_item(&g, &tagged_release("v1.0.0", false)).have);
+    }
+
+    #[test]
+    fn the_installed_release_is_found_when_its_tag_lacks_the_v() {
+        let rels = vec![tagged_release("v1.1.0", false), tagged_release("v1.0.0", false)];
+        assert_eq!(super::release_on(&rels, "1.0.0").map(|r| r.tag_name.as_str()), Some("v1.0.0"));
+    }
+
+    #[test]
+    fn a_taken_down_release_isnt_replaced_by_the_one_installed_without_its_v() {
+        let fresh = vec![tagged_release("v1.0.0", false)];
+        assert!(super::replacement(&fresh, false, "1.0.0", |_| true).is_none());
+    }
+
+    #[test]
+    fn reinstalling_the_version_installed_without_its_v_keeps_it_unpinned() {
+        assert!(!super::picked_by_player("v1.0.0", "v2.0.0", false, None, ("1.0.0", false)));
+    }
+
+    #[test]
+    fn a_tag_without_its_v_is_saved_as_the_release_spells_it() {
+        let d = std::env::temp_dir().join(format!("rl-exact-tag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut g = Installed { id: "g".into(), repo: "a/b".into(), tag: "1.0.0".into(), ..Default::default() };
+        let mut lib = Library::default();
+        lib.put("g", g.clone());
+        let st = app_in(&d, lib);
+        let tag = super::exact_tag(&[tagged_release("v1.0.0", false)], &g.tag).unwrap();
+        super::keep_tag(&st, &mut g, tag);
+        assert_eq!(st.lib.lock().unwrap().installed["g"].tag, "v1.0.0");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_tag_spelled_like_its_release_isnt_rewritten() {
+        assert_eq!(super::exact_tag(&[tagged_release("v1.0.0", false)], "v1.0.0"), None);
     }
 
     #[test]
