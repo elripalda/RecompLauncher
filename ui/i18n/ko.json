@@ -3390,5 +3390,22 @@
  "Syncs when you press Play": "플레이를 누르면 동기화됩니다",
  "syncs when you press Play": "플레이를 누르면 동기화",
  "Saved {time}. What's there now is kept as a backup first.": "{time} 저장됨. 지금 있는 데이터는 먼저 백업으로 남겨 둡니다.",
- "A newer save is in the cloud": "클라우드에 최신 저장 데이터가 있습니다"
+ "A newer save is in the cloud": "클라우드에 최신 저장 데이터가 있습니다",
+ "Description From LaunchBox": "LaunchBox 설명",
+ "Find It": "찾기",
+ "LaunchBox Folder": "LaunchBox 폴더",
+ "LaunchBox folder removed.": "LaunchBox 폴더를 제거했습니다.",
+ "LaunchBox has no description for it.": "LaunchBox에 이 게임의 설명이 없습니다.",
+ "LaunchBox hasn't saved any of these for this game. Download its pictures in LaunchBox first.": "LaunchBox가 이 게임의 이런 이미지를 저장하지 않았습니다. 먼저 LaunchBox에서 이미지를 내려받으세요.",
+ "LaunchBox wasn't found in the usual places. Pick its folder.": "평소 위치에서 LaunchBox를 찾지 못했습니다. 폴더를 선택하세요.",
+ "LaunchBox's folder": "LaunchBox 폴더",
+ "Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.": "선택 사항. LaunchBox를 사용한다면 사용자 지정에서 LaunchBox가 게임용으로 이미 저장한 박스 아트, 로고, 배경, 설명을 쓸 수 있습니다.",
+ "Pick Its Folder…": "폴더 선택…",
+ "Pick a picture from SteamGridDB, LaunchBox or your own to frame it here.": "SteamGridDB, LaunchBox 또는 직접 가진 이미지를 골라 여기서 위치를 맞추세요.",
+ "Saved. Customize can use your LaunchBox pictures now.": "저장했습니다. 이제 사용자 지정에서 LaunchBox 이미지를 쓸 수 있습니다.",
+ "That isn't LaunchBox's folder. Pick the folder LaunchBox is in (it has Data and Images in it).": "LaunchBox 폴더가 아닙니다. LaunchBox가 있는 폴더(Data와 Images가 들어 있음)를 선택하세요.",
+ "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "이 PC에서 LaunchBox가 게임용으로 이미 저장한 박스 아트, 로고, 배경을 사용합니다. 여기서 읽기만 하고 아무 데도 보내지 않습니다.",
+ "Your LaunchBox": "내 LaunchBox",
+ "Your LaunchBox has no game by that name. Try another.": "내 LaunchBox에 그 이름의 게임이 없습니다. 다른 이름으로 시도해 보세요.",
+ "Your LaunchBox has no game called {name}.": "내 LaunchBox에 {name}(이)라는 게임이 없습니다."
 }

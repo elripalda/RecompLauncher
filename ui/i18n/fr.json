@@ -3390,5 +3390,22 @@
  "Syncs when you press Play": "Se synchronise quand vous appuyez sur Jouer",
  "syncs when you press Play": "se synchronise quand vous appuyez sur Jouer",
  "Saved {time}. What's there now is kept as a backup first.": "Enregistrée {time}. Celle qui est là maintenant est d'abord gardée en copie.",
- "A newer save is in the cloud": "Une sauvegarde plus récente est dans le cloud"
+ "A newer save is in the cloud": "Une sauvegarde plus récente est dans le cloud",
+ "Description From LaunchBox": "Description depuis LaunchBox",
+ "Find It": "Le trouver",
+ "LaunchBox Folder": "Dossier LaunchBox",
+ "LaunchBox folder removed.": "Dossier LaunchBox retiré.",
+ "LaunchBox has no description for it.": "LaunchBox n'a pas de description pour ce jeu.",
+ "LaunchBox hasn't saved any of these for this game. Download its pictures in LaunchBox first.": "LaunchBox n'en a enregistré aucune pour ce jeu. Téléchargez d'abord ses images dans LaunchBox.",
+ "LaunchBox wasn't found in the usual places. Pick its folder.": "LaunchBox est introuvable aux emplacements habituels. Choisissez son dossier.",
+ "LaunchBox's folder": "Le dossier de LaunchBox",
+ "Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.": "Facultatif. Si vous utilisez LaunchBox, Personnaliser peut reprendre les jaquettes, logos, arrière-plans et descriptions qu'il a déjà enregistrés pour vos jeux.",
+ "Pick Its Folder…": "Choisir son dossier…",
+ "Pick a picture from SteamGridDB, LaunchBox or your own to frame it here.": "Choisissez une image de SteamGridDB, de LaunchBox ou la vôtre pour la cadrer ici.",
+ "Saved. Customize can use your LaunchBox pictures now.": "Enregistré. Personnaliser peut maintenant utiliser vos images LaunchBox.",
+ "That isn't LaunchBox's folder. Pick the folder LaunchBox is in (it has Data and Images in it).": "Ce n'est pas le dossier de LaunchBox. Choisissez le dossier où se trouve LaunchBox (il contient Data et Images).",
+ "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "Utilisez les jaquettes, logos et arrière-plans que LaunchBox a déjà enregistrés pour vos jeux sur ce PC. Ils sont seulement lus ici, rien n'est envoyé nulle part.",
+ "Your LaunchBox": "Votre LaunchBox",
+ "Your LaunchBox has no game by that name. Try another.": "Votre LaunchBox n'a aucun jeu de ce nom. Essayez-en un autre.",
+ "Your LaunchBox has no game called {name}.": "Votre LaunchBox n'a aucun jeu nommé {name}."
 }
