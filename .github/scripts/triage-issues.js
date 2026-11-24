@@ -7,6 +7,10 @@
 //   wrote points at the launcher (Easy Setup, installing, updating), or the game's log says the
 //   launcher's setup step never built it.
 // - Issues the team opened themselves are never closed on their own.
+// - Before linking to the game's GitHub, it checks the repo is still there and takes reports. If it's
+//   gone (deleted or made private), archived, or has issues turned off, the comment says so plainly
+//   instead of posting a dead link. Running it by hand later rewrites those comments, so once a repo
+//   comes back the link is added.
 // Run by hand (workflow_dispatch), it goes through every open crash issue.
 
 const CATALOG = 'https://recomplauncher.com/pc-catalog.json';
@@ -51,6 +55,43 @@ function issueLink(app, issue) {
   return full.length <= 7500 ? full : `https://github.com/${repo}/issues/new?title=${title}`;
 }
 
+// The GitHub repo a report would go to: the catalog's owner/name, or the one in a github.com
+// report_url. Empty for other sites (GitLab, SourceForge, Forgejo, a forum), which aren't checked.
+function githubRepo(app) {
+  const url = String(app.report_url || '');
+  if (/^https:\/\//i.test(url)) {
+    const m = url.match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)/i);
+    return m ? `${m[1]}/${m[2]}` : '';
+  }
+  const repo = String(app.repo || '');
+  return /^[\w.-]+\/[\w.-]+$/.test(repo) ? repo : '';
+}
+
+// Whether the game's GitHub can still take a report: 'ok', 'gone', 'archived', 'no-issues', or
+// 'unknown' when GitHub couldn't say (rate limit, outage, network). Unknown posts the link as
+// before: a check that didn't get an answer shouldn't hold back a link that most likely works.
+// Answers are kept for the run, so a sweep over many issues asks once per repo.
+async function repoState(github, full, cache, core) {
+  if (!full) return 'unknown';
+  const key = full.toLowerCase();
+  if (cache.has(key)) return cache.get(key);
+  const [owner, repo] = full.split('/');
+  let state = 'unknown';
+  try {
+    // A renamed or moved repo answers with a redirect, which is followed, so it counts as there.
+    const { data } = await github.rest.repos.get({ owner, repo });
+    if (data.archived) state = 'archived';
+    else if (data.has_issues === false) state = 'no-issues';
+    else state = 'ok';
+  } catch (e) {
+    // 404: deleted or made private. 451: taken down. Anything else is GitHub not answering.
+    if (e.status === 404 || e.status === 451) state = 'gone';
+    else core.warning(`Couldn't check ${full} (${e.status || e.message}), so the link is posted as usual`);
+  }
+  cache.set(key, state);
+  return state;
+}
+
 function formValue(body, label) {
   const m = String(body || '').match(new RegExp(`^### ${label}\\s*\\n+([^\\n#][^\\n]*)`, 'mi'));
   const v = m ? m[1].trim() : '';
@@ -93,7 +134,30 @@ function message(app, link, crash) {
   return `Thanks for the report! ${what}, so its developer is the one who can fix it. Open the game's page in the launcher and use **Report to the Developer**, or report it on the game's GitHub page.\n\nIf you think it's a launcher problem after all, reply here and we'll reopen it.`;
 }
 
-async function handle(github, repo, issue, apps, opts, core) {
+// When the game's GitHub can't take the report, say so instead of linking to it. Nothing is
+// suggested in the launcher either, since its Report to the Developer opens the same page.
+const NO_REPORTS = {
+  gone: (name, url) => `But ${name}'s GitHub page (${url}) is gone: it was deleted or made private, so there's nowhere to report it right now. There's nothing we can do until the developer brings it back.`,
+  archived: (name, url) => `But ${name}'s GitHub page (${url}) is archived, so it doesn't take new reports. There's nothing we can do unless the developer opens it again.`,
+  'no-issues': (name, url) => `But ${name}'s developer has turned off reports on its GitHub page (${url}), so there's nowhere to send it there right now. There's nothing we can do until they turn them back on.`,
+};
+
+function noReportMessage(app, full, state, crash) {
+  const what = crash ? 'This crash happened in the game itself' : 'This is about the game itself, not the launcher';
+  const why = NO_REPORTS[state](app.name, `https://github.com/${full}`);
+  return `Thanks for the report! ${what}, so ${app.name}'s developer is the one who can fix it. ${why}\n\nIf you think it's a launcher problem after all, reply here and we'll reopen it.`;
+}
+
+// The comment for a game issue: the link to the game's issue page, or why there isn't one.
+async function reply(github, app, issue, crash, cache, core) {
+  if (!app) return message(null, '', crash);
+  const full = githubRepo(app);
+  const state = await repoState(github, full, cache, core);
+  if (NO_REPORTS[state]) return noReportMessage(app, full, state, crash);
+  return message(app, issueLink(app, issue), crash);
+}
+
+async function handle(github, repo, issue, apps, opts, core, cache) {
   if (issue.pull_request || issue.state !== 'open') return;
   const labels = (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
   if (labels.includes(L_LOOK) && !opts.marked) return;
@@ -108,8 +172,8 @@ async function handle(github, repo, issue, apps, opts, core) {
     core.info(`#${issue.number}: kept open (${!app ? 'game not found' : setupLog ? 'setup didn\'t finish' : 'the note points at the launcher'})`);
     return;
   }
-  const link = app ? issueLink(app, issue) : '';
-  await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body: message(app, link, kind === 'crash') });
+  const body = await reply(github, app, issue, kind === 'crash', cache, core);
+  await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body });
   const add = kind === 'crash' ? [L_CRASH] : (labels.includes(L_NOT) ? [] : [L_NOT]);
   if (add.length) await github.rest.issues.addLabels({ ...repo, issue_number: issue.number, labels: add });
   await github.rest.issues.update({ ...repo, issue_number: issue.number, state: 'closed', state_reason: 'not_planned' });
@@ -120,34 +184,39 @@ module.exports = async ({ github, context, core }) => {
   const repo = context.repo;
   await ensureLabels(github, repo);
   const apps = await catalog(core);
+  const cache = new Map();
   const ev = context.eventName;
   if (ev === 'issues') {
     const issue = context.payload.issue;
     if (context.payload.action === 'labeled') {
-      if (context.payload.label && context.payload.label.name === L_NOT) await handle(github, repo, issue, apps, { marked: true }, core);
+      if (context.payload.label && context.payload.label.name === L_NOT) await handle(github, repo, issue, apps, { marked: true }, core, cache);
       return;
     }
-    await handle(github, repo, issue, apps, { marked: false }, core);
+    await handle(github, repo, issue, apps, { marked: false }, core, cache);
     return;
   }
   // By hand: every open crash or game issue.
   const open = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'open', per_page: 100 });
   for (const issue of open) {
-    try { await handle(github, repo, issue, apps, { marked: false }, core); } catch (e) { core.warning(`#${issue.number}: ${e.message}`); }
+    try { await handle(github, repo, issue, apps, { marked: false }, core, cache); } catch (e) { core.warning(`#${issue.number}: ${e.message}`); }
   }
   // And the bot's own comments on ones it closed are brought back to the current wording.
   const closed = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'closed', labels: L_CRASH, per_page: 100 });
   for (const issue of closed) {
-    try { await reword(github, repo, issue, apps, core); } catch (e) { core.warning(`#${issue.number}: ${e.message}`); }
+    try { await reword(github, repo, issue, apps, core, cache); } catch (e) { core.warning(`#${issue.number}: ${e.message}`); }
   }
 };
 
-async function reword(github, repo, issue, apps, core) {
+async function reword(github, repo, issue, apps, core, cache) {
   const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: issue.number, per_page: 100 });
   const mine = comments.filter((c) => c.user && c.user.login === 'github-actions[bot]').pop();
   if (!mine) return;
   const app = findGame(issue, apps);
-  const body = message(app, app ? issueLink(app, issue) : '', kindOf(issue) === 'crash');
+  // GitHub didn't answer for this repo: keep what the comment says rather than swap a "gone" note
+  // back to a link (or the other way) on a guess.
+  const full = app ? githubRepo(app) : '';
+  if (full && await repoState(github, full, cache, core) === 'unknown') return;
+  const body = await reply(github, app, issue, kindOf(issue) === 'crash', cache, core);
   if (mine.body === body) return;
   await github.rest.issues.updateComment({ ...repo, comment_id: mine.id, body });
   core.info(`#${issue.number}: comment reworded`);
