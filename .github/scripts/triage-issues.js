@@ -153,6 +153,10 @@ async function reply(github, app, issue, crash, cache, core) {
   if (!app) return message(null, '', crash);
   const full = githubRepo(app);
   const state = await repoState(github, full, cache, core);
+  // Issues being off only matters when the link goes to the issues page. A report_url on another
+  // part of the repo (Discussions, say) still works, so it's posted as usual.
+  const toIssues = !app.report_url || /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues(\/|\?|#|$)/i.test(app.report_url);
+  if (state === 'no-issues' && !toIssues) return message(app, issueLink(app, issue), crash);
   if (NO_REPORTS[state]) return noReportMessage(app, full, state, crash);
   return message(app, issueLink(app, issue), crash);
 }

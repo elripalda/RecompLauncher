@@ -145,3 +145,15 @@ test('the sweep leaves comments alone when GitHub does not answer', async () => 
   await sweep(github, 'AkiBot is gone note');
   assert.equal(github.updated, undefined);
 });
+
+test('issues being off does not drop a report_url that goes to Discussions', async () => {
+  const { github, done } = fakeGitHub({ full_name: 'Razoc/Akibot', archived: false, has_issues: false });
+  await run(github, [{ ...AKIBOT, report_url: 'https://github.com/Razoc/Akibot/discussions' }]);
+  assert.match(done.comments[0], /Report it to them here\]\(https:\/\/github\.com\/Razoc\/Akibot\/discussions\)/);
+});
+
+test('issues being off is still said for a report_url that goes to Issues', async () => {
+  const { github, done } = fakeGitHub({ full_name: 'Razoc/Akibot', archived: false, has_issues: false });
+  await run(github, [{ ...AKIBOT, report_url: 'https://github.com/Razoc/Akibot/issues/new' }]);
+  assert.match(done.comments[0], /turned off reports on its GitHub page/);
+});
