@@ -825,9 +825,11 @@ settings are written. It runs again whenever the player changes their copy.
 - There's no time limit: a full build on a Steam Deck can take hours. A step that prints nothing at
   all for an hour is taken as stuck and stopped, so print a line now and then on long work.
 - Exit with 0 when it worked. Anything else shows as a failed setup: the player sees "Its setup
-  step stopped with code N." and, under it, the last four lines your step printed (stdout and
-  stderr, `progress` lines and colour codes left out). So print the reason last, in words a
-  player can act on, rather than ending on the tail of a long hint:
+  step stopped with code N.", the last 10 lines your step printed (stdout and stderr, `progress`
+  lines and colour codes left out) and two buttons: Copy puts those lines with the game, its
+  version and the player's OS on the clipboard, for them to paste to you, and Open Full Log opens
+  everything it printed on that run. Players read the short log first, so print the reason last,
+  in words a player can act on, rather than ending on the tail of a long hint:
 
   ```sh
   echo "Missing: the Vulkan SDK and the .NET 10 SDK."
@@ -978,7 +980,7 @@ when it's on its `args` are added after the step's own:
 - Your setup step gets these args added to its own, with the step's usual environment. Where to put
   the SDK and its runtime files: [Vendor SDKs the build needs](#vendor-sdks-the-build-needs).
 - Print `progress` lines for the download too. If it fails, exit with a code other than 0 and
-  print the reason last: the player sees "Its setup step stopped with code N." and the last four
+  print the reason last: the player sees "Its setup step stopped with code N." and the last 10
   lines your step printed.
 - An option you add in a later release reaches players who already set the game up: Set Up
   Again, beside Play, gets a New mark, and the next time they press Play they're asked once to turn
@@ -1006,7 +1008,7 @@ the player agrees to the vendor's license:
 5. With the tick off, the build must be the one you ship today.
 6. Print `progress` lines while it downloads. If it fails, exit with a code other than 0 and
    print the reason last: the player sees "Its setup step stopped with code N." and the last
-   four lines your step printed.
+   10 lines your step printed.
 
 ### `dumps`: known good copies
 
