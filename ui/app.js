@@ -9438,7 +9438,8 @@ async function act(el, e) {
     }
     case 'ui-toggle':
       // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
-      // leaves every game as it was, a game whose program the player picked included.)
+      // leaves every game as it was, a game whose program the player picked included. A game
+      // installed while it's on takes it as its own mode, so it stays the player's.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     // Show Game Names: the desktop shortcuts and Steam entries already made change pictures too.
     case 'game-names': return saveUi({ game_names: !(S.settings.ui || {}).game_names }).then(refreshShortcutArt);

@@ -905,8 +905,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
-        // Skip Easy Setup ticked before it was installed: from now on it's the game's own mode.
-        if prev.is_none() && take_skip_choice(&mut l.settings.ui, id) {
+        // Skip Easy Setup ticked before it was installed, or on for every game in Settings: from
+        // now on it's the game's own mode. A game installed under the Settings switch then stays
+        // the player's when the switch goes off, instead of asking for their copy.
+        if prev.is_none() && fresh_install_skips(&mut l.settings.ui, id) {
             rec.mode = library::SetupMode::Own;
         }
         l.put(id, rec);
@@ -4670,6 +4672,13 @@ fn take_skip_choice(ui: &mut Value, id: &str) -> bool {
     let before = list.len();
     list.retain(|x| x.as_str() != Some(id));
     list.len() != before
+}
+
+/// A game being installed for the first time skips Easy Setup: its own tick (taken off the list),
+/// or the Settings switch for every game.
+fn fresh_install_skips(ui: &mut Value, id: &str) -> bool {
+    let ticked = take_skip_choice(ui, id);
+    ticked || easy_skipped_for_all(ui)
 }
 
 /// The player sets this game up their own way (Skip Easy Setup): its own mode once installed, or
@@ -11860,6 +11869,25 @@ mod easy_skip_tests {
         let mut ui = json!({ "easy_skip": ["hopper"] });
         rename_id(&mut ui, "hopper", "hopper-2");
         assert!(easy_skipped(&ui, "hopper-2"));
+    }
+
+    #[test]
+    fn a_game_installed_under_the_settings_switch_keeps_skipping() {
+        let mut ui = json!({ "easy_skip_all": true });
+        assert!(fresh_install_skips(&mut ui, "hopper"));
+    }
+
+    #[test]
+    fn a_game_installed_without_a_skip_gets_easy_setup() {
+        let mut ui = json!({ "easy_skip_all": false, "easy_skip": ["skyracer"] });
+        assert!(!fresh_install_skips(&mut ui, "hopper"));
+    }
+
+    #[test]
+    fn a_ticked_game_skips_and_leaves_the_list() {
+        let mut ui = json!({ "easy_skip": ["hopper"] });
+        assert!(fresh_install_skips(&mut ui, "hopper"));
+        assert!(!easy_skipped(&ui, "hopper"));
     }
 }
 
