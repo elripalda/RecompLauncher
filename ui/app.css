@@ -448,7 +448,6 @@ body.light .known-fix b{color:#127a45}
 .gs-v .scan-pill{height:19px;font-size:10.5px!important;gap:4px;padding:0 7px 0 3px;margin-left:4px}
 .gs-v .scan-pill i{width:12px;height:12px}
 .gs-v .scan-pill i svg{width:11px;height:11px}
-.gs-v .own-pill{margin-left:4px}
 .gs-to{color:var(--dim);font-size:10px;font-weight:600;margin:0 -1px}
 .gs-new{color:var(--cyan)}
 .gs-stack{display:inline-flex;margin-right:4px}
@@ -2419,7 +2418,7 @@ body.mac .tile .glow{display:none}
 .path-box:not(.empty){direction:rtl;text-align:left}
 .path-box>bdi{direction:ltr;unicode-bidi:isolate}
 .path-box.empty{font-family:inherit;font-weight:500;color:var(--dim)}
-/* Self-Managed: Play starts the player's own executable; the launcher doesn't set the game up. */
+/* Set Up by You: the player sets the game up (their own executable, or Easy Setup skipped), not the launcher. */
 .own-pill{display:inline-flex!important;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11.5px!important;font-weight:700;letter-spacing:.02em;color:var(--cyan)!important;border:1px solid rgba(52,242,232,.32);background:rgba(52,242,232,.08);cursor:help;flex:none}
 
 /* Where's Your Build?: the two ways in as cards, then Easy Setup and Not Now. */

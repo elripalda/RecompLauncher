@@ -2438,7 +2438,7 @@ function gameTitle(a, id) {
   const inst = S.library[id], su = S.setup[id];
   // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
   const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   return `${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}`;
 }
 function pageGame(id) {
@@ -3066,7 +3066,7 @@ function gameStrip(a, inst) {
   }
   if (inst) {
     const size = gameDisk(id);
-    boxes.push(gsBox(GS_IC.disk, t('On Disk'), (size ? esc(fmtB(size)) : '—') + selfManagedPill(id)));
+    boxes.push(gsBox(GS_IC.disk, t('On Disk'), size ? esc(fmtB(size)) : '—'));
   }
   return `<div class="gstrip" style="--gs-n:${boxes.length}">${boxes.join('')}</div>`;
 }
@@ -6783,9 +6783,21 @@ function selfManaged(id) {
   const su = setupOf(id);
   return !!(su && su.own_program);
 }
-function selfManagedPill(id) {
-  if (!selfManaged(id)) return '';
-  return `<span class="own-pill" title="${esc(t('You manage this install. Play starts the executable you picked, as it is, without Easy Setup or the launcher\'s setup steps.'))}">${esc(t('Self-Managed'))}</span>`;
+// The player sets this game up, not the launcher: they picked its executable, or Easy Setup is
+// skipped on a game it could do (that game only, or every game in Settings). Only an installed
+// game's page asks.
+function setUpByYou(id) {
+  if (selfManaged(id)) return true;
+  return !!(S.easyAll && S.easy) && S.easyAll.has(id) && !S.easy.has(id);
+}
+// The pill that says so, on the game's page (under its name, and by Game Executable in Manage), so
+// a player who skipped Easy Setup knows why the launcher doesn't ask for their copy.
+function setUpByYouPill(id) {
+  if (!setUpByYou(id)) return '';
+  const ownTip = t('You set up this game yourself, not RecompLauncher. Play starts the executable you picked, as it is. The launcher only installs its updates and backs up and syncs its saves.');
+  const skipTip = t('You set up this game yourself, not RecompLauncher: Easy Setup is skipped for it. The launcher only starts it, installs its updates and backs up and syncs its saves.');
+  const tip = selfManaged(id) ? ownTip : skipTip;
+  return `<span class="own-pill" title="${esc(tip)}">${esc(t('Set Up by You'))}</span>`;
 }
 // The program's full path (it's kept relative to the game's folder when it's inside it).
 function exePath(inst) {
@@ -6817,7 +6829,7 @@ function programRow(id, inst) {
   const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
   const hasSwitch = easy && !(S.settings.ui || {}).easy_skip_all;
   const back = mine && !hasSwitch ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Use Default'))}</button>` : '';
-  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
+  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${setUpByYouPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
 }
 // Skip Easy Setup for one game, or Easy Setup on for it again. Installed, it's the game's mode:

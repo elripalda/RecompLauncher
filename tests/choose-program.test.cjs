@@ -7,10 +7,11 @@ const rust = fs.readFileSync(path.join(__dirname, '../src-tauri/src/lib.rs'), 'u
 const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 
 // Game Executable on the game's page, with what game_setup says about the game.
-const row = (setup, easy, exe = 'Hookshot\\bin\\hookshot.exe', ui = {}) => {
-  const names = ['setupOf', 'selfManaged', 'selfManagedPill', 'exePath', 'programRow'];
+// `easyOn`: Easy Setup is on for it (not skipped), which it is unless a test says otherwise.
+const row = (setup, easy, exe = 'Hookshot\\bin\\hookshot.exe', ui = {}, easyOn = easy) => {
+  const names = ['setupOf', 'selfManaged', 'setUpByYou', 'setUpByYouPill', 'exePath', 'programRow'];
   const run = new Function('S', 't', 'esc', `${names.map((n) => fn(app, n)).join(';\n')}; return programRow;`);
-  const S = { os: 'windows', settings: { ui }, setup: { g: setup }, easyAll: new Set(easy ? ['g'] : []) };
+  const S = { os: 'windows', settings: { ui }, setup: { g: setup }, easyAll: new Set(easy ? ['g'] : []), easy: new Set(easyOn ? ['g'] : []) };
   return run(S, (x) => x, (x) => x)('g', { exe, path: 'F:\\Library\\hookshot' });
 };
 
@@ -33,9 +34,9 @@ test('a game Easy Setup does says what picking its own executable does', () => {
 
 const MINE = { own_program: 'F:\\Library\\hookshot\\Hookshot\\bin\\hookshot.exe' };
 
-test('once Play starts the player\'s executable: Self-Managed, and no second button (the Easy Setup switch is the way back)', () => {
+test('once Play starts the player\'s executable: Set Up by You, and no second button (the Easy Setup switch is the way back)', () => {
   const html = row(MINE, true);
-  assert.match(html, /<span class="own-pill" title="You manage this install\. [^"]+">Self-Managed<\/span>/);
+  assert.match(html, /<span class="own-pill" title="You set up this game yourself, not RecompLauncher\. Play starts the executable you picked, as it is\. [^"]+">Set Up by You<\/span>/);
   assert.match(html, /You manage this install, and Easy Setup is skipped\./);
   assert.doesNotMatch(html, /forget-program|easy-again|easy-skip/);
 });
@@ -93,8 +94,27 @@ test('with Easy Setup skipped for every game, the way back is Use Default', () =
   assert.match(row(MINE, true, undefined, { easy_skip_all: true }), /data-act="forget-program"[^>]*>Use Default</);
 });
 
-test('the Overview shows Self-Managed next to the room the game takes', () => {
-  assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), \(size \? esc\(fmtB\(size\)\) : '—'\) \+ selfManagedPill\(id\)\)/);
+test('Easy Setup skipped on a game it can do: Set Up by You, saying what the launcher still does', () => {
+  const html = row({ own_program: null }, true, undefined, {}, false);
+  assert.match(html, /<span class="own-pill" title="You set up this game yourself, not RecompLauncher: Easy Setup is skipped for it\. The launcher only starts it, installs its updates and backs up and syncs its saves\.">Set Up by You<\/span>/);
+});
+
+test('Easy Setup skipped for every game: Set Up by You too', () => {
+  assert.match(row({ own_program: null }, true, undefined, { easy_skip_all: true }, false), />Set Up by You</);
+});
+
+test('no pill on a game Easy Setup can\'t do while Play starts the default program', () => {
+  assert.doesNotMatch(row({ own_program: null }, false), /own-pill/);
+});
+
+test('the pill sits under the game\'s name in place of Easy Setup, and no longer in On Disk', () => {
+  assert.match(fn(app, 'gameTitle'), /inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : turnkey\(a\) \? /);
+  assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), size \? esc\(fmtB\(size\)\) : '—'\)/);
+});
+
+test('Big Picture says Set Up by You on an installed game where it would say Easy Setup', () => {
+  const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
+  assert.match(tv, /: S\.easy\.has\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : ''/);
 });
 
 test('Use Default lets the pick go in the core', () => {
