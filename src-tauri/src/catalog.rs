@@ -1268,7 +1268,8 @@ pub fn latest(rels: &[Release]) -> Option<&Release> {
 /// pre-release, the newest of all. Never one older than what they have (a beta of the next
 /// version is newer than the last stable one).
 pub fn latest_for<'a>(rels: &'a [Release], installed: &str) -> Option<&'a Release> {
-    let cur = rels.iter().find(|r| r.tag_name == installed);
+    // An imported game's tag can lack the release's "v": it's still the release it's on.
+    let cur = rels.iter().find(|r| crate::same_tag(&r.tag_name, installed));
     let pick = if cur.map(|r| r.prerelease).unwrap_or(false) { rels.iter().find(|r| !r.draft) } else { latest(rels) }?;
     if let (Some(c), Some(new), Some(old)) = (cur, pick.published_at.as_deref(), cur.and_then(|r| r.published_at.as_deref())) {
         if new < old {
