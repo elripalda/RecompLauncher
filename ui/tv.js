@@ -762,8 +762,20 @@
     PRE.set(src, im);
     if (PRE.size > 60) PRE.delete(PRE.keys().next().value);
   }
+  // Whether the core reads controllers itself (SDL); null until it answers. While it does, this
+  // window never asks for gamepads: that starts WebView2's own controller reading, and on Windows
+  // the two together switch off a controller reconnecting through the Xbox Wireless Adapter (#496).
+  let padsNative = null;
+  // Outside the launcher (a page opened on its own) there's no core to ask: the fallback it is.
+  const padsAnswer = Promise.resolve().then(() => invoke('pads_native')).catch(() => false).then((on) => { padsNative = on; return on; });
   // The box you're on tilts with the right stick (or the mouse over it), like turning it in your hands.
-  const TILT = { raf: 0, x: 0, y: 0, mx: 0, my: 0, mouseAt: 0, el: null };
+  const TILT = { raf: 0, x: 0, y: 0, mx: 0, my: 0, mouseAt: 0, el: null, stick: [0, 0], asking: false };
+  // The core's right stick, asked for once a frame at most; the tilt uses the last answer.
+  function askRightStick() {
+    if (TILT.asking) return;
+    TILT.asking = true;
+    invoke('pad_right_stick').then((s) => { TILT.stick = s; }).catch(() => {}).finally(() => { TILT.asking = false; });
+  }
   function tiltStart() {
     if (TILT.raf || lighter()) return;
     TILT.raf = requestAnimationFrame(tiltTick);
@@ -778,7 +790,11 @@
     if (!f || !TV.on) { TILT.x = TILT.y = 0; return; }
     let sx = 0, sy = 0;
     if (performance.now() - TILT.mouseAt < 1500) { sx = TILT.mx; sy = TILT.my; }
-    else if (navigator.getGamepads) {
+    else if (padsNative) {
+      askRightStick();
+      [sx, sy] = TILT.stick;
+      if (Math.hypot(sx, sy) < 0.15) sx = sy = 0;
+    } else if (padsNative === false && navigator.getGamepads) {
       for (const gp of navigator.getGamepads()) {
         if (!gp || gp.axes.length < 4) continue;
         const x = gp.axes[2] || 0, y = gp.axes[3] || 0;
@@ -3159,7 +3175,7 @@
   }
 
   // Controllers: from the core (Xbox through XInput, PlayStation read directly), with the
-  // window's own gamepad support as a fallback if the core never reports anything.
+  // window's own gamepad support as a fallback only when the core can't read them (padsNative).
   let nativeSeen = false;
   let lastPad = { b: '', t: 0 };
   const BORN = performance.now();
@@ -3235,7 +3251,7 @@
       held[k] = now;
     }
   }
-  pollPads();
+  padsAnswer.then((on) => { if (!on) pollPads(); });
 
   // F11 switches between the desktop view and Big Picture mode.
   document.addEventListener('keydown', (e) => {
