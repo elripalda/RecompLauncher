@@ -1858,11 +1858,13 @@ function homeBoxShows(x) {
   return true;
 }
 // An info box's words in the player's language (or its base one: es for es-419), where the website
-// translated them when the admin saved; else as the admin typed them.
+// translated them when the admin saved; else as the admin typed them. Only these regional languages
+// fall back, so zh-Hant never gets another script's words.
+const HOME_TR_BASE = { 'en-GB': 'en', 'es-419': 'es', 'fr-CA': 'fr', 'pt-BR': 'pt' };
 function homeWord(x, k) {
   const tr = x.tr && typeof x.tr === 'object' ? x.tr : {};
   const lang = String(curLang() || 'en');
-  const m = tr[lang] || tr[lang.split('-')[0]];
+  const m = tr[lang] || (HOME_TR_BASE[lang] && tr[HOME_TR_BASE[lang]]);
   const v = m && typeof m[k] === 'string' && m[k].trim() ? m[k] : x[k];
   return typeof v === 'string' ? v : '';
 }

@@ -27,7 +27,7 @@ function ctx(S) {
     httpsOnly: (u) => (/^https:\/\/\S+$/i.test(String(u || '')) ? String(u) : '')
   });
   vm.runInContext(line('const HOME_ROWS') + line('const HOME_GO') + line('const homeClosed') + line('const HOME_ICONS = {').replace('{', '{};'), c);
-  vm.runInContext(line('const homeIcon'), c);
+  vm.runInContext(line('const homeIcon') + line('const HOME_TR_BASE'), c);
   vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBox') + fn('homeBanner'), c);
   return c;
 }
@@ -103,6 +103,9 @@ test('An info box shows its words in the player\'s language when the website tra
   assert.match(page(home, { lang: 'ja' }), /<b dir="auto">今週の新作<\/b><span dir="auto">Three new recomps.<\/span>.*>See them<\/button>/);
   // No translation for the player's language: as typed.
   assert.match(page(home, { lang: 'th' }), /<b dir="auto">New this week<\/b>/);
+  // Traditional Chinese never falls back to a plain zh entry (Simplified).
+  const zh = { v: 1, items: [Object.assign({}, box, { tr: { zh: { title: '本周新作' } } })], hide: Object.keys(ROWS) };
+  assert.match(page(zh, { lang: 'zh-Hant' }), /<b dir="auto">New this week<\/b>/);
 });
 
 test('An info box from a website without translations shows as typed', () => {
