@@ -5082,6 +5082,7 @@ function pageSettings() {
         <p class="muted" style="margin:0">${esc(t('RecompLauncher has no game files and never downloads any. Every recomp comes from its developer\'s own GitHub, and you set it up with your own copy of the game.'))}</p>`, `<button type="button" class="btn sm" data-act="about">${esc(t('More about it'))}</button>`)
         + group(t('Support'), row(t('Support RecompLauncher'), t('Help keep it running and growing, on Ko-fi'), `<button type="button" class="btn" data-act="url" data-url="${KOFI}">${HEART}${esc(t('Support Us'))}</button>`))
         + (discordUrl() ? group(t('Community'), row(t('Discord'), t('News, help with a game, and a place to send your logs.'), `<button type="button" class="btn" data-act="url" data-url="${esc(discordUrl())}">${DISCORD}${esc(t('Join the Discord'))}</button>`)) : '')
+        + group(t('Troubleshoot'), row(t('Export Logs'), t('Saves the launcher\'s and your games\' logs in one zip on your desktop, to attach wherever you ask for help.'), `<button type="button" class="btn" data-act="export-logs">${esc(t('Export Logs'))}</button>`))
         + group(t('Start over'), row(t('Reset settings'), t('Every setting goes back to how it started. Your games, saves, library folders and pinned games stay.'), `<button type="button" class="btn" data-act="reset" data-k="settings">${esc(t('Reset settings'))}</button>`)
           + row(t('First-time setup'), t('Go through first-time setup again. Nothing is deleted.'), `<button type="button" class="btn" data-act="reset" data-k="setup">${esc(t('Run it again'))}</button>`));
   }
@@ -9248,6 +9249,13 @@ async function act(el, e) {
     case 'rel': return toggleRel(el);
     case 'upd-game': S.nextTab = 'updates'; S.toTabs = true; return go('game', id);
     case 'reset': return resetModal(el.dataset.k);
+    case 'export-logs': {
+      if (el.disabled) return;
+      el.disabled = true;
+      // The full path: the zip lands in Downloads on a PC with no desktop folder.
+      try { const p = await invoke('export_logs'); toast(tf('Saved {file}.', { file: p })); } catch (err) { fail(err); } finally { el.disabled = false; }
+      return;
+    }
     case 'dev-add': return devAdd();
     case 'dev-open': S.nextTab = 'dev'; return go('game', id);
     case 'dev-check': return devCheck(id, true);
