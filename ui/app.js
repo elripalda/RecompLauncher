@@ -5359,7 +5359,8 @@ function pageSettings() {
     }
     case 'pads':
       body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
-        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick'))))
+        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick')))
+          + row(t('Controller as a Mouse'), t('On: the launcher ignores your controller\'s buttons on its desktop screens, so a mouse mapping (Steam Input, DS4Windows) doesn\'t press things twice. Holding Menu still opens Big Picture, which always uses the controller.'), sw('pad_desktop', st.pad_desktop === false, t('Controller as a Mouse'))))
         + group(t('Buttons'), `<div class="pad-guide">${buttonGuide().map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>`);
       break;
     case 'pc':
@@ -9742,6 +9743,8 @@ async function act(el, e) {
       if (k === 'auto_update_all') { await saveSettings({ auto_update_all: !autoUpdateAll() }); if (autoUpdateAll()) checkUpdates(); return; }
       if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
       if (k === 'start_at_login') { await startAtLogin(!S.settings.start_at_login); return render(true); }
+      // Turned off with the controller itself: its highlight goes too, as it does when the mouse moves.
+      if (k === 'pad_desktop') { await saveSettings({ pad_desktop: S.settings.pad_desktop === false }); if (S.settings.pad_desktop === false) padLetGo(); return; }
       return saveSettings({ [k]: !S.settings[k] });
     }
     case 'libdir': {
@@ -10189,6 +10192,17 @@ window.deskPad = (b) => {
   }
   return false;
 };
+// The controller no longer moves around the desktop view (Settings → Controllers): no highlight.
+// The page drawn again after the switch gives it back its focus, and without the controller's
+// own highlight that focus shows the browser's ring, so the focus goes too.
+function padLetGo() {
+  PAD.armed = false;
+  document.body.classList.remove('pad-nav');
+  if (PAD.el) PAD.el.classList.remove('pad-focus');
+  PAD.el = null;
+  const held = document.activeElement;
+  if (held && held !== document.body) held.blur();
+}
 // The controller lets go: no highlight, and A waits for a direction before it presses anything.
 function padRest() {
   PAD.armed = false;

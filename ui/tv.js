@@ -1370,6 +1370,7 @@
           ${clockRow()}
           ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
+          ${sw('pad_desktop', t('Controller as a Mouse'), t('On: the desktop view ignores your controller\'s buttons, so a mouse mapping doesn\'t press things twice. Big Picture mode always uses the controller.'), S.settings.pad_desktop === false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
           ${S.canStartAtLogin ? sw('start_at_login', t('Start with your PC'), startAtLoginNote()) : ''}
@@ -3301,6 +3302,9 @@
   let nativeSeen = false;
   let lastPad = { b: '', t: 0 };
   const BORN = performance.now();
+  // Holding Menu on the desktop view opens Big Picture mode: not in the first few seconds after the
+  // launcher opens, and not while the first-run setup is up.
+  const holdOpensTV = () => document.hasFocus() && performance.now() - BORN > 3000 && !document.querySelector('.oob');
   function pad(b, kind) {
     // The same button twice within 70 ms is one press arriving twice (a PlayStation controller
     // read directly and again through Steam Input): only the first counts, and the button icons
@@ -3315,6 +3319,13 @@
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
     }
     if (!TV.on) {
+      // Settings → Controllers, Controller as a Mouse on (pad_desktop false): the desktop view leaves
+      // the controller alone (a player using it as a mouse, its RB a click, would also change the
+      // page), apart from holding Menu for Big Picture mode.
+      if (S.settings.pad_desktop === false) {
+        if (b === 'menu-hold' && holdOpensTV()) enter();
+        return;
+      }
       // The file browser and the first-run setup take the controller while they're up.
       if (window.fbPad && window.fbPad(b)) return;
       if (window.oobPad && window.oobPad(b)) return;
@@ -3323,9 +3334,8 @@
         if (!TV.hinted && !document.querySelector('.oob')) { TV.hinted = true; if (window.toast) toast(t('Hold Menu on your controller to switch to Big Picture mode.')); }
         return;
       }
-      // A controller on the desktop view: holding Menu (Options) for a second opens TV mode. Not in
-      // the first few seconds after the launcher opens, and not while the first-run setup is up.
-      if (b === 'menu-hold' && document.hasFocus() && performance.now() - BORN > 3000 && !document.querySelector('.oob')) enter();
+      // A controller on the desktop view: holding Menu (Options) for a second opens TV mode.
+      if (b === 'menu-hold' && holdOpensTV()) enter();
       else if (!TV.hinted && ['a', 'b', 'up', 'down', 'left', 'right', 'menu'].includes(b) && !document.querySelector('.oob')) { TV.hinted = true; if (window.toast) toast(t('Hold Menu on your controller to switch to Big Picture mode.')); }
       return;
     }
