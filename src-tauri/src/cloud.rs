@@ -670,6 +670,17 @@ const NOT_RESTORED: &str = "Your cloud save couldn't be put in place.";
 /// The cloud save downloaded, but it couldn't be kept in the folder of the game's save copies.
 const CLOUD_NOT_KEPT: &str = "The cloud save couldn't be kept on this PC.";
 
+/// Already translated: the same words the launcher says for a game it started itself.
+const CLOSE_GAME_FIRST: &str = "Close the game first.";
+
+/// A game started outside the launcher (its program opened straight from its folder) isn't in
+/// `running`, but it writes saves all the same: a save put in place under it could replace what
+/// it just saved. Not seen on macOS, or under Wine where the program is Wine's own.
+async fn open_outside(g: &Installed) -> Res<bool> {
+    let dir = g.path.clone();
+    blocking(move || crate::still_running_in(&dir)).await
+}
+
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
 /// name, so the window can translate it: the player just pressed Play on that game.
 const SYNC_PAUSED: &str = "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.";
@@ -1082,12 +1093,17 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
+    let g = game(&st, id)?;
+    // Checked after the download too: a big save takes a while, and the game can be opened
+    // from its folder meanwhile.
+    if open_outside(&g).await? {
+        return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
+    }
     let d = copies_dir(&st, id);
     let not_kept = |path: &Path, e: std::io::Error| Error::Msg(format!("{CLOUD_NOT_KEPT}\n{}: {e}", path.display()));
     tokio::fs::create_dir_all(&d).await.map_err(|e| not_kept(&d, e))?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
-    let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
     let n = blocking(move || saves::restore(&dir, &id2, &t2, &spots, &g)).await;
@@ -1248,6 +1264,10 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
+        // Before Play too: the game is open already, so starting it again isn't what's needed.
+        if open_outside(&g).await? {
+            return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
+        }
         let taken = take_cloud(&app, &id, top).await;
         // Sync Now says why. Before Play the player is asked whether to play with this PC's save
         // instead (saves_play_without_cloud); nothing about the sync changes until they say so.
@@ -1754,6 +1774,9 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
         return Err(Error::Msg("That isn't one of its save copies.".into()));
     }
     let g = game(&st, &id)?;
+    if open_outside(&g).await? {
+        return Err(Error::Msg(CLOSE_GAME_FIRST.into()));
+    }
     let spots = spots_of(&st, &id, &g);
     let (dir, id2) = (st.dir.clone(), id.clone());
     let file = saves::dir_of(&st.dir, &id, &g).join(&name);
