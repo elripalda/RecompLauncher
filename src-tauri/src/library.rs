@@ -190,9 +190,15 @@ pub struct Installed {
     /// what they picked for every game (see `cloud_on`).
     #[serde(default)]
     pub cloud: Option<bool>,
-    /// Where the player says the game saves (Saves, Change): ahead of everything else.
+    /// Where the player says the game saves (Saves, Change). Only used while neither its developer
+    /// nor the catalog names a folder (saves::spots): a pick made before one was named is stale.
     #[serde(default)]
     pub save_place: Option<String>,
+    /// The player's folder in place of the one its developer or the catalog names (Saves, Change
+    /// on that folder), for a game they set up themselves. Its own field, not `save_place`: old
+    /// stale picks there must not come back. Ignored while Easy Setup is on (saves::with_override).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_override: Option<String>,
     /// More folders the player added (a launcher with several games, each saving in its own).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub more_save_places: Vec<String>,

@@ -76,6 +76,26 @@ pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
     mine.into_iter().map(|template| Spot { template, from: "player" }).collect()
 }
 
+/// The player may put their own folder in place of the one the developer or RecompLauncher named
+/// (a recomplauncher.json that names an old folder) only for a game they set up themselves: Easy
+/// Setup is hands-off. Only over one named folder: restore matches a copy's folders by position,
+/// so one folder standing in for several would put files in the wrong place.
+pub fn can_override(named: &[Spot], sets_up: bool) -> bool {
+    let [one] = named else { return false };
+    sets_up && matches!(one.from, "developer" | "catalog")
+}
+
+/// The game's save places with the player's override (`over`) in place of the named folder, when
+/// `can_override` allows it. A "player" place: it's the player's folder, and restore and sharing
+/// treat it as one.
+pub fn with_override(named: Vec<Spot>, over: Option<&str>, sets_up: bool) -> Vec<Spot> {
+    let Some(over) = over.map(str::trim).filter(|t| !t.is_empty()) else { return named };
+    if !can_override(&named, sets_up) {
+        return named;
+    }
+    vec![Spot { template: over.to_string(), from: "player" }]
+}
+
 /// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
 /// them already, or inside one or around one (its files would be in two places).
 pub fn add_place(now: &[String], dir: &Path, g: &Installed) -> Result<Vec<String>, String> {
@@ -1559,6 +1579,52 @@ mod tests {
     }
 
     #[test]
+    fn the_override_replaces_the_developers_folder_when_the_player_sets_up() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/real", "player")]);
+    }
+
+    #[test]
+    fn the_override_replaces_recomplaunchers_folder_when_the_player_sets_up() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&[], &["{local}/Test/saves".into()], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/real", "player")]);
+    }
+
+    #[test]
+    fn easy_setup_ignores_a_left_over_override() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), false);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn the_override_is_not_used_over_several_named_folders() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/one".into(), "{install}/two".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.len(), 2);
+    }
+
+    #[test]
+    fn the_override_is_not_used_when_nobody_named_a_folder() {
+        assert!(!can_override(&[Spot { template: "{install}/mine".into(), from: "player" }], true));
+    }
+
+    #[test]
+    fn an_old_pick_does_not_come_back_without_an_override() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, None, true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
     fn sharing_keeps_the_previous_save_and_the_source() {
         let d = tmp("sharing-copy");
         let source = game(&d.join("source"));
@@ -2128,6 +2194,17 @@ mod tests {
         let second = why.lines().nth(1).unwrap_or_default();
         assert!(second.starts_with(&g.path.display().to_string()), "{why}");
         assert!(second.contains("saves"), "{why}");
+    }
+
+    #[test]
+    fn restore_puts_a_copy_of_the_developers_folder_into_the_override() {
+        let d = tmp("restore-override");
+        let (g, archive) = copy_from_old_folder(&d);
+        let named = spots(&["{install}/old".into()], &[], &g);
+        let now = with_override(named, Some("{install}/real"), true);
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("real/progress.sav")).unwrap(), "progress");
     }
 
     #[test]
