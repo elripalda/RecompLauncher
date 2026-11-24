@@ -180,6 +180,25 @@ const favMark = (id, cls) => (favs().includes(id) ? `<span class="${cls}" title=
 // its key carries the context after a bar, and English shows only the word.
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
 const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet);
+// Settings > Game Art: the player's own LaunchBox folder, where Customize finds the pictures and
+// descriptions LaunchBox already saved (launchbox.rs). Shown on Windows, or anywhere once it's set.
+function launchboxRow(ui) {
+  const dir = String(ui.launchbox_dir || '').trim();
+  if (S.os !== 'windows' && !dir) return '';
+  const acts = dir ? `<button type="button" class="btn sm" data-act="folder" data-path="${esc(dir)}">${esc(t('Open'))}</button><button type="button" class="btn sm" data-act="lb-pick">${esc(t('Change'))}</button><button type="button" class="btn sm danger" data-act="lb-forget">${esc(t('Remove'))}</button>`
+    : `<button type="button" class="btn sm" data-act="lb-find">${esc(t('Find It'))}</button><button type="button" class="btn sm" data-act="lb-pick">${esc(t('Pick Its Folder…'))}</button>`;
+  return `<div class="set-row"><div class="k"><b>${esc(t('LaunchBox Folder'))}</b><span>${dir ? `<span class="path">${esc(dir)}</span>` : esc(t('Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.'))}</span></div><span class="acts">${acts}</span></div>`;
+}
+// A LaunchBox folder checked and kept: the one picked, or (none) the one found where it usually is.
+async function launchboxSet(path) {
+  try {
+    const r = await invoke('launchbox_find', { path });
+    if (!r) return toast(t('LaunchBox wasn\'t found in the usual places. Pick its folder.'), true);
+    await saveUi({ launchbox_dir: r.path });
+    toast(t('Saved. Customize can use your LaunchBox pictures now.'));
+    if (S.view === 'settings') setSection(S.setTab, false);
+  } catch (e) { fail(e); }
+}
 // Cloud saves for an installed game: its own switch (Manage) when it was set, otherwise what the
 // player picked for every game (account.js askCloudAll). Paired with Installed::cloud_on in
 // src-tauri/src/library.rs, which decides what really syncs: change both together.
@@ -5242,7 +5261,8 @@ function pageSettings() {
         + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Games from another launcher, Steam or a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="mig-open">${esc(t('Bring Your Games'))}</button>`))
         + dlssGroup(group, row)
         + group(t('Game Art'), `<div class="set-row"><div class="k"><b>${esc(t('SteamGridDB API Key'))}</b><span>${esc(t('Optional. With your own free key from steamgriddb.com (Preferences → API), games you add from GitHub get covers, backgrounds and logos.'))}</span></div>
-          <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`);
+          <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`
+          + launchboxRow(ui));
       break;
     case 'bring':
       body = window.migratePage ? window.migratePage(group) : '';
@@ -9363,6 +9383,9 @@ async function act(el, e) {
     case 'move-listing': return moveListing(id, el.dataset.to);
     case 'dlss-remove': try { await invoke('dlss_remove'); S.dlssState = { applies: true, have: false }; toast(t('NVIDIA DLSS file removed.')); if (S.view === 'settings') setSection('library', false); } catch (e) { fail(e); } return;
     case 'umu-repair': try { toast(t(await invoke('umu_repair'))); S.protonNow = await invoke('proton_now').catch(() => S.protonNow); if (S.view === 'settings') setSection(S.setTab); } catch (e) { fail(e); } return;
+    case 'lb-find': return launchboxSet(null);
+    case 'lb-pick': { const p = await pickFile({ title: t('LaunchBox\'s folder'), directory: true }).catch(fail); if (p) await launchboxSet(typeof p === 'string' ? p : p.path); return; }
+    case 'lb-forget': await saveUi({ launchbox_dir: '' }); toast(t('LaunchBox folder removed.')); if (S.view === 'settings') setSection(S.setTab, false); return;
     case 'sgdb-save': { const v = ($('#sgdb-key') || {}).value || ''; await saveUi({ sgdb_key: v.trim() }); return toast(v.trim() ? t('Saved. Games you add from GitHub get art now.') : t('Key removed.')); }
     case 'build': return changeBuild(id);
     case 'gh-add': return githubModal();

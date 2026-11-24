@@ -3390,5 +3390,22 @@
  "Syncs when you press Play": "ซิงก์เมื่อคุณกดเล่น",
  "syncs when you press Play": "ซิงก์เมื่อคุณกดเล่น",
  "Saved {time}. What's there now is kept as a backup first.": "บันทึกเมื่อ {time} เซฟที่มีอยู่ตอนนี้จะถูกเก็บเป็นข้อมูลสำรองก่อน",
- "A newer save is in the cloud": "มีเซฟที่ใหม่กว่าบนคลาวด์"
+ "A newer save is in the cloud": "มีเซฟที่ใหม่กว่าบนคลาวด์",
+ "Description From LaunchBox": "คำอธิบายจาก LaunchBox",
+ "Find It": "ค้นหา",
+ "LaunchBox Folder": "โฟลเดอร์ LaunchBox",
+ "LaunchBox folder removed.": "นำโฟลเดอร์ LaunchBox ออกแล้ว",
+ "LaunchBox has no description for it.": "LaunchBox ไม่มีคำอธิบายของเกมนี้",
+ "LaunchBox hasn't saved any of these for this game. Download its pictures in LaunchBox first.": "LaunchBox ยังไม่ได้บันทึกภาพแบบนี้ของเกมนี้ ดาวน์โหลดภาพของเกมใน LaunchBox ก่อน",
+ "LaunchBox wasn't found in the usual places. Pick its folder.": "ไม่พบ LaunchBox ในตำแหน่งปกติ เลือกโฟลเดอร์ของมัน",
+ "LaunchBox's folder": "โฟลเดอร์ของ LaunchBox",
+ "Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.": "ไม่บังคับ ถ้าคุณใช้ LaunchBox การปรับแต่งจะใช้ภาพกล่อง โลโก้ พื้นหลัง และคำอธิบายที่ LaunchBox บันทึกไว้แล้วสำหรับเกมของคุณได้",
+ "Pick Its Folder…": "เลือกโฟลเดอร์ของมัน…",
+ "Pick a picture from SteamGridDB, LaunchBox or your own to frame it here.": "เลือกภาพจาก SteamGridDB, LaunchBox หรือภาพของคุณเองเพื่อจัดกรอบที่นี่",
+ "Saved. Customize can use your LaunchBox pictures now.": "บันทึกแล้ว ตอนนี้การปรับแต่งใช้ภาพจาก LaunchBox ของคุณได้แล้ว",
+ "That isn't LaunchBox's folder. Pick the folder LaunchBox is in (it has Data and Images in it).": "นี่ไม่ใช่โฟลเดอร์ของ LaunchBox เลือกโฟลเดอร์ที่มี LaunchBox อยู่ (มีโฟลเดอร์ Data และ Images อยู่ข้างใน)",
+ "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "ใช้ภาพกล่อง โลโก้ และพื้นหลังที่ LaunchBox บันทึกไว้แล้วสำหรับเกมของคุณบนพีซีเครื่องนี้ ระบบแค่อ่านที่นี่ ไม่มีการส่งอะไรออกไป",
+ "Your LaunchBox": "LaunchBox ของคุณ",
+ "Your LaunchBox has no game by that name. Try another.": "LaunchBox ของคุณไม่มีเกมชื่อนี้ ลองชื่ออื่น",
+ "Your LaunchBox has no game called {name}.": "LaunchBox ของคุณไม่มีเกมชื่อ {name}"
 }
