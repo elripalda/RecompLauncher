@@ -7746,18 +7746,25 @@ fn launcher_platform_entry(v: &Value, os: &str, arch: &str) -> Option<Value> {
 }
 
 /// How far along a pre-release's label is: an rc.1 is past a beta.5 whatever their numbers.
+/// A label we don't know sits with beta, so it's never taken for older than an alpha or newer
+/// than an rc.
 fn prerelease_stage(label: &str) -> u64 {
     let label = label.to_ascii_lowercase();
-    if label.starts_with("alpha") {
+    let starts = |prefixes: &[&str]| prefixes.iter().any(|p| label.starts_with(p));
+    if starts(&["dev", "nightly", "snapshot"]) {
+        return 0;
+    }
+    if starts(&["alpha"]) {
         return 1;
     }
-    if label.starts_with("beta") {
+    // Before "pre": "preview" starts with it.
+    if starts(&["beta", "preview"]) {
         return 2;
     }
-    if label.starts_with("rc") {
+    if starts(&["rc", "pre"]) {
         return 3;
     }
-    0
+    2
 }
 
 /// 0.5.0-beta.1 < 0.5.0-beta.2 < 0.5.0-rc.1 < 0.5.0 < 0.5.1: a pre-release comes before its release.
@@ -10680,6 +10687,27 @@ mod tests {
     fn a_release_candidate_is_newer_than_a_later_numbered_beta() {
         assert!(!super::older_version("v2.0.0-rc.1", "v2.0.0-beta.5"));
         assert!(super::older_version("v2.0.0-beta.5", "v2.0.0-rc.1"));
+    }
+
+    #[test]
+    fn a_preview_is_newer_than_an_alpha() {
+        assert!(super::older_version("1.0.0-alpha.1", "1.0.0-preview.2"));
+    }
+
+    #[test]
+    fn a_pre_is_newer_than_a_beta() {
+        assert!(super::older_version("1.0.0-beta.3", "1.0.0-pre.1"));
+    }
+
+    #[test]
+    fn a_nightly_is_older_than_an_alpha() {
+        assert!(super::older_version("1.0.0-nightly.5", "1.0.0-alpha.1"));
+    }
+
+    #[test]
+    fn an_unknown_label_sits_between_alpha_and_rc() {
+        assert!(super::older_version("1.0.0-alpha.1", "1.0.0-foo.1"));
+        assert!(super::older_version("1.0.0-foo.1", "1.0.0-rc.1"));
     }
 
     #[test]
