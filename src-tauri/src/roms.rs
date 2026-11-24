@@ -1343,7 +1343,8 @@ fn outside_brackets(s: &str) -> String {
 
 /// A number or Roman numeral that can be a sequel's. One is left out: "Game 1" is still "Game".
 fn is_sequel_number(word: &str) -> bool {
-    const ROMAN: [&str; 9] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"];
+    // Up to XX so long series are covered too: Final Fantasy XIII isn't Final Fantasy XII.
+    const ROMAN: [&str; 19] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"];
     if ROMAN.contains(&word) {
         return true;
     }
@@ -2282,6 +2283,20 @@ pub(crate) mod tests {
         assert!(matches("Gears of War", &f("Gears of War 1.2")));
         assert!(matches("Gears of War", &f("Gears of War (USA) (Disc 2)")));
         assert!(matches("Banjo-Kazooie", &f("Banjo-Kazooie (USA) (Rev 1)")));
+    }
+
+    #[test]
+    fn a_later_roman_numeral_isnt_the_earlier_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(!matches("Final Fantasy XII", &f("Final Fantasy XIII (USA)")));
+        assert!(!matches("Final Fantasy VII", &f("Final Fantasy VIII (USA)")));
+    }
+
+    #[test]
+    fn the_same_roman_numeral_is_still_the_same_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(matches("Final Fantasy XII", &f("Final Fantasy XII (USA)")));
+        assert!(matches("Final Fantasy VII", &f("Final Fantasy VII (USA) (Disc 2)")));
     }
 
     #[test]
