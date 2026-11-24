@@ -355,6 +355,30 @@ pub async fn playtime_pull(app: AppHandle) -> Res<Value> {
     Ok(play_call(req, &url).await.unwrap_or(Value::Null))
 }
 
+/// Resets a game's play time on this PC (`Library::reset_play`), then on the account: the
+/// website keeps the larger of what it has and what's sent, so sending less isn't enough. It
+/// drops this PC's rows for the game, and the push after it sends what's left (a recomp whose
+/// one game was reset). Other PCs keep their own time. -> {account}: true when the website
+/// cleared it, false when it couldn't (offline, an older site), null when signed out.
+#[tauri::command]
+pub async fn playtime_reset(app: AppHandle, id: String) -> Res<Value> {
+    let st = app.state::<App>();
+    if st.running.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg("Close the game first.".into()));
+    }
+    let ids = st.lib.lock().unwrap().reset_play(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    st.save();
+    let Some(a) = load(&st.dir) else { return Ok(json!({ "account": null })) };
+    let url = format!("{}?a=play-clear", api());
+    let body = json!({ "pc": play_id(&st.dir), "games": ids });
+    let req = st.http.post(&url).json(&body).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    let cleared = play_call(req, &url).await.is_some();
+    if cleared {
+        playtime_push(app.clone(), Some(ids)).await?;
+    }
+    Ok(json!({ "account": cleared }))
+}
+
 /// Sponsor spots for this account in the app ({s: [{id, slot, img, alt, house}]}). Quiet like play time:
 /// signed out, offline or an older website all just give nothing.
 #[tauri::command]
