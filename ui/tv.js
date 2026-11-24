@@ -1279,6 +1279,7 @@
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in the Catalog'))}
           ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
+          ${(() => { const on = window.reviewAskOn ? window.reviewAskOn() : true; return `<button type="button" class="tv-item" data-f data-key="s:reviewask" data-tvact="reviewask"><span class="k">${esc(t('Ask After Playing'))}<small>${esc(t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>`; })()}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
           ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
@@ -1809,14 +1810,14 @@
     focus($('[data-sheet="0"]', el), true);
     sfx('open');
   }
-  // How it runs, in one line and a bar: what players said about it.
+  // Reviews, in one line and a bar: what players said about how it runs.
   function tvRuns(a) {
     // The release out now once 3 or more of its players said, with every report under it.
     const sc = scoreOf((S.runCounts || {})[a.id], (S.latestCounts || {})[a.id]), r = sc.r;
-    if (!sc.all.n) return `<div class="tv-runs none"><span class="k">${esc(t('How it runs'))}</span><b>${esc(t('No reports yet'))}</b></div>`;
+    if (!sc.all.n) return `<div class="tv-runs none"><span class="k">${esc(t('Reviews'))}</span><b>${esc(t('No reviews yet'))}</b></div>`;
     const under = sc.cur ? `${tf('This version ({v})', { v: sc.v })} · ${tf('All versions: {pct}%', { pct: sc.all.pct('runs') })}`
-      : sc.v && sc.l ? `${tn(sc.all.n, '1 report', '{n} reports')} · ${sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 report so far', '{n} reports so far')}` : tf('{v}: no reports yet', { v: sc.v })}` : tn(r.n, '1 report', '{n} reports');
-    return `<div class="tv-runs"><span class="k">${esc(t('How it runs'))}</span><div class="tv-runs-l"><b>${esc(tf('{pct}% plays great', { pct: r.pct('runs') }))}</b><small>${esc(under)}</small></div>${runBar(r)}</div>`;
+      : sc.v && sc.l ? `${tn(sc.all.n, '1 review', '{n} reviews')} · ${sc.l.n ? `${sc.v}: ${tn(sc.l.n, '1 review so far', '{n} reviews so far')}` : tf('{v}: no reviews yet', { v: sc.v })}` : tn(r.n, '1 review', '{n} reviews');
+    return `<div class="tv-runs"><span class="k">${esc(t('Reviews'))}</span><div class="tv-runs-l"><b>${esc(tf('{pct}% plays great', { pct: r.pct('runs') }))}</b><small>${esc(under)}</small></div>${runBar(r)}</div>`;
   }
   // X on any game: everything you can do with it, in a sheet from the side.
   function gameSheet(id) {
@@ -2940,6 +2941,8 @@
       case 'back': return back();
       case 'leave': return leave();
       case 'monitor': sfx('open'); return tvMonitorSheet();
+      // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
+      case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');

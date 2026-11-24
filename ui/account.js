@@ -9,7 +9,7 @@ const CLOUD_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" 
 const SITE = 'https://recomplauncher.com';
 S.account = { signedIn: false };
 S.saves = {};
-// The signed-in player's reports (Settings > Account > Your Reports), with developers' answers.
+// The signed-in player's reports (Settings > Reviews > Your Reviews), with developers' answers.
 S.myReports = null;
 
 const whenText = (ts) => (ts ? new Date(ts * 1000).toLocaleString(curLocale(), timeOpts({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : '');
@@ -41,7 +41,8 @@ async function loadMyReports() {
   if (S.myReports && S.myReports.loading) return;
   const had = (S.myReports && S.myReports.list) || null;
   S.myReports = { list: had, loading: true };
-  try { const r = await invoke('my_reports'); S.myReports = { list: (r && r.reports) || [] }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
+  // A review just deleted stays out while the website's list may still have it.
+  try { const r = await invoke('my_reports'); S.myReports = { list: ((r && r.reports) || []).filter((x) => !(window.reviewGone && window.reviewGone(x.app))) }; } catch (e) { S.myReports = { list: had, error: String(e && e.message ? e.message : e) }; }
   renderAccountBits();
 }
 window.loadMyReports = loadMyReports;
@@ -61,10 +62,10 @@ function renderAccountBits() {
   const b = $('#acc-btn');
   if (b) {
     const a = S.account || {};
-    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your report'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
+    b.innerHTML = a.signedIn ? `${avatar(a.user, 22)}<span class="lbl">${esc((a.user && a.user.username) || t('Account'))}</span>${reportsUnread() ? `<i class="acc-dot" title="${esc(t('A developer answered your review'))}"></i>` : ''}` : `${ACC_ICON}<span class="lbl">${esc(t('Sign in'))}</span>`;
     b.title = a.signedIn ? t('Account') : t('Sign in');
   }
-  if (S.view === 'settings' && S.setTab === 'account' && window.setSection) window.setSection('account', false);
+  if (S.view === 'settings' && ['account', 'reviews'].includes(S.setTab) && window.setSection) window.setSection(S.setTab, false);
   // A game's page (its Saves tab, the cloud card) and the Saves page show it straight away.
   if (S.view === 'game') refreshGame();
   if (S.view === 'saves' || S.view === 'achievements') render(true);
@@ -155,8 +156,21 @@ function accountSection(group, row) {
       <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
       + row(t('Back Up Every Game'), allNow, `<button type="button" class="switch" role="switch" aria-checked="${all}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
       + deviceNameRow())
-    + myReportsGroup(group, row)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
+}
+// ---------- Settings > Reviews ----------
+// The player's own reviews have their own section, so they're found without looking under Account.
+// On top, whether the launcher asks for one after a long session: the same switch as Don't Ask Me
+// Again on that question, the other way round. Signed out there are no reviews to show: what
+// signing in is for, and the button.
+function reviewsSection(group, row) {
+  const on = window.reviewAskOn ? window.reviewAskOn() : true;
+  const label = t('Ask After Playing');
+  const sw = `<button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-act="acc-review-ask"></button>`;
+  const ask = group(t('Asking for Reviews'), row(label, t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), sw));
+  if (S.account && S.account.signedIn) return ask + myReportsGroup(group, row);
+  const signIn = `<button type="button" class="btn sm main" data-act="acc-signin">${esc(t('Sign in'))}</button>`;
+  return ask + group(t('Your Reviews'), row(t('Sign In to Write Reviews'), t('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.'), signIn));
 }
 // The name this PC goes by next to its save copies and in the cloud conflict prompt. Empty: the
 // computer's own name. Only copies made after a change carry the new name.
@@ -167,25 +181,107 @@ function deviceNameRow() {
   const field = `<input class="field sm" id="device-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(name)}" placeholder="${esc(t('Computer name'))}" aria-label="${esc(label)}">`;
   return `<div class="set-row"><div class="k"><b>${esc(label)}</b><span>${esc(help)}</span></div><span class="acts">${field}<button type="button" class="btn sm" data-act="acc-device-save">${esc(t('Save'))}</button></span></div>`;
 }
-// Your Reports: what you said about each game, and what its developer answered. Looking at it
+// Your Reviews: what you said about each project, and what its developer answered. Looking at it
 // counts as having seen the answers.
+// Each review names and pictures the project (reviews are per project), opens its page, and can be
+// changed (installed: the same window as the game page's Edit Your Review) or deleted from here.
+// Ones with a developer's answer the player hasn't seen come first. 30 show until Show All.
+const MYREP_FIRST = 30;
+// What the search looks in: the project's name, the game's, and the id.
+const myRepText = (r) => { const a = byId(r.app); return fold([r.name, a && a._name, a && a.name, a && a.game, r.app].filter(Boolean).join(' ')); };
 function myReportsGroup(group, row) {
   const m = S.myReports;
-  if (!m || (!m.list && m.loading)) return group(t('Your Reports'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
-  if (!m.list) return group(t('Your Reports'), row(t('Your reports couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
-  if (!m.list.length) return group(t('Your Reports'), row(t('No reports yet'), t('When you say how a game runs, it shows here with any answer from its developer.'), ''));
-  setTimeout(markReportsSeen, 0);
+  if (!m || (!m.list && m.loading)) return group(t('Your Reviews'), `<p class="muted" style="margin:0">${esc(t('Loading…'))}</p>`);
+  if (!m.list) return group(t('Your Reviews'), row(t('Your reviews couldn\'t be loaded'), m.error || '', `<button type="button" class="btn sm" data-act="myrep-load">${esc(t('Try Again'))}</button>`));
+  if (!m.list.length) return group(t('Your Reviews'), row(t('No reviews yet'), t('When you review a project, it shows here with any answer from its developer.'), ''));
+  // What was new when the section opened stays marked while it's open (it counts as seen at once).
   const seen = repSeen();
+  if (!S.myRepNew) S.myRepNew = new Set(m.list.filter((r) => lastDevReply(r) > (seen[r.id] || 0)).map((r) => r.id));
+  const isFresh = (r) => S.myRepNew.has(r.id);
+  setTimeout(markReportsSeen, 0);
   const when = (w) => { const ts = Date.parse(w) / 1000; return ts ? ago(ts) : ''; };
-  const item = (r) => {
-    const fresh = lastDevReply(r) > (seen[r.id] || 0);
+  const list = m.list.filter(isFresh).concat(m.list.filter((r) => !isFresh(r)));
+  const newN = list.filter(isFresh).length;
+  // Every review is in the page: searching and the answer chips show and hide them in place.
+  const item = (r, i) => {
+    const a = byId(r.app);
+    const name = a ? reviewName(r.app, { name: r.name || r.app }) : (r.name || r.app);
+    const own = (k) => (a ? pickArt(a, k, false) : '');
+    const cover = media(thumbOf(own('cover'), 160));
+    const fresh = isFresh(r);
     const replies = (r.replies || []).map((x) => `<div class="rep-reply${x.dev ? ' dev' : ''}"><div class="who">${x.dev ? `<b>${esc(x.name || t('Developer'))}</b><span class="dev-badge">${esc(t('Developer'))}</span>` : `<b>${esc(t('You'))}</b>`}<small>${esc(when(x.when))}</small></div><p dir="auto">${esc(x.text)}</p></div>`).join('');
     const answer = (r.replies || []).some((x) => x.dev) ? `<div class="myrep-ans"><textarea class="field" rows="2" maxlength="2000" data-myrep="${r.id}" placeholder="${esc(t('Answer the developer'))}" aria-label="${esc(t('Answer the developer'))}"></textarea><button type="button" class="btn sm" data-act="myrep-send" data-id="${r.id}">${esc(t('Send'))}</button></div>` : '';
-    return `<div class="myrep${fresh ? ' fresh' : ''}"><div class="myrep-h"><b>${esc(r.name || r.app)}</b><span class="rverdict v-${esc(r.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[r.verdict] || ''))}</span><small>${esc([r.version, when(r.when)].filter(Boolean).join(' · '))}</small></div>
-      ${r.note ? `<p class="rep-note" dir="auto">${esc(r.note)}</p>` : ''}${replies ? `<div class="rep-replies">${replies}</div>` : ''}${answer}</div>`;
+    const long = !!r.note && [...r.note].length > REP_LONG;
+    const note = r.note ? `<p class="rep-note${long ? ' long' : ''}" dir="auto">${esc(r.note)}</p>${long ? `<button type="button" class="linkbtn rep-open" data-act="rep-open">${esc(t('Show more'))}</button>` : ''}` : '';
+    const g = S.library[r.app];
+    const canEdit = !!(g && !g.local);
+    const edit = canEdit ? `<button type="button" class="btn sm" data-act="myrep-edit" data-id="${esc(r.app)}">${esc(t('Edit'))}</button>` : '';
+    const del = `<button type="button" class="btn sm danger" data-act="myrep-del" data-id="${esc(r.app)}">${esc(t('Delete'))}</button>`;
+    const verdict = `<span class="rverdict v-${esc(r.verdict)}"><i aria-hidden="true"></i>${esc(t(RUN_WORD[r.verdict] || ''))}</span>`;
+    const meta = `${repSys(r)}${r.version ? `<span class="rep-ver">${esc(r.version)}</span>` : ''}<small>${esc(when(r.when))}</small>`;
+    const freshTag = fresh ? `<span class="myrep-new">${esc(t('New answer'))}</span>` : '';
+    const open = a ? ` data-act="myrep-game" data-id="${esc(r.app)}"` : ' disabled';
+    const pic = `<button type="button" class="myrep-pic${cover ? '' : ' plain'}"${open} tabindex="-1" aria-hidden="true">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ''}</button>`;
+    const title = `<button type="button" class="myrep-name"${open}>${esc(name)}</button>`;
+    const q = myRepText(r);
+    const at = ` data-q="${esc(q)}" data-v="${esc(r.verdict)}"${fresh ? ' data-new="1"' : ''}${myRepShows(q, r.verdict, fresh, i) ? '' : ' hidden'}`;
+    return `<div class="myrep${fresh ? ' fresh' : ''}"${at}>${pic}<div class="myrep-in"><div class="myrep-h">${title}${verdict}${freshTag}<span class="myrep-acts">${edit}${del}</span></div>
+      <div class="myrep-meta sub">${meta}</div>${note}${replies ? `<div class="rep-replies">${replies}</div>` : ''}${answer}</div></div>`;
   };
-  return group(t('Your Reports'), `<p class="set-note" style="margin:0 0 6px">${esc(t('What you said about each game, and what its developer answered.'))}</p>${m.list.slice(0, 30).map(item).join('')}`);
+  const lead = newN ? tn(newN, 'A developer answered one of your reviews.', 'Developers answered {n} of your reviews.') : t('What you said about each project, and what its developer answered.');
+  const all = `<div class="acts myrep-more"${myRepMore(list.length) ? '' : ' hidden'}><button type="button" class="btn" data-act="myrep-all">${esc(tf('Show All {n}', { n: list.length }))}</button></div>`;
+  // A redraw (answers marked seen, a review sent) keeps the count and the "none match" note.
+  const hit = list.filter((r, i) => myRepShows(myRepText(r), r.verdict, isFresh(r), i)).length;
+  return group(tf('Your Reviews ({n})', { n: list.length }), `<p class="set-note${newN ? ' myrep-lead' : ''}" style="margin:0 0 6px">${esc(lead)}</p>${myRepBar(list, newN, hit)}<div class="myreps">${list.map(item).join('')}</div>
+    <div class="myrep-none"${hit ? ' hidden' : ''}><b>${esc(myRepNone())}</b><button type="button" class="btn sm" data-act="myrep-clear">${esc(t('Show All Reviews'))}</button></div>${all}`);
 }
+// Searching Your Reviews: by name (the project's or the game's), and by answer with the chips.
+// Typing changes nothing but which reviews show, so the field keeps its focus and what's typed.
+const myRepQ = () => fold(S.myRepQ || '').trim();
+const myRepNarrowed = () => !!(myRepQ() || S.myRepV);
+const myRepMore = (n) => !S.myRepAll && !myRepNarrowed() && n > MYREP_FIRST;
+function myRepShows(q, v, fresh, i) {
+  const words = myRepQ().split(/\s+/).filter(Boolean);
+  if (words.some((w) => !q.includes(w))) return false;
+  if (S.myRepV === 'new' ? !fresh : S.myRepV && S.myRepV !== v) return false;
+  return myRepNarrowed() || S.myRepAll || i < MYREP_FIRST;
+}
+const myRepNone = () => (myRepQ() ? tf('No reviews match “{q}”', { q: S.myRepQ.trim() }) : t('No reviews with that answer'));
+const myRepHits = (hit, all) => (myRepNarrowed() ? tf('{n} of {total}', { n: hit, total: all }) : '');
+function myRepBar(list, newN, hit) {
+  const n = (v) => list.filter((r) => r.verdict === v).length;
+  const chip = (v, label, count, dot) => `<button type="button" class="myrep-chip${dot ? ` v-${v}` : ''}${(S.myRepV || '') === v ? ' on' : ''}" data-act="myrep-v" data-v="${v}" aria-pressed="${(S.myRepV || '') === v}"${count || !v ? '' : ' disabled'}>${dot ? '<i aria-hidden="true"></i>' : ''}<span>${esc(label)}</span><b>${fmtNum(count)}</b></button>`;
+  const chips = [chip('', t('All'), list.length),
+    chip('runs', t(RUN_WORD.runs), n('runs'), true), chip('issues', t(RUN_WORD.issues), n('issues'), true), chip('broken', t(RUN_WORD.broken), n('broken'), true),
+    newN ? chip('new', t('New answer'), newN) : ''].join('');
+  const label = t('Search your reviews');
+  return `<div class="myrep-bar"><label class="myrep-q${S.myRepQ ? ' has' : ''}">${SEARCH}<input id="myrep-q" type="search" autocomplete="off" spellcheck="false" placeholder="${esc(label)}" aria-label="${esc(label)}" value="${esc(S.myRepQ || '')}"><span class="myrep-hits" aria-live="polite">${esc(myRepHits(hit, list.length))}</span><button type="button" class="myrep-x" data-act="myrep-clear" aria-label="${esc(t('Clear'))}" title="${esc(t('Clear'))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></label>
+    <div class="myrep-chips" role="group" aria-label="${esc(t('Filter by answer'))}">${chips}</div></div>`;
+}
+// Shows and hides the reviews in place, and says how many match (or that none do).
+function myRepFilter() {
+  const box = $('.myreps');
+  if (!box) return;
+  const items = [...box.children];
+  let hit = 0;
+  items.forEach((el, i) => { const on = myRepShows(el.dataset.q || '', el.dataset.v, !!el.dataset.new, i); el.hidden = !on; if (on) hit++; });
+  const hits = $('.myrep-hits');
+  if (hits) hits.textContent = myRepHits(hit, items.length);
+  const q = $('.myrep-q');
+  if (q) q.classList.toggle('has', !!S.myRepQ);
+  const none = $('.myrep-none');
+  if (none) { none.hidden = !!hit; $('b', none).textContent = myRepNone(); }
+  const more = $('.myrep-more');
+  if (more) more.hidden = !myRepMore(items.length);
+  for (const c of document.querySelectorAll('.myrep-chip')) { const on = (S.myRepV || '') === c.dataset.v; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on); }
+}
+document.addEventListener('input', (e) => { if (e.target.id === 'myrep-q') { S.myRepQ = e.target.value; myRepFilter(); } });
+// Escape empties the search first (and only closes things once it's empty).
+document.addEventListener('keydown', (e) => {
+  if (e.target.id !== 'myrep-q' || e.key !== 'Escape' || !e.target.value) return;
+  e.preventDefault(); e.stopPropagation();
+  e.target.value = S.myRepQ = ''; myRepFilter();
+}, true);
 
 // ---------- a game's Saves tab ----------
 async function loadSaves(id) {
@@ -829,7 +925,7 @@ async function ask(title, text, buttons, cards, tvHead) {
     return i == null || i < 0 ? null : list[i].v;
   }
   const card = (b, i) => `<button type="button" class="pick-card pick-btn" data-x="b${i}"><b>${esc(b.label)}${b.tag ? ` <em class="pick-newer">${esc(b.tag)}</em>` : ''}</b>${(b.lines || []).map((l) => `<span>${esc(l)}</span>`).join('')}</button>`;
-  const button = (b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}" data-x="b${i}">${esc(b.label)}</button>`;
+  const button = (b, i) => `<button type="button" class="btn${b.main ? ' main' : ''}${b.bad ? ' bad' : ''}" data-x="b${i}">${esc(b.label)}</button>`;
   const choices = cards ? `<div class="pick-two">${buttons.map(card).join('')}</div>` : `<div class="acts ${buttons.length === 3 ? 'grid3' : 'grid2'}">${buttons.map(button).join('')}</div>`;
   return new Promise((res) => {
     let picked = null;
@@ -977,8 +1073,33 @@ window.accountAct = async (act, el) => {
       await saveUi({ device_name: v });
       return toast(v ? t('Saved. New saves from this PC carry that name.') : t('Back to the computer\'s own name.'));
     }
-    case 'acc-btn': if (S.account && S.account.signedIn) { S.setTab = 'account'; if (reportsUnread()) loadMyReports(); return go('settings'); } return signIn(false);
+    // The dot on the account button is a developer's answer: it opens Reviews, where the answer is.
+    case 'acc-btn': if (S.account && S.account.signedIn) { const unread = reportsUnread(); S.setTab = unread ? 'reviews' : 'account'; if (unread) loadMyReports(); return go('settings'); } return signIn(false);
+    case 'acc-review-ask': {
+      const on = el.getAttribute('aria-checked') !== 'true';
+      await window.setReviewAsk(on);
+      return render(true);
+    }
     case 'myrep-load': return loadMyReports();
+    case 'myrep-all': S.myRepAll = true; return myRepFilter();
+    case 'myrep-v': S.myRepV = el.dataset.v || null; return myRepFilter();
+    case 'myrep-clear': {
+      S.myRepQ = ''; S.myRepV = null;
+      const f = $('#myrep-q');
+      if (f) { f.value = ''; f.focus(); }
+      return myRepFilter();
+    }
+    case 'myrep-game': S.tab = 'overview'; return go('game', id);
+    case 'myrep-edit': return window.askRun ? window.askRun(id, (S.library[id] || {}).played_secs || 0, true) : null;
+    case 'myrep-del': {
+      const a = byId(id), r = myReviewOf(id);
+      const name = a ? reviewName(id, { name: (r && r.name) || id }) : ((r && r.name) || id);
+      const yes = await ask(t('Delete your review?'), `<p>${esc(tf('Your review of {name} comes off its page and out of Your Reviews, with any answers on it. This can\'t be undone.', { name }))}</p>`,
+        [{ label: t('Cancel'), v: false, focus: true }, { label: t('Delete Review'), v: true, main: true, bad: true, last: true }]);
+      if (!yes) return;
+      try { await deleteReview(id); } catch (e) { return fail(e); }
+      return;
+    }
     case 'myrep-send': {
       const ta = $(`textarea[data-myrep="${CSS.escape(String(id))}"]`);
       const text = ta ? ta.value.trim() : '';
