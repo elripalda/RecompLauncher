@@ -1267,7 +1267,7 @@
           ${clockRow()}
           ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
-          ${sw('pad_desktop', t('Use the Controller Outside Big Picture'), t('Turn it off if you use your controller as a mouse on the desktop view. Big Picture mode always works with it.'), S.settings.pad_desktop !== false)}
+          ${sw('pad_desktop', t('Controller as a Mouse'), t('On: the desktop view ignores your controller\'s buttons, so a mouse mapping doesn\'t press things twice. Big Picture mode always uses the controller.'), S.settings.pad_desktop === false)}
           ${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
           ${S.canStartAtLogin ? sw('start_at_login', t('Start with your PC'), startAtLoginNote()) : ''}
@@ -3177,7 +3177,7 @@
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
     }
     if (!TV.on) {
-      // Settings → Controllers, Use the Controller Outside Big Picture off: the desktop view leaves
+      // Settings → Controllers, Controller as a Mouse on (pad_desktop false): the desktop view leaves
       // the controller alone (a player using it as a mouse, its RB a click, would also change the
       // page), apart from holding Menu for Big Picture mode.
       if (S.settings.pad_desktop === false) {

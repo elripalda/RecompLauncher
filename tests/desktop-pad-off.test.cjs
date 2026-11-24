@@ -32,20 +32,20 @@ function desktop(padDesktop) {
   return c;
 }
 
-test('RB used as a mouse click does nothing on the desktop view with the controller off there', () => {
+test('RB used as a mouse click does nothing on the desktop view with Controller as a Mouse on', () => {
   const c = desktop(false);
   c.pad('rb');
   assert.deepEqual(c.got, []);
 });
 
-test('A and the d-pad reach nothing on the desktop view with the controller off there', () => {
+test('A and the d-pad reach nothing on the desktop view with Controller as a Mouse on', () => {
   const c = desktop(false);
   c.pad('down');
   c.pad('a');
   assert.deepEqual(c.got, []);
 });
 
-test('holding Menu still opens Big Picture mode with the controller off on the desktop view', () => {
+test('holding Menu still opens Big Picture mode with Controller as a Mouse on', () => {
   const c = desktop(false);
   c.pad('menu-hold');
   assert.deepEqual(c.got, ['big-picture']);
@@ -57,16 +57,16 @@ test('the controller moves around the desktop view as before when the setting wa
   assert.deepEqual(c.got, ['files:rb', 'first-run:rb', 'desktop:rb']);
 });
 
-test('Settings → Controllers has the switch, on unless turned off', () => {
-  assert.match(app, /sw\('pad_desktop', st\.pad_desktop !== false, t\('Use the Controller Outside Big Picture'\)\)/);
+test('Settings → Controllers has Controller as a Mouse, off unless turned on', () => {
+  assert.match(app, /sw\('pad_desktop', st\.pad_desktop === false, t\('Controller as a Mouse'\)\)/);
 });
 
-test('turning it off with the controller takes its highlight away', () => {
+test('turning Controller as a Mouse on with the controller takes its highlight away', () => {
   assert.match(app, /if \(k === 'pad_desktop'\) \{ await saveSettings\(\{ pad_desktop: S\.settings\.pad_desktop === false \}\); if \(S\.settings\.pad_desktop === false\) padLetGo\(\); return; \}/);
 });
 
-test('Big Picture settings have the switch too, on unless turned off', () => {
-  assert.match(tv, /sw\('pad_desktop', t\('Use the Controller Outside Big Picture'\), t\('[^']+'\), S\.settings\.pad_desktop !== false\)/);
+test('Big Picture settings have Controller as a Mouse too, off unless turned on', () => {
+  assert.match(tv, /sw\('pad_desktop', t\('Controller as a Mouse'\), t\('(?:[^'\\]|\\.)+'\), S\.settings\.pad_desktop === false\)/);
 });
 
 // The desktop view's controller code from app.js, run as tests/desktop-pad.test.cjs runs it.
@@ -96,7 +96,7 @@ function desktopView() {
   return { c, window, document, body, button };
 }
 
-test('turning it off leaves nothing highlighted or focused on the desktop view', () => {
+test('turning Controller as a Mouse on leaves nothing highlighted or focused on the desktop view', () => {
   const d = desktopView();
   d.window.deskPad('down');
   assert.equal(d.document.activeElement, d.button);

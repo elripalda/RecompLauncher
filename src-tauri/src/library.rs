@@ -371,7 +371,8 @@ pub struct Settings {
     pub pad_stick: bool,
     /// Settings → Controllers: the controller moves around the desktop view too. Off, the desktop
     /// view leaves the controller alone (for players who use it as a mouse, where its buttons would
-    /// also press things in the launcher); holding Menu still opens Big Picture mode.
+    /// also press things in the launcher); holding Menu still opens Big Picture mode. Its switch,
+    /// Controller as a Mouse, shows the opposite: on when this is false.
     #[serde(default = "yes")]
     pub pad_desktop: bool,
     /// On Linux: recomps with only a Windows version install that and play through Proton.
