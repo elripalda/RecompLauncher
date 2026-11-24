@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "保存しました。バックアップとクラウドセーブは再びそのフォルダーを使います。",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "セーブフォルダーを変更できるのは、このゲームのかんたんセットアップをスキップした場合だけです。",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "そこはゲーム本体のフォルダーか、プログラムが入っているフォルダーです。セーブデータがあるフォルダーを選んでください。",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "そのフォルダーは中身が多すぎてセーブフォルダーにはできません（ホームフォルダーやドライブ全体など）。セーブデータがあるフォルダーを選んでください。",
  "You said no.": "拒否しました。",
  "You stopped following {name}.": "{name} のフォローをやめました。",
  "You were signed out. Sign in again to use cloud saves.": "サインアウトされました。クラウドセーブを使うには、もう一度サインインしてください。",

@@ -1810,8 +1810,7 @@ pub fn saves_set_override(st: State<'_, App>, id: String, path: Option<String>) 
     Ok(g)
 }
 
-/// `dir` as the game's override, or why it can't be. Not the game's own folder or one that holds
-/// programs: backups, restores and cloud saves would take game files for saves, or clear them.
+/// `dir` as the game's override, or why it can't be (saves::override_refused).
 fn override_template(st: &App, id: &str, g: &Installed, dir: &Path) -> Res<String> {
     let named = named_of(st, id, g);
     if own_saves(st, id).is_some() || !saves::can_override(&named, crate::player_sets_up(st, id)) {
@@ -1820,16 +1819,14 @@ fn override_template(st: &App, id: &str, g: &Installed, dir: &Path) -> Res<Strin
     if !dir.is_dir() {
         return Err(Error::Msg("That folder couldn't be found.".into()));
     }
-    let same_as_game = dir.canonicalize().ok().zip(g.path.canonicalize().ok()).is_some_and(|(a, b)| a == b);
-    if same_as_game || saves::holds_programs(dir) {
-        return Err(Error::Msg(OVERRIDE_GAME_FOLDER.into()));
+    if let Some(why) = saves::override_refused(dir, &g.path, dirs::home_dir().as_deref()) {
+        return Err(Error::Msg(why.into()));
     }
     Ok(saves::templatize_for(dir, g))
 }
 
-/// Fixed texts, so the window can translate them.
+/// A fixed text, so the window can translate it.
 pub(crate) const OVERRIDE_NOT_HERE: &str = "Its save folder can only be changed when Easy Setup is skipped for it.";
-pub(crate) const OVERRIDE_GAME_FOLDER: &str = "That's the game's own folder, or it holds programs. Pick the folder its saves are in.";
 
 /// One more folder where the game saves (a launcher with several games in it, each saving in its
 /// own folder): the ones it has now stay, and backups and cloud saves cover all of them.

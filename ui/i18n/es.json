@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "Guardado. Las copias de seguridad y las partidas en la nube vuelven a usar esa carpeta.",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "Su carpeta de partidas solo se puede cambiar si se saltó la configuración fácil para este juego.",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "Esa es la carpeta del propio juego o contiene programas. Elige la carpeta donde están sus partidas.",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "Esa carpeta contiene demasiado para ser una carpeta de partidas, como tu carpeta personal o una unidad entera. Elige la carpeta donde están sus partidas.",
  "You said no.": "Dijiste que no.",
  "You stopped following {name}.": "Ya no sigues a {name}.",
  "You were signed out. Sign in again to use cloud saves.": "Se ha cerrado tu sesión. Vuelve a iniciar sesión para usar las partidas en la nube.",

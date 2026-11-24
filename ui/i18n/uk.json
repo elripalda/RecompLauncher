@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "Збережено. Резервні копії та хмарні збереження знову використовують цю папку.",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "Папку збережень можна змінити, лише якщо для цієї гри пропущено просте налаштування.",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "Це папка самої гри, або в ній є програми. Виберіть папку, де лежать її збереження.",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "У цій папці забагато всього, щоб вона була папкою збережень, наприклад домашня папка або цілий диск. Виберіть папку, де лежать її збереження.",
  "You said no.": "Відмовлено.",
  "You stopped following {name}.": "Ви більше не стежите за {name}.",
  "You were signed out. Sign in again to use cloud saves.": "Виконано вихід з акаунта. Увійди знову, щоб користуватися хмарними збереженнями.",

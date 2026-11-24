@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "已保存。备份和云存档重新使用该文件夹。",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "只有为此游戏跳过轻松配置后，才能更改它的存档文件夹。",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "这是游戏本身的文件夹，或其中包含程序。请选择存放存档的文件夹。",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "该文件夹内容太多，不能作为存档文件夹，例如你的主文件夹或整个磁盘。请选择存放存档的文件夹。",
  "You said no.": "你已拒绝。",
  "You stopped following {name}.": "已取消关注 {name}。",
  "You were signed out. Sign in again to use cloud saves.": "你已被退出登录。重新登录即可使用云存档。",

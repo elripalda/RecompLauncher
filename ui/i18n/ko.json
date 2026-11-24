@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "저장했습니다. 백업과 클라우드 저장에서 다시 그 폴더를 사용합니다.",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "이 게임의 간편 설정을 건너뛴 경우에만 저장 폴더를 바꿀 수 있습니다.",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "게임 자체 폴더이거나 프로그램이 들어 있는 폴더입니다. 저장 데이터가 있는 폴더를 선택하세요.",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "이 폴더는 저장 폴더로 쓰기에는 너무 많은 것이 들어 있습니다(홈 폴더나 드라이브 전체 등). 저장 데이터가 있는 폴더를 선택하세요.",
  "You said no.": "거부했습니다.",
  "You stopped following {name}.": "{name} 팔로우를 그만뒀습니다.",
  "You were signed out. Sign in again to use cloud saves.": "로그아웃되었습니다. 클라우드 저장을 사용하려면 다시 로그인하세요.",

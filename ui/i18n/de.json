@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "Gespeichert. Sicherungen und Cloud-Speicherstände nutzen wieder diesen Ordner.",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "Sein Speicherordner lässt sich nur ändern, wenn die einfache Einrichtung dafür übersprungen wurde.",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "Das ist der eigene Ordner des Spiels, oder er enthält Programme. Wähle den Ordner, in dem seine Speicherstände liegen.",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "Dieser Ordner enthält viel zu viel, um ein Speicherordner zu sein, etwa dein Benutzerordner oder ein ganzes Laufwerk. Wähle den Ordner, in dem seine Speicherstände liegen.",
  "You said no.": "Du hast abgelehnt.",
  "You stopped following {name}.": "Du folgst {name} nicht mehr.",
  "You were signed out. Sign in again to use cloud saves.": "Du wurdest abgemeldet. Melde dich wieder an, um Cloud-Spielstände zu nutzen.",

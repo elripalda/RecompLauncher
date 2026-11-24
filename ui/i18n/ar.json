@@ -1597,6 +1597,7 @@
  "Saved. Backups and cloud saves use that folder again.": "تم الحفظ. تستخدم النسخ الاحتياطية والحفظ السحابي هذا المجلد مجددًا.",
  "Its save folder can only be changed when Easy Setup is skipped for it.": "لا يمكن تغيير مجلد الحفظ إلا عند تخطي الإعداد السهل لهذه اللعبة.",
  "That's the game's own folder, or it holds programs. Pick the folder its saves are in.": "هذا مجلد اللعبة نفسه، أو فيه برامج. اختر المجلد الذي فيه ملفات الحفظ.",
+ "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.": "هذا المجلد يحتوي على أكثر بكثير من أن يكون مجلد حفظ، مثل مجلدك الرئيسي أو قرص كامل. اختر المجلد الذي فيه ملفات الحفظ.",
  "You said no.": "لقد رفضت.",
  "You stopped following {name}.": "توقفت عن متابعة {name}.",
  "You were signed out. Sign in again to use cloud saves.": "تم تسجيل خروجك. سجل الدخول مرة أخرى لاستخدام الحفظ السحابي.",
