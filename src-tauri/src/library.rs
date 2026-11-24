@@ -592,6 +592,49 @@ impl Library {
             kept.games.entry(sub).or_default().absorb(played);
         }
     }
+
+    /// Forgets this PC's play time for an installed game (issue #487: some setups start the game
+    /// and count as play). A recomp's id clears it and all its games; one game of several clears
+    /// that game and takes its time off the recomp's, so the two still add up.
+    /// -> the ids the website keeps this PC's time under, to clear there too. None: not installed.
+    pub fn reset_play(&mut self, id: &str) -> Option<Vec<String>> {
+        if let Some(g) = self.installed.get_mut(id) {
+            let mut ids = vec![id.to_string()];
+            ids.extend(g.games.keys().map(|sub| crate::games::full(id, sub)));
+            g.played_secs = 0;
+            g.last_played = 0;
+            g.sessions.clear();
+            for p in g.games.values_mut() {
+                clear_played(p);
+            }
+            return Some(ids);
+        }
+        let (rid, sub) = crate::games::split(id)?;
+        let g = self.installed.get_mut(rid)?;
+        let p = g.games.get_mut(sub)?;
+        g.played_secs = g.played_secs.saturating_sub(p.played_secs);
+        // Each of its sessions was counted on the recomp too, as the same [start, secs].
+        for s in &p.sessions {
+            if let Some(i) = g.sessions.iter().position(|x| x == s) {
+                g.sessions.remove(i);
+            }
+        }
+        if let Some(end) = g.sessions.iter().map(|s| s[0] + s[1]).max() {
+            g.last_played = end;
+        }
+        if g.played_secs == 0 {
+            g.last_played = 0;
+        }
+        clear_played(p);
+        Some(vec![id.to_string(), rid.to_string()])
+    }
+}
+
+/// No time and no sessions; its setup stays as it is.
+fn clear_played(p: &mut crate::games::Played) {
+    p.played_secs = 0;
+    p.last_played = 0;
+    p.sessions.clear();
 }
 
 /// A game's own pictures without the game: what Customize keeps for it.
@@ -997,6 +1040,52 @@ mod tests {
 
         assert_eq!(l.installed["new"].played_secs, 60);
         assert!(l.removed_play_history.is_empty());
+    }
+
+    fn series_with_two_games() -> Library {
+        let mut l = Library::default();
+        let mut g = Installed { id: "series".into(), played_secs: 150, last_played: 400, sessions: vec![[100, 50], [300, 100]], set_up: "v1".into(), ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 50, last_played: 150, sessions: vec![[100, 50]], set_up: "v1".into(), ..Default::default() });
+        g.games.insert("second".into(), crate::games::Played { played_secs: 100, last_played: 400, sessions: vec![[300, 100]], ..Default::default() });
+        l.installed.insert("series".into(), g);
+        l
+    }
+
+    #[test]
+    fn reset_play_clears_a_recomp_and_its_games() {
+        let mut l = series_with_two_games();
+        let ids = l.reset_play("series").unwrap();
+        assert_eq!(ids, vec!["series", "series--first", "series--second"]);
+        let g = &l.installed["series"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.len()), (0, 0, 0));
+        assert_eq!(g.games["second"].played_secs, 0);
+        assert!(l.play_entries(None, 0).is_empty());
+    }
+
+    #[test]
+    fn reset_play_keeps_setup_state() {
+        let mut l = series_with_two_games();
+        l.reset_play("series").unwrap();
+        assert_eq!(l.installed["series"].set_up, "v1");
+        assert_eq!(l.installed["series"].games["first"].set_up, "v1");
+    }
+
+    #[test]
+    fn reset_play_of_one_game_takes_its_time_off_the_recomp() {
+        let mut l = series_with_two_games();
+        let ids = l.reset_play("series--second").unwrap();
+        assert_eq!(ids, vec!["series--second", "series"]);
+        let g = &l.installed["series"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (50, 150, &[[100, 50]][..]));
+        assert_eq!(g.games["second"].played_secs, 0);
+        assert_eq!(g.games["first"].played_secs, 50);
+    }
+
+    #[test]
+    fn reset_play_of_a_game_not_installed_is_none() {
+        let mut l = series_with_two_games();
+        assert!(l.reset_play("other").is_none());
+        assert!(l.reset_play("series--third").is_none());
     }
 
     #[test]
