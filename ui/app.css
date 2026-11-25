@@ -242,7 +242,9 @@ body.isl-on main::after{content:'';display:block;height:84px}
 .badge.tl.lib{color:var(--cyan)}
 
 /* ---------- home ---------- */
-.slider{position:relative;height:clamp(340px,40vw,520px);border-radius:28px;overflow:hidden;background:var(--card);box-shadow:0 30px 70px -40px rgba(0,0,0,.9)}
+/* The banner follows the window's width, but also never takes more than half its height: on a
+   1366×768 laptop a width-only banner filled 68% of the screen. 1080p and up keep the full 520px. */
+.slider{position:relative;height:clamp(260px,min(40vw,50vh),520px);border-radius:28px;overflow:hidden;background:var(--card);box-shadow:0 30px 70px -40px rgba(0,0,0,.9)}
 .slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .7s var(--ease),visibility 0s .7s}
 .slide.on{opacity:1;visibility:visible;transition:opacity .7s var(--ease)}
 .slide>.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.04);transition:transform 8s linear}
@@ -273,6 +275,10 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .sl-arrows{position:absolute;z-index:2;right:24px;top:24px;display:flex;gap:8px}
 .sl-arrows button{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(6,11,21,.45);backdrop-filter:blur(12px);border:1px solid rgba(244,248,252,.14);transition:background .15s}
 .sl-arrows button:hover{background:rgba(6,11,21,.75)}
+/* A short window has a short banner: a smaller logo and cover and less space around them, so the
+   text stays clear of the dots and the cover of the arrows. Very short, the blurb goes too. */
+@media (max-height:860px){.sl-ui{top:22px}.sl-arrows{top:16px}.sl-in{bottom:30px;gap:10px}.sl-logo{height:80px}.sl-cover{bottom:30px;width:clamp(110px,21vh,210px)}}
+@media (max-height:640px){.sl-in p{display:none}}
 .based{display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:14.5px}
 .based>span{min-width:0}
 .based>svg{margin-top:.24em}
