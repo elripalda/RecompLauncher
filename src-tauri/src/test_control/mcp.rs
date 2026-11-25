@@ -117,7 +117,7 @@ pub fn tools() -> Value {
         tool("recent_events", "Recent events", "What the launcher told its window since an event number (0 for all kept): download progress (install), setups (setup), games starting and closing (game), messages (toast) and more. Answers with last, the number to ask from next time.", obj(json!({
             "since": {"type": "integer", "minimum": 0},
         }), &[]), true),
-        tool("screenshot", "Screenshot", "A picture of the launcher's window, or of the whole main screen with screen: true (to see a game). Windows only.", obj(json!({
+        tool("screenshot", "Screenshot", "A picture of the part of the screen where the launcher's window is, so anything covering it (another window, a notification) shows too. With screen: true, the whole main screen (to see a game). Windows only.", obj(json!({
             "screen": {"type": "boolean"},
             "max_width": {"type": "integer", "minimum": 200, "maximum": 3840, "description": "Scaled down to this width (1280 if not given)"},
         }), &[]), true),
