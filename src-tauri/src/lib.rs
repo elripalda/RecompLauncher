@@ -1803,8 +1803,18 @@ async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, drop
 #[tauri::command]
 fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
     let dir = st.lib.lock().unwrap().installed.get(&id).map(|g| g.path.clone())?;
-    let p = profile::release_profile(&dir)?.profile;
-    Some(profile_covers(&p))
+    support_in(&dir)
+}
+
+/// What the recomplauncher.json in a game's folder covers. Null when there is none. A file the
+/// launcher can't read sets nothing up (Play and Easy Setup skip it): `{"problem": …}` says why,
+/// for the box to show instead of the catalog's labels.
+fn support_in(dir: &Path) -> Option<Value> {
+    if let Some(owned) = profile::release_profile(dir) {
+        return Some(profile_covers(&owned.profile));
+    }
+    let problem = profile::release_file_problem(dir)?;
+    Some(json!({ "problem": problem }))
 }
 
 /// Each Launcher Support feature a recomplauncher.json sets up itself.
@@ -1814,7 +1824,9 @@ fn profile_covers(p: &profile::Profile) -> Value {
     // required input of role game or disc that isn't a shared key. The site counts it the same way
     // (rs_sdk_easy), so the card agrees with the catalog.
     let copy_input = p.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
-    let easy_setup = game.is_some() || copy_input;
+    // A `game` block alone sets nothing up: Easy Setup (Profile::easy_setup) also needs a program
+    // to start, so without one the box would tick what Install doesn't offer.
+    let easy_setup = (p.start.is_some() && game.is_some()) || copy_input;
     json!({
         "easy_setup": easy_setup,
         "settings": !p.settings.is_empty(),
@@ -10729,6 +10741,62 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(super::profile_covers(&p)["easy_setup"], false);
+    }
+
+    #[test]
+    fn launcher_support_does_not_count_a_game_block_without_a_program_as_easy_setup() {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "folder" } })).unwrap();
+        assert_eq!(super::profile_covers(&p)["easy_setup"], false);
+    }
+
+    // A game folder holding this recomplauncher.json, for support_in.
+    fn folder_with_file(name: &str, file: serde_json::Value) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rl-support-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("recomplauncher.json"), file.to_string()).unwrap();
+        dir
+    }
+
+    // Mario Tennis Fever's file as released (v0.1.2): `config.file` is one path, not a list, so
+    // the launcher can't read the file at all, though every section is there.
+    fn unreadable_like_mtf() -> serde_json::Value {
+        serde_json::json!({
+            "format": 1,
+            "game": { "kind": "folder", "check": { "file": "exefs/main" } },
+            "start": { "program": ["mtf-recomp.exe"] },
+            "saves": ["{install}/profile"],
+            "config": [{ "id": "main", "format": "ini", "file": "{install}/mtf.ini" }],
+            "settings": [{ "id": "fps", "label": "FPS", "choices": [{ "label": "60", "set": { "FPS_LIMIT": "60" } }] }],
+            "prepare": { "program": ["Setup.exe"], "args": ["--prepare", "--game", "{game}"], "done": ["{install}/mtf-recomp.exe"] }
+        })
+    }
+
+    #[test]
+    fn launcher_support_gives_only_the_problem_for_a_file_the_launcher_cant_read() {
+        let dir = folder_with_file("unreadable", unreadable_like_mtf());
+        let found = super::support_in(&dir);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(found, Some(serde_json::json!({ "problem": "\"config[0].file\" should be a list." })));
+    }
+
+    #[test]
+    fn launcher_support_gives_nothing_for_a_folder_without_a_file() {
+        let dir = std::env::temp_dir().join(format!("rl-support-none-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let found = super::support_in(&dir);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn launcher_support_counts_every_feature_of_a_complete_file() {
+        let mut file = unreadable_like_mtf();
+        file["config"][0]["file"] = serde_json::json!([{ "path": "{install}/mtf.ini" }]);
+        file["game"]["dumps"] = serde_json::json!([{ "name": "USA", "crc32": "1234abcd" }]);
+        let dir = folder_with_file("complete", file);
+        let all = serde_json::json!({ "easy_setup": true, "settings": true, "prepare": true, "verified": true, "saves": true });
+        assert_eq!(super::support_in(&dir), Some(all));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
