@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
-const fn = (name) => source.match(new RegExp(`^(?:async )?function ${name}\([^]*?^}`, 'm'))[0];
+const fn = (name) => source.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 
 // Update Now in the update window, with the core's answer still to come: resolve('opened') is the
 // download handed to the browser, resolve() an install about to quit, reject() an error.
