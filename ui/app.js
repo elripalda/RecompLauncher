@@ -6317,7 +6317,9 @@ async function toggleHold(id) {
   if (on) hold.add(id); else hold.delete(id);
   await saveUi({ hold_updates: [...hold] }, true);
   if (on && S.updates[id]) { (S.held = S.held || {})[id] = S.updates[id]; delete S.updates[id]; }
-  if (!on && (S.held || {})[id]) { S.updates[id] = S.held[id]; delete S.held[id]; }
+  // A paused update was found for the install the game had then. One installed, picked or rolled
+  // back since makes it stale; the next check finds the right one.
+  if (!on && (S.held || {})[id]) { if (stillChecked(id, (S.updBasis || {})[id])) S.updates[id] = S.held[id]; delete S.held[id]; }
   const name = (S.library[id] || {}).name || id;
   toast(on ? tf('{name} stays on the version it has.', { name }) : tf('{name} gets updates again.', { name }));
   renderSide();
@@ -6374,15 +6376,29 @@ function afterCatalog() {
   updateCheckRevision++;
   return checkUpdates();
 }
+// Whether a game is still the install an update check looked at (was: the game then, with the
+// download it had started), so that check's answer still applies to it.
+function stillChecked(id, was) {
+  const g = S.library[id];
+  if (!g || !was || g.local || g.pinned || g.installer_setup) return false;
+  // A download started since shows here at once. One that's done shows in the keys below: every
+  // download writes a new install record, with a new updated_at.
+  if (was.download !== (S.dlArgs || {})[id]) return false;
+  return ['repo', 'path', 'tag', 'installed_at', 'updated_at'].every((key) => g[key] === was[key]);
+}
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
+  // A release chosen while this check waits takes priority, even before its library refresh arrives.
+  const checked = Object.fromEntries(Object.entries(S.library).map(([id, g]) => [id, { ...g, download: (S.dlArgs || {})[id] }]));
   try {
     const updates = await invoke('check_updates', { force: !!loud });
     if (revision !== updateCheckRevision) return false;
     // A version the player chose to skip (its download kept failing) stays out until a newer one.
     const skip = (S.settings.ui || {}).skip_ver || {};
     // A game whose downloaded installer waits for Set Up has its update already: Set Up runs it.
-    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => S.library[id] && !S.library[id].local && !S.library[id].installer_setup && skip[id] !== tag));
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => skip[id] !== tag && stillChecked(id, checked[id])));
+    // Kept for Resume Updates, which checks a paused update still fits the game.
+    S.updBasis = checked;
     holdUpdates();
     S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }
@@ -10451,6 +10467,8 @@ T.event.listen('install', ({ payload: p }) => {
     const wasInstalled = !!S.library[id];
     if (p.phase === 'done') {
       delete S.updates[id]; delete S.mods[id]; delete S.setup[id]; loadNews();
+      // A paused update was for the version this download replaced.
+      if (S.held) delete S.held[id];
       // Switched to a better version: once it's in, the old one is offered for uninstall.
       if ((((S.settings.ui || {}).switch_from) || {})[id]) refreshState().then(() => betterDone(id));
       // A game the launcher sets up: straight on to its copy, unless it already has one.
