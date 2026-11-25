@@ -12,6 +12,10 @@
   <a href="https://github.com/elripalda/RecompLauncher/releases"><img src="https://img.shields.io/github/v/release/elripalda/RecompLauncher?include_prereleases&style=flat&color=34f2e8&label=Latest" alt="Latest version"></a>
 </p>
 
+<p align="center">
+  <b>English</b> · <a href="README.vi.md">Tiếng Việt</a>
+</p>
+
 ---
 
 RecompLauncher finds, installs, updates and plays PC recomps: native PC versions of console
