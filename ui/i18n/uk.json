@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "Спершу заверши поточне налаштування.",
   "{name} {version} needs a new build of the game.": "{name} {version} потребує нової збірки гри.",
   "It's built again from your copy.": "Гру буде зібрано знову з твоєї копії.",
-  "Building the game": "Збирання гри",
   "The Update Didn't Finish": "Оновлення не завершилося",
   "Finish the Update": "Завершити оновлення",
   "Your other choices stay as they were.": "Інші твої вибори лишаються як були.",

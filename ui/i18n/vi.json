@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "Hãy hoàn tất phần thiết lập đang chạy trước.",
   "{name} {version} needs a new build of the game.": "{name} {version} cần dựng lại game.",
   "It's built again from your copy.": "Game được dựng lại từ bản sao của bạn.",
-  "Building the game": "Đang dựng game",
   "The Update Didn't Finish": "Bản cập nhật chưa hoàn tất",
   "Finish the Update": "Hoàn tất bản cập nhật",
   "Your other choices stay as they were.": "Các lựa chọn khác của bạn vẫn giữ nguyên.",

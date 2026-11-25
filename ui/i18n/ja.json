@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "実行中のセットアップを先に終わらせてください。",
   "{name} {version} needs a new build of the game.": "{name} {version} はゲームの再ビルドが必要です。",
   "It's built again from your copy.": "ゲームデータからもう一度ビルドされます。",
-  "Building the game": "ゲームをビルドしています",
   "The Update Didn't Finish": "アップデートが完了しませんでした",
   "Finish the Update": "アップデートを完了",
   "Your other choices stay as they were.": "ほかの選択はそのままです。",

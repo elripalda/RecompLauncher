@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "Najpierw dokończ trwającą konfigurację.",
   "{name} {version} needs a new build of the game.": "{name} {version} wymaga ponownego zbudowania gry.",
   "It's built again from your copy.": "Gra zostanie zbudowana ponownie z twojej kopii.",
-  "Building the game": "Budowanie gry",
   "The Update Didn't Finish": "Aktualizacja się nie zakończyła",
   "Finish the Update": "Dokończ aktualizację",
   "Your other choices stay as they were.": "Pozostałe wybory zostają bez zmian.",

@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "진행 중인 설정을 먼저 끝내세요.",
   "{name} {version} needs a new build of the game.": "{name} {version}은(는) 게임을 다시 빌드해야 합니다.",
   "It's built again from your copy.": "내 사본으로 다시 빌드됩니다.",
-  "Building the game": "게임 빌드 중",
   "The Update Didn't Finish": "업데이트가 끝나지 않았습니다",
   "Finish the Update": "업데이트 마치기",
   "Your other choices stay as they were.": "다른 선택은 그대로 유지됩니다.",

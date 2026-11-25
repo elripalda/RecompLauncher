@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "أنه الإعداد الجاري أولًا.",
   "{name} {version} needs a new build of the game.": "يحتاج {name} {version} إلى بناء جديد للعبة.",
   "It's built again from your copy.": "يُبنى من جديد من نسختك.",
-  "Building the game": "جارٍ بناء اللعبة",
   "The Update Didn't Finish": "لم يكتمل التحديث",
   "Finish the Update": "إكمال التحديث",
   "Your other choices stay as they were.": "تبقى اختياراتك الأخرى كما كانت.",
