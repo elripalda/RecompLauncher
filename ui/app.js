@@ -6374,6 +6374,16 @@ function afterCatalog() {
   updateCheckRevision++;
   return checkUpdates();
 }
+// Whether a game is still the install an update check looked at (was: the game then, with the
+// download it had started), so that check's answer still applies to it.
+function stillChecked(id, was) {
+  const g = S.library[id];
+  if (!g || !was || g.local || g.pinned || g.installer_setup) return false;
+  // A download started since shows here at once. One that's done shows in the keys below: every
+  // download writes a new install record, with a new updated_at.
+  if (was.download !== (S.dlArgs || {})[id]) return false;
+  return ['repo', 'path', 'tag', 'installed_at', 'updated_at'].every((key) => g[key] === was[key]);
+}
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
   // A release chosen while this check waits takes priority, even before its library refresh arrives.
@@ -6384,12 +6394,7 @@ async function checkUpdates(loud) {
     // A version the player chose to skip (its download kept failing) stays out until a newer one.
     const skip = (S.settings.ui || {}).skip_ver || {};
     // A game whose downloaded installer waits for Set Up has its update already: Set Up runs it.
-    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => {
-      const g = S.library[id], was = checked[id];
-      if (!g || !was || g.local || g.pinned || g.installer_setup || skip[id] === tag) return false;
-      if (was.download !== (S.dlArgs || {})[id]) return false;
-      return ['repo', 'path', 'tag', 'installed_at', 'updated_at'].every((key) => g[key] === was[key]);
-    }));
+    S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => skip[id] !== tag && stillChecked(id, checked[id])));
     holdUpdates();
     S.updInfo = {};
   } catch (e) { if (loud) fail(e); return false; }

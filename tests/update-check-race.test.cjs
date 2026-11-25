@@ -26,7 +26,7 @@ function checking(automatic = true) {
     byId: (id) => ({ id }), autoUpdates: () => automatic,
     updateGame: (id) => { starts.push(id); }, fail: (error) => { throw error; },
   });
-  vm.runInContext(fn('checkUpdates') + '\n' + app.match(/^function dlArgs\(.*$/m)[0], c);
+  vm.runInContext(fn('checkUpdates') + '\n' + fn('stillChecked') + '\n' + app.match(/^function dlArgs\(.*$/m)[0], c);
   const done = c.checkUpdates(!automatic);
   return { S, starts, c, finish: async () => { answer({ chosen: 'v2', other: 'v2' }); await done; } };
 }
