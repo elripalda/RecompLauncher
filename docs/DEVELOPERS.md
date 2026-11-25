@@ -385,7 +385,9 @@ Which input for which file:
     and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Give
     it both formats, file and folder.
   - `ids`: the IDs your game reads, as on the copy: a GameCube or Wii disc's (`"GZ2E01"`, or
-    `"GZ2"` for every region), an N64 cartridge's game code, a PlayStation or PS2 disc's serial,
+    `"GZ2"` for every region), an N64 cartridge's game code, a DS or Game Boy Advance cartridge's
+    4-letter game code from a `.nds` or `.gba` file (`"ACVE"`, the whole code with its region letter),
+    a PlayStation or PS2 disc's serial,
     an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`), or an Xbox
     360 game's title ID (`"4D5307FA"`), read from the `default.xex` in a disc image or an extracted
     folder, and from a DLC or Games on Demand package. Another game's copy is refused with the ID it
