@@ -1314,12 +1314,12 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 21;
+pub const EXE_RULES: u8 = 22;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
-/// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
+/// build_deps.sh, ttt2-server). A release's files are told apart by them too (assets::tool_build).
+pub(crate) const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
 const BUILD_TOOLS: [&str; 66] = [
@@ -1405,10 +1405,35 @@ fn want_has_stem(low: &str, names: &[&str]) -> bool {
     names.iter().any(|n| tokens(n).iter().any(|t| t.len() > 3 && low == *t))
 }
 
-/// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
-/// player is asked.
+/// find_exe, but never a tool, and never only a guess: when every program in it is a tool, or the
+/// best one is picked for its size alone and another program could be the game, there's no telling
+/// (None), and the player is asked.
 pub fn find_game_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
-    find_exe(dir, os, names).filter(|e| !looks_like_tool(e, names))
+    let list = match programs(dir, os, names) {
+        Programs::Given(p) => return p.filter(|e| !looks_like_tool(e, names)),
+        Programs::Weighed(list) => list,
+    };
+    let top = best(&list).filter(|c| !c.tool)?;
+    if only_a_guess(&list, top) {
+        return None;
+    }
+    Some(top.rel.clone())
+}
+
+/// Whether the program find_game_exe would start is only a guess, so it says None for it.
+pub fn unclear_game_exe(dir: &Path, os: &str, names: &[&str]) -> bool {
+    let Programs::Weighed(list) = programs(dir, os, names) else { return false };
+    best(&list).filter(|c| !c.tool).is_some_and(|top| only_a_guess(&list, top))
+}
+
+/// Nothing about the best program says it's the game: not its name, and it isn't a launch script.
+/// It won on size and place alone, so with another program left that isn't a tool, it could as well
+/// be a helper the game starts (a renderer, an entry runner) as the game.
+fn only_a_guess(list: &[Candidate], top: &Candidate) -> bool {
+    if top.named || top.script {
+        return false;
+    }
+    list.iter().any(|c| !c.tool && c.rel != top.rel)
 }
 
 /// Normalize a manual program selection to the executable stored in the library.
@@ -1559,21 +1584,62 @@ pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
+    let list = match programs(dir, os, names) {
+        Programs::Given(p) => return p,
+        Programs::Weighed(list) => list,
+    };
+    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
+    // is asked rather than a tool started.
+    best(&list).filter(|c| !c.tool).map(|c| c.rel.clone())
+}
+
+/// A program find_exe weighed, relative to the game's folder.
+struct Candidate {
+    rel: PathBuf,
+    score: i64,
+    /// Its name has a word of the game's names in it.
+    named: bool,
+    /// A script the release starts the game with.
+    script: bool,
+    tool: bool,
+}
+
+/// What a folder says about the program that starts it.
+enum Programs {
+    /// The folder names it itself (a Mac app's Info.plist, an unpacked AppImage's AppRun), or
+    /// says nothing in it can start.
+    Given(Option<PathBuf>),
+    /// Every program that could be the game, in the order they were found.
+    Weighed(Vec<Candidate>),
+}
+
+/// The highest score, the first found of equals.
+fn best(list: &[Candidate]) -> Option<&Candidate> {
+    let mut top: Option<&Candidate> = None;
+    for c in list {
+        if top.map(|t| c.score > t.score).unwrap_or(true) {
+            top = Some(c);
+        }
+    }
+    top
+}
+
+fn programs(dir: &Path, os: &str, names: &[&str]) -> Programs {
     // A Mac app that is the game's folder itself: the program its Info.plist names, never a helper
     // inside it, and nothing when that program is missing or not for this Mac.
     if os == "macos" && crate::macos::is_bundle(dir) {
-        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now())?;
-        return exe.strip_prefix(dir).ok().map(Path::to_path_buf);
+        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now());
+        return Programs::Given(exe.and_then(|e| e.strip_prefix(dir).ok().map(Path::to_path_buf)));
     }
     // An AppImage unpacked at install: its AppRun starts it, as the AppImage did. One of a release's
     // several AppImages unpacked into a folder named after it, when it's the only one.
     if os == "linux" && dir.join("AppRun").is_file() {
-        return Some(PathBuf::from("AppRun"));
+        return Programs::Given(Some(PathBuf::from("AppRun")));
     }
     if os == "linux" {
         let one_down: Vec<PathBuf> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| Path::new(&e.file_name()).join("AppRun")).filter(|r| dir.join(r).is_file()).collect();
         if let [only] = one_down.as_slice() {
-            return Some(only.clone());
+            return Programs::Given(Some(only.clone()));
         }
     }
     let mut want: Vec<String> = names.iter().flat_map(|n| tokens(n)).filter(|t| t.len() > 2 && t != "recomp" && t != "the").collect();
@@ -1595,7 +1661,7 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     }
     want.sort();
     want.dedup();
-    let mut best: Option<(i64, PathBuf)> = None;
+    let mut list: Vec<Candidate> = vec![];
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
@@ -1678,18 +1744,16 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             if t.iter().any(|x| x == "recompiled" || x == "recomp") {
                 s += 10;
             }
+            let Ok(rel) = p.strip_prefix(dir).map(Path::to_path_buf) else { continue };
             // One of its tools: behind every program that isn't.
-            if p.strip_prefix(dir).map(|r| looks_like_tool(r, names)).unwrap_or(false) {
+            let tool = looks_like_tool(&rel, names);
+            if tool {
                 s -= 1000;
             }
-            if best.as_ref().map(|(b, _)| s > *b).unwrap_or(true) {
-                best = Some((s, p));
-            }
+            list.push(Candidate { rel, score: s, named: named > 0, script, tool });
         }
     }
-    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
-    // is asked rather than a tool started.
-    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf)).filter(|r| !looks_like_tool(r, names))
+    Programs::Weighed(list)
 }
 
 #[cfg(test)]
@@ -2352,6 +2416,48 @@ mod tests {
         let got = download_split(&http, &url, "big.bin", &dir, "t", Arc::new(AtomicBool::new(false)), &|_| {}).await.unwrap().unwrap();
         eprintln!("split download: {:.1} s, sha256 {}", t.elapsed().as_secs_f64(), got.sha256);
         assert_eq!(got.sha256, std::env::var("RL_SPLIT_SHA").unwrap());
+    }
+
+    #[test]
+    fn two_programs_that_dont_name_the_game_are_left_to_the_player() {
+        let d = tmp("unclear-two");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        assert!(find_game_exe(&d, "windows", &["Night Harbor"]).is_none());
+    }
+
+    #[test]
+    fn a_program_named_for_the_game_is_still_picked_beside_others() {
+        let d = tmp("unclear-named");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        put(&d.join("NightHarbor.exe"), 2_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("NightHarbor.exe")));
+    }
+
+    #[test]
+    fn a_lone_program_that_doesnt_name_the_game_is_still_picked() {
+        let d = tmp("unclear-lone");
+        put(&d.join("bin/Engine.exe"), 30_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("bin/Engine.exe")));
+    }
+
+    #[test]
+    fn a_program_beside_only_tools_is_still_picked() {
+        let d = tmp("unclear-tools");
+        put(&d.join("bin/Engine.exe"), 30_000_000);
+        put(&d.join("tools/Packer.exe"), 40_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("bin/Engine.exe")));
+    }
+
+    #[test]
+    fn a_guessed_program_is_reported_as_unclear() {
+        let d = tmp("unclear-report");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        assert!(unclear_game_exe(&d, "windows", &["Night Harbor"]));
+        put(&d.join("NightHarbor.exe"), 2_000_000);
+        assert!(!unclear_game_exe(&d, "windows", &["Night Harbor"]));
     }
 
     #[test]

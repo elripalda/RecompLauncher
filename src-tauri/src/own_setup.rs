@@ -38,6 +38,17 @@ pub fn pending_for_play(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     pending_with(st, id, g, true)
 }
 
+/// Played this long with its program, a game's program is the right one.
+const PLAYED_A_WHILE: u64 = 120;
+
+/// Whether the program a game has stays when the launcher can't pick one again itself: one that
+/// can start and isn't a setup or tool. An older version's guess between programs that don't name
+/// the game doesn't, unless the game has played a while with it: the player is asked once instead.
+fn keeps_old_program(usable: bool, unclear: bool, played_secs: u64) -> bool {
+    let unproven_guess = unclear && played_secs < PLAYED_A_WHILE;
+    usable && !unproven_guess
+}
+
 /// Installs from before the launcher knew about setups are looked at once here.
 fn pending_with(st: &App, id: &str, g: &Installed, play: bool) -> Option<PathBuf> {
     if g.local {
@@ -95,8 +106,12 @@ fn pending_with(st: &App, id: &str, g: &Installed, play: bool) -> Option<PathBuf
                     g.args = String::new();
                 }
                 g.exe = Some(e);
-            } else if !g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e) && !install::looks_like_tool(e, &nr)).unwrap_or(false) {
-                g.exe = None;
+            } else {
+                let usable = g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e) && !install::looks_like_tool(e, &nr)).unwrap_or(false);
+                let unclear = install::unclear_game_exe(&g.path, os, &nr);
+                if !keeps_old_program(usable, unclear, g.played_secs) {
+                    g.exe = None;
+                }
             }
         }
         // A game whose installer builds it (its profile names the program it makes): a program in
@@ -1063,6 +1078,21 @@ fn pick(list: &[Value], names: &[&str], since: SystemTime, ours: &Path, then: Op
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unclear_guess_not_played_long_is_asked_again() {
+        assert!(!keeps_old_program(true, true, 30));
+    }
+
+    #[test]
+    fn an_unclear_guess_played_a_while_is_kept() {
+        assert!(keeps_old_program(true, true, 600));
+    }
+
+    #[test]
+    fn a_clear_pick_is_kept() {
+        assert!(keeps_old_program(true, false, 0));
+    }
+
     #[test]
     fn a_setups_leftovers_are_not_searched() {
         assert!(!super::search_into("temp"));

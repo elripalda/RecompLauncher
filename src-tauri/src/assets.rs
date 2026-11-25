@@ -126,6 +126,22 @@ fn not_a_build(name: &str) -> bool {
         || dependency(&n, &w)
 }
 
+/// A release's file named for one of the game's tools (Game-shader-translator-linux.tar.gz,
+/// Game-server-linux.zip): never the game's build, by the same words as a tool program
+/// (install::TOOL_WORDS). A word every build of the release has is the game's own name, so a game
+/// called Shader Quest still installs.
+fn tool_build(name: &str, assets: &[Asset]) -> bool {
+    let builds: Vec<Vec<String>> = assets.iter().filter(|a| kind(&a.name).is_some() && !not_a_build(&a.name)).map(|a| words(&a.name)).collect();
+    let shared = |w: &String| builds.iter().all(|b| b.contains(w));
+    words(name).iter().any(|w| crate::install::TOOL_WORDS.contains(&w.as_str()) && !shared(w))
+}
+
+/// The files a build is guessed from when no list pattern names one: every file but the tools'.
+/// A pattern from the list is used as it is: a wrong one is the list's to fix.
+fn guessable(assets: &[Asset]) -> Vec<&Asset> {
+    assets.iter().filter(|a| !tool_build(&a.name, assets)).collect()
+}
+
 /// A compiler, SDK or library a release keeps for building the game (a "deps" mirror):
 /// llvm-mingw-20261006-ucrt-x86_64.zip, SDL3-devel-3.4.18-mingw.tar.gz, FidelityFX-SDK-v2.4.0.zip.
 fn dependency(n: &str, w: &[String]) -> bool {
@@ -224,12 +240,12 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
 /// A list's pattern naming only builds for another processor is ignored, as in `pick`.
 fn pool<'a>(assets: &'a [Asset], arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
     let Some(p) = pattern.filter(|p| !p.trim().is_empty()) else {
-        return assets.iter().collect();
+        return guessable(assets);
     };
     let named = matching(assets, p);
     let only_other_arch = !named.is_empty() && named.iter().all(|a| other_arch(&a.name, arch));
     if only_other_arch {
-        return assets.iter().collect();
+        return guessable(assets);
     }
     named
 }
@@ -417,7 +433,7 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
             return None;
         }
     }
-    let builds: Vec<&Asset> = assets.iter().filter(|a| score(&a.name, os, arch) > 0).collect();
+    let builds: Vec<&Asset> = guessable(assets).into_iter().filter(|a| score(&a.name, os, arch) > 0).collect();
     best_by(builds, |a| score(&a.name, os, arch))
 }
 
@@ -444,6 +460,42 @@ mod tests {
         // Still nothing for this system when no name is alike.
         let rel = [a("Other-1.0-linux.AppImage")];
         assert!(pick(&rel, "windows", "x64", Some("Game.Setup-*-windows.zip")).is_none());
+    }
+
+    fn release(names: &[&str]) -> Vec<Asset> {
+        names.iter().map(|n| Asset { name: (*n).into(), size: 1, digest: None, browser_download_url: String::new(), url: None }).collect()
+    }
+
+    #[test]
+    fn a_tool_archive_isnt_the_games_build() {
+        let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        assert!(pick(&rel, "linux", "x64", None).is_none());
+    }
+
+    #[test]
+    fn a_server_archive_isnt_the_games_build() {
+        let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-server-linux-x64.zip"]);
+        assert!(pick(&rel, "linux", "x64", None).is_none());
+    }
+
+    #[test]
+    fn a_tool_archive_isnt_offered_as_a_choice() {
+        let rel = release(&["Harbor-1.0-linux-x64.tar.gz", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let names: Vec<&str> = all_for(&rel, "linux", "x64", None).iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Harbor-1.0-linux-x64.tar.gz"]);
+    }
+
+    #[test]
+    fn a_tool_word_in_the_games_own_name_still_counts_as_the_build() {
+        let rel = release(&["Shader-Quest-1.0-windows-x64.zip", "Shader-Quest-1.0-linux-x64.tar.gz"]);
+        assert_eq!(pick(&rel, "linux", "x64", None).map(|a| a.name.as_str()), Some("Shader-Quest-1.0-linux-x64.tar.gz"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_naming_a_tool_archive_is_still_used() {
+        let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let got = pick(&rel, "linux", "x64", Some("Harbor-*-shader-translator-linux-x64.tar.gz")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("Harbor-1.0-shader-translator-linux-x64.tar.gz"));
     }
 
     #[test]
