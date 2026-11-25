@@ -3410,5 +3410,13 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "Використовуйте обкладинки, логотипи й фони, які LaunchBox уже зберіг для ваших ігор на цьому ПК. Вони лише читаються тут, нічого нікуди не надсилається.",
  "Your LaunchBox": "Ваш LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "У вашому LaunchBox немає гри з такою назвою. Спробуйте іншу.",
- "Your LaunchBox has no game called {name}.": "У вашому LaunchBox немає гри {name}."
+ "Your LaunchBox has no game called {name}.": "У вашому LaunchBox немає гри {name}.",
+ "{n} people saved it or are waiting for it": "{n} людей зберегли її або чекають",
+ "Saved": "Збережено",
+ "Saved. We'll let you know here and by email when it comes out.": "Збережено. Ми повідомимо тут і поштою, коли вона вийде.",
+ "Saved. We'll let you know when it comes out.": "Збережено. Ми повідомимо, коли вона вийде.",
+ "Save it and we'll let you know here and by email when it comes out.": "Збережіть, і ми повідомимо тут і поштою, коли вона вийде.",
+ "Save it and we'll let you know when it comes out.": "Збережіть, і ми повідомимо, коли вона вийде.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} збережено. Ми повідомимо, коли вона вийде.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Незабаром вийдуть. Збережіть рекомп, і ми повідомимо в день виходу."
 }

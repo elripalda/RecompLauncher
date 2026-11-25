@@ -3410,5 +3410,13 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "Verwende die Cover, Logos und Hintergründe, die LaunchBox auf diesem PC schon für deine Spiele gespeichert hat. Sie werden nur hier gelesen, nichts wird irgendwohin gesendet.",
  "Your LaunchBox": "Dein LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "Dein LaunchBox hat kein Spiel mit diesem Namen. Versuch einen anderen.",
- "Your LaunchBox has no game called {name}.": "Dein LaunchBox hat kein Spiel namens {name}."
+ "Your LaunchBox has no game called {name}.": "Dein LaunchBox hat kein Spiel namens {name}.",
+ "{n} people saved it or are waiting for it": "{n} Leute haben es gespeichert oder warten darauf",
+ "Saved": "Gespeichert",
+ "Saved. We'll let you know here and by email when it comes out.": "Gespeichert. Wir sagen dir hier und per E-Mail Bescheid, wenn es erscheint.",
+ "Saved. We'll let you know when it comes out.": "Gespeichert. Wir sagen dir Bescheid, wenn es erscheint.",
+ "Save it and we'll let you know here and by email when it comes out.": "Speichere es, dann sagen wir dir hier und per E-Mail Bescheid, wenn es erscheint.",
+ "Save it and we'll let you know when it comes out.": "Speichere es, dann sagen wir dir Bescheid, wenn es erscheint.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} ist gespeichert. Wir sagen dir Bescheid, wenn es erscheint.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomps, die bald kommen. Speichere eins, dann sagen wir dir am Tag der Veröffentlichung Bescheid."
 }

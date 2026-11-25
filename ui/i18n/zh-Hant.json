@@ -3410,5 +3410,13 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "使用 LaunchBox 已在這台電腦上為你的遊戲儲存的封面、標誌和背景。只在這裡讀取，不會傳送到任何地方。",
  "Your LaunchBox": "你的 LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "你的 LaunchBox 裡沒有這個名稱的遊戲。換個名稱試試。",
- "Your LaunchBox has no game called {name}.": "你的 LaunchBox 裡沒有名為 {name} 的遊戲。"
+ "Your LaunchBox has no game called {name}.": "你的 LaunchBox 裡沒有名為 {name} 的遊戲。",
+ "{n} people saved it or are waiting for it": "{n} 人已儲存或正在等待",
+ "Saved": "已儲存",
+ "Saved. We'll let you know here and by email when it comes out.": "已儲存。推出時我們會在這裡和透過電子郵件通知你。",
+ "Saved. We'll let you know when it comes out.": "已儲存。推出時我們會通知你。",
+ "Save it and we'll let you know here and by email when it comes out.": "儲存後，推出時我們會在這裡和透過電子郵件通知你。",
+ "Save it and we'll let you know when it comes out.": "儲存後，推出時我們會通知你。",
+ "{name} is saved. We'll let you know when it comes out.": "已儲存 {name}。推出時我們會通知你。",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "即將推出的 Recomp。儲存一個，推出當天我們會通知你。"
 }

@@ -3410,5 +3410,13 @@
  "Use the box art, logos and backgrounds LaunchBox already saved for your games on this PC. Only read here, nothing is sent anywhere.": "استخدم صور العلب والشعارات والخلفيات التي حفظها LaunchBox بالفعل لألعابك على هذا الحاسوب. تُقرأ هنا فقط، ولا يُرسل أي شيء إلى أي مكان.",
  "Your LaunchBox": "LaunchBox الخاص بك",
  "Your LaunchBox has no game by that name. Try another.": "لا توجد في LaunchBox الخاص بك لعبة بهذا الاسم. جرّب اسمًا آخر.",
- "Your LaunchBox has no game called {name}.": "لا توجد في LaunchBox الخاص بك لعبة باسم {name}."
+ "Your LaunchBox has no game called {name}.": "لا توجد في LaunchBox الخاص بك لعبة باسم {name}.",
+ "{n} people saved it or are waiting for it": "{n} شخصًا حفظوها أو ينتظرونها",
+ "Saved": "محفوظ",
+ "Saved. We'll let you know here and by email when it comes out.": "تم الحفظ. سنُعلمك هنا وبالبريد عند صدورها.",
+ "Saved. We'll let you know when it comes out.": "تم الحفظ. سنُعلمك عند صدورها.",
+ "Save it and we'll let you know here and by email when it comes out.": "احفظها وسنُعلمك هنا وبالبريد عند صدورها.",
+ "Save it and we'll let you know when it comes out.": "احفظها وسنُعلمك عند صدورها.",
+ "{name} is saved. We'll let you know when it comes out.": "تم حفظ {name}. سنُعلمك عند صدورها.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "ريكومبات في الطريق. احفظ واحدة وسنُعلمك يوم صدورها."
 }

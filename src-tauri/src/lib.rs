@@ -1126,6 +1126,15 @@ async fn play_reports(st: State<'_, App>, id: String, force: Option<bool>) -> Re
     Ok(v)
 }
 
+/// How many people want a recomp (saved it, or wait for its Notify Me email), for the buttons on its
+/// page. 0 when the website can't say: it can't be reached and nothing is kept yet, it's an older site
+/// without the count, or it doesn't list that recomp.
+#[tauri::command]
+async fn want_count(st: State<'_, App>, id: String) -> Res<u64> {
+    let got = catalog::interest(&st.http, &st.dir, &id).await;
+    Ok(got.map(|f| catalog::interest_n(&f.data)).unwrap_or(0))
+}
+
 /// Finished downloads, newest first, for the Downloads page.
 fn note_download(dir: &Path, rec: Value) {
     let p = dir.join("downloads.json");
@@ -2173,19 +2182,28 @@ pub(crate) fn note_new_apps(app: &AppHandle, st: &App, cat: &Value) {
     if ids.is_empty() {
         return;
     }
-    let (first_time, new_ids, notify, found, news) = {
+    let (first_time, new_ids, notify, found, news, out_now) = {
         let mut l = st.lib.lock().unwrap();
         let first = l.seen_apps.is_empty();
         let new_ids: Vec<String> = ids.iter().filter(|i| !l.seen_apps.contains(i)).cloned().collect();
         l.seen_apps = ids.clone();
         let news = followed_news(cat, &mut l, &new_ids, first);
-        (first, new_ids, l.settings.notify, l.roms.clone(), news)
+        let saved: Vec<String> = l.settings.ui.get("saved").and_then(Value::as_object).map(|o| o.keys().cloned().collect()).unwrap_or_default();
+        let out_now = saved_out_now(cat, &saved, &l.seen_soon);
+        l.seen_soon = soon_ids(cat);
+        (first, new_ids, l.settings.notify, l.roms.clone(), news, out_now)
     };
     st.save();
     if notify {
         for (title, body, id) in &news {
             ingame::notify(app, title, body);
             let _ = app.emit("followed", id);
+        }
+        // Saved while it was Coming Soon (its Save button): now it can be installed.
+        for id in &out_now {
+            if let Some(a) = catalog::app(cat, id) {
+                ingame::notify(app, &format!("{} is out", str_of(a, "name")), "A game you saved can be installed now. It's in your Library.");
+            }
         }
     }
     if first_time || new_ids.is_empty() || !notify {
@@ -2198,6 +2216,21 @@ pub(crate) fn note_new_apps(app: &AppHandle, st: &App, cat: &Value) {
             let _ = app.emit("new-recomp", id);
         }
     }
+}
+
+/// The catalog's Coming Soon recomps (not the player's own, added by link).
+fn soon_ids(cat: &Value) -> Vec<String> {
+    let apps = cat.get("apps").and_then(Value::as_array).into_iter().flatten();
+    let soon = apps.filter(|a| a.get("soon").and_then(Value::as_bool).unwrap_or(false) && !a.get("custom").and_then(Value::as_bool).unwrap_or(false));
+    soon.filter_map(|a| a.get("id")?.as_str().map(str::to_string)).collect()
+}
+
+/// Saved games that were Coming Soon in the last catalog and are out in this one: each is told about
+/// once, as the next catalog no longer has it as Coming Soon. One that left the catalog isn't out.
+fn saved_out_now(cat: &Value, saved: &[String], was_soon: &[String]) -> Vec<String> {
+    let soon_now = soon_ids(cat);
+    let listed = |id: &str| catalog::app(cat, id).is_some();
+    saved.iter().filter(|id| was_soon.contains(id) && !soon_now.contains(id) && listed(id)).cloned().collect()
 }
 
 /// Developers the player follows (Settings: ui.follow): a new recomp of theirs, or a new version of
@@ -10431,7 +10464,7 @@ pub fn run() {
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_play_without_cloud, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_play_without_cloud, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, want_count, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -12149,5 +12182,48 @@ mod beta54_tests {
         std::fs::create_dir_all(from.join(swap::FOLDER).join("old")).unwrap();
         assert!(holds_same_game(&g, &to), "old files an update set aside aren't the game's");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod saved_soon_tests {
+    use super::*;
+
+    fn cat(apps: Value) -> Value {
+        json!({ "apps": apps })
+    }
+
+    #[test]
+    fn coming_soon_ids_leave_out_the_players_own() {
+        let c = cat(json!([{ "id": "a", "soon": true }, { "id": "b" }, { "id": "c", "soon": true, "custom": true }]));
+        assert_eq!(soon_ids(&c), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn a_saved_game_that_came_out_is_told_about() {
+        let c = cat(json!([{ "id": "a" }, { "id": "b", "soon": true }]));
+        let saved = vec!["a".to_string(), "b".to_string()];
+        let was = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(saved_out_now(&c, &saved, &was), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn only_saved_games_that_were_coming_soon_are_told_about() {
+        let c = cat(json!([{ "id": "a" }, { "id": "b" }]));
+        // b was never Coming Soon, and c wasn't saved.
+        assert!(saved_out_now(&c, &["b".to_string()], &["a".to_string()]).is_empty());
+        assert!(saved_out_now(&c, &[], &["a".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn a_saved_game_that_left_the_catalog_is_not_out() {
+        let c = cat(json!([{ "id": "b", "soon": true }]));
+        assert!(saved_out_now(&c, &["a".to_string()], &["a".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn nothing_is_told_before_a_catalog_was_seen() {
+        let c = cat(json!([{ "id": "a" }]));
+        assert!(saved_out_now(&c, &["a".to_string()], &[]).is_empty());
     }
 }
