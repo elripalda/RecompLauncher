@@ -1021,6 +1021,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-box .k b{font-size:28px}
 .ni-tv.ss .ss-box .k span{font-size:21px}
 .ni-tv.ss .fmt{font-size:17px;padding:6px 9px;border-radius:7px}
+.ni-tv.ss .ss-box .ss-hint{font-size:19px}
 .ni-tv.ss .ss-src{height:34px;font-size:18px;padding:0 13px;border-radius:9px}
 .ni-tv.ss .btn{font-size:20px;height:56px;padding:0 22px;border-radius:12px}
 .ni-tv.ss .ss-box .acts{gap:10px}
