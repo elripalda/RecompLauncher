@@ -6,11 +6,12 @@ This one makes Home yours to follow from the website, brings new consoles, gives
 
 **Home and the store**
 - **Home follows the website.** Its rows come in the order set on recomplauncher.com, with info boxes and banners between them, in your language. Big Picture's Home follows the same list ([#462](https://github.com/elripalda/RecompLauncher/pull/462), [#514](https://github.com/elripalda/RecompLauncher/pull/514), [#516](https://github.com/elripalda/RecompLauncher/pull/516)).
+- **Big Picture's Home has Favorites and From developers you follow,** like the desktop, and the box to add a folder of your games when none is picked yet ([#558](https://github.com/elripalda/RecompLauncher/pull/558)).
 - **New consoles:** Xbox Series X|S, Xbox One, PS Vita, TurboGrafx-16 and Mobile ([#515](https://github.com/elripalda/RecompLauncher/pull/515)).
 - **Coming Soon games have one Save button** that shows how many people want it, and you get a notification when it comes out ([#466](https://github.com/elripalda/RecompLauncher/pull/466)).
 - **Launcher Support** only counts what the launcher can actually use, and a support file it can't read says why. — Improved by @Xarishark ([#532](https://github.com/elripalda/RecompLauncher/pull/532)).
 - **Customize can use your own LaunchBox** for pictures and descriptions, and About the game credits LaunchBox when its info came from there ([#518](https://github.com/elripalda/RecompLauncher/pull/518), [#538](https://github.com/elripalda/RecompLauncher/pull/538)).
-- **Reviews:** a one-page review window, Delete Review, All Reviews, and a searchable Your Reviews. — Improved by @Xarishark ([#491](https://github.com/elripalda/RecompLauncher/pull/491)).
+- **Reviews:** a one-page review window, Delete Review, All Reviews, and a searchable Your Reviews. All Reviews' score and rows follow the version you pick. — Improved by @Xarishark ([#491](https://github.com/elripalda/RecompLauncher/pull/491), [#556](https://github.com/elripalda/RecompLauncher/pull/556)).
 - Full-width backgrounds keep their full quality, and the Featured Banner is never taller than half the window. — Improved by @thehobbit85 and @Xarishark ([#346](https://github.com/elripalda/RecompLauncher/pull/346), [#513](https://github.com/elripalda/RecompLauncher/pull/513)).
 
 **Easy Setup**
@@ -34,11 +35,13 @@ This one makes Home yours to follow from the website, brings new consoles, gives
 - Pick a release's build with the controller in Big Picture, turn the controller off outside Big Picture in Settings, and A waits for a direction after the window loses focus. — Improved by @AngeloAscheri and @thehobbit85 ([#469](https://github.com/elripalda/RecompLauncher/pull/469), [#482](https://github.com/elripalda/RecompLauncher/pull/482), [#478](https://github.com/elripalda/RecompLauncher/pull/478)).
 
 **Fixes**
+- Pages that load while the launcher is behind another window show right away instead of staying blank until you click it ([#559](https://github.com/elripalda/RecompLauncher/pull/559)).
+- Customize's hint before you pick a picture stays inside the frame ([#557](https://github.com/elripalda/RecompLauncher/pull/557)).
 - Library covers fill their tiles on Windows PCs that drew them blank. — Improved by @Xarishark ([#527](https://github.com/elripalda/RecompLauncher/pull/527)).
 - **Export Logs** puts every log in one zip on your desktop (Settings → About → Troubleshoot), and the start failure box only says WebView2 is missing when it is. — Improved by @Xarishark ([#455](https://github.com/elripalda/RecompLauncher/pull/455), [#489](https://github.com/elripalda/RecompLauncher/pull/489), [#505](https://github.com/elripalda/RecompLauncher/pull/505)).
 - Linux: unpacked AppImages and programs in subfolders start properly, and a just-unpacked setup program is tried again when Linux says it's busy. — Improved by @Xarishark ([#486](https://github.com/elripalda/RecompLauncher/pull/486), [#494](https://github.com/elripalda/RecompLauncher/pull/494), [#525](https://github.com/elripalda/RecompLauncher/pull/525)).
 
 **For developers**
-- A test mode for checking a build with automated tools, off unless the launcher is started with it ([#548](https://github.com/elripalda/RecompLauncher/pull/548)).
+- A test mode for checking a build with automated tools, off unless the launcher is started with it ([#548](https://github.com/elripalda/RecompLauncher/pull/548), [#555](https://github.com/elripalda/RecompLauncher/pull/555)).
 
 Thanks for testing, and keep the logs coming from the crash window and Settings → Beta. Every one helps make the next beta better.
