@@ -770,6 +770,11 @@ pub struct State {
     /// next start makes the copy and sends it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub after_play: bool,
+    /// The sign-in this note was read under (see `state`): a note read under one sign-in is never
+    /// written under another, so work that ends after a switch can't stamp the old account's
+    /// cloud news on the new one. None for a note made in code: it's written under the sign-in now.
+    #[serde(skip)]
+    pub(crate) read_under: Option<String>,
 }
 
 /// Why a game's saves didn't reach the cloud. `kind` is one of: offline, full, paused,
@@ -790,6 +795,34 @@ impl State {
         self.synced_device = device.to_string();
         self.conflict = None;
         self.problem = None;
+    }
+
+    /// Another account (or nobody signed in): nothing the note says about the cloud holds for it
+    /// (what was synced, the queue, a conflict, a problem). What this PC knows about its own
+    /// saves stays, so changes to them are still noticed.
+    pub fn forget_cloud(&mut self) {
+        self.synced_hash.clear();
+        self.pending = None;
+        self.synced_at = 0;
+        self.synced_made = 0;
+        self.synced_device.clear();
+        self.conflict = None;
+        self.problem = None;
+    }
+
+    fn knows_cloud(&self) -> bool {
+        let synced = !self.synced_hash.is_empty() || self.synced_at != 0 || self.synced_made != 0 || !self.synced_device.is_empty();
+        synced || self.pending.is_some() || self.conflict.is_some() || self.problem.is_some()
+    }
+
+    fn take_cloud_from(&mut self, other: &State) {
+        self.synced_hash = other.synced_hash.clone();
+        self.pending = other.pending.clone();
+        self.synced_at = other.synced_at;
+        self.synced_made = other.synced_made;
+        self.synced_device = other.synced_device.clone();
+        self.conflict = other.conflict.clone();
+        self.problem = other.problem.clone();
     }
 
     /// The newest copy on this PC isn't the one in the cloud: it's queued, or it goes up after
@@ -835,19 +868,104 @@ fn state_file(app_dir: &Path, id: &str) -> PathBuf {
     app_dir.join("saves").join(id).join("state.json")
 }
 
-pub fn state(app_dir: &Path, id: &str) -> State {
-    let read = |p: PathBuf| fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok());
-    // One from before the notes moved, beside the copies in the player's folder.
-    let beside = || chosen_root().and_then(|r| read(r.join(id).join("state.json")));
-    read(state_file(app_dir, id)).or_else(beside).unwrap_or_default()
+/// The key in state.json naming the sign-in its cloud fields belong to. Same name and form as the
+/// Google Drive draft (PR #228) uses, "<provider>:<account id>", so the two read each other's notes.
+const SCOPE_KEY: &str = "cloud_scope";
+
+/// The sign-in a note's cloud fields are written under now. Read from account.json without
+/// opening the sealed token, so it costs no trip to Windows' Credential Manager.
+fn scope_now(app_dir: &Path) -> String {
+    format!("recompstore:{}", crate::cloud::account_uid(app_dir))
 }
 
-pub fn set_state(app_dir: &Path, id: &str, s: &State) {
+/// A scope with no account id after the colon is nobody's: nothing in the cloud belongs to it.
+fn owned(scope: &str) -> bool {
+    scope.split_once(':').is_some_and(|(_, who)| !who.is_empty())
+}
+
+/// The note as written, with the scope it was written under (None: from before notes had one).
+fn read_note(app_dir: &Path, id: &str) -> Option<(State, Option<String>)> {
+    let read = |p: PathBuf| fs::read(p).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    // One from before the notes moved, beside the copies in the player's folder.
+    let beside = || chosen_root().and_then(|r| read(r.join(id).join("state.json")));
+    let value = read(state_file(app_dir, id)).or_else(beside)?;
+    let scope = value.get(SCOPE_KEY).and_then(|v| v.as_str()).map(String::from);
+    let state = serde_json::from_value(value).unwrap_or_default();
+    Some((state, scope))
+}
+
+fn write_note(app_dir: &Path, id: &str, s: &State, scope: &str) {
     let f = state_file(app_dir, id);
     if let Some(d) = f.parent() {
         let _ = fs::create_dir_all(d);
     }
-    let _ = fs::write(f, serde_json::to_vec_pretty(s).unwrap_or_default());
+    let mut value = serde_json::to_value(s).unwrap_or_default();
+    value[SCOPE_KEY] = scope.into();
+    let _ = fs::write(f, serde_json::to_vec_pretty(&value).unwrap_or_default());
+}
+
+/// What this PC knows about a game's saves, for whoever is signed in now. The cloud fields only
+/// count for the account they were written under: after a switch (or signed out) the game has
+/// nothing synced, nothing queued, no conflict and no problem, so another account's upload is
+/// never sent and its sync point never decides a restore. The account's own notes come back if
+/// it signs in again before the other one syncs this game.
+///
+/// A note from before notes had an account belongs to the account signed in when this version
+/// first reads it: an account switch was rare, and dropping every player's queue and sync point
+/// at the update would turn their next sync into a "which save?" question. Read with nobody
+/// signed in, it belongs to no account, since who wrote it can't be known.
+pub fn state(app_dir: &Path, id: &str) -> State {
+    let now = scope_now(app_dir);
+    let Some((mut s, written)) = read_note(app_dir, id) else {
+        return State { read_under: Some(now), ..Default::default() };
+    };
+    s.read_under = Some(now.clone());
+    let Some(written) = written else {
+        if !owned(&now) {
+            s.forget_cloud();
+        }
+        write_note(app_dir, id, &s, &now);
+        return s;
+    };
+    if written != now || !owned(&now) {
+        s.forget_cloud();
+    }
+    s
+}
+
+pub fn set_state(app_dir: &Path, id: &str, s: &State) {
+    write_state(app_dir, id, s, false);
+}
+
+/// After the saves here were replaced (a restore, a shared save): the copy queued to go up is
+/// superseded, whichever account it was queued for, so signing in to it again doesn't send it.
+fn set_state_saves_replaced(app_dir: &Path, id: &str, s: &State) {
+    write_state(app_dir, id, s, true);
+}
+
+fn write_state(app_dir: &Path, id: &str, s: &State, saves_replaced: bool) {
+    let now = scope_now(app_dir);
+    if s.read_under.as_ref().is_some_and(|r| *r != now) {
+        crate::trail::note(format!("Saves: {id}'s sync note wasn't kept, the account changed meanwhile"));
+        return;
+    }
+    // A note that says nothing about the cloud (signed out, or an account that hasn't synced this
+    // game) keeps what the file says for the account it belongs to: playing signed out, or a
+    // look from another account, doesn't cost that account its sync point.
+    let mut keep = s.clone();
+    let mut scope = now.clone();
+    if !s.knows_cloud() {
+        if let Some((written, Some(owner))) = read_note(app_dir, id) {
+            if owner != now && owned(&owner) {
+                keep.take_cloud_from(&written);
+                if saves_replaced {
+                    keep.pending = None;
+                }
+                scope = owner;
+            }
+        }
+    }
+    write_note(app_dir, id, &keep, &scope);
 }
 
 /// Copies go where they belong now: from the launcher's own folder (where they were kept before
@@ -1119,7 +1237,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // A successful restore replaces the save that was queued for upload. Keep its archive in
     // local history, but do not let a retry send it over the player's restored selection.
     st.pending = None;
-    set_state(app_dir, id, &st);
+    set_state_saves_replaced(app_dir, id, &st);
     Ok(n)
 }
 
@@ -1373,7 +1491,7 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
 
     let mut s = state(app_dir, id);
     s.pending = None;
-    set_state(app_dir, id, &s);
+    set_state_saves_replaced(app_dir, id, &s);
     Ok(())
 }
 
@@ -2001,6 +2119,7 @@ mod tests {
         assert!(queued.when > chosen.when);
         let queued_path = dir_of(&app, "g", &g).join(&queued.name);
         let queued_bytes = fs::read(&queued_path).unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
         set_state(&app, "g", &State { last_hash: queued.hash.clone(), synced_hash: "previous cloud".into(), pending: Some(queued.name.clone()), ..Default::default() });
         set_state(&app, "other", &State { pending: Some("123.zip".into()), ..Default::default() });
 
@@ -2020,6 +2139,42 @@ mod tests {
         fs::remove_dir_all(d).unwrap();
     }
 
+    // Account A queues the newest copy; the older one is restored with `who` signed in (None:
+    // nobody); then A signs in again and looks at what's queued.
+    fn restored_while_away(name: &str, who: Option<&str>) -> Option<String> {
+        let d = tmp(name);
+        let app = d.join("app");
+        let inst = d.join("inst");
+        fs::create_dir_all(&inst).unwrap();
+        let g = game(&inst);
+        let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
+        fs::write(inst.join("slot.sav"), "older save").unwrap();
+        let older = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        fs::write(inst.join("slot.sav"), "newer save queued for A").unwrap();
+        let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
+        set_state(&app, "g", &State { last_hash: queued.hash, synced_hash: "a-cloud".into(), pending: Some(queued.name), ..Default::default() });
+        match who {
+            Some(uid) => crate::cloud::sign_in_for_tests(&app, uid),
+            None => crate::cloud::sign_out_for_tests(&app),
+        }
+        restore(&app, "g", &dir_of(&app, "g", &g).join(&older.name), &spots, &g).unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
+        let pending = state(&app, "g").pending;
+        fs::remove_dir_all(d).unwrap();
+        pending
+    }
+
+    #[test]
+    fn restoring_signed_out_cancels_the_accounts_queued_upload() {
+        assert_eq!(restored_while_away("restore-signed-out", None), None);
+    }
+
+    #[test]
+    fn restoring_as_another_account_cancels_the_first_accounts_queued_upload() {
+        assert_eq!(restored_while_away("restore-as-b", Some("B")), None);
+    }
+
     #[test]
     fn a_failed_restore_keeps_the_pending_upload() {
         let d = tmp("restore-pending-error");
@@ -2030,6 +2185,7 @@ mod tests {
         let g = game(&inst);
         let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
         let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
         set_state(&app, "g", &State { last_hash: queued.hash, pending: Some(queued.name.clone()), ..Default::default() });
         let invalid = d.join("broken.zip");
         fs::write(&invalid, b"not a save archive").unwrap();
@@ -2550,5 +2706,171 @@ mod sync_state_tests {
     fn a_state_file_from_before_reads_with_the_new_fields_empty() {
         let s: State = serde_json::from_str(r#"{"last_hash":"a","synced_hash":"a","pending":null}"#).unwrap();
         assert_eq!((s.synced_at, s.conflict.is_none(), s.problem.is_none()), (0, true, true));
+    }
+}
+
+#[cfg(test)]
+mod account_scope_tests {
+    use super::{set_state, state, state_file, State};
+    use crate::cloud::{sign_in_for_tests as sign_in, sign_out_for_tests as sign_out};
+    use std::path::PathBuf;
+
+    struct AppDir(PathBuf);
+
+    impl AppDir {
+        fn new(name: &str) -> Self {
+            let d = std::env::temp_dir().join(format!("rl-saves-scope-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            Self(d)
+        }
+    }
+
+    impl Drop for AppDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // What account A left behind: a copy queued, a sync point, and where it was made.
+    fn synced_under_a(app: &std::path::Path) {
+        sign_in(app, "A");
+        let mut s = State { last_hash: "local".into(), pending: Some("200.zip".into()), ..Default::default() };
+        s.mark_synced("a-cloud", 100, "Desk-PC");
+        set_state(app, "g", &s);
+    }
+
+    #[test]
+    fn a_copy_queued_under_one_account_is_not_queued_for_the_next() {
+        let d = AppDir::new("queue");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        assert_eq!(state(&d.0, "g").pending, None);
+    }
+
+    #[test]
+    fn after_switching_accounts_nothing_shows_as_synced() {
+        let d = AppDir::new("status");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.synced_at, s.synced_device.as_str()), ("", 0, ""));
+    }
+
+    #[test]
+    fn after_switching_accounts_this_pcs_own_save_is_still_known() {
+        let d = AppDir::new("local");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        assert_eq!(state(&d.0, "g").last_hash, "local");
+    }
+
+    #[test]
+    fn signed_out_nothing_shows_as_synced() {
+        let d = AppDir::new("signed-out");
+        synced_under_a(&d.0);
+        sign_out(&d.0);
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.pending.as_deref()), ("", None));
+    }
+
+    #[test]
+    fn switching_back_finds_the_first_accounts_notes_when_the_other_did_not_sync() {
+        let d = AppDir::new("back");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        let mut looked = state(&d.0, "g");
+        looked.after_play = true;
+        set_state(&d.0, "g", &looked);
+        sign_in(&d.0, "A");
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("200.zip"));
+    }
+
+    #[test]
+    fn switching_back_finds_nothing_once_the_other_account_synced() {
+        let d = AppDir::new("replaced");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        let mut s = state(&d.0, "g");
+        s.mark_synced("b-cloud", 300, "Laptop");
+        set_state(&d.0, "g", &s);
+        sign_in(&d.0, "A");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.pending.as_deref()), ("", None));
+    }
+
+    #[test]
+    fn playing_signed_out_keeps_the_accounts_sync_point() {
+        let d = AppDir::new("offline-play");
+        synced_under_a(&d.0);
+        sign_out(&d.0);
+        let mut s = state(&d.0, "g");
+        s.last_hash = "played signed out".into();
+        set_state(&d.0, "g", &s);
+        sign_in(&d.0, "A");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.last_hash.as_str()), ("a-cloud", "played signed out"));
+    }
+
+    #[test]
+    fn an_account_signed_in_without_an_id_keeps_its_queue() {
+        let d = AppDir::new("no-id");
+        sign_in(&d.0, "");
+        set_state(&d.0, "g", &State { pending: Some("200.zip".into()), ..Default::default() });
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("200.zip"));
+    }
+
+    #[test]
+    fn an_account_signed_in_without_an_id_is_not_nobody() {
+        let d = AppDir::new("no-id-vs-nobody");
+        sign_in(&d.0, "");
+        set_state(&d.0, "g", &State { pending: Some("200.zip".into()), ..Default::default() });
+        sign_out(&d.0);
+        assert_eq!(state(&d.0, "g").pending, None);
+    }
+
+    #[test]
+    fn a_note_read_before_a_switch_is_not_written_after_it() {
+        let d = AppDir::new("late-write");
+        synced_under_a(&d.0);
+        let mut s = state(&d.0, "g");
+        sign_in(&d.0, "B");
+        s.mark_synced("a-cloud-newer", 400, "Desk-PC");
+        set_state(&d.0, "g", &s);
+        assert_eq!(state(&d.0, "g").synced_hash, "");
+    }
+
+    fn old_note(app: &std::path::Path) {
+        let f = state_file(app, "g");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(f, br#"{"last_hash":"local","synced_hash":"old-cloud","pending":"100.zip"}"#).unwrap();
+    }
+
+    #[test]
+    fn a_note_from_before_accounts_belongs_to_the_account_signed_in() {
+        let d = AppDir::new("old-signed-in");
+        old_note(&d.0);
+        sign_in(&d.0, "A");
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("100.zip"));
+    }
+
+    #[test]
+    fn a_note_from_before_accounts_stays_with_that_account_after_a_switch() {
+        let d = AppDir::new("old-then-switch");
+        old_note(&d.0);
+        sign_in(&d.0, "A");
+        let _ = state(&d.0, "g");
+        sign_in(&d.0, "B");
+        assert_eq!(state(&d.0, "g").pending, None);
+    }
+
+    #[test]
+    fn a_note_from_before_accounts_read_signed_out_belongs_to_nobody() {
+        let d = AppDir::new("old-signed-out");
+        old_note(&d.0);
+        let _ = state(&d.0, "g");
+        sign_in(&d.0, "B");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.pending.as_deref(), s.last_hash.as_str()), ("", None, "local"));
     }
 }
