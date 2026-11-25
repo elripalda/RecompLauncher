@@ -126,6 +126,11 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 `RL_API=http://127.0.0.1:8120 npm run dev`. It reads `/pc-catalog.json` and
 `/api/gh.php?repo=owner/name` (the same JSON as GitHub's releases API).
 
+### Testing a build with an agent
+
+Start the launcher with `RECOMPLAUNCHER_TEST_CONTROL` set to a token of your own, and an MCP client
+(an AI agent, or a script) can drive it: see [TEST-CONTROL.md](TEST-CONTROL.md). It's off otherwise.
+
 ## Pull request builds
 
 The `PR checks` GitHub Actions workflow runs the Rust and UI tests and builds installers on
@@ -171,6 +176,8 @@ to block merging when any platform check fails. The workflow alone does not enfo
 - `src-tauri/src/looks.rs` gets ReShade, writes a game's look, and puts ReShade where the game loads it
   for one start. The effects are in `src-tauri/looks/`; `ui/looks.js` draws the same ones for the previews.
 - `src-tauri/src/lib.rs` has the commands the window calls, and starts games.
+- `src-tauri/src/test_control/` is the MCP server for testing a build with an agent, off unless
+  it's asked for ([TEST-CONTROL.md](TEST-CONTROL.md)).
 - `ui/` is the window (app.js), Big Picture mode (tv.js), first-time setup (firstrun.js), accounts and the Saves tab (account.js) and the quick menu
   (overlay.html): plain HTML, CSS and JavaScript, no build step.
 - `ui/i18n.js` puts the window in the player's language, from `ui/i18n/<code>.json`.

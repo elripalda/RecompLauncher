@@ -28,7 +28,7 @@ test('Skip Easy Setup is on the setup window, the Manage tab and in Settings, no
   assert.match(fn(app, 'manageStartRows'), /const rows = \[easyRow\(id\), programRow\(id, inst\)\];/);
   assert.match(app, /case 'easy-skip': \{[^]*?await setEasySkip\(id, on\);/);
   assert.match(fn(app, 'setEasySkip'), /saveUi\(\{ easy_skip: \[\.\.\.skip\] \}, true\)/);
-  assert.match(app, /sw\('easy_skip_all', ui\.easy_skip_all, t\('Skip Easy Setup'\), 'ui-toggle'\)/);
+  assert.match(app, /sw\('easy_skip_all', !ui\.easy_skip_all, t\('Easy Setup'\), 'easy-all'\)/);
 });
 
 test('a skipped game starts as its own setup leaves it, after that setup when it has one', () => {
