@@ -3724,8 +3724,13 @@ static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 static INPUT_WORKERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static SETUP_STATUS: Mutex<Option<HashMap<String, SetupEv>>> = Mutex::new(None);
 
+/// A setup is going for `id`. For a recomp's id that counts a run kept under one of its games'
+/// ids too: every game of a recomp is set up in the same install, so two at once would each write
+/// the record back and the last one would drop the other's picks.
 pub(crate) fn setup_busy(id: &str) -> bool {
-    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id)) || INPUT_WORKERS.lock().unwrap().iter().any(|x| x == id)
+    let busy = |run: &str| run == id || games::split(run).is_some_and(|(recomp, _)| recomp == id);
+    let running = SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.keys().any(|k| busy(k)));
+    running || INPUT_WORKERS.lock().unwrap().iter().any(|x| busy(x))
 }
 
 fn setup_stopped(id: &str, run: u64) -> bool {
@@ -4573,6 +4578,20 @@ mod win_job {
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
+/// Start a program that may have only just been written (unpacked with the game). On Linux,
+/// another thread starting a program at that moment holds the new file open for a few
+/// milliseconds, and starting it fails with "Text file busy": it's tried again for up to half a
+/// second.
+fn spawn_just_written(c: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    for _ in 0..20 {
+        match c.spawn() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => std::thread::sleep(std::time::Duration::from_millis(25)),
+            started => return started,
+        }
+    }
+    c.spawn()
+}
+
 /// Runs the recomp's setup step. `writing` is called once the step has started, when it can
 /// write over the last build; a step that can't start (its program missing, no room, no Proton)
 /// never calls it.
@@ -4635,7 +4654,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     // The launcher killed or crashing (no Exit to stop it): on Linux the step goes with it.
     #[cfg(target_os = "linux")]
     die_with_launcher(&mut c);
-    let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
+    let mut child = spawn_just_written(&mut c).map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
     // Started: from here it can write over the last build. (Not before: a step Windows Security
     // blocked never ran.)
     writing();
