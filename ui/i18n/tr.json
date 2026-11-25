@@ -637,6 +637,7 @@
  "It's a Windows version and Proton isn't installed": "Windows sürümü ve Proton kurulu değil",
  "It's a Windows version, run through Proton": "Windows sürümü, Proton ile çalıştırılıyor",
  "It's busy being moved or updated. Try again once that's done.": "Şu anda taşınıyor veya güncelleniyor. Bu bittikten sonra tekrar deneyin.",
+ "It's being uninstalled right now.": "Şu anda kaldırılıyor.",
  "It's by the clock. Right-click its icon to quit.": "Saatin yanında. Çıkmak için simgesine sağ tıkla.",
  "It's checked and set up once. After that, you just press Play.": "Bir kez kontrol edilip kurulur. Sonrasında yalnızca Oyna'ya basarsınız.",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "Oyun dosyalarını artık var olmayan {folder} klasöründe arıyor. Oyunun kopyasının olduğu klasörü seç, bir dahaki sefere oradan başlasın.",

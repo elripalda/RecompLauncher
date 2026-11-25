@@ -637,6 +637,7 @@
  "It's a Windows version and Proton isn't installed": "Windows 版ですが、Proton がインストールされていません",
  "It's a Windows version, run through Proton": "Windows 版を Proton で動かします",
  "It's busy being moved or updated. Try again once that's done.": "移動中またはアップデート中です。終わってからもう一度お試しください。",
+ "It's being uninstalled right now.": "現在アンインストール中です。",
  "It's by the clock. Right-click its icon to quit.": "時計の横にあります。終了するにはアイコンを右クリックします。",
  "It's checked and set up once. After that, you just press Play.": "確認とセットアップは一度だけ。あとは「プレイ」を押すだけです。",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "ゲームファイルを {folder} で探していますが、そのフォルダーはもうありません。ゲームのコピーがあるフォルダーを選ぶと、次回からそこで起動します。",

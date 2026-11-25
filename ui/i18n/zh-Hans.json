@@ -637,6 +637,7 @@
  "It's a Windows version and Proton isn't installed": "这是 Windows 版，但没有安装 Proton",
  "It's a Windows version, run through Proton": "这是 Windows 版，通过 Proton 运行",
  "It's busy being moved or updated. Try again once that's done.": "正在移动或更新它。完成后再试一次。",
+ "It's being uninstalled right now.": "正在卸载。",
  "It's by the clock. Right-click its icon to quit.": "它在时钟旁。右键点击它的图标即可退出。",
  "It's checked and set up once. After that, you just press Play.": "只需检查和配置一次。之后直接按“开始游戏”即可。",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "它在 {folder} 中寻找游戏文件，但这个文件夹已经不存在了。选择存放你游戏副本的文件夹，下次它就会从那里启动。",

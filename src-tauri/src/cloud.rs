@@ -1002,6 +1002,7 @@ fn retry_pending_later(app: &AppHandle) {
 pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>> {
     let _busy = busy().await?;
     let st = app.state::<App>();
+    folder_free(&st, id)?;
     let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
@@ -1072,7 +1073,8 @@ pub(crate) fn after_play_step(app: &AppHandle, id: &str) -> Working {
 pub(crate) async fn finish_open_sessions(app: &AppHandle) {
     let st = app.state::<App>();
     for id in open_sessions(&st.dir.join("saves")) {
-        if st.running.lock().unwrap().contains_key(&id) || game(&st, &id).is_err() {
+        // A game being uninstalled: its session stays open until the folder is gone or kept.
+        if st.running.lock().unwrap().contains_key(&id) || crate::uninstalling(&st, &id) || game(&st, &id).is_err() {
             continue;
         }
         let _step = after_play_step(app, &id);
@@ -1171,7 +1173,17 @@ fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
     empty || (cloud_changed && !local_changed)
 }
 
+/// Saves are never read from or written into a folder that's being deleted: the copy would be
+/// half there, and a cloud save put back would land in a folder about to go.
+fn folder_free(st: &App, id: &str) -> Res<()> {
+    if crate::uninstalling(st, id) {
+        return Err(Error::Msg(crate::UNINSTALLING.into()));
+    }
+    Ok(())
+}
+
 fn reserve_sync(st: &App, id: &str) -> Res<crate::Starting> {
+    folder_free(st, id)?;
     let install = crate::recomp_of(st, id);
     let mut starting = crate::STARTING.lock().unwrap();
     if starting.contains(&install) || st.running.lock().unwrap().contains_key(&install)
@@ -1633,6 +1645,7 @@ fn newest_unsent(dir: &Path, id: &str, g: &Installed) -> Option<saves::Copy> {
 #[tauri::command]
 pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
     let st = app.state::<App>();
+    folder_free(&st, &id)?;
     let g = game(&st, &id)?;
     if g.cloud != Some(true) || !signed_in(&st.dir) {
         return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
@@ -1772,7 +1785,7 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
             (target, peers)
         };
         let available = |id: &str| !crate::setup_busy(id)
-            && !st.jobs.lock().unwrap().contains_key(id) && !st.moving.lock().unwrap().contains(id)
+            && !st.jobs.lock().unwrap().contains_key(id) && crate::files_busy(&st, id).is_none()
             && !st.running.lock().unwrap().contains_key(id) && !st.pids.lock().unwrap().contains_key(id);
         let offer = || {
             if !available(&id) || crate::STARTING.lock().unwrap().contains(&id) {
@@ -1827,6 +1840,7 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
+    folder_free(&st, &id)?;
     let _busy = BUSY.lock().await;
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
@@ -2178,7 +2192,7 @@ mod child_retry_tests {
             Self(App {
                 dir, http: reqwest::Client::new(), lib: Mutex::new(lib), jobs: Mutex::default(),
                 running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
-                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(),
+                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(), uninstalling: Mutex::default(),
                 overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
             })
         }
@@ -2195,6 +2209,32 @@ mod child_retry_tests {
             { "id": "first", "name": "First", "saves": ["{install}/first.sav"] },
             { "id": "second", "name": "Second", "saves": ["{install}/second.sav"] }
         ])
+    }
+
+    #[test]
+    fn a_sync_is_refused_while_the_game_is_being_uninstalled() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        st.uninstalling.lock().unwrap().insert("series".into());
+        let Err(Error::Msg(why)) = reserve_sync(st, "series") else { panic!("the sync went ahead") };
+        assert_eq!(why, crate::UNINSTALLING);
+    }
+
+    #[test]
+    fn one_game_of_several_is_not_synced_while_its_recomp_is_being_uninstalled() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        st.uninstalling.lock().unwrap().insert("series".into());
+        assert!(folder_free(st, "series--first").is_err());
+    }
+
+    #[test]
+    fn a_game_nobody_uninstalls_keeps_its_saves_in_reach() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        st.uninstalling.lock().unwrap().insert("other".into());
+        assert!(folder_free(st, "series").is_ok());
+        assert!(folder_free(st, "series--first").is_ok());
     }
 
     #[tokio::test]

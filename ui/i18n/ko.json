@@ -637,6 +637,7 @@
  "It's a Windows version and Proton isn't installed": "Windows 버전인데 Proton이 설치되어 있지 않습니다",
  "It's a Windows version, run through Proton": "Windows 버전이며 Proton으로 실행합니다",
  "It's busy being moved or updated. Try again once that's done.": "옮기거나 업데이트하는 중입니다. 끝난 후 다시 시도하세요.",
+ "It's being uninstalled right now.": "지금 제거하는 중입니다.",
  "It's by the clock. Right-click its icon to quit.": "시계 옆에 있습니다. 종료하려면 아이콘을 마우스 오른쪽 버튼으로 클릭하세요.",
  "It's checked and set up once. After that, you just press Play.": "확인과 설정은 한 번만 하면 됩니다. 그다음에는 플레이만 누르세요.",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "게임 파일을 {folder}에서 찾고 있지만 그 폴더가 더 이상 없습니다. 게임 사본이 있는 폴더를 고르면 다음부터 거기서 시작합니다.",
