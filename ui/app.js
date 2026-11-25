@@ -33,7 +33,7 @@ const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N
 
 const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
-  library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
+  library: {}, arts: {}, settings: {}, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), easyAll: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
@@ -1034,6 +1034,7 @@ function status(a) {
   // One game of several: its install, downloads and updates are the recomp's.
   const id = a.id, rid = parentId(id), job = S.jobs[rid], inst = S.library[id];
   if (S.running.has(id)) return 'running';
+  if (S.uninstalling.has(rid)) return 'uninstalling';
   if (S.settingUp.has(id) || S.settingUp.has(rid) || (S.setupJobs && (S.setupJobs[id] || S.setupJobs[rid]))) return 'settingup';
   if (job) return 'busy';
   if ((S.paused || {})[rid]) return 'paused';
@@ -1184,6 +1185,7 @@ function poster(a, mine, inst, wide, w, rank) {
   const badge = S.missing && S.missing.has(a.id) ? `<span class="badge tr miss">${esc(t('Missing'))}</span>`
     : st === 'update' ? `<span class="badge tr">${esc(t('Update'))}</span>`
     : st === 'running' ? `<span class="badge tr">${esc(t('Playing'))}</span>`
+    : st === 'uninstalling' ? `<span class="badge tr">${esc(t('Uninstalling…'))}</span>`
       : st === 'soon' ? `<span class="badge tr soon"${savedSoon(a) ? ` title="${esc(soonNoteText(a))}"` : ''}>${savedSoon(a) ? SAVE_ICON(12, true) : ''}${esc(t('Soon'))}</span>`
         : st === 'installed' && !mine ? `<span class="badge tl">${esc(t('Installed'))}</span>`
           : !S.library[a.id] && isSaved(a.id) && !mine ? `<span class="badge tl lib">${esc(t('In Library'))}</span>`
@@ -1248,7 +1250,7 @@ function tile(a, opts = {}) {
   const cov = a.cover ? media(thumbOf(a.cover, 160)) : '';
   const sub = opts.sub != null ? opts.sub : a.parent ? gameTileLine(a) : a.game ? `${DISC_S}<span>${esc(a.game)}</span>` : `<span>${esc(originName(a.origin))}</span>`;
   const vt = (devOf(a) || {}).verified;
-  const quick = opts.quick && S.library[a.id] && !S.jobs[a.id];
+  const quick = opts.quick && S.library[a.id] && !S.jobs[a.id] && !S.uninstalling.has(parentId(a.id));
   // Not in the Library yet: add it from the cover; added: install from the cover.
   const qadd = !quick && !opts.mine && !S.library[a.id] && !S.jobs[a.id] && status(a) === 'get';
   const qsaved = qadd && isSaved(a.id);
@@ -1344,6 +1346,8 @@ function actions(a, size = 'big', { want = false } = {}) {
   const b = (cls, act, label, icon = '', tail = '') => `<button type="button" class="btn ${size} ${cls}" data-act="${act}" data-id="${id}">${icon}${label}${tail}</button>`;
   switch (st) {
     case 'running': return b('main', 'resume', esc(t('Back to the game')), PLAY) + b('', 'stop', esc(t('Close game'))) + more;
+    // Deleting a big folder takes a while: show it's on its way, with nothing to press meanwhile.
+    case 'uninstalling': return `<div class="prog"><div class="track busy"><i></i></div><div class="lbl"><span>${esc(t('Uninstalling…'))}</span><span></span></div></div>`;
     case 'settingup': {
       const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
       if (sj) {
@@ -3212,7 +3216,7 @@ function manageTab(a) {
   const shotsCard = `<div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
       ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div>`;
   const leave = inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>`
-    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`;
+    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div>${S.uninstalling.has(id) ? `<button type="button" class="btn danger" disabled>${esc(t('Uninstalling…'))}</button>` : `<button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button>`}</div>`;
   return `<div class="stack">${card(t('Updates'), manageUpdateRows(id, inst))}${card(t('Starting the Game'), manageStartRows(id, inst))}${card(t('Files and Saves'), manageFileRows(id, inst))}${shotsCard}<div class="card">${leave}</div></div>`;
 }
 // Which version it has, and how it gets the next one.
@@ -7019,7 +7023,7 @@ function gameMenu(id) {
       ] },
       ...(hasOwnPlaytime(id) ? [{ act: 'play-reset', id, label: t('Reset Play Time…'), icon: 'history' }] : []),
     ] : links.length ? ['-', ...links] : []),
-    ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
+    ...(g && st !== 'uninstalling' ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }
 // Its project page, one row with the site's logo: its README is on Overview, its releases on
@@ -7087,6 +7091,8 @@ window.hasOwnPlaytime = hasOwnPlaytime;
 function confirmUninstall(id) {
   id = parentId(id);
   const g = S.library[id];
+  // Already on its way out: a second press would only fail once the first one is done.
+  if (!g || S.uninstalling.has(id)) return;
   // A recomp with several games: they all go with it.
   const many = hasGames(id) ? S.gameSets[id].games : null;
   const s = document.createElement('div');
@@ -7108,9 +7114,13 @@ function confirmUninstall(id) {
     if (!x) return;
     const del = !!($('#u-del', s) || {}).checked, unins = !!($('#u-unins', s) || {}).checked, keep = !!($('#u-keep', s) || {}).checked;
     s.remove();
+    if (S.uninstalling.has(id)) return;
     if (unins) toast(tf('{name}\'s uninstaller is opening. Finish it there.', { name: g.name }));
+    S.uninstalling.add(id);
+    render(true);
     let r = {};
-    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins, keepSaves: keep })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
+    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins, keepSaves: keep })) || {}; } catch (err) { S.uninstalling.delete(id); await refreshState(); render(true); return fail(err); }
+    S.uninstalling.delete(id);
     if (window.usageUninstall) window.usageUninstall(id);
     await keepOut(id);
     delete S.updates[id]; await refreshState(); render(true);
@@ -7525,6 +7535,8 @@ function setupReqModal(id) {
 }
 
 async function playGame(id, program) {
+  // Its files are being deleted: starting it now would fail halfway.
+  if (S.uninstalling.has(parentId(id))) return;
   if (S.missing && S.missing.has(parentId(id))) return missingModal(parentId(id));
   // Another game of the same recomp is running: one at a time, since they share one install.
   if (subOf(id) && S.running.has(parentId(id)) && !S.running.has(id)) return toast(tf('{name} is running. Close it first to play another of its games.', { name: (S.library[parentId(id)] || {}).name || '' }), true);
