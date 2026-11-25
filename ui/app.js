@@ -98,7 +98,7 @@ const originName = (id) => ((S.cat && S.cat.origins) || []).find((o) => o.id ===
 // The catalog's consoles A to Z for the pickers: the catalog keeps its own order, which reads as random.
 const originsAZ = () => [...((S.cat && S.cat.origins) || [])].sort((x, y) => x.name.localeCompare(y.name));
 // Each console's own colour (the website's), for its dot in lists.
-const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', xseries: '#107c10', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
+const CONSOLE_COLORS = { n64: '#e2453c', x360: '#5dc21e', xbox: '#2fa84f', xseries: '#107c10', xone: '#0b8f52', vita: '#5c8de6', pce: '#c25bd6', mobile: '#7dd3a8', ps1: '#9aa4b2', ps2: '#3d7dd8', ps3: '#7b8794', ps4: '#2f6fe0', gc: '#8a6cf0',
   wii: '#4fc3f7', wiiu: '#00a2c7', snes: '#b38cf2', gba: '#6c63ff', gb: '#9bbc0f', ds: '#aab4c2', dc: '#ff8a3d', saturn: '#4f7cff', psp: '#5b6b8c', switch: '#e60012', switch2: '#ff3b47',
   nes: '#c8102e', gbc: '#f2c12e', '3ds': '#d6262d', vb: '#c4121b', ps5: '#e8edf3', genesis: '#1f6fd1', s32x: '#d4a017', gg: '#3b82c4', arcade: '#ff5fa2', cdi: '#2bb3a3', amiga: '#e5762b', other: '#a7b3c4' };
 // An icon for a list's choice (drops.js asks for it by the option's data-ico): "c:ps2" a console's
@@ -180,6 +180,25 @@ const favMark = (id, cls) => (favs().includes(id) ? `<span class="${cls}" title=
 // its key carries the context after a bar, and English shows only the word.
 const tc = (k) => { const v = t(k); return v === k ? k.split('|')[0] : v; };
 const saveUi = (patch, quiet) => saveSettings({ ui: Object.assign({}, S.settings.ui || {}, patch) }, quiet);
+// Settings > Game Art: the player's own LaunchBox folder, where Customize finds the pictures and
+// descriptions LaunchBox already saved (launchbox.rs). Shown on Windows, or anywhere once it's set.
+function launchboxRow(ui) {
+  const dir = String(ui.launchbox_dir || '').trim();
+  if (S.os !== 'windows' && !dir) return '';
+  const acts = dir ? `<button type="button" class="btn sm" data-act="folder" data-path="${esc(dir)}">${esc(t('Open'))}</button><button type="button" class="btn sm" data-act="lb-pick">${esc(t('Change'))}</button><button type="button" class="btn sm danger" data-act="lb-forget">${esc(t('Remove'))}</button>`
+    : `<button type="button" class="btn sm" data-act="lb-find">${esc(t('Find It'))}</button><button type="button" class="btn sm" data-act="lb-pick">${esc(t('Pick Its Folder…'))}</button>`;
+  return `<div class="set-row"><div class="k"><b>${esc(t('LaunchBox Folder'))}</b><span>${dir ? `<span class="path">${esc(dir)}</span>` : esc(t('Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.'))}</span></div><span class="acts">${acts}</span></div>`;
+}
+// A LaunchBox folder checked and kept: the one picked, or (none) the one found where it usually is.
+async function launchboxSet(path) {
+  try {
+    const r = await invoke('launchbox_find', { path });
+    if (!r) return toast(t('LaunchBox wasn\'t found in the usual places. Pick its folder.'), true);
+    await saveUi({ launchbox_dir: r.path });
+    toast(t('Saved. Customize can use your LaunchBox pictures now.'));
+    if (S.view === 'settings') setSection(S.setTab, false);
+  } catch (e) { fail(e); }
+}
 // Cloud saves for an installed game: its own switch (Manage) when it was set, otherwise what the
 // player picked for every game (account.js askCloudAll). Paired with Installed::cloud_on in
 // src-tauri/src/library.rs, which decides what really syncs: change both together.
@@ -288,6 +307,7 @@ async function addToLibrary(id) {
   libSend(id, true);
   const a = byId(id);
   render(true);
+  if (a && a.soon) return toast(tf('{name} is saved. We\'ll let you know when it comes out.', { name: a.name }));
   toast(tf('{name} is in your Library. Install it whenever you like.', { name: a ? a.name : id }));
 }
 async function removeFromLibrary(id) {
@@ -399,7 +419,7 @@ async function playSync(ids) {
   } catch (e) { /* this PC's own numbers stay */ }
   return JSON.stringify(S.cloudPlay || null) !== before;
 }
-setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); } }, 10 * 60 * 1000);
+setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); homeSync(); } }, 10 * 60 * 1000);
 // Sponsor spots in the app for this account, from the website (Sponsors in the admin). Home shows
 // one between Ready to Play and Recently Updated when there is one.
 async function sponsSync() {
@@ -418,7 +438,7 @@ function sponsBand(slot) {
   const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
   return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
-// One view per spot per launch, once it's on screen.
+// One view per spot per launch, once it's on screen (on Home, or Big Picture's Home).
 const SP_SEEN = new Set();
 let spObs = null;
 function sponsWatch() {
@@ -433,7 +453,15 @@ function sponsWatch() {
       invoke('spons_seen', { id }).catch(() => {});
     }
   }, { threshold: 0.5 });
-  for (const el of $$('.sp-tile')) spObs.observe(el);
+  for (const el of $$('[data-sp]')) spObs.observe(el);
+}
+// A folder with ROMs or game backups, picked by the player (with a controller in Big Picture), then
+// looked through for games that have a recomp.
+async function addRomFolder() {
+  const p = await pickFile({ title: t('A folder with your ROMs or game backups'), directory: true }).catch(fail);
+  if (!p) return;
+  await saveSettings({ rom_dirs: uniq([...(S.settings.rom_dirs || []), typeof p === 'string' ? p : p.path]) });
+  return scanRoms();
 }
 const setupDone = (id) => !!(((S.settings && S.settings.ui) || {}).setup_ok || {})[id];
 // Where a recomp lives: GitHub, GitLab for a project kept as gitlab:group/project, SourceForge
@@ -1144,7 +1172,7 @@ function poster(a, mine, inst, wide, w, rank) {
   const badge = S.missing && S.missing.has(a.id) ? `<span class="badge tr miss">${esc(t('Missing'))}</span>`
     : st === 'update' ? `<span class="badge tr">${esc(t('Update'))}</span>`
     : st === 'running' ? `<span class="badge tr">${esc(t('Playing'))}</span>`
-      : st === 'soon' ? `<span class="badge tr soon"${notifyOn(a.id) ? ` title="${esc(t('We\'ll email you when it comes out.'))}"` : ''}>${notifyOn(a.id) ? BELL(12) : ''}${esc(t('Soon'))}</span>`
+      : st === 'soon' ? `<span class="badge tr soon"${savedSoon(a) ? ` title="${esc(soonNoteText(a))}"` : ''}>${savedSoon(a) ? SAVE_ICON(12, true) : ''}${esc(t('Soon'))}</span>`
         : st === 'installed' && !mine ? `<span class="badge tl">${esc(t('Installed'))}</span>`
           : !S.library[a.id] && isSaved(a.id) && !mine ? `<span class="badge tl lib">${esc(t('In Library'))}</span>`
             : own ? `<span class="badge tl">${esc(t('You have it'))}</span>` : '';
@@ -1289,15 +1317,19 @@ const withBuildLine = (a, size, html) => (size === 'big' && updateBuildDue(a.id)
   ? `<span class="play-wrap">${html}<span class="play-line">${esc(t('Needs a new build after the update'))}</span></span>` : html);
 
 // The main button for a game, whatever state it's in.
-function actions(a, size = 'big') {
+// `want`: the game's own page, where Save (Coming Soon) and Add to Library carry how many want it.
+function actions(a, size = 'big', { want = false } = {}) {
   const st = status(a), id = esc(a.id), sq = size === 'big' ? 'btn sq glass' : 'btn sq sm';
+  // Asked for only when one of those buttons shows, and never for a game added by its link (the
+  // website doesn't list it).
+  const wants = () => (want && !a.custom ? wantTag(wantCount(a.id)) : '');
   // Setup Options is in the "…" menu. While the game's project has options the player hasn't
   // answered yet, the "…" button has a dot, and says how many.
   const asks = size === 'big' && !!S.library[a.id] && canSetUpAgain(a.id);
   const fresh = asks ? newPrepOpts(S.setup[a.id]).length : 0;
   const tip = fresh ? `${t('More')} · ${tn(fresh, '1 new option', '{n} new options')}` : t('More');
   const more = `<button type="button" class="${sq}${fresh ? ' has-new' : ''}" data-act="menu" data-id="${id}" aria-label="${esc(tip)}" title="${esc(tip)}">${MORE}</button>`;
-  const b = (cls, act, label, icon = '') => `<button type="button" class="btn ${size} ${cls}" data-act="${act}" data-id="${id}">${icon}${label}</button>`;
+  const b = (cls, act, label, icon = '', tail = '') => `<button type="button" class="btn ${size} ${cls}" data-act="${act}" data-id="${id}">${icon}${label}${tail}</button>`;
   switch (st) {
     case 'running': return b('main', 'resume', esc(t('Back to the game')), PLAY) + b('', 'stop', esc(t('Close game'))) + more;
     case 'settingup': {
@@ -1313,12 +1345,12 @@ function actions(a, size = 'big') {
     case 'paused': return progress(a.id) + `<button type="button" class="${sq}" data-act="dl-resume" data-id="${id}" aria-label="${esc(t('Resume'))}" title="${esc(t('Resume'))}">${PLAY.replace(/18/g, '14')}</button><button type="button" class="${sq}" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}" title="${esc(t('Cancel'))}">${XS}</button>` + (size === 'big' ? more : '');
     case 'update': return b('main', 'install', esc(t('Update')), DOWN) + b('', 'play', esc(t('Play')), PLAY) + more;
     case 'installed': return setupDue(a) ? b('main warn', 'setupreq', esc(t('Set Up')), WRENCH) + more : easyNotReady(a.id) ? b('main easy', 'setup', esc(t('Easy Setup')), DISC_S.replace(/14/g, '18')) + more : isServer(a) ? b('main', 'play', esc(t('Start Server')), PLAY) + more : size === 'big' && otherInstalled(a).length ? `<span class="split">${withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY))}<button type="button" class="btn ${size} main caret" data-act="play-pick" data-id="${id}" aria-label="${esc(t('Play another version'))}" title="${esc(t('Play another version'))}"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>` + more : withBuildLine(a, size, b('main', 'play', esc(t('Play')), PLAY)) + more;
-    case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : notifyOn(a.id) ? b('notify-on', 'notify', esc(t('We\'ll Email You')), BELL(18)) : b('main', 'notify', esc(t('Notify Me')), BELL(18))) + more;
+    case 'soon': return (a.custom ? `<button type="button" class="btn ${size}" disabled>${esc(t('Coming soon'))}</button>` : isSaved(a.id) ? b('save-on', 'unsave', esc(t('Saved')), SAVE_ICON(18, true), wants()) : b('main', 'addlib', esc(t('Save')), SAVE_ICON(18), wants())) + more;
     case 'nobuild': return S.os === 'linux' && hasWindowsBuild(a) ? b('main', 'use-proton', esc(t('Play With Proton')), PLAY) + more : `<button type="button" class="btn ${size}" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</button>` + more;
     // Easy Setup games say so: one press installs it and asks for the player's copy. The size is
     // on the game page (Size), not on the button. Locate Installed is a square button like "…",
     // its name in the tooltip.
-    default: return (isSaved(a.id) ? (turnkey(a) ? b('main easy', 'install', esc(t('Easy Setup')), DISC_S.replace(/14/g, '18')) : b('main', 'install', esc(t('Install')), DOWN)) : b('main', 'addlib', esc(t('Add to Library')), PLUS)) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + (size === 'big' && !a.custom ? `<button type="button" class="${sq}" data-act="have-it" data-id="${id}" aria-label="${esc(t('Locate Installed'))}" title="${esc(t('Locate Installed'))}">${FOLDER_OPEN}</button>` : '') + more;
+    default: return (isSaved(a.id) ? (turnkey(a) ? b('main easy', 'install', esc(t('Easy Setup')), DISC_S.replace(/14/g, '18')) : b('main', 'install', esc(t('Install')), DOWN)) : b('main', 'addlib', esc(t('Add to Library')), PLUS, wants())) + (needsSetup(a) && size === 'big' ? b('warn-o', 'setupreq', esc(t('Setup Required')), WRENCH) : '') + (size === 'big' && !a.custom ? `<button type="button" class="${sq}" data-act="have-it" data-id="${id}" aria-label="${esc(t('Locate Installed'))}" title="${esc(t('Locate Installed'))}">${FOLDER_OPEN}</button>` : '') + more;
   }
 }
 
@@ -1449,18 +1481,32 @@ function supportAsk(a, source, rows) {
 }
 // "A, B and C" in the player's language.
 const listOf = (w) => { try { return new Intl.ListFormat(curLocale(), { type: 'conjunction' }).format(w); } catch (e) { return w.join(', '); } };
+// The installed release's own recomplauncher.json, read once per set of installed files. Each
+// answer keeps the key of the files it was read from, so an update, a version switch, a move to
+// another library, a local build rebuilt in place or a library synced from another PC all read
+// it again, whichever way the change arrived.
 S.supLocal = {};
+const supLocalKey = (g) => `${g.path}@${g.tag}@${g.updated_at || 0}`;
+function supLocalFor(id) {
+  const g = S.library[id];
+  if (!g) return null;
+  const key = supLocalKey(g);
+  const known = S.supLocal[id];
+  if (known && known.key === key) return known.v;
+  S.supLocal[id] = { key, v: null };
+  invoke('support_local', { id }).then((v) => {
+    // The files changed again while this was read: the newer read is the one that counts.
+    const now = S.supLocal[id];
+    if (!now || now.key !== key) return;
+    now.v = v || null;
+    if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
+  }).catch(() => {});
+  return null;
+}
 function supportCard(a) {
   if (!a || a.soon) return '';
   const id = a.id;
-  if (S.library[id] && S.supLocal[id] === undefined) {
-    S.supLocal[id] = null;
-    invoke('support_local', { id }).then((v) => {
-      S.supLocal[id] = v || null;
-      if (v && S.view === 'game' && S.arg === id && S.tab === 'overview') refreshGame();
-    }).catch(() => {});
-  }
-  const local = S.library[id] ? S.supLocal[id] : null;
+  const local = supLocalFor(id);
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
   const source = supportSource(a, local, sup);
   const st = supportStates(a, local, sup, source);
@@ -1778,18 +1824,131 @@ function pageHome() {
   const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;
   return `<div class="page home">${offlineNote()}
     ${showBanner ? slider(feats) : ''}
-    ${played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''}
-    ${fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''}
-    ${ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''}
-    ${sponsBand('app_home')}
-    ${shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) })}
-    ${follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''}
-    ${found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()}
-    ${trendShelf(pool)}
-    ${shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true })}
-    ${easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''}
-    ${newsSection()}
+    ${homeLayout({
+      played: () => (played.length ? shelf('played', t('Jump back in'), played, { mine: true, quick: true, see: true, sub: (a) => esc(S.library[a.id] && S.library[a.id].last_played ? tf('Played {when}', { when: ago(S.library[a.id].last_played) }) : t('Not played yet')) }) : ''),
+      favs: () => (fav.length ? shelf('favs', t('Favorites'), fav, { mine: true, quick: true, see: true }) : ''),
+      ready: () => (ready.length >= 4 ? shelf('ready', t('Ready to Play'), ready, { see: true, note: t('The launcher sets these up for you. No extra steps.') }) : ''),
+      updated: () => shelf('updated', t('Recently updated'), recentlyUpdated(games), { see: true, sub: (a) => esc(tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) })) }),
+      follow: () => (follows().length ? shelf('follow', t('From developers you follow'), oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true), { see: true, sub: (a) => esc((devOf(a) || {}).name || a.author || '') }) : ''),
+      found: () => (found.length ? foundSection(found) : (S.settings.rom_dirs || []).length ? '' : foundCallout()),
+      trend: () => trendShelf(pool),
+      new: () => shelf('new', t('Just added'), oneEach([...games].sort(byNew), true), { see: true, turnkey: true }),
+      easy: () => (easy.length >= 2 ? shelf('easy', t('Drop in Your Copy'), easy, { see: true, note: t('Pick your copy of the game (a disc image or ROM) and these are set up for you, with their settings right in the launcher.') }) : ''),
+      news: () => newsSection(),
+    })}
   </div>`;
+}
+
+// ---------- Home's order, from the website (admin: Launcher > Home page) ----------
+// The rows in their built-in order. '@app_home' is where the App Home Banner sat before the website
+// could move it; it's used only when the website's list hasn't come (yet, or ever).
+const HOME_ROWS = ['played', 'favs', 'ready', '@app_home', 'updated', 'follow', 'found', 'trend', 'new', 'easy', 'news'];
+// The website's list ({v: 1, items, hide}): undefined until asked, null when there isn't one, and then
+// Home keeps its built-in order. It's asked for at start, every 10 minutes, and when Home opens
+// (at most once a minute), so a change in the admin shows the next time a player opens Home.
+let homeAt = 0;
+async function homeSync() {
+  homeAt = Date.now();
+  const before = JSON.stringify(S.home || null);
+  let v = null;
+  try { v = await invoke('home_layout'); } catch (e) { v = S.home || null; }
+  S.home = v && Array.isArray(v.items) ? v : null;
+  if (JSON.stringify(S.home) === before) return;
+  if (S.view === 'home') render(true);
+  // Big Picture's Home follows the same list.
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+}
+function homeMaybe() { if (Date.now() - homeAt > 60 * 1000) homeSync(); }
+// The order to draw: the website's items, with any row this version has that the list doesn't name
+// (a row newer than the list) put back after the row it usually follows. Hidden rows stay out.
+function homePlan(home) {
+  const rowsOnly = HOME_ROWS.filter((k) => k[0] !== '@');
+  if (!home) return HOME_ROWS.map((k) => (k[0] === '@' ? { k: 'spot', slot: k.slice(1) } : { k: 'row', id: k }));
+  const known = (x) => x && (x.k === 'box' || x.k === 'banner' || (x.k === 'row' && rowsOnly.includes(x.id)));
+  const plan = home.items.filter(known);
+  const named = new Set([...plan.filter((x) => x.k === 'row').map((x) => x.id), ...(Array.isArray(home.hide) ? home.hide : [])]);
+  rowsOnly.forEach((id, i) => {
+    if (named.has(id)) return;
+    const before = rowsOnly.slice(0, i).reverse().find((r) => plan.some((x) => x.k === 'row' && x.id === r));
+    const at = before ? plan.findIndex((x) => x.k === 'row' && x.id === before) + 1 : 0;
+    plan.splice(at, 0, { k: 'row', id });
+  });
+  return plan;
+}
+// rows: id => a function that draws it (only rows that show are drawn).
+function homeLayout(rows) {
+  return homePlan(S.home).map((x) => {
+    if (x.k === 'row') return rows[x.id] ? rows[x.id]() : '';
+    if (x.k === 'spot') return sponsBand(x.slot);
+    if (x.k === 'banner') return homeBanner(x);
+    return homeBox(x);
+  }).join('');
+}
+const HOME_ICONS = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  gift: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 13h18M12 9v12M12 9c-2-4-6-4-6-1.5S9 9 12 9c3 0 6-1 6-1.5S14 5 12 9"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+  pad: '<rect x="2.5" y="7" width="19" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3M15.5 12h.01M17.5 14h.01"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  sparkle: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+};
+const homeIcon = (k) => (k === 'disc' || !HOME_ICONS[k] ? (k === 'disc' ? DISC_L : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOME_ICONS.info}</svg>`) : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HOME_ICONS[k]}</svg>`);
+const HOME_GO = { 'go:discover': 'discover', 'go:soon': 'soon', 'go:library': 'library', 'go:settings': 'settings' };
+const homeClosed = () => (S.settings.ui || {}).home_closed || [];
+// Whether an info box is for this player right now (the website can't know these, so it asks).
+function homeBoxShows(x) {
+  if (x.close && homeClosed().includes(Number(x.id))) return false;
+  if (x.when === 'no_folders') return !(S.settings.rom_dirs || []).length;
+  if (x.when === 'signed_out') return !accountId();
+  if (x.when === 'signed_in') return !!accountId();
+  return true;
+}
+// An info box's words in the player's language (or its base one: es for es-419), where the website
+// translated them when the admin saved; else as the admin typed them. Only these regional languages
+// fall back, so zh-Hant never gets another script's words.
+const HOME_TR_BASE = { 'en-GB': 'en', 'es-419': 'es', 'fr-CA': 'fr', 'pt-BR': 'pt' };
+function homeWord(x, k) {
+  const tr = x.tr && typeof x.tr === 'object' ? x.tr : {};
+  const lang = String(curLang() || 'en');
+  const m = tr[lang] || (HOME_TR_BASE[lang] && tr[HOME_TR_BASE[lang]]);
+  const v = m && typeof m[k] === 'string' && m[k].trim() ? m[k] : x[k];
+  return typeof v === 'string' ? v : '';
+}
+// What an info box's button does, when it has a label and does something the launcher allows: add
+// a ROM folder, open one of its screens, a game it has, or an https link. Null leaves the button
+// out. Home and Big Picture's Home both ask here, so a box does the same thing in each.
+function homeBoxAct(x) {
+  if (!x || !homeWord(x, 'btn')) return null;
+  if (x.act === 'rom-add') return { act: 'rom-add' };
+  if (HOME_GO[x.act]) return { act: 'go', view: HOME_GO[x.act] };
+  if (x.act === 'game' && byId(x.arg)) return { act: 'game', id: String(x.arg) };
+  const url = x.act === 'link' ? httpsOnly(x.arg) : '';
+  return url ? { act: 'link', url } : null;
+}
+// An info box from the admin, in the same look as "It finds the games you already have", in the
+// player's language when it's translated; the button does only what the launcher allows.
+function homeBox(x) {
+  if (!homeBoxShows(x)) return '';
+  const title = homeWord(x, 'title'), text = homeWord(x, 'text'), label = homeWord(x, 'btn');
+  const a = homeBoxAct(x);
+  const attrs = !a ? ''
+    : a.act === 'rom-add' ? 'data-act="rom-add"'
+    : a.act === 'go' ? `data-act="home-go" data-v="${esc(a.view)}"`
+    : a.act === 'game' ? `data-act="open" data-id="${esc(a.id)}"`
+    : `data-act="note-url" data-url="${esc(a.url)}"`;
+  const btn = attrs ? `<button type="button" class="btn main" ${attrs}>${esc(label)}</button>` : '';
+  const close = x.close ? `<button type="button" class="tn-x" data-act="home-close" data-id="${esc(String(x.id))}" aria-label="${esc(t('Close'))}" title="${esc(t('Close'))}">${XMARK}</button>` : '';
+  return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<span dir="auto">${esc(text)}</span>` : ''}</div>${btn}${close}</div>`;
+}
+// A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
+function homeBanner(x) {
+  const sp = x && x.sp;
+  if (!sp || !sp.id || !sp.img) return '';
+  const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
+  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(sp.id))}" data-sp="${esc(String(sp.id))}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
 
 // ---------- Trending This Week (the site's weekly chart of the most played recomps) ----------
@@ -1904,7 +2063,7 @@ function slideTitle(a) {
   return `<div class="sl-logo"><img src="${esc(src)}" alt=""><h2>${esc(a.name)}</h2></div>`;
 }
 function slider(feats) {
-  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(thumbOf(a.hero || a.cover, 960), 'bg')}
+  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="${esc(t('Featured'))}">${feats.map((a, i) => `<div class="slide${i === S.slide ? ' on' : ''}" data-i="${i}" aria-hidden="${i !== S.slide}">${pic(a.hero || a.cover, 'bg')}
       <div class="sl-in"><span class="kick">${esc(bannerInfo(a.id).tag || (a.featured ? t('Featured') : t('Popular right now')))}${a.origin ? ` · ${esc(originName(a.origin))}` : ''}</span>${slideTitle(a)}${based(a)}${bannerInfo(a.id).text || a.blurb ? `<p>${esc(bannerInfo(a.id).text || a.blurb)}</p>` : ''}
         <div class="acts">${slideActs(a)}</div></div>
       <button type="button" class="sl-cover" data-act="open" data-id="${esc(a.id)}" aria-label="${esc(t('Details'))}" tabindex="-1">${pic(thumbOf(a.cover))}</button></div>`).join('')}
@@ -2351,11 +2510,11 @@ function pageGame(id) {
   const kick = [GENRES[a.genre] ? t(GENRES[a.genre]) : '', originName(a.origin)].filter(Boolean).join(' · ');
   return `<div class="gp${a.hero || a.cover ? '' : ' noart'}" data-gp="${esc(id)}">
     <div class="gp-amb">${pic(thumbOf(a.cover, 160))}</div>
-    <div class="gp-hero">${pic(thumbOf(a.hero || a.cover, 960))}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
+    <div class="gp-hero">${pic(a.hero || a.cover)}<button type="button" class="btn glass gp-back" data-act="back">${CHEV_L}${esc(t('Back'))}</button></div>
     <div class="gp-top"><div class="gp-cover">${pic(thumbOf(a.cover))}</div>
       <div class="gp-name">${kick ? `<span class="kick">${esc(kick)}</span>` : ''}<h1 class="${a.name.length > 34 ? 'long' : ''}">${esc(a.name)}</h1></div>
       <div class="gp-title">${gameTitle(a, id)}</div>
-      <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a)}</div>${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}</div></div>
+      <div class="gp-side">${window.saveBadge ? window.saveBadge(a) : ''}<div class="gp-acts" data-acts="${esc(id)}">${actions(a, 'big', { want: true })}</div>${soonNote(a)}${replacedNote(a) || betterNote(a) || reinstallNote(a) || badNote(a) || stateNote(a)}${S.library[id] && S.library[id].from_backup ? `<p class="bk-note">${esc(t('Downloaded from the RecompLauncher backup'))}</p>` : ''}</div></div>
     ${includesBox(a)}
     <div class="tabs"><div class="tabs-in" role="tablist"><span class="tab-pill" aria-hidden="true"></span>${gameTabs(a).map(([k, n, x]) => `<button type="button" role="tab" class="${S.tab === k ? 'on' : ''}" aria-selected="${S.tab === k}" data-act="tab" data-tab="${k}">${esc(n)}${x || ''}</button>`).join('')}</div></div>
     <div class="g-body" id="g-body">${gameBody(a)}</div></div>`;
@@ -2390,7 +2549,9 @@ function igVariant() {
 // (Beta 68) Where the card sits on the game's page, picked per game on the site: the right column
 // under Before You Play (side), under the stats (strip) or under Your Play Time (play). Never beside
 // Play. A game with no play time yet shows a play card under the stats instead.
-const IG_PLACES = ['side', 'strip', 'play'];
+// (Beta 69) Or the top of the right column, above Ready to Play (top). Launchers older than this
+// don't know 'top' and show the card in 'side', so the site can offer it before everyone updates.
+const IG_PLACES = ['top', 'side', 'strip', 'play'];
 const igPlace = (e) => (IG_PLACES.includes(e && e.at) ? e.at : 'side');
 function igSlot(a, where, alt) {
   return `<div class="ig-slot ig-at-${where}" data-ig="${esc(a.id)}" data-place="${where}"${alt ? ' data-alt="1"' : ''}>${igCard(a, where, alt)}</div>`;
@@ -2402,7 +2563,9 @@ function igCard(a, where, alt) {
   if (where && at !== where && !(alt && where === 'strip' && at === 'play')) return '';
   const sale = Number(e.pct) > 0;
   const price = e.price ? `<span class="ig-price">${sale ? `<b class="ig-pct">-${fmtNum(Number(e.pct))}%</b>${e.old ? `<s>${esc(e.old)}</s>` : ''}` : ''}<b>${esc(e.price)}</b></span>` : '';
-  return `<div class="ig-card${where && where !== 'side' ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
+  // The right column (top and side) is narrow; the other places span the main column.
+  const wide = where === 'strip' || where === 'play';
+  return `<div class="ig-card${wide ? ' ig-wide' : ''}" data-ig-id="${esc(a.id)}"><div class="ig-top"><img class="ig-logo" src="${esc(media(SITE + '/assets/ig.svg'))}" alt="Instant Gaming" width="22" height="22"><div class="ig-what"><b dir="auto">${esc(e.t)}</b><small>${esc([e.p, 'Instant Gaming'].filter(Boolean).join(' · '))}</small></div></div>
     <div class="ig-row">${price}<button type="button" class="btn sm" data-act="ig-go" data-id="${esc(a.id)}">${esc(e.price ? t('Buy') : t('See Price'))}</button></div></div>`;
 }
 // One view per game per launch, when the card is actually on screen.
@@ -2650,54 +2813,48 @@ const playsGreat = (a) => { const r = runTally((S.runCounts || {})[a.id]); retur
 const greatOnDeck = (a) => { const d = a && (S.deckScores || {})[a.id]; return !!d && Number(d.n) >= 3 && Number(d.score) >= 80; };
 const onHandheld = () => !!(S.deck || (S.handheld && S.os === 'linux'));
 const DECK_ICON = (n = 13) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.9 7.2a2.6 2.6 0 0 0 2.6 2.9c1 0 1.7-.5 2.3-1.3L8 15.5h8l1.3 1.9c.6.8 1.3 1.3 2.3 1.3a2.6 2.6 0 0 0 2.6-2.9l-.9-7.2a4 4 0 0 0-4-3.6z"/></svg>`;
-const BELL = (n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>`;
 
-// ---------- Notify Me on Coming Soon games ----------
-// The games the signed-in player asked to hear about: one email from the site when each comes out.
-// `seq` goes up with every look and every press, so an answer that comes back after a newer one
-// (or after a press) is left out.
-const NOTIFY = { set: new Set(), pending: null, seq: 0 };
-const notifyOn = (id) => NOTIFY.set.has(id);
-async function loadNotifies() {
-  const before = [...NOTIFY.set].sort().join();
-  const seq = ++NOTIFY.seq;
-  if (!(S.account && S.account.signedIn)) NOTIFY.set = new Set();
-  else {
-    try {
-      const list = await invoke('notifies');
-      if (seq !== NOTIFY.seq) return;
-      NOTIFY.set = new Set(list || []);
-    } catch (e) { /* kept as it was */ }
-  }
-  if ([...NOTIFY.set].sort().join() !== before) notifyRedraw();
+// ---------- Save on Coming Soon games ----------
+// A Coming Soon game has one button, Save (it was Notify Me): it's Add to Library, so the game waits
+// under Not Installed, goes with the account when signed in, and the launcher says when it comes out
+// (saved_out_now in lib.rs). Signed in, the website emails them too: saving a Coming Soon recomp
+// there is its email (the site's rs_acct_saved_set). The heart is filled once it's saved.
+const SAVE_ICON = (n = 18, on = false) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.3s-7.8-4.6-7.8-10.2A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.8 2.8c0 5.6-7.8 10.2-7.8 10.2z"/></svg>`;
+const savedSoon = (a) => !!a && !!a.soon && !a.custom && isSaved(a.id);
+// What saving it does, said under the button on its page.
+function soonNoteText(a) {
+  const mail = !!(S.account && S.account.signedIn);
+  if (savedSoon(a)) return mail ? t('Saved. We\'ll let you know here and by email when it comes out.') : t('Saved. We\'ll let you know when it comes out.');
+  return mail ? t('Save it and we\'ll let you know here and by email when it comes out.') : t('Save it and we\'ll let you know when it comes out.');
 }
-function notifyRedraw() {
-  if (S.view === 'game') refreshGame(); else if (S.view === 'discover' && $('#dlist')) morphList($('#dlist'), discoverGrid()); else render(true);
+const soonNote = (a) => (a && a.soon && !a.custom ? `<p class="gp-soon-note" dir="auto">${esc(soonNoteText(a))}</p>` : '');
+
+// ---------- How many want a recomp, on its page's buttons ----------
+// Everyone who saved it (Save or Add to Library) while signed in or is waiting for its email, each
+// account once: the number on the Save button of its page on recomplauncher.com. The site counts it
+// (api/pc.php?a=interest) and the launcher keeps each answer 10 minutes, so a game's page asks again
+// at most that often. Shown from 10, like the website, so a new recomp doesn't say "· 2". Pressing a
+// button doesn't change it until the next answer, as on the website.
+const WANT = {};
+const WANT_MIN = 10;
+const WANT_KEEP = 600e3;
+async function loadWant(id) {
+  WANT[id] = { n: (WANT[id] && WANT[id].n) || 0, at: Date.now() };
+  // An older website without the count, or a recomp it doesn't list, answers 0.
+  const n = Number(await invoke('want_count', { id }).catch(() => 0)) || 0;
+  WANT[id] = { n, at: Date.now() };
+  if (S.view === 'game' && S.arg === id) refreshGame();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
 }
-async function toggleNotify(id) {
-  // Not signed in: the sign-in first, and it's turned on once that's done.
-  if (!(S.account && S.account.signedIn)) { NOTIFY.pending = id; return signIn(false); }
-  const on = !notifyOn(id);
-  let r;
-  try { r = await invoke('notify', { id, on }); } catch (e) { return fail(e); }
-  NOTIFY.seq++;
-  if (r) NOTIFY.set.add(id); else NOTIFY.set.delete(id);
-  toast(r ? t('We\'ll email you when it comes out.') : t('You won\'t get an email about it.'));
-  notifyRedraw();
+// The number to show for a game, 0 when it's under 10 or not known yet (it's asked for then).
+function wantCount(id) {
+  const w = WANT[id];
+  if (!w || Date.now() - w.at > WANT_KEEP) loadWant(id);
+  const n = w ? w.n : 0;
+  return n >= WANT_MIN ? n : 0;
 }
-window.toggleNotify = toggleNotify;
-window.notifyOn = notifyOn;
-// Just signed in (or the launcher started signed in): their list, and the one they pressed first.
-// The sign-in they started for it was cancelled, refused or ran out: nothing turns on later.
-window.notifyForget = () => { NOTIFY.pending = null; };
-window.afterSignIn = async () => {
-  await loadNotifies();
-  if (!(S.account && S.account.signedIn)) return;
-  const id = NOTIFY.pending;
-  NOTIFY.pending = null;
-  if (id && !notifyOn(id)) toggleNotify(id);
-};
+// After the button's label: "Save · 3,412".
+const wantTag = (n) => (n ? `<span class="want" title="${esc(tf('{n} people saved it or are waiting for it', { n: fmtNum(n) }))}">${esc(fmtNum(n))}</span>` : '');
 
 // ---------- notes from the RecompStore team, on top of Discover ----------
 const NOTES = { list: [] };
@@ -2868,6 +3025,11 @@ function playersText(a) {
   const n = Number(a.players);
   return n > 0 ? tn(n, '1 PC, last 90 days', '{n} PCs, last 90 days') : '';
 }
+// (Beta 69) The top of the game's right column, above Ready to Play: a spot for an affiliate card
+// placed there on the site, and for other things later. Empty when nothing is placed in it.
+function topSpot(a) {
+  return igSlot(a, 'top');
+}
 function gameRail(a) {
   const facts = [
     [t('Latest version'), verText(a.version)], [t('Size'), a.size], [t('Latest release'), date(a.released)], [t('First release'), date(a.first)],
@@ -2876,7 +3038,7 @@ function gameRail(a) {
   const sys = (a.systems || []).filter((k) => OS_NAME[k]);
   // Who made it is under the title; adding it somewhere, its project page and reporting are in the
   // "…" menu. Overview has what it needs to play, and what the launcher can do for it.
-  const overview = S.tab === 'overview' ? readyCard(a) + igSlot(a, 'side') + supportCard(a) : '';
+  const overview = S.tab === 'overview' ? topSpot(a) + readyCard(a) + igSlot(a, 'side') + supportCard(a) : '';
   return `<div class="stack">${overview}<div class="card"><dl class="dl">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
       ${sys.length ? `<div><dt>${esc(t('Runs on'))}</dt><dd style="display:flex;gap:10px;align-items:center;justify-content:flex-end">${sys.map((k) => `<span style="display:inline-flex;gap:6px;align-items:center">${osIcon(k)}${OS_NAME[k]}</span>`).join('')}</dd></div>` : ''}</dl></div>
     </div>`;
@@ -3203,7 +3365,10 @@ function refreshGame() {
   }
   $$('.tabs-in button').forEach((b) => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
   const acts = $(`.gp-acts`);
-  if (acts) morph(acts, actions(a));
+  if (acts) morph(acts, actions(a, 'big', { want: true }));
+  // A Coming Soon game, saved or not: the line under Save says what it does.
+  const sn = a.soon ? $('.gp-soon-note') : null;
+  if (sn) sn.textContent = soonNoteText(a);
   const title = $('.gp-title');
   if (title) morph(title, gameTitle(a, id));
   // The cloud save badge: the game started or closed, or its saves changed.
@@ -5141,7 +5306,8 @@ function pageSettings() {
         + group(t('Recomps you already have'), row(t('Bring them into the Library'), t('Games from another launcher, Steam or a folder. They update from here after that, in the same folder.'), `<button type="button" class="btn sm" data-act="mig-open">${esc(t('Bring Your Games'))}</button>`))
         + dlssGroup(group, row)
         + group(t('Game Art'), `<div class="set-row"><div class="k"><b>${esc(t('SteamGridDB API Key'))}</b><span>${esc(t('Optional. With your own free key from steamgriddb.com (Preferences → API), games you add from GitHub get covers, backgrounds and logos.'))}</span></div>
-          <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`);
+          <span class="acts"><input class="field sm" id="sgdb-key" type="password" autocomplete="off" spellcheck="false" value="${esc(ui.sgdb_key || '')}" aria-label="${esc(t('SteamGridDB API Key'))}"><button type="button" class="btn sm" data-act="sgdb-save">${esc(t('Save'))}</button></span></div>`
+          + launchboxRow(ui));
       break;
     case 'bring':
       body = window.migratePage ? window.migratePage(group) : '';
@@ -5204,7 +5370,8 @@ function pageSettings() {
     }
     case 'pads':
       body = group(t('Controllers'), (S.pads || []).length ? S.pads.map((p) => `<div class="set-row"><div class="k"><b>${esc(p.name)}</b><span>${esc(p.kind === 'ps' ? t('PlayStation controller') : p.kind === 'nintendo' ? t('Nintendo controller') : p.kind === 'steam' ? t('Steam controller. With Steam open, Steam Input passes its buttons to the launcher and your games.') : t('Xbox controller'))}</span></div>${ok(true)}</div>`).join('') : `<p class="set-empty">${esc(t('None connected. Xbox, PlayStation (DualSense and DualShock 4) and Switch Pro controllers work, plugged in or over Bluetooth, and so do 8BitDo pads. A Steam Controller works with Steam open.'))}</p>`)
-        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick'))))
+        + group(t('Moving Around'), row(t('Move with the left stick'), t('The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.'), sw('pad_stick', st.pad_stick !== false, t('Move with the left stick')))
+          + row(t('Controller as a Mouse'), t('On: the launcher ignores your controller\'s buttons on its desktop screens, so a mouse mapping (Steam Input, DS4Windows) doesn\'t press things twice. Holding Menu still opens Big Picture, which always uses the controller.'), sw('pad_desktop', st.pad_desktop === false, t('Controller as a Mouse'))))
         + group(t('Buttons'), `<div class="pad-guide">${buttonGuide().map(([k, n, d]) => `<div><span class="pg-k">${k}</span><span class="pg-t"><b>${esc(n)}</b><small>${esc(d)}</small></span></div>`).join('')}</div>`);
       break;
     case 'pc':
@@ -5762,6 +5929,7 @@ function toggleSide() {
 function go(view, arg, fromEl) {
   if (view === 'settings') { loadLibs(); loadPads(); if (S.view !== 'settings') S.myRepNew = S.myRepAll = S.myRepQ = S.myRepV = null; }
   if (view === 'shots') loadAllShots();
+  if (view === 'home') homeMaybe();
   if (view === 'saves' && window.loadSavesAll) window.loadSavesAll();
   if (view === S.view && arg === S.arg) { if (view === 'game' && S.nextTab) { S.tab = S.nextTab; S.nextTab = null; } return render(true); }
   S.back.push({ view: S.view, arg: S.arg, tab: S.tab, scroll: $('#main').scrollTop });
@@ -5882,7 +6050,7 @@ async function loadCatalog(force, asked) {
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
     // Kept for offline use, but not while the window is opening: a while later, at the sizes shown.
-    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => { const hero = catalogArt(a, 'hero'); return [thumbOf(catalogArt(a, 'cover'), tileThumb()), hero ? thumbOf(hero, 960) : '', catalogArt(a, 'logo')]; }).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
+    const urls = uniq(S.cat.apps.filter((a) => S.library[a.id]).flatMap((a) => [thumbOf(catalogArt(a, 'cover'), tileThumb()), catalogArt(a, 'hero') || '', catalogArt(a, 'logo')]).filter(Boolean).map(webUrl)).filter((u) => /^https?:/.test(u));
     if (urls.length) setTimeout(() => invoke('prefetch_images', { urls }).catch(() => {}), 15000);
     // The list says there's no version for this system: check the releases themselves.
     // Only for entries that don't say which systems they're for: the list's own answer is trusted.
@@ -5896,7 +6064,17 @@ async function loadCatalog(force, asked) {
   }
 }
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
-T.event.listen('catalog-fresh', () => loadCatalog(false).then(() => render(true)).catch(() => {}));
+const approvedReleases = () => JSON.stringify(Object.keys(S.library).sort().map((id) => {
+  const a = byId(id) || {};
+  return [id, a.tag, a.version, a.repo];
+}));
+T.event.listen('catalog-fresh', async () => {
+  const before = approvedReleases();
+  try { await loadCatalog(false); } catch (e) { return; }
+  render(true);
+  if (approvedReleases() === before) return;
+  await afterCatalog();
+});
 // A Forgejo project's own setup file came in: Easy Setup can show for it now.
 T.event.listen('profiles-fresh', () => loadCatalog(false).then(() => loadEasy(true)).then(() => render(true)).catch(() => {}));
 // A game the player added by its link is on the list now: their copy moved over to the list's one.
@@ -5954,7 +6132,6 @@ for (const ev of ['pointerover', 'focusin']) {
   });
 }
 
-let updateCheckRevision = 0;
 // Free Up Space, on the Your Copy card: the copy the game doesn't read anymore goes to the bin.
 const binName = () => S.os === 'windows' ? t('Recycle Bin') : t('Trash');
 function spareRow(id, su) {
@@ -6043,6 +6220,15 @@ function readyLine(ids) {
   if (n > 1) return tf('Updates are ready for {n} games.', { n });
   const name = updateName(ids);
   return name ? tf('An update is ready for {name}.', { name }) : t('An update is ready for a game.');
+}
+let updateCheckRevision = 0;
+// The update check for the catalog that just came in: the saved one at startup, a fresh one later.
+// A fresh one can land while the startup check still waits on its answer. Moving the revision on
+// retires that older check, so its late answer (from the old list) can't undo this one.
+function afterCatalog() {
+  if (S.settings?.check_updates === false) return Promise.resolve();
+  updateCheckRevision++;
+  return checkUpdates();
 }
 async function checkUpdates(loud) {
   const revision = updateCheckRevision;
@@ -6586,7 +6772,9 @@ function menuRows(items) {
     // A row with something new behind it (`dot`, said in words for screen readers) has a dot on its right.
     const dot = i.dot ? `<span class="m-dot" aria-hidden="true"></span>` : '';
     const named = i.dot ? ` aria-label="${esc(i.label + ' · ' + i.dot)}"` : '';
-    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
+    // `raw`: a file name or path, shown as it is (Title Case leaves it alone).
+    const raw = i.raw ? ' data-raw' : '';
+    return `<button type="button" role="menuitem" class="${i.cls || ''}" data-act="${i.act}" data-id="${esc(i.id || '')}"${i.k ? ` data-k="${esc(i.k)}"` : ''}${i.url ? ` data-url="${esc(i.url)}"` : ''}${named}${raw}>${icon}${esc(i.label)}${i.check ? `<span class="ck">${CHECK}</span>` : ''}${dot}</button>`;
   }).join('');
 }
 function menu(at, items) {
@@ -6784,6 +6972,7 @@ function gameMenu(id) {
   const fresh = newPrepOpts(S.setup[id]).length;
   const newOpts = fresh ? tn(fresh, '1 new option', '{n} new options') : '';
   return [
+    ...startWithItem(id),
     ...(first ? [first] : []),
     ...(!g && st === 'get' && !isSaved(id) ? [{ act: 'install', id, label: t('Add and Install'), icon: 'down' }] : []),
     ...(g && S.updates[id] ? [{ act: 'install', id, label: t('Update'), icon: 'down' }] : []),
@@ -7395,49 +7584,42 @@ async function askProgram(id) {
   if (!full.length) { S.nextTab = 'installed'; go('game', id); return toast(t('The launcher couldn\'t tell which program starts the game. Pick it in the game\'s settings.'), true); }
   return confirmProgram(id, (libApp(g) || g).name || id, full, true);
 }
-// Hold Play: pick which of the game's programs starts this time (the game itself, or its own
-// launcher or tools). A normal press starts the usual one.
-window.startWith = async function startWith(id) {
-  const g = S.library[id];
-  if (!g) return;
+// Start With is for a game the launcher doesn't set up, or one the player sets up their own way
+// (Skip Easy Setup). A game Easy Setup runs is made to start through the launcher as it is: there's
+// no other program for the player to pick, on the desktop or in Big Picture.
+const startWithOffered = (id) => !!S.library[id] && !S.easy.has(id);
+// Start With's programs for each installed game: the program Play starts, and the one the player
+// picked (or every program, for a game whose recomplauncher.json doesn't name one). The "…" menu
+// and Big Picture's Options sheet are drawn at once, so the list is loaded just before they open.
+const START_WITH = {};
+async function loadStartWith(id) {
+  if (!startWithOffered(id)) return [];
   let list = [];
-  try { list = (await invoke('game_programs', { id })) || []; } catch (e) { /* none */ }
-  const usual = String(g.exe || '').replace(/\\/g, '/');
-  list = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
-  if (list.length < 2) return playGame(id);
-  if (window.tvAsk && document.body.classList.contains('tv-on')) {
-    const i = await tvAsk(t('Start With'), list.map((p) => ({ label: p.split(/[\\/]/).pop(), sub: p.replace(/\\/g, '/') === usual ? t('Its usual program') : p, icon: 'play' })));
-    if (i >= 0) playGame(id, list[i]);
-    return;
-  }
-  const m = modal(`<h2>${esc(t('Start With'))}</h2><p>${esc(tf('Which of {name}\'s programs starts this time. A normal press of Play starts the usual one.', { name: g.name }))}</p>
-    <div class="choices">${list.map((p, i) => `<button type="button" class="choice" data-x="pick" data-i="${i}"><span><b>${esc(p.split(/[\\/]/).pop())}</b><small>${esc(p.replace(/\\/g, '/') === usual ? t('Its usual program') : p)}</small></span></button>`).join('')}</div>
-    <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button></div>`, (x, close) => {
-    if (x.dataset.x !== 'pick') return;
-    close();
-    playGame(id, list[Number(x.dataset.i)]);
-  }, t('Start With'));
-  return m;
-};
-// Pressing and holding a Play button opens Start With instead of playing.
-{
-  let held = null;
-  document.addEventListener('pointerdown', (e) => {
-    const b = e.target.closest('[data-act="play"][data-id]');
-    if (!b || e.button !== 0 || !S.library[b.dataset.id]) return;
-    clearTimeout(held && held.t);
-    held = { b, t: setTimeout(() => { b.dataset.held = '1'; startWith(b.dataset.id); }, 600) };
-  });
-  const stop = () => { if (held) { clearTimeout(held.t); held = null; } };
-  document.addEventListener('pointerup', stop);
-  document.addEventListener('pointercancel', stop);
-  document.addEventListener('pointerleave', stop);
-  // The click that ends a hold doesn't also play.
-  document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-held]');
-    if (b) { delete b.dataset.held; e.stopImmediatePropagation(); e.preventDefault(); }
-  }, true);
+  try { list = (await invoke('start_with_programs', { id })) || []; } catch (e) { /* none */ }
+  START_WITH[id] = list.filter((p) => !/unins/i.test(p)).slice(0, 12);
+  return START_WITH[id];
 }
+// With one program there's nothing to pick: Play already starts it.
+const startWithList = (id) => (startWithOffered(id) && !S.running.has(id) && (START_WITH[id] || []).length > 1 ? START_WITH[id] : []);
+const isUsualProgram = (id, p) => p.replace(/\\/g, '/') === String((S.library[id] || {}).exe || '').replace(/\\/g, '/');
+// The "…" menu's Start With, at its top: a group with one row per program, the usual one ticked.
+function startWithItem(id) {
+  const list = startWithList(id);
+  if (!list.length) return [];
+  const rows = list.map((p, i) => ({ act: 'start-with', id, k: String(i), label: p.replace(/\\/g, '/'), raw: true, icon: 'play', check: isUsualProgram(id, p) }));
+  return [{ label: t('Start With'), icon: 'play', sub: rows }, '-'];
+}
+async function openGameMenu(at, id) {
+  await loadStartWith(id);
+  return menu(at, gameMenu(id));
+}
+// Big Picture's Start With (from the game's Options sheet): the same programs, as a list to pick.
+window.startWith = async function startWith(id) {
+  const list = startWithList(id);
+  if (!list.length) return playGame(id);
+  const i = await tvAsk(t('Start With'), list.map((p) => ({ label: p.split(/[\\/]/).pop(), sub: isUsualProgram(id, p) ? t('Its usual program') : p, icon: 'play' })));
+  if (i >= 0) playGame(id, list[i]);
+};
 
 // Windows Security stopped a file: say what happened and what can be done, instead of a raw error.
 function blocked(id, err) {
@@ -7767,7 +7949,7 @@ function pageSoon() {
   const req = `<button type="button" class="btn main" data-act="recomp-req">${PLUS}${esc(t('Request a Recomp'))}</button>`;
   // The count sits beside the title, small, where Discover puts its own above the grid.
   const count = list.length ? `<span class="count-line soon-n">${esc(tn(list.length, '1 recomp on the way', '{n} recomps on the way'))}</span>` : '';
-  return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Press Notify Me on one and you get an email the day it comes out.'))}</p></div>${req}</div>
+  return `<div class="page">${offlineNote()}<div class="head"><div><div class="soon-title"><h1>${esc(t('Coming Soon'))}</h1>${count}</div><p>${esc(t('Recomps on the way. Save one and we\'ll let you know the day it comes out.'))}</p></div>${req}</div>
     ${list.length ? `<div class="grid" data-n="${list.length}">${list.map((a) => tile(a)).join('')}</div>`
       : `<div class="empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAL_CLOCK}</svg><h2>${esc(t('Nothing announced right now'))}</h2><p>${esc(t('Know of a recomp the launcher should have? Press Request a Recomp to ask for it.'))}</p></div>`}
   </div>`;
@@ -8658,7 +8840,7 @@ function githubModal() {
 }
 
 // Consoles to pick from: the catalog's, then the usual ones.
-const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['xseries', 'Xbox Series'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch2', 'Nintendo Switch 2'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pc', 'PC']];
+const MORE_CONSOLES = [['n64', 'Nintendo 64'], ['x360', 'Xbox 360'], ['xbox', 'Xbox'], ['xseries', 'Xbox Series X|S'], ['xone', 'Xbox One'], ['ps1', 'PlayStation'], ['ps2', 'PlayStation 2'], ['ps3', 'PlayStation 3'], ['psp', 'PSP'], ['vita', 'PS Vita'], ['gc', 'GameCube'], ['wii', 'Wii'], ['wiiu', 'Wii U'], ['switch2', 'Nintendo Switch 2'], ['switch', 'Nintendo Switch'], ['3ds', 'Nintendo 3DS'], ['nds', 'Nintendo DS'], ['gba', 'Game Boy Advance'], ['gb', 'Game Boy'], ['snes', 'Super Nintendo'], ['nes', 'NES'], ['genesis', 'Sega Genesis'], ['saturn', 'Sega Saturn'], ['dc', 'Dreamcast'], ['pce', 'TurboGrafx-16'], ['mobile', 'Mobile'], ['pc', 'PC']];
 function consoleList() {
   const seen = new Set(), out = [];
   for (const o of (S.cat && S.cat.origins) || []) if (!seen.has(o.name.toLowerCase())) { seen.add(o.name.toLowerCase()); seen.add(o.id); out.push([o.id, o.name]); }
@@ -9261,6 +9443,9 @@ async function act(el, e) {
     case 'move-listing': return moveListing(id, el.dataset.to);
     case 'dlss-remove': try { await invoke('dlss_remove'); S.dlssState = { applies: true, have: false }; toast(t('NVIDIA DLSS file removed.')); if (S.view === 'settings') setSection('library', false); } catch (e) { fail(e); } return;
     case 'umu-repair': try { toast(t(await invoke('umu_repair'))); S.protonNow = await invoke('proton_now').catch(() => S.protonNow); if (S.view === 'settings') setSection(S.setTab); } catch (e) { fail(e); } return;
+    case 'lb-find': return launchboxSet(null);
+    case 'lb-pick': { const p = await pickFile({ title: t('LaunchBox\'s folder'), directory: true }).catch(fail); if (p) await launchboxSet(typeof p === 'string' ? p : p.path); return; }
+    case 'lb-forget': await saveUi({ launchbox_dir: '' }); toast(t('LaunchBox folder removed.')); if (S.view === 'settings') setSection(S.setTab, false); return;
     case 'sgdb-save': { const v = ($('#sgdb-key') || {}).value || ''; await saveUi({ sgdb_key: v.trim() }); return toast(v.trim() ? t('Saved. Games you add from GitHub get art now.') : t('Key removed.')); }
     case 'build': return changeBuild(id);
     case 'gh-add': return githubModal();
@@ -9346,8 +9531,10 @@ async function act(el, e) {
     case 'play-pick': { const a = byId(id); return menu(el, [a, ...otherInstalled(a)].map((v) => ({ act: 'play', id: v.id, label: tf('Play {name}', { name: v.name }), icon: 'play' }))); }
     case 'great': S.find.great = !S.find.great; return updateDiscover();
     case 'deck-f': S.find.deckgreat = !S.find.deckgreat; return updateDiscover();
-    case 'notify': return toggleNotify(id);
     case 'note-x': return closeNote(el.dataset.n);
+    // An info box from Home page: its screen, or closed for good on this PC.
+    case 'home-go': return HOME_GO['go:' + el.dataset.v] ? go(el.dataset.v) : null;
+    case 'home-close': { const id = Number(el.dataset.id); if (!id) return null; return saveUi({ home_closed: [...homeClosed().filter((x) => x !== id), id].slice(-50) }).then(() => render(true)); }
     case 'note-url': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
     case 'easy-f': S.find.easy = !S.find.easy; return updateDiscover();
     case 'mp-f': S.find.mp = !S.find.mp; return updateDiscover();
@@ -9425,7 +9612,7 @@ async function act(el, e) {
         (x, close) => { close(); if (x.dataset.x === 'yes') run(); }, t('Clear'));
       return;
     }
-    case 'menu': return menu(el, gameMenu(id));
+    case 'menu': return openGameMenu(el, id);
     case 'folder': try { await invoke('open_folder', { id: id || null, path: el.dataset.path || null }); } catch (err) { fail(err); } return;
     case 'app-menu': try { await invoke('desktop_shortcut', { id, menu: true }); toast(tf(S.os === 'windows' ? '{name} is in your Start menu.' : '{name} is in your app menu.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
     case 'desktop': try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: S.library[id].name })); } catch (err) { fail(err); } return;
@@ -9513,12 +9700,7 @@ async function act(el, e) {
       return loadLibs();
     }
     case 'lib-add': return addLibrary().then(loadLibs);
-    case 'rom-add': {
-      const p = await pickFile({ title: t('A folder with your ROMs or game backups'), directory: true }).catch(fail);
-      if (!p) return;
-      await saveSettings({ rom_dirs: uniq([...(S.settings.rom_dirs || []), typeof p === 'string' ? p : p.path]) });
-      return scanRoms();
-    }
+    case 'rom-add': return addRomFolder();
     case 'rom-remove': await saveSettings({ rom_dirs: (S.settings.rom_dirs || []).filter((d) => d !== el.dataset.path) }); return scanRoms();
     case 'rom-scan': return scanRoms();
     case 'rom-emus': return emuFolders();
@@ -9548,6 +9730,7 @@ async function act(el, e) {
       return;
     case 'uninstall': return confirmUninstall(parentId(id));
     case 'play-reset': return resetPlaytime(id);
+    case 'start-with': return playGame(id, (START_WITH[id] || [])[Number(el.dataset.k)]);
     case 'url': e.preventDefault(); return invoke('open_url', { url: el.dataset.url }).catch(fail);
     case 'copy-ids': {
       const ids = S.ids || await invoke('data_ids');
@@ -9570,6 +9753,8 @@ async function act(el, e) {
       if (k === 'auto_update_all') { await saveSettings({ auto_update_all: !autoUpdateAll() }); if (autoUpdateAll()) checkUpdates(); return; }
       if (k === 'steam_sync') { await saveSettings({ steam_sync: !S.settings.steam_sync }); if (S.settings.steam_sync) steamSync(false); return; }
       if (k === 'start_at_login') { await startAtLogin(!S.settings.start_at_login); return render(true); }
+      // Turned off with the controller itself: its highlight goes too, as it does when the mouse moves.
+      if (k === 'pad_desktop') { await saveSettings({ pad_desktop: S.settings.pad_desktop === false }); if (S.settings.pad_desktop === false) padLetGo(); return; }
       return saveSettings({ [k]: !S.settings[k] });
     }
     case 'libdir': {
@@ -9759,7 +9944,7 @@ document.addEventListener('contextmenu', (e) => {
   }
   const g = e.target.closest('[data-id]');
   const id = g && g.dataset.id;
-  if (id && (byId(id) || S.library[id])) return menu(at, gameMenu(id));
+  if (id && (byId(id) || S.library[id])) return openGameMenu(at, id);
   menu(at, [{ act: 'refresh', label: t('Refresh'), icon: 'refresh' }, { act: 'go-settings', label: t('Settings'), icon: 'gear' }, { act: 'about', label: t('About RecompLauncher'), icon: 'info' }]);
 });
 $('#brand').addEventListener('click', () => aboutModal());
@@ -10017,15 +10202,32 @@ window.deskPad = (b) => {
   }
   return false;
 };
-// The mouse moving again: no highlight.
-document.addEventListener('mousemove', (e) => {
-  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+// The controller no longer moves around the desktop view (Settings → Controllers): no highlight.
+// The page drawn again after the switch gives it back its focus, and without the controller's
+// own highlight that focus shows the browser's ring, so the focus goes too.
+function padLetGo() {
+  PAD.armed = false;
+  document.body.classList.remove('pad-nav');
+  if (PAD.el) PAD.el.classList.remove('pad-focus');
+  PAD.el = null;
+  const held = document.activeElement;
+  if (held && held !== document.body) held.blur();
+}
+// The controller lets go: no highlight, and A waits for a direction before it presses anything.
+function padRest() {
   PAD.armed = false;
   if (!document.body.classList.contains('pad-nav')) return;
   document.body.classList.remove('pad-nav');
   if (PAD.el) PAD.el.classList.remove('pad-focus');
   PAD.el = null;
+}
+// The mouse moving again.
+document.addEventListener('mousemove', (e) => {
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) < 3) return;
+  padRest();
 }, true);
+// A game or another app took over: coming back, a lit Play that A ignores would look broken.
+window.addEventListener('blur', padRest);
 
 // The window has no system title bar, so these are its buttons.
 const W = T.window.getCurrentWindow();
@@ -10344,6 +10546,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   await loadCatalog(false, catAsk);
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
+  homeSync();
   loadIg();
   enjoyDay();
   // Both read the list on disk, side by side. The window waits a moment for them, so the first
@@ -10362,7 +10565,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   S.anim = 'enter';
   render(true);
   // Update check first (it keeps the release info on disk current), then the news reads from it.
-  const upd = S.settings.check_updates !== false ? checkUpdates() : Promise.resolve();
+  const upd = afterCatalog();
   applyLighter();
   watchSlow();
   // Handheld or not is worked out in the background when the launcher starts.

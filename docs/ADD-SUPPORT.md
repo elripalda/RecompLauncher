@@ -69,6 +69,9 @@ For raw copies, put the file name after
 ## Rules
 
 - **Never add game files**: no ROMs, disc images, extracted assets or keys.
+- **Fix the recomp, not the launcher.** If the release doesn't fit the guide (wrong folder layout, a
+  broken AppImage entry point, odd file names), change the recomp's own release or packaging so it
+  does. RecompLauncher doesn't add special code for one recomp.
 - **Code changes are opt-in.** Small source changes are welcome where Easy Setup or the setup step
   needs them (a `--game <path>` option, a windowless `--prepare` mode that prints
   `progress 0.4 Text` lines) or to accept more file formats. Without the new arguments, the game

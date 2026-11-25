@@ -9,12 +9,14 @@ const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 // each feature's state, the Ask box and the card itself.
 const block = source.match(/^\/\/ The part of recomplauncher\.json that adds each feature[^]*?^function supportCard\([^]*?^}/m)[0];
 
+const INSTALLED = { path: '/games/game', tag: 'v1.0.0', updated_at: 1 };
+
 // The Launcher Support box on Overview, for a catalog entry and (installed) its own release file.
 // `dev` is the developer's account, when they have one: { name, verified }.
 function render(entry, local = null, dev = null) {
   const fill = (s, args) => s.replace(/\{(\w+)\}/g, (m, k) => (k in args ? String(args[k]) : m));
   const ctx = vm.createContext({
-    S: { library: local ? { game: {} } : {}, easy: new Set(), supLocal: local ? { game: local } : {} },
+    S: { library: local ? { game: INSTALLED } : {}, easy: new Set(), supLocal: {} },
     invoke: async () => local, builtinBoot: () => ({}), TURNKEY_HOW: [],
     t: (s) => s, N_: (s) => s, tf: fill, curLocale: () => 'en',
     esc: (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;'),
@@ -26,7 +28,7 @@ function render(entry, local = null, dev = null) {
   });
   vm.runInContext(block, ctx);
   // The block starts the card's own cache empty; the installed file goes in after it.
-  ctx.S.supLocal = local ? { game: local } : {};
+  ctx.S.supLocal = local ? { game: { key: vm.runInContext('supLocalKey', ctx)(INSTALLED), v: local } } : {};
   return vm.runInContext('supportCard(a)', ctx);
 }
 const rowOf = (html, name) => html.match(new RegExp(`<b>${name}</b>[^]*?</span></div>`))[0];

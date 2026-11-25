@@ -23,8 +23,6 @@ async function loadAccount(fresh) {
   if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; forgetSaveStatus(); }
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
-  // Notify Me: the games they're waiting on (none when signed out).
-  if (window.afterSignIn && !S.account.offline) window.afterSignIn();
   // The saved list, kept with the account.
   if (S.account.signedIn && !S.account.offline && typeof libSync === 'function') libSync();
   // Playtime over all the account's PCs (or back to this PC's own when signed out).
@@ -77,14 +75,13 @@ function renderAccountBits() {
 const SIGN = { timer: null, sheet: null };
 function stopSignIn() {
   clearTimeout(SIGN.timer); SIGN.timer = null;
-  if (window.notifyForget) window.notifyForget();
   invoke('account_cancel').catch(() => {});
 }
 // Desktop: the browser opens on the page that says yes, and the code is shown in case it's needed
 // on another device. Big Picture mode: the code and a QR code for a phone.
 async function signIn(create) {
   let s;
-  try { s = await invoke('account_start', { create: !!create }); } catch (e) { if (window.notifyForget) window.notifyForget(); return fail(e); }
+  try { s = await invoke('account_start', { create: !!create }); } catch (e) { return fail(e); }
   const tv = inTV() && window.tvSignIn;
   let box, setStatus;
   const done = (user) => {
@@ -108,7 +105,7 @@ async function signIn(create) {
       if (x.dataset.x === 'again') { box.dataset.ok = '1'; box.remove(); signIn(create); }
     }, t('Sign in'));
     // Closed some other way (Cancel, Esc, clicking outside): stop waiting.
-    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); if (SIGN.timer) stopSignIn(); else if (!box.dataset.ok && window.notifyForget) window.notifyForget(); } }).observe(document.body, { childList: true });
+    new MutationObserver((m, o) => { if (!box.isConnected) { o.disconnect(); if (SIGN.timer) stopSignIn(); } }).observe(document.body, { childList: true });
     setStatus = (m, again) => { const st = $('[data-st]', box); if (st) st.innerHTML = esc(m) + (again ? ` <button type="button" class="linkish" data-x="again">${esc(t('Get a new code'))}</button>` : ''); };
   }
   const until = Date.now() + s.expires * 1000;
@@ -135,7 +132,6 @@ async function signOut() {
   saveUi({ lib_synced: null, lib_queue: [] }, true).catch(() => {});
   toast(t('Signed out. Your saves stay on this PC.'));
   renderAccountBits();
-  if (window.afterSignIn) window.afterSignIn();
 }
 
 // ---------- Settings > Account ----------
@@ -1214,7 +1210,7 @@ window.accountAct = async (act, el) => {
   return null;
 };
 
-T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; forgetSaveStatus(); renderAccountBits(); if (window.afterSignIn) window.afterSignIn(); } else loadAccount(true); });
+T.event.listen('account', ({ payload }) => { if (payload && payload.signedIn === false) { S.account = { signedIn: false }; S.saves = {}; forgetSaveStatus(); renderAccountBits(); } else loadAccount(true); });
 T.event.listen('saves', ({ payload }) => { if (S.view === 'saves') loadSavesAll(); if (payload && payload.id) { delete S.saves[payload.id]; loadSaveStatus(payload.id); if (S.view === 'game' && S.arg === payload.id && S.tab === 'saves') loadSaves(payload.id); } });
 // A check, upload or download for a game started or ended: the badge says so, and asks for the
 // outcome once it's over.

@@ -69,7 +69,7 @@ fn age_of(p: &Path) -> Option<u64> {
     Some(SystemTime::now().duration_since(m).unwrap_or_default().as_secs())
 }
 
-fn save(p: &Path, v: &Value) {
+pub(crate) fn save(p: &Path, v: &Value) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -79,7 +79,7 @@ fn save(p: &Path, v: &Value) {
     }
 }
 
-fn load(p: &Path) -> Option<Value> {
+pub(crate) fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
@@ -622,6 +622,32 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     }
     let fresh = if force { 0 } else { COUNTS_FRESH };
     cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
+}
+
+/// How many people want a recomp: everyone who saved it (Add to Library, signed in) or is waiting for
+/// its Notify Me email, each account once. The website's own number for the Save button on its page,
+/// shown on the launcher's game page beside Notify Me and Add to Library. Kept 10 minutes: the site
+/// keeps it 2 (5 at Cloudflare), and a count this size doesn't need to be newer.
+pub async fn interest(http: &reqwest::Client, dir: &Path, id: &str) -> Result<Fetched, Error> {
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = format!("{}/api/pc.php?a=interest&id={id}", base());
+    cached(http, &url, dir.join("cache/interest").join(format!("{id}.json")), INTEREST_FRESH, crate::net::QUICK, true, interest_ok).await
+}
+
+/// How long one recomp's count of who wants it is kept before it's asked for again (seconds).
+pub const INTEREST_FRESH: u64 = 600;
+
+/// An answer that carries the count, a whole number. Anything else isn't kept, so a bad answer never
+/// replaces a good one on disk. (A website from before the count answers 400, Unknown request.)
+fn interest_ok(v: &Value) -> bool {
+    v.get("n").map(Value::is_u64).unwrap_or(false)
+}
+
+/// The count in an answer `interest_ok` took (0 for anything else).
+pub fn interest_n(v: &Value) -> u64 {
+    v.get("n").and_then(Value::as_u64).unwrap_or(0)
 }
 
 /// How a release's files were checked before the store offered them (ClamAV on the website's server,
@@ -1198,7 +1224,14 @@ async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
     if !r.status().is_success() {
         return None;
     }
-    let v: Value = r.json().await.ok()?;
+    let bytes = r.bytes().await.ok()?;
+    repo_profile_reply(&bytes)
+}
+
+/// What a project's recomplauncher.json from its repo gives: the file, or "none" when it isn't one
+/// the launcher reads. A body that isn't JSON at all is a failed answer, asked again later.
+fn repo_profile_reply(bytes: &[u8]) -> Option<Value> {
+    let v = crate::profile::parse_json_bytes(bytes)?;
     Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
 }
 
@@ -1261,7 +1294,8 @@ pub fn latest(rels: &[Release]) -> Option<&Release> {
 /// pre-release, the newest of all. Never one older than what they have (a beta of the next
 /// version is newer than the last stable one).
 pub fn latest_for<'a>(rels: &'a [Release], installed: &str) -> Option<&'a Release> {
-    let cur = rels.iter().find(|r| r.tag_name == installed);
+    // An imported game's tag can lack the release's "v": it's still the release it's on.
+    let cur = rels.iter().find(|r| crate::same_tag(&r.tag_name, installed));
     let pick = if cur.map(|r| r.prerelease).unwrap_or(false) { rels.iter().find(|r| !r.draft) } else { latest(rels) }?;
     if let (Some(c), Some(new), Some(old)) = (cur, pick.published_at.as_deref(), cur.and_then(|r| r.published_at.as_deref())) {
         if new < old {
@@ -1300,6 +1334,12 @@ pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_repo_profile_saved_with_a_byte_order_mark_is_read() {
+        let v = super::repo_profile_reply(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
     fn a_backup_release_keeps_only_checked_files_for_this_pc() {
         let sha = "a".repeat(64);
         let v = serde_json::json!({ "version": "v1.2", "files": [
@@ -1331,6 +1371,22 @@ mod tests {
         assert_eq!(super::trend_fresh(None, "2026-11-14"), 0);
         assert!(super::trend_ok(&chart));
         assert!(!super::trend_ok(&serde_json::json!({ "ok": false, "entries": [] })));
+    }
+
+    #[test]
+    fn interest_answer_is_a_whole_number() {
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 3412 })));
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 0 })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": false, "error": "Unknown request." })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": "12" })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": -3 })));
+    }
+
+    #[test]
+    fn interest_count_is_zero_without_one() {
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true, "n": 3412 })), 3412);
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true })), 0);
+        assert_eq!(super::interest_n(&serde_json::Value::Null), 0);
     }
 
     #[test]
