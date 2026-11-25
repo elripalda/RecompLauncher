@@ -1910,12 +1910,21 @@ body.still *, body.still *::before, body.still *::after { animation: none !impor
 .tile-size input{width:120px;accent-color:var(--cyan)}
 body.tv-on .tile-size{display:none}
 /* Light theme (Settings, Appearance). Pictures with text over them (the Home slider, a game's
-   header) keep their dark look so the words stay readable. */
+   header, the badges on covers) keep their dark look so the words stay readable. */
 body.light{--noise:url(img/noise-light.png);--bg:#F3F5F8;--bg2:#E9EDF2;--side:#EDF0F4;--card:#FFFFFF;--card2:#F4F6F9;--card3:#E8ECF1;
   --ink:#0E1626;--muted:#4A5568;--dim:#6B7688;--cyan:#0B9E97;--blue:#2A6AA5;
   --line:rgba(14,22,38,.08);--line2:rgba(14,22,38,.14);--line3:rgba(14,22,38,.24);
   --fill:rgba(14,22,38,.035);--fill2:rgba(14,22,38,.06);--fill3:rgba(14,22,38,.1);color-scheme:light}
-body.light .slide, body.light .gp-hero, body.light .sl-in, body.light .gp-amb{--ink:#F4F8FC;--muted:#C9D2DE;--dim:#AAB4C4;--cyan:#34F2E8;--line2:rgba(244,248,252,.14);--fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065)}
+body.light .slide, body.light .gp-hero, body.light .sl-in, body.light .gp-amb, body.light .sl-arrows, body.light .badge{--ink:#F4F8FC;--muted:#C9D2DE;--dim:#AAB4C4;--cyan:#34F2E8;--line2:rgba(244,248,252,.14);--fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065)}
+/* The slider's arrows sit on the picture but outside the slide, so they don't inherit its ink. */
+body.light .sl-arrows button{color:var(--ink)}
+/* Badges on covers write in the page colour (Soon, In Library, a game's state): dark, as on the
+   dark theme, because they sit on bright yellow, cyan or a dark glass. */
+body.light .badge{--bg:#0B1220}
+/* Setup Required on a picture: the dark theme's yellow outline, not the light theme's dark one. */
+body.light :is(.slide,.gp-hero) .btn.warn-o{color:#f5c518;border-color:rgba(245,197,24,.55);background:rgba(245,197,24,.06)}
+body.light :is(.slide,.gp-hero) .btn.warn-o svg{color:#f5c518}
+body.light :is(.slide,.gp-hero) .btn.warn-o:hover{background:rgba(245,197,24,.12)}
 body.light .menu, body.light .modal, body.light .toast{box-shadow:0 12px 40px rgba(14,22,38,.18)}
 body.light .chip.on{color:#fff}
 body.light .btn.main, body.light .chip.main{color:#fff}
