@@ -10095,6 +10095,9 @@ fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder
 }
 
 pub fn run() {
+    // First, before any thread starts: the test control token leaves the environment here, so
+    // games and tools the launcher starts never see it.
+    test_control::take_from_env();
     #[cfg(windows)]
     say_why_it_stopped();
     #[cfg(target_os = "linux")]

@@ -19,7 +19,7 @@ mod page;
 
 use crate::trail;
 use std::net::Ipv4Addr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Listener};
 
 pub const ENV_TOKEN: &str = "RECOMPLAUNCHER_TEST_CONTROL";
@@ -60,6 +60,53 @@ pub fn wanted(token: Option<String>, port: Option<String>) -> Result<Option<Want
     Ok(Some(Wanted { token, port }))
 }
 
+/// The two variables as the launcher was started with them, taken out of its environment.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Asked {
+    pub token: Option<String>,
+    pub port: Option<String>,
+}
+
+static ASKED: OnceLock<Asked> = OnceLock::new();
+
+/// Reads the two variables and takes them out of this process's environment, so nothing the
+/// launcher starts (games, recomps and mods from GitHub, emulators, setup scripts, tools, an
+/// update's restart) inherits the token and can drive the launcher with it.
+fn take(token_key: &str, port_key: &str) -> Asked {
+    let asked = Asked { token: std::env::var(token_key).ok(), port: std::env::var(port_key).ok() };
+    std::env::remove_var(token_key);
+    std::env::remove_var(port_key);
+    asked
+}
+
+/// Called first thing in `run`, before any thread starts: changing the environment while
+/// another thread reads it isn't safe.
+pub fn take_from_env() {
+    let _ = ASKED.set(take(ENV_TOKEN, ENV_PORT));
+}
+
+fn asked() -> &'static Asked {
+    ASKED.get_or_init(|| take(ENV_TOKEN, ENV_PORT))
+}
+
+/// Hands test control on to the launcher's own start again without Steam's libraries
+/// (sysenv::prepare_start), which is still the start the tester asked for. Only that one: an
+/// update's restart is a new build, started with test control on purpose or not at all.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn for_own_restart(c: &mut std::process::Command) {
+    hand_on(asked(), c);
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn hand_on(a: &Asked, c: &mut std::process::Command) {
+    if let Some(t) = &a.token {
+        c.env(ENV_TOKEN, t);
+    }
+    if let Some(p) = &a.port {
+        c.env(ENV_PORT, p);
+    }
+}
+
 /// What a request's handling needs.
 pub(crate) struct Ctx {
     pub app: AppHandle,
@@ -71,7 +118,8 @@ pub(crate) struct Ctx {
 /// Starts test control when the launcher was asked for it. Called once, from setup, for the
 /// launcher with a window (not for a game's shortcut start).
 pub fn start(app: &AppHandle) {
-    let asked = wanted(std::env::var(ENV_TOKEN).ok(), std::env::var(ENV_PORT).ok());
+    let kept = asked().clone();
+    let asked = wanted(kept.token, kept.port);
     let w = match asked {
         Ok(Some(w)) => w,
         Ok(None) => return,
@@ -190,6 +238,43 @@ mod tests {
     #[test]
     fn the_port_can_be_chosen() {
         assert_eq!(wanted(s("abcdefghijklmnop"), s("50123")).unwrap().unwrap().port, 50123);
+    }
+
+    #[test]
+    fn the_variables_leave_the_environment_and_are_kept() {
+        let (tk, pk) = ("RL_TEST_TC_TAKE_TOKEN", "RL_TEST_TC_TAKE_PORT");
+        std::env::set_var(tk, "abcdefghijklmnop");
+        std::env::set_var(pk, "50124");
+        let kept = take(tk, pk);
+        assert!(std::env::var_os(tk).is_none());
+        assert!(std::env::var_os(pk).is_none());
+        let w = wanted(kept.token, kept.port).unwrap().unwrap();
+        assert_eq!(w, Wanted { token: "abcdefghijklmnop".into(), port: 50124 });
+    }
+
+    #[test]
+    fn a_program_started_after_the_take_does_not_see_the_token() {
+        let tk = "RL_TEST_TC_CHILD_TOKEN";
+        std::env::set_var(tk, "qrstuvwxyz0123456789");
+        let _ = take(tk, "RL_TEST_TC_CHILD_PORT");
+        let out = if cfg!(windows) {
+            std::process::Command::new("cmd").args(["/C", "set"]).output()
+        } else {
+            std::process::Command::new("env").output()
+        };
+        let out = String::from_utf8_lossy(&out.unwrap().stdout).to_string();
+        assert!(!out.contains(tk));
+        assert!(!out.contains("qrstuvwxyz0123456789"));
+    }
+
+    #[test]
+    fn the_own_restart_gets_the_kept_token_back() {
+        let kept = Asked { token: s("abcdefghijklmnop"), port: None };
+        let mut again = std::process::Command::new("recomplauncher");
+        hand_on(&kept, &mut again);
+        let token = again.get_envs().find(|(k, _)| *k == ENV_TOKEN).and_then(|(_, v)| v);
+        assert_eq!(token.and_then(|v| v.to_str()), Some("abcdefghijklmnop"));
+        assert!(again.get_envs().all(|(k, _)| k != ENV_PORT));
     }
 
     #[test]
