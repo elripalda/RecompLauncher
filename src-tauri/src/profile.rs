@@ -897,25 +897,32 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
     }
     let runnable = |p: &Path| -> bool {
         let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        // Mac metadata sidecars can inherit run permission on an external drive.
+        if n.starts_with("._") {
+            return false;
+        }
         if [".dll", ".so", ".exe", ".txt", ".md", ".ini", ".cfg", ".json", ".pdb", ".zip", ".7z", ".dat", ".bin"].iter().any(|e| n.ends_with(e)) || n.contains(".so.") {
             return false;
         }
         if n.ends_with(".x86_64") || n.ends_with(".appimage") || n.ends_with(".sh") {
             return true;
         }
-        // A program, by its run permission or its first bytes (an ELF): zips made on Windows drop
-        // the permission.
-        let elf = || {
-            let mut head = [0u8; 4];
-            std::fs::File::open(p).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && &head == b"\x7fELF"
-        };
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false) || elf()
+        // A program by its first bytes, not its run permission: on a drive formatted for Windows
+        // (exFAT, NTFS) every file has that, so a Dusklight.log or Game.pck would pass, and zips
+        // made on Windows drop it from real programs. An ELF, a script that says what runs it, or
+        // on a Mac a program for this processor (as install::is_program judges one).
+        let mut head = [0u8; 4];
+        if std::fs::File::open(p).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_err() {
+            return false;
         }
-        #[cfg(not(unix))]
-        elf()
+        if &head == b"\x7fELF" || head.starts_with(b"#!") {
+            return true;
+        }
+        if crate::assets::os_now() != "macos" {
+            return false;
+        }
+        let here = if crate::assets::arch_now() == "arm64" { "arm64" } else { "x64" };
+        crate::macos::is_executable(p, here)
     };
     let mut best: Option<(usize, usize, PathBuf)> = None;
     for e in std::fs::read_dir(dir).ok()?.flatten() {
@@ -3299,14 +3306,86 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn dusklight_starts_its_mac_program_instead_of_appledouble_metadata() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dusklight-appledouble");
+        let exe = d.join("Dusklight.app/Contents/MacOS/Dusklight");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").unwrap();
+        let metadata = d.join("._Dusklight.app");
+        std::fs::write(&metadata, b"\x00\x05\x16\x07AppleDouble").unwrap();
+        // Windows-formatted drives can give the metadata the same run permission as the program.
+        std::fs::set_permissions(&metadata, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(got, exe);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_native_twin_never_uses_appledouble_metadata_with_a_program_extension() {
+        let d = tmp("native-appledouble");
+        std::fs::write(d.join("._game.x86_64"), b"\x00\x05\x16\x07AppleDouble").unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dusklight_never_starts_a_log_that_a_windows_drive_marks_runnable() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dusklight-log");
+        let exe = d.join("Dusklight.app/Contents/MacOS/Dusklight");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").unwrap();
+        let log = d.join("Dusklight.log");
+        std::fs::write(&log, b"Dusklight started\n").unwrap();
+        // exFAT and NTFS drives give every file the run permission.
+        std::fs::set_permissions(&log, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(got, exe);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_runnable_game_pack_never_beats_the_real_program() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("native-pck");
+        let elf = d.join("game-nightly.x86_64");
+        std::fs::write(&elf, b"\x7fELF\x02\x01\x01").unwrap();
+        // A shorter name with fewer words would win, if the run permission alone made a program.
+        let pck = d.join("game.pck");
+        std::fs::write(&pck, b"GDPC\x02\x00\x00\x00").unwrap();
+        std::fs::set_permissions(&pck, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), Some(elf));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_twin_is_an_elf_a_windows_zip_left_without_the_run_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("native-elf-no-x");
+        let elf = d.join("game");
+        std::fs::write(&elf, b"\x7fELF\x02\x01\x01").unwrap();
+        std::fs::set_permissions(&elf, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), Some(elf));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_native_build_ignores_a_leftover_windows_exe() {
         use std::os::unix::fs::PermissionsExt;
         let d = std::env::temp_dir().join(format!("rl-native-start-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        for n in ["parasite-eve-pc.exe", "parasite-eve-pc"] {
+        // Each file starts the way its kind does: a native program is known by its first bytes.
+        for (n, head) in [("parasite-eve-pc.exe", &b"MZ"[..]), ("parasite-eve-pc", &b"\x7fELF\x02\x01\x01"[..])] {
             let p = d.join(n);
-            std::fs::write(&p, b"x").unwrap();
+            std::fs::write(&p, head).unwrap();
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["parasite-eve-pc.exe"]}}"#).unwrap();
