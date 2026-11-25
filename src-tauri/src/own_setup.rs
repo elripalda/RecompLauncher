@@ -1093,7 +1093,8 @@ mod tests {
         assert!(keeps_old_program(true, false, 0));
     }
 
-    /// A program file this system starts: an .exe on Windows, an executable elsewhere.
+    /// A program file this system starts: an .exe on Windows, an executable elsewhere. It opens
+    /// with "#!" because a Mac only takes a Mach-O program or a script for one.
     fn put_program(dir: &Path, stem: &str, bytes: usize) -> PathBuf {
         let ext = match crate::assets::os_now() {
             "windows" => ".exe",
@@ -1103,7 +1104,9 @@ mod tests {
         let rel = PathBuf::from(format!("{stem}{ext}"));
         let p = dir.join(&rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, vec![7u8; bytes]).unwrap();
+        let mut body = b"#!/bin/sh\n".to_vec();
+        body.resize(bytes, b'#');
+        std::fs::write(&p, body).unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
