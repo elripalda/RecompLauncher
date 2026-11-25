@@ -16,6 +16,10 @@
   <a href="README.md">English</a> · <b>Tiếng Việt</b>
 </p>
 
+> [!NOTE]
+> Bản dịch này có thể chưa theo kịp [README tiếng Anh](README.md); README tiếng Anh luôn là bản
+> mới nhất. Bản dịch này khớp với README tiếng Anh tại commit `d5b054d2` (25/11/2026).
+
 ---
 
 RecompLauncher tìm, cài đặt, cập nhật và chơi các bản recomp PC: những phiên bản PC native của
