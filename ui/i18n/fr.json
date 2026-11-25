@@ -638,6 +638,7 @@
  "It's a Windows version and Proton isn't installed": "C'est une version Windows et Proton n'est pas installé",
  "It's a Windows version, run through Proton": "C'est une version Windows, lancée via Proton",
  "It's busy being moved or updated. Try again once that's done.": "Le jeu est en cours de déplacement ou de mise à jour. Réessayez une fois que c'est fini.",
+ "It's being uninstalled right now.": "Le jeu est en cours de désinstallation.",
  "It's by the clock. Right-click its icon to quit.": "Il est près de l'horloge. Faites un clic droit sur son icône pour quitter.",
  "It's checked and set up once. After that, you just press Play.": "Elle est vérifiée et configurée une seule fois. Ensuite, il suffit d'appuyer sur Jouer.",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "Il cherche vos fichiers de jeu dans {folder}, qui n’existe plus. Choisissez le dossier de votre copie du jeu et il démarrera de là la prochaine fois.",

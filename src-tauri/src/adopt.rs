@@ -1006,7 +1006,7 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         return Err(Error::Msg("That project is already in your Library. Its installation won't be replaced.".into()));
     }
     if [old, new.as_str()].iter().any(|id| st.running.lock().unwrap().contains_key(*id)
-        || st.jobs.lock().unwrap().contains_key(*id) || st.moving.lock().unwrap().contains(*id)
+        || st.jobs.lock().unwrap().contains_key(*id) || crate::files_busy(&st, id).is_some()
         || crate::STARTING.lock().unwrap().iter().any(|starting| starting == *id)
         || crate::setup_busy(id) || crate::mods_busy(id)) {
         return Err(Error::Msg("Stop the game and wait for its downloads, setup and file operations before changing its project.".into()));

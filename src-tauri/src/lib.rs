@@ -235,6 +235,9 @@ pub struct App {
     download_slot: Arc<tokio::sync::Semaphore>,
     /// Games being moved to another drive (their folder is briefly in two places).
     moving: Mutex<HashSet<String>>,
+    /// Games whose files are being deleted right now (see `uninstall`). Nothing else may touch
+    /// their folder until that's done: not a sync, a download, a move or a start.
+    uninstalling: Mutex<HashSet<String>>,
     overlay_open: AtomicBool,
     /// Games running with a look on (their screenshots show it).
     looked: Mutex<HashSet<String>>,
@@ -1170,8 +1173,8 @@ fn human(b: u64) -> String {
 
 #[tauri::command]
 async fn install(app: AppHandle, st: State<'_, App>, id: String, dir: Option<String>, tag: Option<String>, file: Option<String>) -> Res<()> {
-    if st.moving.lock().unwrap().contains(&id) {
-        return Err(Error::Msg(MOVING.into()));
+    if let Some(why) = files_busy(&st, &id) {
+        return Err(Error::Msg(why.into()));
     }
     let cancel = Arc::new(AtomicBool::new(false));
     {
@@ -1305,8 +1308,50 @@ fn download_limits(mb: f64, slow_playing: bool) {
     install::set_limits((mb.max(0.0) * 1048576.0) as u64, slow_playing);
 }
 
+/// Holds a game in `App::uninstalling` while `uninstall` runs. Dropped on every way out of it,
+/// an error or a panic included, so the game is never left marked as going.
+struct Uninstalling<'a>(&'a App, String);
+
+impl Drop for Uninstalling<'_> {
+    fn drop(&mut self) {
+        self.0.uninstalling.lock().unwrap().remove(&self.1);
+    }
+}
+
+/// Marks a game as being uninstalled, or None when it already is (a second Uninstall while the
+/// first one still deletes its folder).
+fn start_uninstalling<'a>(st: &'a App, id: &str) -> Option<Uninstalling<'a>> {
+    let fresh = st.uninstalling.lock().unwrap().insert(id.to_string());
+    fresh.then(|| Uninstalling(st, id.to_string()))
+}
+
+/// Whether a game (or the recomp that one game of several belongs to) is being uninstalled.
+pub(crate) fn uninstalling(st: &App, id: &str) -> bool {
+    let recomp = games::split(id).map(|(r, _)| r);
+    let set = st.uninstalling.lock().unwrap();
+    set.contains(id) || recomp.is_some_and(|r| set.contains(r))
+}
+
+/// Why a game's folder can't be used right now: it's being moved to another drive, or being
+/// uninstalled. None when it's free.
+pub(crate) fn files_busy(st: &App, id: &str) -> Option<&'static str> {
+    if st.moving.lock().unwrap().contains(id) {
+        return Some(MOVING);
+    }
+    if uninstalling(st, id) {
+        return Some(UNINSTALLING);
+    }
+    None
+}
+
 #[tauri::command(async)]
 fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
+    uninstall_game(&st, id, delete_files, run_uninstaller, keep_saves)
+}
+
+fn uninstall_game(st: &App, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
+    // Marked first, so a second call (test control, another window) can't start on the same folder.
+    let Some(_uninstalling) = start_uninstalling(st, &id) else { return Err(Error::Msg(UNINSTALLING.into())) };
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
@@ -1361,7 +1406,7 @@ fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller
         // uninstalling leaves and the Saves tab puts back after a reinstall. Asked for unless the
         // player said not to; if it can't be made, the folder stays.
         if ok && keep_saves != Some(false) {
-            match keep_saves_inside(&st, &g) {
+            match keep_saves_inside(st, &g) {
                 Ok(n) => saves_kept = n > 0,
                 Err(e) => {
                     trail::note(format!("Uninstall {id}: its saves couldn't be copied first ({e}), the folder stays"));
@@ -1517,6 +1562,7 @@ fn clear_read_only(dir: &Path) {
 // ---------- libraries, moving, backups ----------
 
 const MOVING: &str = "It's busy being moved or updated. Try again once that's done.";
+const UNINSTALLING: &str = "It's being uninstalled right now.";
 
 #[derive(Serialize)]
 struct LibInfo {
@@ -1588,7 +1634,10 @@ async fn move_game(app: AppHandle, st: State<'_, App>, id: String, to: String, u
     if g.local {
         return Err(Error::Msg("A local build stays in its own folder.".into()));
     }
-    if st.moving.lock().unwrap().contains(&id) || st.jobs.lock().unwrap().contains_key(&id) {
+    if let Some(why) = files_busy(&st, &id) {
+        return Err(Error::Msg(why.into()));
+    }
+    if st.jobs.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg(MOVING.into()));
     }
     if library::shared_folder(&g.path, &st.lib.lock().unwrap().settings.all_libraries()) {
@@ -2091,7 +2140,7 @@ pub(crate) fn merge_mine(st: &App, cat: &Value) -> Vec<(String, String, String)>
         // Not while either one is installing, updating, running, moving, being set up or getting
         // mods, nor while the chosen saves folder can't be reached (its backups would stay behind):
         // it's tried again the next time the list comes in.
-        let busy = [&old, &new].iter().any(|i| st.jobs.lock().unwrap().contains_key(*i) || st.running.lock().unwrap().contains_key(*i) || st.moving.lock().unwrap().contains(*i) || setup_busy(i) || mods_busy(i))
+        let busy = [&old, &new].iter().any(|i| st.jobs.lock().unwrap().contains_key(*i) || st.running.lock().unwrap().contains_key(*i) || files_busy(&st, i).is_some() || setup_busy(i) || mods_busy(i))
             || saves::chosen_root().is_some_and(|p| !p.is_dir());
         let had = {
             let mut l = st.lib.lock().unwrap();
@@ -2943,8 +2992,8 @@ fn start_game_with_monitor_context(
     let full_id = id.to_string();
     let id: &str = pick.as_ref().map(|p| p.recomp.as_str()).unwrap_or(id);
     read_screen(app);
-    if st.moving.lock().unwrap().contains(id) {
-        return Err(Error::Msg(MOVING.into()));
+    if let Some(why) = files_busy(&st, id) {
+        return Err(Error::Msg(why.into()));
     }
     let _starting = {
         let mut s = STARTING.lock().unwrap();
@@ -5867,7 +5916,7 @@ fn system_needs(p: &profile::Profile, g: &Installed) -> Option<(sysneeds::OsNeed
 /// does. Gives back what it freed, in bytes.
 #[tauri::command]
 async fn free_up_space(st: State<'_, App>, id: String) -> Res<u64> {
-    if st.running.lock().unwrap().contains_key(&id) || st.jobs.lock().unwrap().contains_key(&id) || setup_busy(&id) || st.moving.lock().unwrap().contains(&id) {
+    if st.running.lock().unwrap().contains_key(&id) || st.jobs.lock().unwrap().contains_key(&id) || setup_busy(&id) || files_busy(&st, &id).is_some() {
         return Err(Error::Msg("Close the game or stop setup first.".into()));
     }
     let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
@@ -8982,7 +9031,9 @@ fn get_state(st: State<'_, App>) -> Value {
     let steam = shortcuts::steam_dir().is_some();
     let deck = shortcuts::is_steam_deck();
     let pictures = ingame::shots_dir("").parent().map(|p| p.to_string_lossy().to_string());
-    let moving = st.moving.lock().unwrap().clone();
+    // A game whose folder is on its way to another drive, or being deleted, isn't missing.
+    let mut moving = st.moving.lock().unwrap().clone();
+    moving.extend(st.uninstalling.lock().unwrap().iter().cloned());
     // Games whose folder isn't there right now stay in the Library, marked missing. Their folders
     // are looked at without the lock too: one on a drive that's gone can take seconds to answer.
     let folders: Vec<(String, PathBuf)> = st.lib.lock().unwrap().installed.values().filter(|g| g.installer_setup.is_empty() || g.exe.is_some()).map(|g| (g.id.clone(), g.path.clone())).collect();
@@ -10400,6 +10451,7 @@ pub fn run() {
                 started: Mutex::default(),
                 download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
                 moving: Mutex::default(),
+                uninstalling: Mutex::default(),
                 overlay_open: AtomicBool::new(false),
                 looked: Mutex::new(HashSet::new()),
                 headless: AtomicBool::new(play.is_some()),
@@ -11574,10 +11626,71 @@ mod tests {
             started: Mutex::default(),
             download_slot: Arc::new(tokio::sync::Semaphore::new(1)),
             moving: Mutex::default(),
+            uninstalling: Mutex::default(),
             overlay_open: AtomicBool::new(false),
             looked: Mutex::new(HashSet::new()),
             headless: AtomicBool::new(false),
         }
+    }
+
+    // A library with one game, `g`, kept in its own folder (a local build: uninstalling it only
+    // takes it out of the Library, so these tests delete nothing of the player's).
+    fn one_game(name: &str) -> (PathBuf, App) {
+        let d = std::env::temp_dir().join(format!("rl-uninstalling-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("g")).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("g".into(), Installed { id: "g".into(), name: "G".into(), path: d.join("g"), local: true, ..Default::default() });
+        let st = app_in(&d, lib);
+        (d, st)
+    }
+
+    fn refusal(r: Res<Value>) -> String {
+        match r {
+            Err(Error::Msg(m)) => m,
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_second_uninstall_is_refused_while_the_first_one_runs() {
+        let (d, st) = one_game("second");
+        let _first = start_uninstalling(&st, "g").unwrap();
+        assert_eq!(refusal(uninstall_game(&st, "g".into(), true, None, None)), UNINSTALLING);
+        assert!(st.lib.lock().unwrap().installed.contains_key("g"), "the refused one left it alone");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_game_is_free_again_after_an_uninstall() {
+        let (d, st) = one_game("done");
+        uninstall_game(&st, "g".into(), true, None, None).unwrap();
+        assert!(!st.lib.lock().unwrap().installed.contains_key("g"));
+        assert!(st.uninstalling.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_game_is_free_again_after_an_uninstall_that_failed() {
+        let (d, st) = one_game("failed");
+        st.moving.lock().unwrap().insert("g".into());
+        assert_eq!(refusal(uninstall_game(&st, "g".into(), true, None, None)), MOVING);
+        assert!(st.uninstalling.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_game_being_uninstalled_cant_be_started_installed_or_moved() {
+        let (d, st) = one_game("busy");
+        assert_eq!(files_busy(&st, "g"), None);
+        let going = start_uninstalling(&st, "g").unwrap();
+        assert_eq!(files_busy(&st, "g"), Some(UNINSTALLING));
+        // One game of several shares the recomp's folder.
+        assert_eq!(files_busy(&st, "g--first"), Some(UNINSTALLING));
+        assert_eq!(files_busy(&st, "other"), None);
+        drop(going);
+        assert_eq!(files_busy(&st, "g"), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     // A player who deleted their copy after the build is still set up when the step kept what it

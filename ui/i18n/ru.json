@@ -638,6 +638,7 @@
  "It's a Windows version and Proton isn't installed": "Это версия для Windows, а Proton не установлен",
  "It's a Windows version, run through Proton": "Это версия для Windows, запускается через Proton",
  "It's busy being moved or updated. Try again once that's done.": "Игра сейчас переносится или обновляется. Повторите попытку, когда это закончится.",
+ "It's being uninstalled right now.": "Игра сейчас удаляется.",
  "It's by the clock. Right-click its icon to quit.": "Он у часов. Чтобы выйти, нажмите на значок правой кнопкой мыши.",
  "It's checked and set up once. After that, you just press Play.": "Копия проверяется и настраивается один раз. Потом достаточно нажать «Играть».",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "Игра ищет файлы в {folder}, но этой папки больше нет. Выберите папку с вашей копией игры, и в следующий раз она запустится оттуда.",

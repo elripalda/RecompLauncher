@@ -638,6 +638,7 @@
  "It's a Windows version and Proton isn't installed": "เป็นเวอร์ชัน Windows แต่ยังไม่ได้ติดตั้ง Proton",
  "It's a Windows version, run through Proton": "เป็นเวอร์ชัน Windows เล่นผ่าน Proton",
  "It's busy being moved or updated. Try again once that's done.": "เกมกำลังถูกย้ายหรืออัปเดตอยู่ ลองอีกครั้งเมื่อเสร็จแล้ว",
+ "It's being uninstalled right now.": "กำลังถอนการติดตั้งอยู่ในขณะนี้",
  "It's by the clock. Right-click its icon to quit.": "อยู่ข้างนาฬิกา คลิกขวาที่ไอคอนเพื่อออก",
  "It's checked and set up once. After that, you just press Play.": "ตรวจสอบและตั้งค่าเพียงครั้งเดียว หลังจากนั้นแค่กด เล่น",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "เกมกำลังหาไฟล์เกมใน {folder} ซึ่งไม่มีอยู่แล้ว เลือกโฟลเดอร์ที่มีสำเนาเกมของคุณ แล้วครั้งหน้าจะเริ่มจากตรงนั้น",

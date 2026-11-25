@@ -638,6 +638,7 @@
  "It's a Windows version and Proton isn't installed": "إنها نسخة Windows، وProton غير مثبّت",
  "It's a Windows version, run through Proton": "إنها نسخة Windows تعمل عبر Proton",
  "It's busy being moved or updated. Try again once that's done.": "يجري نقلها أو تحديثها الآن. حاول مرة أخرى بعد انتهاء ذلك.",
+ "It's being uninstalled right now.": "يجري إلغاء تثبيتها الآن.",
  "It's by the clock. Right-click its icon to quit.": "إنه بجانب الساعة. انقر بزر الماوس الأيمن على أيقونته للخروج.",
  "It's checked and set up once. After that, you just press Play.": "يتم التحقق منها وإعدادها مرة واحدة. بعد ذلك، ما عليك إلا الضغط على «تشغيل».",
  "It's looking for your game files in {folder}, which isn't there anymore. Pick the folder with your copy of the game and it starts from there next time.": "إنها تبحث عن ملفات اللعبة في {folder}، ولم يعد هذا المجلد موجودًا. اختر المجلد الذي فيه نسختك من اللعبة وستبدأ منه في المرة القادمة.",
