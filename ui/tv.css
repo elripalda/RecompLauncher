@@ -64,7 +64,9 @@ body.tv-on #app{visibility:hidden}
 .tv-kick{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#34F2E8}
 .tv-h1{margin:0;font:800 semi-expanded 84px/1.02 Archivo,sans-serif;letter-spacing:-.03em;white-space:nowrap;overflow:hidden}
 .tv-meta{margin:0;font-size:24px;color:var(--tvsoft,#c9d3e0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tv-acts{display:flex;align-items:center;gap:16px;margin-top:10px}
+/* An installed game can have eight buttons, more than its column holds beside the Ready to Play
+   panel: they go on to a second line rather than run on under the panel, out of sight. */
+.tv-acts{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:10px}
 .tv-btn{height:74px;padding:0 30px 0 22px;border-radius:22px;display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:23px;color:var(--tvink,#F4F8FC);background:rgba(var(--tvrgb),.6);border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.18);white-space:nowrap;flex:none;backdrop-filter:blur(14px)}
 .tv-btn small{font-size:18px;font-weight:600;opacity:.7;margin-left:4px}
 .tv-btn.main{color:var(--tvbg);background:linear-gradient(180deg,#34F2E8,#377BB6);border:0;padding-right:38px;font-size:25px;font-weight:800}

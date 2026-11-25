@@ -27,6 +27,10 @@ test('the quit command is registered with the window', () => {
   assert.match(lib, /tray::quit_launcher/);
 });
 
+test('a game\'s buttons go on to a second line instead of under the panel beside them', () => {
+  assert.match(tvCss, /\.tv-acts\{display:flex;flex-wrap:wrap;/);
+});
+
 // ---------- the controller on a desktop dialog over Big Picture, run for real ----------
 // The desktop's controller handling (window.deskPad, from app.js) and Big Picture's press() with the
 // dialog code before it (from tv.js), run together on a small fake page. press() is cut out of
