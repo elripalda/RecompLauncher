@@ -22,13 +22,13 @@ function ctx(S) {
   const same = (x) => x;
   const c = vm.createContext({
     S: Object.assign({ settings: { ui: {} } }, S),
-    esc: same, t: same, accountId: () => '', byId: (id) => (id === 'game' ? { id } : null), media: same, SITE: 'https://site',
+    esc: same, t: same, curLang: () => (S && S.lang) || 'en', accountId: () => '', byId: (id) => (id === 'game' ? { id } : null), media: same, SITE: 'https://site',
     DISC_L: '[disc]', XMARK: 'x', sponsBand: (slot) => `[spot:${slot}]`,
     httpsOnly: (u) => (/^https:\/\/\S+$/i.test(String(u || '')) ? String(u) : '')
   });
   vm.runInContext(line('const HOME_ROWS') + line('const HOME_GO') + line('const homeClosed') + line('const HOME_ICONS = {').replace('{', '{};'), c);
-  vm.runInContext(line('const homeIcon'), c);
-  vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeBox') + fn('homeBanner'), c);
+  vm.runInContext(line('const homeIcon') + line('const HOME_TR_BASE'), c);
+  vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBoxAct') + fn('homeBox') + fn('homeBanner'), c);
   return c;
 }
 const ROWS = Object.fromEntries(['played', 'favs', 'ready', 'updated', 'follow', 'found', 'trend', 'new', 'easy', 'news'].map((k) => [k, `[${k}]`]));
@@ -88,4 +88,27 @@ test('A banner from the list is drawn with its booking, so its views and clicks 
   const html = page({ v: 1, items: [{ k: 'banner', id: 1, slot: 'app_home', sp: { id: 9, img: '/media/sponsors/a.png', alt: 'Ad', house: false } }], hide: Object.keys(ROWS) });
   assert.match(html, /data-act="sp-go" data-id="9" data-sp="9"/);
   assert.match(html, /src="https:\/\/site\/media\/sponsors\/a.png"/);
+});
+
+test('An info box shows its words in the player\'s language when the website translated them', () => {
+  const box = { k: 'box', id: 4, title: 'New this week', text: 'Three new recomps.', btn: 'See them', act: 'go:discover',
+    tr: { es: { title: 'Nuevo esta semana', text: 'Tres recomps nuevos.', btn: 'Verlos' }, ja: { title: '今週の新作' } } };
+  const home = { v: 1, items: [box], hide: Object.keys(ROWS) };
+  const es = page(home, { lang: 'es' });
+  assert.match(es, /<b dir="auto">Nuevo esta semana<\/b><span dir="auto">Tres recomps nuevos.<\/span>/);
+  assert.match(es, />Verlos<\/button>/);
+  // A regional language uses its base language's words.
+  assert.match(page(home, { lang: 'es-419' }), /Nuevo esta semana/);
+  // Words a language doesn't have stay as typed.
+  assert.match(page(home, { lang: 'ja' }), /<b dir="auto">今週の新作<\/b><span dir="auto">Three new recomps.<\/span>.*>See them<\/button>/);
+  // No translation for the player's language: as typed.
+  assert.match(page(home, { lang: 'th' }), /<b dir="auto">New this week<\/b>/);
+  // Traditional Chinese never falls back to a plain zh entry (Simplified).
+  const zh = { v: 1, items: [Object.assign({}, box, { tr: { zh: { title: '本周新作' } } })], hide: Object.keys(ROWS) };
+  assert.match(page(zh, { lang: 'zh-Hant' }), /<b dir="auto">New this week<\/b>/);
+});
+
+test('An info box from a website without translations shows as typed', () => {
+  const home = { v: 1, items: [{ k: 'box', id: 4, title: 'Hi', tr: null }], hide: Object.keys(ROWS) };
+  assert.match(page(home, { lang: 'de' }), /<b dir="auto">Hi<\/b>/);
 });

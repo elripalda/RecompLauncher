@@ -2215,6 +2215,8 @@ body.playing *,body.playing *::before,body.playing *::after{animation-duration:0
 .cz-fit{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .cz-src{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .cz-src .btn{white-space:normal;height:auto;min-height:42px;padding:8px 10px;line-height:1.2}
+/* With LaunchBox too: four sources in two rows. */
+.cz-src.four{grid-template-columns:repeat(2,minmax(0,1fr))}
 .cz-right h4{margin:2px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .cz-prev{display:flex;flex-direction:column;gap:12px}
 .cz-tip{margin:12px 0 0;font-size:13px}
@@ -2245,6 +2247,7 @@ span.pv-logo{display:none}
 .ap-grid.icon .ap-it img,.ap-grid.logo .ap-it img{object-fit:contain;padding:8px;background:repeating-conic-gradient(#232a36 0 25%,#1b212c 0 50%) 0 0/16px 16px}
 .cz-key{max-width:560px}
 .cz-keyrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0}
+.cz-lbpath{margin:12px 0}
 @media (max-width:860px){.cz-art{grid-template-columns:1fr}.cz-stage{height:300px}}
 
 /* After a game's own setup: which program starts it */
@@ -2315,8 +2318,13 @@ body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .tag.deck{color:#1a9fff;background:rgba(26,159,255,.1);border-color:rgba(26,159,255,.42)}
 .toggle.deck-t svg{color:#1a9fff}
 .badge.soon svg{margin-right:-1px}
-.btn.notify-on{background:transparent;color:var(--cyan);border:1.5px solid rgba(52,242,232,.6)}
-.btn.notify-on svg{color:var(--cyan)}
+/* A saved Coming Soon game's Save: outlined, filled heart, a soft glow (filled cyan until it's saved). */
+.btn.save-on{background:rgba(52,242,232,.08);color:var(--cyan);border:1.5px solid rgba(52,242,232,.6);box-shadow:0 0 24px -8px rgba(52,242,232,.55)}
+.btn.save-on svg{color:var(--cyan)}
+.gp-soon-note{margin:0;max-width:420px;text-align:right;font-size:13px;color:var(--muted)}
+/* How many want it, after Notify Me or Add to Library on a game's page: "Notify Me · 3,412". */
+.btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.btn .want::before{content:'·';margin-right:9px}
 .tnotes{display:flex;flex-direction:column;gap:10px;margin:0 0 22px}
 .tnote{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--cyan)}
 .tnote.gold{border-left-color:#f5c518}.tnote.violet{border-left-color:#a98bff}
@@ -2352,6 +2360,7 @@ body.light .tag.deck{color:#0b6fbf}
 /* Customize, Info: the player's own words about the game. */
 .cz-desc{width:100%;min-height:110px;resize:vertical;line-height:1.5;font:inherit;padding:10px 12px}
 .cz-name .cz-lab+.cz-desc{margin-top:6px}
+.cz-from{margin-top:8px}
 .own-about .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .own-about p{white-space:pre-line}
 /* Discover's pinned search and filters: slides in under the window's top once the page's own scroll away. */

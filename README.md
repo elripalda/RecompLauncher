@@ -22,7 +22,8 @@ the launcher sets it up.
 
 - **Catalog:** every recomp on recomplauncher.com, with screenshots, what it needs and how it
   runs for other players.
-- **Coming Soon:** the recomps on the way, with Notify Me for an email when each comes out, and
+- **Coming Soon:** the recomps on the way. Save one and the launcher tells you when it comes out
+  (by email too when you're signed in), and
   Request a Recomp to ask for a project on GitHub or GitLab.
 - **Install and update in one click,** straight from the developer's own GitHub release. Every
   download is checked against GitHub's checksum.

@@ -196,6 +196,22 @@ Everything the launcher asks this server goes to one address, `API_BASE` in `src
 - `api/gh.php?repo=`: kept on disk for 6 hours per repo. Asked for when the player opens a game's
   page, installs or updates, and on start for installed games whose copy is older than 6 hours.
 - `api/pc.php?a=counts` and `a=feedback`: only when a page that shows them opens, kept for 1 hour.
+- `api/pc.php?a=interest&id=`: `{n}`, how many saved the recomp or wait for its email (each account
+  once), the number on its website page's Save button. Asked when its game page opens, kept for 10
+  minutes (`cache/interest/`). The game page shows it on Save (Coming Soon games) and Add to
+  Library, in Big Picture too, from 10 (`wantCount` in app.js). A site without it answers 400, and
+  nothing shows.
+
+### Save on Coming Soon games
+
+A Coming Soon game has one button, Save, where Notify Me was. Save is Add to Library: the game waits
+under Not Installed and, signed in, goes to the account with the rest of the saved list
+(`api/launcher.php?a=library-save`). The website treats saving a Coming Soon recomp as signing up for
+its "it's out" email, so signed-in players get that too; the launcher no longer asks `api/pc.php`
+`a=notify` or `a=notifies` (the site still answers them, for older launchers, by saving or unsaving
+the game). When a catalog no longer has a saved game as Coming Soon, the launcher shows a
+notification that it's out (`saved_out_now` in `note_new_apps`, lib.rs; the last catalog's
+Coming Soon ids are kept as `seen_soon` in the library file). It follows the Notifications setting.
 - `launcher/version.json`: on start (an answer from the last hour is reused), then about every
   6 hours, or after a `launcher` push.
 - `api/launcher-ping.php`: on open, then every 30 minutes at the most often. A `next` (seconds) in
@@ -238,4 +254,8 @@ how the separately hosted catalog service collects its metadata.
 `{"v": 1, "items": [...], "hide": [row ids]}`. Items: `{"k": "row", "id"}` (one of Home's own rows: `played`, `favs`, `ready`, `updated`, `follow`, `found`, `trend`, `new`, `easy`, `news`), `{"k": "box", "id", "title", "text", "icon", "btn", "act", "arg", "when", "close"}` (an info box; `act` is `link`, `game`, `rom-add` or `go:discover|soon|library|settings`; `when` is ``, `no_folders`, `signed_out` or `signed_in`), `{"k": "banner", "id", "slot", "sp": {"id", "img", "alt", "house"}}` (counted like the sponsor spots above).
 
 The launcher (`homePlan` in app.js) skips kinds and rows it doesn't know, puts back a row the list doesn't name after the row it usually follows, and keeps its built-in order (with the `a=spons` banner) when there's no list or its `v` isn't 1. A closed box is remembered in settings (`ui.home_closed`).
+
+A box can also have `"tr": {LANG: {"title", "text", "btn"}}`: its words in each language the website translated them into when the admin saved (any of them can be missing). `homeWord` in app.js shows the player's language, then its base language for the four regional ones (`es` for `es-419`; `zh-Hant` never falls back to `zh`), else the words as typed. The answer holds every language, so the copy in `cache/home.json` follows a language change offline too.
+
+Big Picture's Home (`tvHomeRows` in tv.js) follows the same list under its row of your games. It has its own rows, matched by the same ids (`played` is Continue playing, shown when that row holds your pinned games; `found`, `ready`, `easy`, `news`, `updated`, `new`, `trend`); `favs` and `follow` aren't in Big Picture, so their place is skipped. Info boxes (in the player's language, `homeWord`) and banners are as wide as a row and picked with the controller (a box's button does what it does on the desktop, `homeBoxAct`); a box with nothing to press shows with the row under it. Without the list it keeps its own order, with no banner.
 
