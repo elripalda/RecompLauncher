@@ -2137,23 +2137,7 @@ function showSlide(i) {
 // (another app on top, the launcher behind a game) leaves it still, so an idle launcher draws no
 // frames. Minimized/hidden is already handled by S.away and document.hidden.
 const windowInFront = () => !document.hidden && document.hasFocus();
-// While nothing moves (app.css pauses every animation), one that would end is put at its end: a
-// page drawn now (a download finishing, Home's list coming in) would otherwise stay on its first
-// frame, invisible, until the window is clicked. Looping ones (spinners, the hero) stay paused.
-const stillNow = () => document.body.classList.contains('unfocused') || document.body.classList.contains('away');
-function settleAnims() {
-  if (!stillNow() || !document.getAnimations) return;
-  for (const a of document.getAnimations()) {
-    const end = a.effect && a.effect.getComputedTiming().endTime;
-    if (Number.isFinite(end) && a.playState !== 'finished') try { a.finish(); } catch (e) { /* can't finish: leave it */ }
-  }
-}
-let settleSoon = 0;
-const settleWatch = new MutationObserver(() => { if (!settleSoon) settleSoon = setTimeout(() => { settleSoon = 0; settleAnims(); }, 0); });
-function markStill() {
-  if (stillNow()) { settleWatch.observe(document.body, { childList: true, subtree: true }); settleAnims(); } else settleWatch.disconnect();
-}
-const markWindowFocus = () => { document.body.classList.toggle('unfocused', !windowInFront()); markStill(); };
+const markWindowFocus = () => document.body.classList.toggle('unfocused', !windowInFront());
 addEventListener('focus', markWindowFocus);
 addEventListener('blur', markWindowFocus);
 document.addEventListener('visibilitychange', markWindowFocus);
@@ -3015,16 +2999,9 @@ function runsLine(rep) {
   const sc = scoreOf(rep.counts, rep.latest), p = sc.r.pct('runs'), sub = scoreSub(sc);
   return `<div class="rv-line"><b class="runs-pct ${scoreTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><div class="rv-what"><span>${esc(scoreOfWhat(sc))}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>${runBar(sc.r)}</div>`;
 }
-// The score for All Reviews' chip: this version's reviews, or every version's. Without the chip's
-// say, the numbers and rows were this version's while All Versions was picked.
-function scoreFor(sc, only) {
-  const mine = sc.cur ? sc.r : sc.l;
-  if (only && mine) return { r: mine, cur: true, v: sc.v, all: sc.all };
-  return { r: sc.all, cur: false, v: sc.v, l: mine, all: sc.all };
-}
 // In All Reviews: the score big, in its color, with the rows beside it, and how many played through Proton.
-function runsSummary(rep, pickV, only) {
-  const sc = scoreFor(scoreOf(rep.counts, rep.latest), only), r = sc.r, sub = scoreSub(sc);
+function runsSummary(rep, pickV) {
+  const sc = scoreOf(rep.counts, rep.latest), r = sc.r, sub = scoreSub(sc);
   // Reviews from Linux or a Steam Deck on a Windows build: played through Proton.
   const pxc = rep.proton_counts || (rep.items || []).filter(viaPx).reduce((c, x) => Object.assign(c, { [x.verdict]: (c[x.verdict] || 0) + 1 }), {});
   const px = runTally(pxc);
@@ -3066,8 +3043,7 @@ function reviewsModal(id, verdict) {
   // A review is about the project, so the window has its name, not the game's (Show Game Names).
   const name = (a._name !== undefined ? a._name : a.name) || id;
   const sc = scoreOf(rep.counts, rep.latest), all = sc.all, items = rep.items;
-  // It opens on the reviews the game page's score is from: this version's, once it has enough.
-  let pickV = verdict || '', only = sc.cur;
+  let pickV = verdict || '', only = false;
   const list = () => {
     const shown = items.filter((x) => (!only || verNorm(x.version) === verNorm(sc.v)) && (!pickV || x.verdict === pickV));
     if (shown.length) return shown.map(repItem).join('');
@@ -3077,14 +3053,15 @@ function reviewsModal(id, verdict) {
   const site = SITE + '/game/' + encodeURIComponent(id);
   const restNote = all.n > items.length ? `<p class="rva-rest">${esc(tf('The newest {n} are here. The rest are on recomplauncher.com.', { n: fmtNum(items.length) }))}</p>` : '';
   const html = `<div class="rva-h"><div><small>${esc(tn(all.n, '1 review', '{n} reviews'))}</small><h2>${esc(name)}</h2></div><button type="button" class="rva-x" data-x="no" aria-label="${esc(t('Close'))}">${XMARK}</button></div>
-    <div class="rva-top">${runsSummary(rep, pickV, only)}<div class="rva-chips">${chips()}</div></div>
+    <div class="rva-top">${runsSummary(rep, pickV)}<div class="rva-chips">${chips()}</div></div>
     <div class="rva-list reps">${list()}</div>
     <div class="rva-foot">${restNote}<button type="button" class="btn" data-url="${esc(site)}">${esc(t('On recomplauncher.com'))}</button></div>`;
   const s = modal(html, (x) => {
     if (x.dataset.x === 'v') pickV = pickV === x.dataset.v ? '' : x.dataset.v;
     else if (x.dataset.x === 'only') only = !!x.dataset.on;
     else return;
-    $('.rva-top', s).innerHTML = `${runsSummary(rep, pickV, only)}<div class="rva-chips">${chips()}</div>`;
+    $('.rv-dist', s).outerHTML = runRows(sc.r, pickV);
+    $('.rva-chips', s).innerHTML = chips();
     const box = $('.rva-list', s);
     box.innerHTML = list();
     box.scrollTop = 0;
@@ -10697,7 +10674,7 @@ T.event.listen('tray', ({ payload: p }) => {
   go(view);
 });
 // Out of sight (minimized, or closed to the clock): animations and timers rest until it's back.
-T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.classList.toggle('away', S.away); markStill(); });
+T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.classList.toggle('away', S.away); });
 T.event.listen('new-recomp', () => loadOwned().then(() => render(true)));
 T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetLooks(p.id); if (S.view === 'game' && S.arg === p.id) loadShots(p.id); });
 

@@ -221,7 +221,7 @@ async fn call(ctx: &Ctx, id: &Value, params: &Value) -> Value {
         "screenshot" => {
             let screen = args.get("screen").and_then(Value::as_bool).unwrap_or(false);
             let width = num(&args, "max_width", 1280, 200, 3840) as u32;
-            return rpc_ok(id, screenshot(app, screen, width));
+            return rpc_ok(id, screenshot(screen, width));
         }
         _ => return rpc_err(id, -32602, &format!("Unknown tool: {name}")),
     };
@@ -356,60 +356,34 @@ fn png(img: image::RgbaImage, max_width: u32) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(windows)]
-fn capture(app: &tauri::AppHandle, screen: bool, max_width: u32) -> Result<Vec<u8>, String> {
-    use xcap::Monitor;
+fn capture(screen: bool, max_width: u32) -> Result<Vec<u8>, String> {
+    use xcap::{Monitor, Window};
     let fail = |e: xcap::XCapError| format!("Couldn't take the screenshot: {e}");
     if screen {
         let monitors = Monitor::all().map_err(fail)?;
         let main = monitors.into_iter().find(|m| m.is_primary().unwrap_or(false)).ok_or("No screen to capture.")?;
         return png(main.capture_image().map_err(fail)?, max_width);
     }
-    // xcap's window list leaves out the windows of the process asking (reading their titles from
-    // their own process can hang), so the launcher's window is never in it. Its part of the screen
-    // is taken instead, from where the window says it is.
-    let Some(w) = app.get_webview_window("main") else {
-        return Err("The launcher's window isn't there.".into());
-    };
-    let shown = w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(true);
-    if !shown {
+    let ours = std::process::id();
+    let windows = Window::all().map_err(fail)?;
+    let mine: Vec<&Window> = windows.iter().filter(|w| w.pid().ok() == Some(ours) && !w.is_minimized().unwrap_or(true)).collect();
+    // The main window is the one called RecompLauncher; the quick menu and messages have their own.
+    let area = |w: &&Window| w.width().unwrap_or(0) as u64 * w.height().unwrap_or(0) as u64;
+    let named = mine.iter().copied().filter(|w| w.title().map(|t| t == "RecompLauncher").unwrap_or(false)).max_by_key(area);
+    let Some(w) = named.or_else(|| mine.iter().copied().max_by_key(area)) else {
         return Err("The launcher's window is minimized or hidden: show it first (launcher_window).".into());
-    }
-    let pos = w.inner_position().map_err(|e| e.to_string())?;
-    let size = w.inner_size().map_err(|e| e.to_string())?;
-    let (wx, wy, ww, wh) = (pos.x, pos.y, size.width as i32, size.height as i32);
-    let m = Monitor::from_point(wx + ww / 2, wy + wh / 2).map_err(fail)?;
-    let (mx, my) = (m.x().map_err(fail)?, m.y().map_err(fail)?);
-    let (mw, mh) = (m.width().map_err(fail)? as i32, m.height().map_err(fail)? as i32);
-    let Some((x, y, cw, ch)) = clip((wx, wy, ww, wh), (mx, my, mw, mh)) else {
-        return Err("The launcher's window is off the screen.".into());
     };
-    png(m.capture_region(x, y, cw, ch).map_err(fail)?, max_width)
-}
-
-/// The part of a window (x, y, width, height on the desktop) on its screen, in that screen's own
-/// coordinates. None when none of it is on the screen.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn clip(win: (i32, i32, i32, i32), screen: (i32, i32, i32, i32)) -> Option<(u32, u32, u32, u32)> {
-    let (wx, wy, ww, wh) = win;
-    let (sx, sy, sw, sh) = screen;
-    let left = wx.max(sx);
-    let top = wy.max(sy);
-    let right = (wx + ww).min(sx + sw);
-    let bottom = (wy + wh).min(sy + sh);
-    if right <= left || bottom <= top {
-        return None;
-    }
-    Some(((left - sx) as u32, (top - sy) as u32, (right - left) as u32, (bottom - top) as u32))
+    png(w.capture_image().map_err(fail)?, max_width)
 }
 
 #[cfg(not(windows))]
-fn capture(_app: &tauri::AppHandle, _screen: bool, _max_width: u32) -> Result<Vec<u8>, String> {
+fn capture(_screen: bool, _max_width: u32) -> Result<Vec<u8>, String> {
     Err("Screenshots work on Windows only for now. On Linux or a Mac, use the system's own screenshot tool, or ui_snapshot to read the window.".into())
 }
 
-fn screenshot(app: &tauri::AppHandle, screen: bool, max_width: u32) -> Value {
+fn screenshot(screen: bool, max_width: u32) -> Value {
     use base64::Engine;
-    match capture(app, screen, max_width) {
+    match capture(screen, max_width) {
         Ok(bytes) => json!({"content": [{"type": "image", "data": base64::engine::general_purpose::STANDARD.encode(bytes), "mimeType": "image/png"}], "isError": false}),
         Err(e) => error_result(&e),
     }
@@ -448,26 +422,6 @@ mod tests {
         let bytes = png(img, 1000).unwrap();
         let back = image::load_from_memory(&bytes).unwrap();
         assert_eq!((back.width(), back.height()), (1000, 500));
-    }
-
-    #[test]
-    fn a_window_inside_its_screen_is_taken_whole() {
-        assert_eq!(clip((100, 50, 800, 600), (0, 0, 1920, 1080)), Some((100, 50, 800, 600)));
-    }
-
-    #[test]
-    fn a_window_on_a_second_screen_is_in_that_screens_coordinates() {
-        assert_eq!(clip((2000, 100, 800, 600), (1920, 0, 2560, 1440)), Some((80, 100, 800, 600)));
-    }
-
-    #[test]
-    fn a_window_partly_off_its_screen_is_cut_to_it() {
-        assert_eq!(clip((-50, -20, 800, 600), (0, 0, 1920, 1080)), Some((0, 0, 750, 580)));
-    }
-
-    #[test]
-    fn a_window_off_the_screen_gives_nothing() {
-        assert_eq!(clip((3000, 0, 800, 600), (0, 0, 1920, 1080)), None);
     }
 
     #[test]
