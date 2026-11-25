@@ -3731,7 +3731,7 @@ static SETUP_STATUS: Mutex<Option<HashMap<String, SetupEv>>> = Mutex::new(None);
 /// A setup is going for `id`. For a recomp's id that counts a run kept under one of its games'
 /// ids too: every game of a recomp is set up in the same install, so two at once would each write
 /// the record back and the last one would drop the other's picks.
-fn setup_busy(id: &str) -> bool {
+pub(crate) fn setup_busy(id: &str) -> bool {
     let busy = |run: &str| run == id || games::split(run).is_some_and(|(recomp, _)| recomp == id);
     let running = SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.keys().any(|k| busy(k)));
     running || INPUT_WORKERS.lock().unwrap().iter().any(|x| busy(x))
@@ -7797,29 +7797,40 @@ fn leftover_helper(name: &str) -> bool {
 
 /// A program from this folder (or deeper) is running, other than RecompLauncher itself. Only for a
 /// game's own folder: a drive or a folder near the top is too broad to tell anything.
-fn still_running_in(dir: &Path) -> bool {
+pub(crate) fn still_running_in(dir: &Path) -> bool {
+    program_running_in(dir).is_some()
+}
+
+/// The file name of a program running from this folder (or deeper), as `still_running_in` finds
+/// it: so a message can say what to close, when it isn't the game itself (a mod tool, say).
+pub(crate) fn program_running_in(dir: &Path) -> Option<String> {
     if dir.components().count() < 3 {
-        return false;
+        return None;
     }
     let me = std::process::id();
     #[cfg(windows)]
     {
         let d = dir.to_string_lossy().trim_end_matches('\\').to_lowercase() + "\\";
-        return win::processes().into_iter().any(|(pid, name)| pid != me && pid != 0 && !leftover_helper(&name) && win::process_file(pid).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false));
+        let inside = |pid: u32| win::process_file(pid).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false);
+        return win::processes().into_iter().find(|(pid, name)| *pid != me && *pid != 0 && !leftover_helper(name) && inside(*pid)).map(|(_, name)| name);
     }
     #[cfg(target_os = "linux")]
     {
-        let Ok(rd) = std::fs::read_dir("/proc") else { return false };
-        return rd
-            .flatten()
-            .filter_map(|e| e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()))
-            .filter(|&p| p != me)
-            .any(|p| std::fs::read_link(format!("/proc/{p}/exe")).map(|f| f.starts_with(dir) && !leftover_helper(&f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())).unwrap_or(false));
+        let rd = std::fs::read_dir("/proc").ok()?;
+        let pids = rd.flatten().filter_map(|e| e.file_name().to_str().and_then(|n| n.parse::<u32>().ok())).filter(|&p| p != me);
+        for p in pids {
+            let Ok(exe) = std::fs::read_link(format!("/proc/{p}/exe")) else { continue };
+            let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if exe.starts_with(dir) && !leftover_helper(&name) {
+                return Some(name);
+            }
+        }
+        return None;
     }
     #[allow(unreachable_code)]
     {
         let _ = me;
-        false
+        None
     }
 }
 
