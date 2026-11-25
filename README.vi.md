@@ -26,8 +26,9 @@ riêng mình và launcher sẽ lo phần cài đặt.
 
 - **Catalog:** mọi bản recomp trên recomplauncher.com, kèm ảnh chụp màn hình, những thứ nó cần
   và cách nó chạy trên máy của những người chơi khác.
-- **Coming Soon:** các bản recomp sắp ra mắt, với Notify Me để nhận email khi mỗi bản phát hành,
-  và Request a Recomp để đề xuất một dự án trên GitHub hoặc GitLab.
+- **Coming Soon:** các bản recomp sắp ra mắt. Lưu một bản và launcher sẽ báo cho bạn khi nó phát
+  hành (cả qua email khi bạn đã đăng nhập), và Request a Recomp để đề xuất một dự án trên GitHub
+  hoặc GitLab.
 - **Cài đặt và cập nhật chỉ với một cú nhấp,** lấy thẳng từ bản phát hành GitHub của chính nhà
   phát triển. Mọi lượt tải xuống đều được kiểm tra đối chiếu với checksum của GitHub.
 - **Easy Setup:** chỉ cần trỏ nó tới ảnh đĩa hoặc thư mục game của bạn và nó sẽ làm phần còn
