@@ -2137,7 +2137,23 @@ function showSlide(i) {
 // (another app on top, the launcher behind a game) leaves it still, so an idle launcher draws no
 // frames. Minimized/hidden is already handled by S.away and document.hidden.
 const windowInFront = () => !document.hidden && document.hasFocus();
-const markWindowFocus = () => document.body.classList.toggle('unfocused', !windowInFront());
+// While nothing moves (app.css pauses every animation), one that would end is put at its end: a
+// page drawn now (a download finishing, Home's list coming in) would otherwise stay on its first
+// frame, invisible, until the window is clicked. Looping ones (spinners, the hero) stay paused.
+const stillNow = () => document.body.classList.contains('unfocused') || document.body.classList.contains('away');
+function settleAnims() {
+  if (!stillNow() || !document.getAnimations) return;
+  for (const a of document.getAnimations()) {
+    const end = a.effect && a.effect.getComputedTiming().endTime;
+    if (Number.isFinite(end) && a.playState !== 'finished') try { a.finish(); } catch (e) { /* can't finish: leave it */ }
+  }
+}
+let settleSoon = 0;
+const settleWatch = new MutationObserver(() => { if (!settleSoon) settleSoon = setTimeout(() => { settleSoon = 0; settleAnims(); }, 0); });
+function markStill() {
+  if (stillNow()) { settleWatch.observe(document.body, { childList: true, subtree: true }); settleAnims(); } else settleWatch.disconnect();
+}
+const markWindowFocus = () => { document.body.classList.toggle('unfocused', !windowInFront()); markStill(); };
 addEventListener('focus', markWindowFocus);
 addEventListener('blur', markWindowFocus);
 document.addEventListener('visibilitychange', markWindowFocus);
@@ -10674,7 +10690,7 @@ T.event.listen('tray', ({ payload: p }) => {
   go(view);
 });
 // Out of sight (minimized, or closed to the clock): animations and timers rest until it's back.
-T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.classList.toggle('away', S.away); });
+T.event.listen('away', ({ payload: away }) => { S.away = !!away; document.body.classList.toggle('away', S.away); markStill(); });
 T.event.listen('new-recomp', () => loadOwned().then(() => render(true)));
 T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetLooks(p.id); if (S.view === 'game' && S.arg === p.id) loadShots(p.id); });
 
