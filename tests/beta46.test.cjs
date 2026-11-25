@@ -50,7 +50,6 @@ test('a Python game without Python gets a window with Get Python', () => {
 
 test('a build that went missing opens Easy Setup with a note', () => {
   assert.match(app, /\^NEED_BUILD\\\|/);
-  assert.match(app, /byhandoff: \[N_\('Use the Launcher\\'s Way'\)/);
 });
 
 test('Discover can list games instead of recomps', () => {

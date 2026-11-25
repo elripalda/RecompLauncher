@@ -69,7 +69,7 @@ fn age_of(p: &Path) -> Option<u64> {
     Some(SystemTime::now().duration_since(m).unwrap_or_default().as_secs())
 }
 
-fn save(p: &Path, v: &Value) {
+pub(crate) fn save(p: &Path, v: &Value) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -79,7 +79,7 @@ fn save(p: &Path, v: &Value) {
     }
 }
 
-fn load(p: &Path) -> Option<Value> {
+pub(crate) fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
@@ -622,6 +622,32 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     }
     let fresh = if force { 0 } else { COUNTS_FRESH };
     cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
+}
+
+/// How many people want a recomp: everyone who saved it (Add to Library, signed in) or is waiting for
+/// its Notify Me email, each account once. The website's own number for the Save button on its page,
+/// shown on the launcher's game page beside Notify Me and Add to Library. Kept 10 minutes: the site
+/// keeps it 2 (5 at Cloudflare), and a count this size doesn't need to be newer.
+pub async fn interest(http: &reqwest::Client, dir: &Path, id: &str) -> Result<Fetched, Error> {
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = format!("{}/api/pc.php?a=interest&id={id}", base());
+    cached(http, &url, dir.join("cache/interest").join(format!("{id}.json")), INTEREST_FRESH, crate::net::QUICK, true, interest_ok).await
+}
+
+/// How long one recomp's count of who wants it is kept before it's asked for again (seconds).
+pub const INTEREST_FRESH: u64 = 600;
+
+/// An answer that carries the count, a whole number. Anything else isn't kept, so a bad answer never
+/// replaces a good one on disk. (A website from before the count answers 400, Unknown request.)
+fn interest_ok(v: &Value) -> bool {
+    v.get("n").map(Value::is_u64).unwrap_or(false)
+}
+
+/// The count in an answer `interest_ok` took (0 for anything else).
+pub fn interest_n(v: &Value) -> u64 {
+    v.get("n").and_then(Value::as_u64).unwrap_or(0)
 }
 
 /// How a release's files were checked before the store offered them (ClamAV on the website's server,
@@ -1198,7 +1224,14 @@ async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
     if !r.status().is_success() {
         return None;
     }
-    let v: Value = r.json().await.ok()?;
+    let bytes = r.bytes().await.ok()?;
+    repo_profile_reply(&bytes)
+}
+
+/// What a project's recomplauncher.json from its repo gives: the file, or "none" when it isn't one
+/// the launcher reads. A body that isn't JSON at all is a failed answer, asked again later.
+fn repo_profile_reply(bytes: &[u8]) -> Option<Value> {
+    let v = crate::profile::parse_json_bytes(bytes)?;
     Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
 }
 
@@ -1261,7 +1294,8 @@ pub fn latest(rels: &[Release]) -> Option<&Release> {
 /// pre-release, the newest of all. Never one older than what they have (a beta of the next
 /// version is newer than the last stable one).
 pub fn latest_for<'a>(rels: &'a [Release], installed: &str) -> Option<&'a Release> {
-    let cur = rels.iter().find(|r| r.tag_name == installed);
+    // An imported game's tag can lack the release's "v": it's still the release it's on.
+    let cur = rels.iter().find(|r| crate::same_tag(&r.tag_name, installed));
     let pick = if cur.map(|r| r.prerelease).unwrap_or(false) { rels.iter().find(|r| !r.draft) } else { latest(rels) }?;
     if let (Some(c), Some(new), Some(old)) = (cur, pick.published_at.as_deref(), cur.and_then(|r| r.published_at.as_deref())) {
         if new < old {
@@ -1276,8 +1310,35 @@ pub fn app<'a>(cat: &'a Value, id: &str) -> Option<&'a Value> {
     cat.get("apps")?.as_array()?.iter().find(|a| a.get("id").and_then(Value::as_str) == Some(id))
 }
 
+/// The picture of a kind (cover, hero, logo, icon) a recomp shows from its catalog entry, the same
+/// pick as ui/app.js pickArt: the project's own (project_<kind>, the look its developer gave it on
+/// their website page) first, else the game's. `game_only` (Show Game Names): the game's only, to
+/// match the names. A picture at the same address as developer_avatar is left out: a safety net
+/// only, the catalog itself takes old avatar icons out.
+pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
+    let field = |k: &str| -> &'a str { entry.get(k).and_then(Value::as_str).unwrap_or("") };
+    let avatar = field("developer_avatar");
+    let not_avatar = |u: &'a str| if u == avatar { "" } else { u };
+    let game = not_avatar(field(kind));
+    if game_only {
+        return game;
+    }
+    let project = not_avatar(field(&format!("project_{kind}")));
+    if project.is_empty() {
+        game
+    } else {
+        project
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_repo_profile_saved_with_a_byte_order_mark_is_read() {
+        let v = super::repo_profile_reply(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
     #[test]
     fn a_backup_release_keeps_only_checked_files_for_this_pc() {
         let sha = "a".repeat(64);
@@ -1310,6 +1371,22 @@ mod tests {
         assert_eq!(super::trend_fresh(None, "2026-11-14"), 0);
         assert!(super::trend_ok(&chart));
         assert!(!super::trend_ok(&serde_json::json!({ "ok": false, "entries": [] })));
+    }
+
+    #[test]
+    fn interest_answer_is_a_whole_number() {
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 3412 })));
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 0 })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": false, "error": "Unknown request." })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": "12" })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": -3 })));
+    }
+
+    #[test]
+    fn interest_count_is_zero_without_one() {
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true, "n": 3412 })), 3412);
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true })), 0);
+        assert_eq!(super::interest_n(&serde_json::Value::Null), 0);
     }
 
     #[test]
@@ -1434,6 +1511,33 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_recomp_shows_its_project_art_first() {
+        let a = serde_json::json!({ "icon": "/game.png", "project_icon": "/project.png" });
+        assert_eq!(art_url(&a, "icon", false), "/project.png");
+    }
+
+    #[test]
+    fn missing_project_art_falls_back_to_the_games() {
+        let a = serde_json::json!({ "cover": "/game.jpg", "project_cover": "", "hero": "/hero.jpg" });
+        assert_eq!(art_url(&a, "cover", false), "/game.jpg");
+        assert_eq!(art_url(&a, "hero", false), "/hero.jpg");
+        assert_eq!(art_url(&a, "logo", false), "");
+    }
+
+    #[test]
+    fn show_game_names_shows_the_games_art_only() {
+        let a = serde_json::json!({ "cover": "/game.jpg", "project_cover": "/project.jpg" });
+        assert_eq!(art_url(&a, "cover", true), "/game.jpg");
+    }
+
+    #[test]
+    fn the_developers_picture_is_never_a_recomps_icon() {
+        let a = serde_json::json!({ "icon": "https://avatars.example/dev.png", "project_icon": "https://avatars.example/dev.png", "developer_avatar": "https://avatars.example/dev.png" });
+        assert_eq!(art_url(&a, "icon", false), "");
+        assert_eq!(art_url(&a, "icon", true), "");
+    }
 
     #[test]
     fn a_forgejo_entry_gets_its_repo_the_launchers_way() {
@@ -1782,19 +1886,6 @@ mod tests {
         assert_eq!(latest(&[r("v2", true, false)]).unwrap().tag_name, "v2");
         assert!(latest(&[r("v2", false, true)]).is_none());
     }
-}
-
-/// A recomp that needs things on the PC before it plays (Python, build tools, a long first build),
-/// going by the copy of the list on disk: true until the player has said it's set up.
-pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
-    let done = ui.get("setup_ok").and_then(|o| o.get(id)).and_then(Value::as_bool).unwrap_or(false);
-    if done {
-        return false;
-    }
-    load(&list_file(dir))
-        .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
-        .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

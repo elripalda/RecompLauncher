@@ -1,5 +1,5 @@
-// Finishing an update that needs a new build: the game's update changed how it's built (a new
-// prepare.version, the setup status's `changed`), so it's built again before it plays. Play stays
+// Finishing an update that needs a new build: a game set up on an older release builds again (the
+// setup status's `changed`), so it's built again before it plays. Play stays
 // Play: its first press opens this small window instead of Easy Setup, which is for setting a game
 // up, not for updating one that's set up. It runs the same setup as Easy Setup (suBegin and the
 // `setup` events in app.js) and only draws it smaller: the build, then the game starts.
@@ -34,7 +34,7 @@ function updRun(a, su) {
   const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Building the game'), setup: t('Setting it up') };
   const sub = {
     read: st.read && st.read.text ? st.read.text : baseName(SU.path),
-    verify: st.verify && st.verify.total ? tf('{done} of {total}', { done: fmtB(st.verify.done), total: fmtB(st.verify.total) }) : (st.verify && st.verify.text) || '',
+    verify: verifyLine(st.verify, ''),
     // The builder's own line (Compiling, 112 of 611 files changed): what it's doing right now.
     extras: (st.extras && st.extras.text) || '',
     setup: (st.setup && st.setup.text) || '',
@@ -45,7 +45,7 @@ function updRun(a, su) {
   for (const k of order) {
     total += weight[k];
     const s = st[k], i = order.indexOf(k);
-    have += i < cur || (s && s.done) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0;
+    have += i < cur || (s && s.over) ? weight[k] : i === cur ? weight[k] * Math.min(1, (s && s.pct) || 0) : 0;
   }
   const pc = Math.round((have / total) * 100);
   const rows = order.map((k, i) => {
@@ -62,9 +62,8 @@ function updDraw() {
   const a = byId(id) || { name: (S.library[id] || {}).name || id };
   const g = S.library[id] || {};
   const su = S.setup[id] || {};
-  // Built: the game starts, as Play asked. Its update still to pick (rare) goes to Easy Setup.
+  // Built: the game starts, as Play asked.
   if (SU.stage === 'ready') { closeSetup(true); return playGame(id); }
-  if (SU.stage === 'update') { closeSetup(true); return setupModal(id); }
   const busy = SU.stage === 'run';
   const ver = busy || !g.prev_tag ? verText(g.tag) : `${verText(g.prev_tag)} → ${verText(g.tag)}`;
   const head = `<button type="button" class="su-x" data-up="close" aria-label="${esc(busy ? t('Hide') : t('Close'))}">${XMARK}</button>
@@ -127,7 +126,7 @@ async function updateBuildModal(id) {
   // The options its update added start as their developer set them (on, unless they say otherwise
   // or have a license to accept), as in Easy Setup.
   const updOpts = Object.fromEntries(newPrepOpts(su).map((o) => [o.id, !!o.on]));
-  Object.assign(SU, { id, upd: true, updOpts, stage: 'confirm', named: {}, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', kept: !!su.kept, extras: false, result: null, err: '', uerr: '', note: '' });
+  Object.assign(SU, { id, upd: true, updOpts, stage: 'confirm', named: {}, step: '', ev: {}, steps: {}, q: [], at: 0, path: '', kept: !!su.kept, extras: false, result: null, err: '', note: '' });
   // Its build still running in the background (it was hidden): that build, not a second one.
   const job = S.setupJobs && S.setupJobs[id];
   if (job) {

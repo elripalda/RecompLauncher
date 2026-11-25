@@ -11,7 +11,7 @@
     "inputs": {
       "type": "array",
       "maxItems": 32,
-      "description": "Named game/disc/DLC inputs, explicit shared-key requirements and NVIDIA DLSS (a file the launcher downloads from NVIDIA). See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
+      "description": "Named game/disc/DLC inputs, explicit shared-key requirements and NVIDIA DLSS (a file the launcher downloads from NVIDIA). One file per input, passed by one argument with its flag (--disc1={input:disc1}, --dlc1={input:dlc1}); a folder only for a copy that is a folder (an extracted PS3 game, a Switch game's exefs and romfs), never a folder of discs or DLC. See SETUP-INPUTS.md. No multidisc hashing, BIOS, firmware, font or system-library support.",
       "items": {
         "type": "object",
         "required": [
@@ -37,7 +37,7 @@
               "runtime"
             ],
             "default": "game",
-            "description": "runtime: a file the launcher fetches itself (only with shared nvidia.dlss)."
+            "description": "game: a game that is one file or folder (id \"game\", passed as {input:game}). disc: each disc of a game on several discs (ids disc1..discN, labels Disc 1..Disc N, a check on each, and no input with role game: the launcher makes Disc 1 the copy box). dlc: one optional package each (dlc1, dlc2..). update: a game's update, usually with into/name. key: with shared (switch.prod-keys...), never a file of the game's own. runtime: a file the launcher fetches itself (only with shared nvidia.dlss)."
           },
           "optional": {
             "type": "boolean",
@@ -91,6 +91,39 @@
               },
               "additionalProperties": false
             }
+          },
+          "check": {
+            "$ref": "#/definitions/inputCheck"
+          },
+          "dumps": {
+            "$ref": "#/definitions/inputDumps"
+          },
+          "contains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the folder named by into must hold once the file is placed there (default.xex, Media). With it, files the player already put there count as picked."
+          },
+          "into": {
+            "type": "string",
+            "description": "A folder inside your release the launcher places the pick in before each start: a folder's contents as links, a file as a link (or a copy on another drive). \".\" is the game's own folder. Unlike destination, the placed files aren't copies kept by the launcher."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name a single file must have in into (it's placed under this name), like sote.us.v1.2.z64. With role update and no sha256, the file picked must already have this name."
+          },
+          "extract": {
+            "enum": [
+              "xdvdfs",
+              "iso9660"
+            ],
+            "description": "A disc image the launcher unpacks on setup into into (or game-files): xdvdfs for Xbox and Xbox 360, iso9660 for PlayStation 2 and PSP. Use it when your game reads the disc's files, not the image."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "description": "The one known file (a title update): any other file is refused when it's picked."
           }
         },
         "allOf": [
@@ -203,7 +236,9 @@
     },
     "game": {
       "type": "object",
-      "description": "The player's own copy of the game.",
+      "deprecated": true,
+      "deprecationMessage": "The top-level game FIELD is deprecated; the INPUT named game is the new way. Write the player's copy as an entry in inputs with id \"game\" (a game on several discs: disc1..discN with role disc). This field still reads, as that input, until RecompLauncher 1.0, which drops it.",
+      "description": "Deprecated: the top-level game FIELD, from before named inputs; the INPUT named game is the new way. The player's copy of the game. It reads as the input \"game\" (and \"update\"), with every option, until RecompLauncher 1.0, which drops it: write it as one of inputs instead. The Developer tab shows your file converted.",
       "properties": {
         "kind": {
           "enum": [
@@ -218,62 +253,10 @@
           "description": "What to ask for. Name the region or serial if only one works. Name .cue, .gdi or .m3u if your game reads that sheet; otherwise a copy kept as one is given as its first data track (.bin)."
         },
         "check": {
-          "type": "object",
-          "description": "How to tell it's the right game.",
-          "properties": {
-            "file": {
-              "type": "string",
-              "description": "A file in the game's folder, like default.xex."
-            },
-            "xdvdfs": {
-              "type": "string",
-              "description": "A file on an Xbox 360 disc image."
-            },
-            "iso9660": {
-              "type": "string",
-              "description": "A file in the top folder of a PS2 (or any ISO 9660) disc image, in 2048-byte or raw 2352-byte sectors. A .cue, .gdi or .m3u is checked through its data tracks."
-            },
-            "nup_build_id": {
-              "type": "string",
-              "pattern": "^[0-9A-Fa-f]{8,64}$",
-              "description": "The build ID of a Nintendo Switch or Switch 2 .nup package (hex, 8 to 64 digits; a prefix such as the first 8 is fine), read from the exefs/main of its newest title. A folder with exefs/main is checked the same way. Judged by the file's content, never its name. Needs no keys."
-            },
-            "ids": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9._-]{3,16}$"
-              },
-              "description": "The disc or cartridge IDs it reads, as on the copy: a GameCube or Wii disc's (GZ2E01, or GZ2 for every region), an N64 cartridge's game code, a PlayStation disc's serial, an extracted PS3, PS4 or PS5 game's title ID from its param.sfo (CUSA00242). Another game's copy is refused, and the player's copies are recognised by it, even when the game's own title has an edition or subtitle the catalog name doesn't."
-            }
-          },
-          "additionalProperties": false
+          "$ref": "#/definitions/inputCheck"
         },
         "dumps": {
-          "type": "array",
-          "description": "Known good dumps (from Redump), for the verified badge.",
-          "items": {
-            "type": "object",
-            "required": [
-              "name",
-              "crc32"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Shown as 'Matches the verified <name> disc'."
-              },
-              "size": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "crc32": {
-                "type": "string",
-                "pattern": "^[0-9a-fA-F]{8}$"
-              }
-            },
-            "additionalProperties": false
-          }
+          "$ref": "#/definitions/inputDumps"
         },
         "update": {
           "type": "object",
@@ -362,16 +345,10 @@
           "type": "string",
           "description": "Shown under 'Getting the extras'."
         },
-        "timeout": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 300,
-          "description": "Seconds."
-        },
         "done": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Files the step leaves when it has finished ({data}, {install}, {home}...). All there: the game counts as set up and plays without the copy unless start uses {game}. The ones in the build folder are also what a player's own build must have for the launcher to use it."
+          "description": "Files the step leaves when it has finished ({data}, {install}, {home}...). All there: the game counts as set up and plays without the copy unless start uses {game}."
         },
         "env": {
           "type": "object",
@@ -388,13 +365,9 @@
           "default": false,
           "description": "Your step keeps what it needs from the copy in your build folder (the first folders.game) and can run again from there without it. With the copy gone, the launcher runs it again leaving out every argument (and prepare.env value) with {game} in it, so write the copy as one argument (--game={game}). List done too."
         },
-        "version": {
-          "type": "string",
-          "description": "Change it only when players who already set up must run this step again (its output format changed, say). Nothing else in this file asks them to, not even a new release: when the step builds the game itself, put your release version here each time you package one."
-        },
         "options": {
           "type": "array",
-          "description": "Ticks shown on the setup screen before the step runs. Each one adds its args when it's on. For a vendor's SDK your builder downloads, like NVIDIA's DLSS SDK: the player accepts its license by ticking it.",
+          "description": "Ticks shown on the setup screen before the step runs. Each one adds its args when it's on. For a vendor's SDK your setup step downloads, like NVIDIA's DLSS SDK: the player accepts its license by ticking it.",
           "items": {
             "type": "object",
             "required": [
@@ -463,7 +436,7 @@
               "required": {
                 "type": "boolean",
                 "default": false,
-                "description": "Setup can't start until it's ticked, on the PCs it's shown on (os and gpu still decide that). For terms the build can't run without, like a compiler's license: with a license it still starts off, and the player accepts it by ticking it. Launchers older than 0.90.0-beta.64 ignore it, so keep your builder's own check too until your min is that version."
+                "description": "Setup can't start until it's ticked, on the PCs it's shown on (os and gpu still decide that). For terms the build can't run without, like a compiler's license: with a license it still starts off, and the player accepts it by ticking it. Launchers older than 0.90.0-beta.64 ignore it, so keep your setup step's own check too until your min is that version."
               }
             },
             "additionalProperties": false
@@ -947,23 +920,68 @@
         }
       },
       "additionalProperties": false
-    },
-    "requires": {
-      "description": "The launcher features this profile uses. Parts needing a feature the player's launcher doesn't have are left out (no Easy Setup, no settings tab for it); the game still installs and plays.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/launcherFeature"
-      },
-      "uniqueItems": true
-    },
-    "min": {
-      "description": "The oldest launcher version this profile's Easy Setup, settings and installer parts work with, like \"0.90.0-beta.27\". Older launchers leave those parts out.",
-      "type": "string",
-      "pattern": "^v?\\d+\\.\\d+\\.\\d+(-[A-Za-z]+\\.\\d+)?$"
     }
   },
   "additionalProperties": false,
   "definitions": {
+    "inputCheck": {
+      "type": "object",
+      "description": "How to tell it's the right game, checked when the player picks it. A wrong copy is refused with a plain reason.",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "A file in the folder, like default.xex."
+        },
+        "xdvdfs": {
+          "type": "string",
+          "description": "A file on an Xbox 360 disc image."
+        },
+        "iso9660": {
+          "type": "string",
+          "description": "A file in the top folder of a PS2 (or any ISO 9660) disc image, in 2048-byte or raw 2352-byte sectors. A .cue, .gdi or .m3u is checked through its data tracks."
+        },
+        "nup_build_id": {
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]{8,64}$",
+          "description": "The build ID of a Nintendo Switch or Switch 2 .nup package (hex, 8 to 64 digits; a prefix such as the first 8 is fine), read from the exefs/main of its newest title. A folder with exefs/main is checked the same way. Judged by the file's content, never its name. Needs no keys."
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{3,16}$"
+          },
+          "description": "The disc or cartridge IDs it reads, as on the copy: a GameCube or Wii disc's (GZ2E01, or GZ2 for every region), an N64 cartridge's game code, a PlayStation disc's serial, an extracted PS3, PS4 or PS5 game's title ID from its param.sfo (CUSA00242), or an Xbox 360 game's title ID (4D5307FA) from the default.xex in a disc image or folder, or from a DLC or Games on Demand package. Another game's copy is refused, and the player's copies are recognised by it, even when the game's own title has an edition or subtitle the catalog name doesn't."
+        }
+      },
+      "additionalProperties": false
+    },
+    "inputDumps": {
+      "type": "array",
+      "description": "Known good dumps (from Redump). Only a file with these is read whole on setup, for the verified badge.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "crc32"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Shown as 'Matches the verified <name> disc'."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "crc32": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "systemGraphics": {
       "description": "The graphics API the build draws with, and the oldest version it needs: {\"vulkan\": \"1.3\"}. Shown on the game's page; the launcher doesn't check it.",
       "type": "object",
@@ -1010,38 +1028,6 @@
         },
         "additionalProperties": false
       }
-    },
-    "launcherFeature": {
-      "description": "A launcher feature a profile can say it uses (\"requires\"). A launcher that doesn't have one leaves out the parts that need it, and the game installs and plays the normal way. RecompLauncher 0.90 Beta 27 supports these.",
-      "enum": [
-        "start",
-        "start.linux",
-        "start.macos",
-        "setup",
-        "console",
-        "clone",
-        "makes",
-        "player_note",
-        "installer",
-        "needs",
-        "exit_codes",
-        "files.folder",
-        "files.flag",
-        "files.env",
-        "files.setup",
-        "files.accepts",
-        "files.contains",
-        "files.sha256",
-        "files.update",
-        "settings.toml",
-        "settings.ini",
-        "settings.json",
-        "settings.args",
-        "settings.choices",
-        "settings.slider",
-        "settings.bindings",
-        "settings.groups"
-      ]
     }
   }
 }

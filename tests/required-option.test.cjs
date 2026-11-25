@@ -40,7 +40,7 @@ test('only Set Up waits for a required option: choosing files and Next start not
 test('desktop: Set Up waits for the required ticks, and a change draws the steps again', () => {
   assert.match(app, /if \(prepBlocked\(S\.setup\[SU\.id\]\)\) \{ SU\.stage = 'steps'; return suDraw\(\); \}\n\s+await SU\.optsSaving;/);
   assert.match(app, /if \(SU\.stage === 'steps'\) ssDraw\(\);/);
-  assert.match(read('setup-steps.js'), /const reqOff = !skipBuild && prepBlocked\(su\);/);
+  assert.match(read('setup-steps.js'), /const reqOff = prepBlocked\(su\);/);
 });
 
 test('Big Picture: the same rule, and the option rows are items the controller reaches', () => {
