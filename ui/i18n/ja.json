@@ -350,6 +350,7 @@
  "Download and install games from {sites} (asks you each time)": "{sites} からゲームをダウンロードしてインストール（毎回確認）",
  "Download and install {name}?": "{name} をダウンロードしてインストールしますか？",
  "Downloading the new RecompLauncher…": "新しい RecompLauncher をダウンロードしています…",
+ "The download page opened in your browser.": "ダウンロードページをブラウザーで開きました。",
  "Downloading {name}…": "{name} をダウンロードしています…",
  "Downloading…": "ダウンロードしています…",
  "Downloads": "ダウンロード",

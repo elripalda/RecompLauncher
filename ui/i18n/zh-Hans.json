@@ -350,6 +350,7 @@
  "Download and install games from {sites} (asks you each time)": "从 {sites} 下载并安装游戏（每次都会询问）",
  "Download and install {name}?": "下载并安装 {name} 吗？",
  "Downloading the new RecompLauncher…": "正在下载新版 RecompLauncher…",
+ "The download page opened in your browser.": "下载页面已在浏览器中打开。",
  "Downloading {name}…": "正在下载 {name}…",
  "Downloading…": "正在下载…",
  "Downloads": "下载",
