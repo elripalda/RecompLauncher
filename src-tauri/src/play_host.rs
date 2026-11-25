@@ -147,20 +147,27 @@ pub struct Listening {
 pub fn listen() -> Option<Listening> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).ok()?;
     let port = listener.local_addr().ok()?.port();
-    Some(Listening { listener, host: Host { port, token: token() } })
+    Some(Listening { listener, host: Host { port, token: token()? } })
 }
 
-/// 128 bits nobody else can guess: std's hasher keys come from the system's random source.
-fn token() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let part = |salt: u64| {
-        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-        h.write_u64(salt);
-        h.write_u32(std::process::id());
-        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default());
-        h.finish()
-    };
-    format!("{:016x}{:016x}", part(1), part(2))
+/// 128 bits from the system's random source. Without one, no host: the game is handed over as before.
+fn token() -> Option<String> {
+    let mut bytes = [0u8; 16];
+    os_random(&mut bytes)?;
+    Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(windows)]
+fn os_random(bytes: &mut [u8]) -> Option<()> {
+    use windows::Win32::Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG};
+    unsafe { BCryptGenRandom(None, bytes, BCRYPT_USE_SYSTEM_PREFERRED_RNG) }.ok().ok()
+}
+
+// The host only runs on Windows; this is for the tests elsewhere.
+#[cfg(not(windows))]
+fn os_random(bytes: &mut [u8]) -> Option<()> {
+    use std::io::Read;
+    std::fs::File::open("/dev/urandom").ok()?.read_exact(bytes).ok()
 }
 
 impl Listening {
@@ -351,6 +358,14 @@ mod tests {
         for bad in ["--play-host=0:0123456789abcdef0123456789abcdef", "--play-host=99999:0123456789abcdef0123456789abcdef", "--play-host=51234:short", "--play-host=51234:0123456789abcdef0123456789abcdeg", "--play-host=51234"] {
             assert!(Host::from_args(&["--handoff".into(), bad.into()]).is_none(), "{bad}");
         }
+    }
+
+    #[test]
+    fn each_host_has_its_own_token_the_handoff_accepts() {
+        let (a, b) = (listen().unwrap(), listen().unwrap());
+        assert_ne!(a.host().token, b.host().token);
+        let args = ["--handoff".to_string(), a.host().arg()];
+        assert_eq!(Host::from_args(&args).as_ref(), Some(a.host()));
     }
 
     #[test]
