@@ -15,7 +15,7 @@ function render(a) {
     t: s => s, byId: () => a, bannerInfo: () => ({}), gameTabs: () => [],
     fileSrc: p => 'asset:' + p,
     ...Object.fromEntries(['wantCounts', 'gameTitle', 'actions', 'replacedNote', 'betterNote',
-      'reinstallNote', 'badNote', 'stateNote', 'igCard', 'includesBox', 'gameBody',
+      'reinstallNote', 'badNote', 'stateNote', 'soonNote', 'igCard', 'includesBox', 'gameBody',
       'slideTitle', 'based', 'slideActs', 'originName'].map(k => [k, () => '']))
   });
   for (const name of ['esc', 'webUrl', 'THUMB_RE', 'THUMB_W', 'thumbW', 'thumbOf', 'media', 'pic']) {

@@ -7,9 +7,13 @@ use serde_json::{json, Value};
 pub const CONSOLES: &[(&str, &str, &[&str])] = &[
     ("n64", "Nintendo 64", &["nintendo 64", "n64"]),
     ("x360", "Xbox 360", &["xbox 360", "xbox360", "x360"]),
+    // Before Xbox: at the same spot, the first in this list wins ("Xbox Series X" isn't the original Xbox).
+    ("xseries", "Xbox Series X|S", &["xbox series x|s", "xbox series x/s", "xbox series x", "xbox series s", "xbox series", "series x|s"]),
+    ("xone", "Xbox One", &["xbox one"]),
     ("xbox", "Xbox", &["original xbox", "xbox"]),
     ("ps3", "PlayStation 3", &["playstation 3", "ps3"]),
     ("ps2", "PlayStation 2", &["playstation 2", "ps2"]),
+    ("vita", "PS Vita", &["playstation vita", "ps vita", "psvita"]),
     ("ps1", "PlayStation", &["playstation 1", "playstation one", "psx", "ps1", "playstation"]),
     ("psp", "PSP", &["playstation portable", "psp"]),
     ("wiiu", "Wii U", &["wii u", "wiiu"]),
@@ -26,6 +30,9 @@ pub const CONSOLES: &[(&str, &str, &[&str])] = &[
     ("genesis", "Sega Genesis", &["mega drive", "megadrive", "genesis"]),
     ("saturn", "Sega Saturn", &["sega saturn", "saturn"]),
     ("dc", "Dreamcast", &["dreamcast"]),
+    ("pce", "TurboGrafx-16", &["turbografx 16", "turbografx cd", "turbografx", "pc engine", "pcengine"]),
+    // Phone games: only words about where the game came from, since a PC port often has an Android build too.
+    ("mobile", "Mobile", &["j2me", "java me", "nokia", "n gage", "iphone game", "ipad version", "ios game", "ios version", "android game", "android version", "phone game", "mobile game"]),
     ("pc", "PC", &["ms-dos", "dos game", "windows game"]),
 ];
 
@@ -51,7 +58,7 @@ pub fn console_of(topics: &[String], description: &str, readme: &str) -> Option<
     let topics = topics.iter().map(|t| t.replace('-', " ")).collect::<Vec<_>>().join(" , ").to_lowercase();
     let readme_top: String = readme.chars().take(3000).collect();
     // Words that mean other things in a sentence count only as topics.
-    let unsure = ["switch", "switch 2", "switch2", "saturn", "genesis"];
+    let unsure = ["switch", "switch 2", "switch2", "saturn", "genesis", "pc engine", "ios version", "android version"];
     for (n, text) in [topics, description.to_lowercase(), readme_top.to_lowercase()].into_iter().enumerate() {
         // The earliest mention wins ("a PS2 game, also on GameCube" is a PS2 recomp).
         let mut best: Option<(usize, &str)> = None;
@@ -363,6 +370,20 @@ mod tests {
         assert_eq!(console_of(&[], "", "Runs games natively"), None);
         assert_eq!(console_of(&[], "Wii U and Wii", ""), Some("wiiu"));
         assert_eq!(console_of(&[], "Dreamcast games", ""), Some("dc"));
+        assert_eq!(console_of(&[], "GTA VI from your own Xbox Series X files", ""), Some("xseries"));
+        assert_eq!(console_of(&["xbox-series-x".into()], "", ""), Some("xseries"));
+        assert_eq!(console_of(&[], "OnRush (Xbox One) PC port", ""), Some("xone"));
+        assert_eq!(console_of(&[], "Original Xbox recomp", ""), Some("xbox"));
+        assert_eq!(console_of(&[], "Soul Sacrifice Delta from the PS Vita", ""), Some("vita"));
+        assert_eq!(console_of(&[], "A PlayStation Vita game", ""), Some("vita"));
+        assert_eq!(console_of(&[], "A PlayStation game", ""), Some("ps1"));
+        assert_eq!(console_of(&[], "Ys Book I & II from the TurboGrafx-CD", ""), Some("pce"));
+        assert_eq!(console_of(&["pc-engine".into()], "", ""), Some("pce"));
+        assert_eq!(console_of(&[], "A rewrite of the PC engine", ""), None);
+        assert_eq!(console_of(&[], "Bounce, the 2002 Nokia Java phone game", ""), Some("mobile"));
+        assert_eq!(console_of(&[], "Builds for Windows, Linux and Android", ""), None);
+        assert_eq!(console_of(&[], "A PC port of Doom. iOS version planned", ""), None);
+        assert_eq!(console_of(&["ios-version".into()], "", ""), Some("mobile"));
         assert_eq!(console_of(&[], "a snes game", ""), Some("snes"));
     }
 

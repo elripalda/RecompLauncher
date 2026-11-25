@@ -28,7 +28,7 @@ function ctx(S) {
   });
   vm.runInContext(line('const HOME_ROWS') + line('const HOME_GO') + line('const homeClosed') + line('const HOME_ICONS = {').replace('{', '{};'), c);
   vm.runInContext(line('const homeIcon') + line('const HOME_TR_BASE'), c);
-  vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBox') + fn('homeBanner'), c);
+  vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBoxAct') + fn('homeBox') + fn('homeBanner'), c);
   return c;
 }
 const ROWS = Object.fromEntries(['played', 'favs', 'ready', 'updated', 'follow', 'found', 'trend', 'new', 'easy', 'news'].map((k) => [k, `[${k}]`]));
