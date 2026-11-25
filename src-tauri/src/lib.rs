@@ -58,6 +58,7 @@ pub mod setup_state;
 #[cfg(test)]
 mod setup_window_tests;
 pub mod sysenv;
+mod play_host;
 pub mod sysneeds;
 mod test_control;
 mod emus;
@@ -2972,18 +2973,50 @@ impl Drop for Starting {
 static RUNS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static RUN_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
-    start_game_with_steam(app, id, None)
+/// Where a Play from a shortcut came from: Steam's launch context, handed over on Linux, and the
+/// copy Steam started on Windows, which starts the program itself (see play_host).
+#[derive(Default)]
+struct PlayFrom {
+    steam: Option<sysenv::SteamLaunch>,
+    host: Option<play_host::Host>,
 }
 
-fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
-    start_game_with_monitor_context(app, id, _steam, None)
+impl PlayFrom {
+    fn handoff(args: &[String]) -> PlayFrom {
+        PlayFrom { steam: sysenv::steam_launch_from_args(args), host: play_host::Host::from_args(args) }
+    }
+}
+
+pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
+    start_game_from(app, id, &PlayFrom::default())
+}
+
+fn start_game_from(app: &AppHandle, id: &str, from: &PlayFrom) -> Res<()> {
+    start_game_with_monitor_context(app, id, from, None)
+}
+
+/// The game's program started: by the copy a Steam shortcut started when it waits to (so Steam's
+/// overlay and Steam Input reach the game), else here.
+fn spawn_game(cmd: &mut tokio::process::Command, host: Option<&play_host::Host>, output: Option<&Path>, id: &str) -> std::io::Result<play_host::Game> {
+    #[cfg(windows)]
+    if let Some(h) = host {
+        match play_host::start_through(h, cmd.as_std(), output) {
+            Ok(g) => {
+                trail::note(format!("Play {id}: started by the copy Steam started, for Steam's overlay and Steam Input"));
+                return Ok(g);
+            }
+            Err(Some(e)) => return Err(e),
+            Err(None) => trail::note(format!("Play {id}: the copy Steam started can't be reached, so it starts here")),
+        }
+    }
+    let _ = (host, output, id);
+    cmd.spawn().map(play_host::Game::Own)
 }
 
 fn start_game_with_monitor_context(
     app: &AppHandle,
     id: &str,
-    _steam: Option<&sysenv::SteamLaunch>,
+    from: &PlayFrom,
     target_monitor: Option<display::MonitorInfo>,
 ) -> Res<()> {
     let st = app.state::<App>();
@@ -3334,16 +3367,18 @@ fn start_game_with_monitor_context(
     // Remote Play can stream its window.
     #[cfg(target_os = "linux")]
     if !matches!(ext.as_str(), "exe" | "cmd" | "bat") {
-        sysenv::steam_overlay_for_game(&mut cmd, _steam);
+        sysenv::steam_overlay_for_game(&mut cmd, from.steam.as_ref());
     }
     cmd.args(&args).current_dir(&cwd).kill_on_drop(false);
     // What the game prints, kept for this start: a game that closes right away usually says why
     // there, and the crash report takes it along.
     // Not for a game that asks its questions in its text window: what it prints has to stay there.
     let console = boot::of(&st.dir, id).map(|b| b.console).unwrap_or(false);
+    let mut output_to = None;
     if let Some(f) = game_output_file(&st.dir, id).filter(|_| !console) {
         if let Ok(f2) = f.try_clone() {
             cmd.stdout(std::process::Stdio::from(f)).stderr(std::process::Stdio::from(f2));
+            output_to = Some(game_output_path(&st.dir, id));
         }
     }
     // So a game can tell it was started from here, and from where: it can open full screen with
@@ -3421,7 +3456,7 @@ fn start_game_with_monitor_context(
     }
     note_run(&st, id, &g, &exe, &args, &cwd, prof.as_ref(), look_run.is_some());
     trail::note(format!("Play {id}: {}{}", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), if look_run.is_some() { " with a Look" } else { "" }));
-    let spawned = cmd.spawn();
+    let spawned = spawn_game(&mut cmd, from.host.as_ref(), output_to.as_deref(), id);
     // A program that has to run as administrator (Windows says so, error 740): Windows asks the
     // player, then it starts. A setup goes through the setup steps, which find the game after.
     #[cfg(windows)]
@@ -3580,8 +3615,8 @@ fn start_game_with_monitor_context(
         let start = Instant::now();
         let mut stopped = false;
         let code = tokio::select! {
-            r = child.wait() => r.ok().and_then(|s| s.code()),
-            _ = rx => { stopped = true; let _ = child.kill().await; None }
+            c = child.wait() => c,
+            _ = rx => { stopped = true; child.kill().await; None }
         };
         // Some games start through a small program that opens the game and closes (a launcher, an
         // updater): it's still being played while a program from its folder runs. Play time, and
@@ -6381,7 +6416,7 @@ async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Op
     };
     #[cfg(not(windows))]
     let monitor = None;
-    start_game_with_monitor_context(&app, &full, None, monitor)
+    start_game_with_monitor_context(&app, &full, &PlayFrom::default(), monitor)
 }
 
 /// The game being played in each running recomp, by recomp id: its full id when it's one of
@@ -10120,7 +10155,9 @@ fn process_alive(pid: u32) -> bool {
 /// Started with `--play` (a Steam or desktop shortcut): this process stays open until the game
 /// closes, so Steam shows the player in the game for the whole session. The work is handed to a
 /// second copy (`--handoff`), which either becomes the launcher or passes the game to the one
-/// already running; this one only watches the game's marker.
+/// already running; this one only watches the game's marker. Started by Steam on Windows, it also
+/// starts the game's program when the launcher asks (see play_host), so Steam's overlay and Steam
+/// Input reach the game.
 fn wait_for_play(args: &[String]) -> bool {
     let Some(id) = play_arg(args) else { return false };
     if args.iter().any(|a| a == "--handoff") {
@@ -10132,9 +10169,17 @@ fn wait_for_play(args: &[String]) -> bool {
     // One game of several: the recomp's marker is the one written.
     let id = games::split(&id).filter(|(r, _)| !lib.installed.contains_key(&id) && lib.installed.contains_key(*r)).map(|(r, _)| r.to_string()).unwrap_or(id);
     let Ok(exe) = std::env::current_exe() else { return false };
-    let rest = sysenv::play_handoff_args(args, &|k| if cfg!(target_os = "linux") { std::env::var(k).ok() } else { None });
+    let mut rest = sysenv::play_handoff_args(args, &|k| if cfg!(target_os = "linux") { std::env::var(k).ok() } else { None });
+    let from_steam = sysenv::from_steam(&|k| std::env::var(k).ok());
+    let host = play_host::hosts_game(cfg!(windows), from_steam).then(play_host::listen).flatten();
+    if let Some(h) = &host {
+        rest.push(h.host().arg());
+    }
     if std::process::Command::new(exe).args(&rest).spawn().is_err() {
         return false;
+    }
+    if let Some(h) = host {
+        std::thread::spawn(move || h.serve());
     }
     let file = playing_file(&dir, &id);
     let fresh = |f: &Path| marker_alive(f) && std::fs::metadata(f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() < 90).unwrap_or(false);
@@ -10197,7 +10242,7 @@ pub fn run() {
             }
             Some(id) => {
                 let id = app.state::<App>().lib.lock().unwrap().resolve_project_id(&id);
-                let steam = sysenv::steam_launch_from_args(&argv);
+                let from = PlayFrom::handoff(&argv);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let rid = recomp_of(&app.state::<App>(), &id);
@@ -10206,7 +10251,7 @@ pub fn run() {
                     }
                     ready_look(&app, &rid).await;
                     let sync = cloud::sync_quiet(&app, &id).await;
-                    if let Err(e) = sync.and_then(|()| start_game_with_steam(&app, &id, steam.as_ref())) {
+                    if let Err(e) = sync.and_then(|()| start_game_from(&app, &id, &from)) {
                         show_main(&app);
                         let _ = app.emit("toast", e.to_string());
                     }
@@ -10612,6 +10657,10 @@ pub fn run() {
             let handle = app.handle().clone();
             match play {
                 Some(id) => {
+                    // The copy Steam started (Windows) starts the program here too: one way for
+                    // both. Steam's launch context is this process's own, so it isn't taken from
+                    // the handoff.
+                    let from = PlayFrom { steam: None, host: play_host::Host::from_args(&std::env::args().collect::<Vec<_>>()) };
                     tauri::async_runtime::spawn(async move {
                         let rid = recomp_of(&handle.state::<App>(), &id);
                         if options_first(&handle, &rid) {
@@ -10619,7 +10668,7 @@ pub fn run() {
                         }
                         ready_look(&handle, &rid).await;
                         let sync = cloud::sync_quiet(&handle, &id).await;
-                        if let Err(e) = sync.and_then(|()| start_game(&handle, &id)) {
+                        if let Err(e) = sync.and_then(|()| start_game_from(&handle, &id, &from)) {
                             show_main(&handle);
                             let _ = handle.emit("toast", e.to_string());
                         }
