@@ -872,8 +872,21 @@
     PRE.set(src, im);
     if (PRE.size > 60) PRE.delete(PRE.keys().next().value);
   }
+  // Whether this window must leave controllers to the core; null until it answers. On Windows,
+  // while SDL reads them, asking for gamepads starts WebView2's own controller reading, and the two
+  // together switch off a controller reconnecting through the Xbox Wireless Adapter (#496).
+  let padsWindowOff = null;
+  // Outside the launcher (a page opened on its own) there's no core to ask: the window reads them.
+  const padsAnswer = Promise.resolve().then(() => invoke('pads_window_off')).catch(() => false).then((off) => { padsWindowOff = off; return off; });
   // The box you're on tilts with the right stick (or the mouse over it), like turning it in your hands.
-  const TILT = { raf: 0, x: 0, y: 0, mx: 0, my: 0, mouseAt: 0, el: null };
+  const TILT = { raf: 0, x: 0, y: 0, mx: 0, my: 0, mouseAt: 0, el: null, stick: [0, 0], asking: false, askedAt: 0 };
+  // The core's right stick, asked for every 50 ms at most; the tilt eases towards the last answer.
+  function askRightStick() {
+    if (TILT.asking || performance.now() - TILT.askedAt < 50) return;
+    TILT.asking = true;
+    TILT.askedAt = performance.now();
+    invoke('pad_right_stick').then((s) => { TILT.stick = s; }).catch(() => {}).finally(() => { TILT.asking = false; });
+  }
   function tiltStart() {
     if (TILT.raf || lighter()) return;
     TILT.raf = requestAnimationFrame(tiltTick);
@@ -888,7 +901,11 @@
     if (!f || !TV.on) { TILT.x = TILT.y = 0; return; }
     let sx = 0, sy = 0;
     if (performance.now() - TILT.mouseAt < 1500) { sx = TILT.mx; sy = TILT.my; }
-    else if (navigator.getGamepads) {
+    else if (padsWindowOff) {
+      askRightStick();
+      [sx, sy] = TILT.stick;
+      if (Math.hypot(sx, sy) < 0.15) sx = sy = 0;
+    } else if (padsWindowOff === false && navigator.getGamepads) {
       for (const gp of navigator.getGamepads()) {
         if (!gp || gp.axes.length < 4) continue;
         const x = gp.axes[2] || 0, y = gp.axes[3] || 0;
@@ -3389,7 +3406,7 @@
   }
 
   // Controllers: from the core (Xbox through XInput, PlayStation read directly), with the
-  // window's own gamepad support as a fallback if the core never reports anything.
+  // window's own gamepad support as a fallback, except where it must leave them to the core (padsWindowOff).
   let nativeSeen = false;
   let lastPad = { b: '', t: 0 };
   const BORN = performance.now();
@@ -3474,7 +3491,7 @@
       held[k] = now;
     }
   }
-  pollPads();
+  padsAnswer.then((off) => { if (!off) pollPads(); });
 
   // F11 switches between the desktop view and Big Picture mode.
   document.addEventListener('keydown', (e) => {
