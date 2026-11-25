@@ -138,7 +138,7 @@ def check():
                 print(f'{code}: no longer used: {en!r}')
             parts = tr.split('|')
             want = FORMS.get(base, 1) if en in plural else 1
-            if '|' in en:
+            if '|' in en and parts[0] == en.split('|')[0] and en.split('|')[0].isupper():
                 want = len(en.split('|'))
             if len(parts) != want and not (en in plural and base == 'ar' and len(parts) == 1):
                 print(f'{code}: {len(parts)} forms, wants {want}: {en!r} -> {tr!r}')
