@@ -4598,6 +4598,16 @@ mod win_job {
         SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as *const std::ffi::c_void, size)
     }
 
+    /// Whether a process is still in the job: one the step started and left running, after the
+    /// step itself ended.
+    pub fn has_processes(job: &Job) -> bool {
+        use windows::Win32::System::JobObjects::{JobObjectBasicAccountingInformation, QueryInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION};
+        let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        let size = std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32;
+        let asked = unsafe { QueryInformationJobObject(Some(job.0), JobObjectBasicAccountingInformation, &mut info as *mut _ as *mut std::ffi::c_void, size, None) };
+        asked.is_ok() && info.ActiveProcesses > 0
+    }
+
     /// None when Windows won't make the job: the process then runs as it did before, outside one.
     pub fn kill_on_close(child: &std::process::Child) -> Option<Job> {
         use std::os::windows::io::AsRawHandle;
@@ -4737,6 +4747,18 @@ fn spawn_just_written(c: &mut std::process::Command) -> std::io::Result<std::pro
 /// Runs the recomp's setup step. `writing` is called once the step has started, when it can
 /// write over the last build; a step that can't start (its program missing, no room, no Proton)
 /// never calls it. `out` gets every line it prints (the full log the player can open or send).
+/// Whether a process is left in a process group: the setup step's (process_group(0) made the
+/// step's id the group's), after the step itself ended.
+#[cfg(unix)]
+fn group_has_processes(group: u32) -> bool {
+    extern "C" {
+        fn kill(pid: std::ffi::c_int, sig: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    let Ok(group) = std::ffi::c_int::try_from(group) else { return false };
+    // Signal 0 sends nothing: it only says whether the group still has a process in it.
+    unsafe { kill(-group, 0) == 0 }
+}
+
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn(), out: Option<&std::fs::File>) -> Result<(), String> {
     use std::io::{BufRead, Write};
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
@@ -4748,7 +4770,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         return Err(setup_temp::NO_ROOM.into());
     }
     // A temp folder of its own on the game's drive, taken away however this returns.
-    let temp = setup_temp::SetupTemp::make(install)?;
+    let mut temp = setup_temp::SetupTemp::make(install)?;
     let data = profile::data_dir(install);
     let _ = std::fs::create_dir_all(&data);
     // A Windows step on Linux (a Windows-only game's builder): through the same Proton the game
@@ -4803,7 +4825,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     // On Windows the same, through a job that ends the step (and what it started) when the
     // launcher is gone. Held until the step is.
     #[cfg(windows)]
-    let _job = win_job::kill_on_close(&child);
+    let job = win_job::kill_on_close(&child);
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     if let Some(o) = child.stdout.take() {
         let tx = tx.clone();
@@ -4849,6 +4871,15 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     loop {
         read(&mut said, &mut too_long, &mut heard);
         if let Ok(Some(s)) = child.try_wait() {
+            // What the step started and left running (a build it handed off to) goes on with the
+            // temp folder it was given, so the folder stays until the next setup run.
+            #[cfg(unix)]
+            let left_running = group_has_processes(child.id());
+            #[cfg(windows)]
+            let left_running = job.as_ref().is_some_and(win_job::has_processes);
+            if left_running {
+                temp.leave();
+            }
             if s.success() {
                 return Ok(());
             }
@@ -12328,6 +12359,64 @@ mod tests {
 #[cfg(test)]
 mod prepare_env_tests {
     use super::*;
+
+    fn step_named(dir: &Path, name: &str, script: &str) -> profile::Prepare {
+        std::fs::write(dir.join(name), script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        profile::Prepare { program: vec![name.into()], args: vec![], label: "Step".into(), options: vec![], version: String::new(), done: vec![], env: BTreeMap::new(), keeps_copy: false }
+    }
+
+    fn run_step(dir: &Path, pr: &profile::Prepare) -> Result<(), String> {
+        run_prepare(pr, dir, None, &[], &|_, _| {}, &|| false, &|| {}, None)
+    }
+
+    /// What a program the step left running wrote when it looked for its temp folder a second
+    /// after the step ended ("kept" or "gone"), waiting up to ten seconds for it.
+    fn what_the_helper_found(dir: &Path) -> String {
+        let until = Instant::now() + std::time::Duration::from_secs(10);
+        while Instant::now() < until {
+            let said = std::fs::read_to_string(dir.join("helper.txt")).unwrap_or_default();
+            if !said.trim().is_empty() {
+                return said.trim().to_string();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        String::new()
+    }
+
+    #[test]
+    fn a_program_the_step_left_running_keeps_its_temp_folder() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-helper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        #[cfg(windows)]
+        let pr = step_named(&dir, "handoff.bat", "@echo off\r\nstart \"\" /b cmd /c \"ping -n 2 127.0.0.1 >nul & if exist \"%TEMP%\\\" (echo kept>helper.txt) else (echo gone>helper.txt)\"\r\nexit /b 0\r\n");
+        #[cfg(not(windows))]
+        let pr = step_named(&dir, "handoff.sh", "#!/bin/sh\n( sleep 1; if [ -d \"$TMPDIR\" ]; then echo kept; else echo gone; fi > helper.txt ) &\nexit 0\n");
+        run_step(&dir, &pr).unwrap();
+        let found = what_the_helper_found(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(found, "kept");
+    }
+
+    #[test]
+    fn a_step_that_leaves_nothing_running_takes_its_temp_folder_away() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-alone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        #[cfg(windows)]
+        let pr = step_named(&dir, "alone.bat", "@echo off\r\nexit /b 0\r\n");
+        #[cfg(not(windows))]
+        let pr = step_named(&dir, "alone.sh", "#!/bin/sh\nexit 0\n");
+        run_step(&dir, &pr).unwrap();
+        let gone = !dir.join(setup_temp::FOLDER).exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(gone);
+    }
 
     /// A setup step that writes down what it was given: its temp folder (and whether it was
     /// there), the launcher's names and one of its own from prepare.env.

@@ -21,9 +21,10 @@ pub const CANT_MAKE: &str = "Couldn't make a temp folder for setup in the game's
 pub const TOO_LONG: &str = "A path in the game's folder is too long for Windows. Add a library folder with a shorter path in Settings → Games and Folders and move the game there, or turn on Windows' long paths setting (LongPathsEnabled), then try again. The launcher doesn't change that setting for you.";
 
 /// One setup run's temp folder. Dropping it takes the folder away, whether the run worked, failed
-/// or was stopped.
+/// or was stopped, unless it was left for programs the run started (`leave`).
 pub struct SetupTemp {
     dir: PathBuf,
+    left: bool,
 }
 
 impl SetupTemp {
@@ -39,7 +40,13 @@ impl SetupTemp {
         }
         std::fs::create_dir_all(&dir).map_err(|_| CANT_MAKE)?;
         std::fs::write(dir.join(MARK), b"").map_err(|_| CANT_MAKE)?;
-        Ok(SetupTemp { dir })
+        Ok(SetupTemp { dir, left: false })
+    }
+
+    /// Kept when the run ends: a program the step started (a build it handed off to) still runs and
+    /// still writes there. The next setup run empties it (`make`).
+    pub fn leave(&mut self) {
+        self.left = true;
     }
 
     pub fn path(&self) -> &Path {
@@ -54,7 +61,7 @@ impl SetupTemp {
 
 impl Drop for SetupTemp {
     fn drop(&mut self) {
-        if made_here(&self.dir) {
+        if !self.left && made_here(&self.dir) {
             let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
