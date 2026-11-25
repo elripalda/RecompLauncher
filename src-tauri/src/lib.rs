@@ -931,8 +931,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
-        // Skip Easy Setup ticked before it was installed: from now on it's the game's own mode.
-        if prev.is_none() && take_skip_choice(&mut l.settings.ui, id) {
+        // Skip Easy Setup ticked before it was installed, or on for every game in Settings: from
+        // now on it's the game's own mode. A game installed under the Settings switch then stays
+        // the player's when the switch goes off, instead of asking for their copy.
+        if prev.is_none() && fresh_install_skips(&mut l.settings.ui, id) {
             rec.mode = library::SetupMode::Own;
         }
         l.put(id, rec);
@@ -4820,8 +4822,8 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     }
 }
 
-/// Skip Easy Setup for every game (the Settings switch). Each game keeps its own mode under it, so
-/// turning it off again leaves every game as it was.
+/// Easy Setup off for new games (the Settings switch, stored as `easy_skip_all`). A game takes it as
+/// its own mode when it's installed; games already installed keep theirs, whichever way it goes.
 fn easy_skipped_for_all(ui: &Value) -> bool {
     ui.get("easy_skip_all").and_then(Value::as_bool).unwrap_or(false)
 }
@@ -4840,14 +4842,20 @@ fn take_skip_choice(ui: &mut Value, id: &str) -> bool {
     list.len() != before
 }
 
+/// A game being installed for the first time skips Easy Setup: its own tick (taken off the list),
+/// or Easy Setup off for new games in Settings.
+fn fresh_install_skips(ui: &mut Value, id: &str) -> bool {
+    let ticked = take_skip_choice(ui, id);
+    ticked || easy_skipped_for_all(ui)
+}
+
 /// The player sets this game up their own way (Skip Easy Setup): its own mode once installed, or
-/// the tick in its menu before. A game of several in one recomp follows its recomp.
+/// its tick or the Settings switch before. A game of several in one recomp follows its recomp.
 fn player_sets_up(st: &App, id: &str) -> bool {
     let rid = setup_record_id(st, id);
     let l = st.lib.lock().unwrap();
-    let all = easy_skipped_for_all(&l.settings.ui);
     match l.installed.get(&rid) {
-        Some(g) => g.player_sets_up(all),
+        Some(g) => g.player_sets_up(),
         None => easy_skipped(&l.settings.ui, id),
     }
 }
@@ -12400,6 +12408,25 @@ mod easy_skip_tests {
         let mut ui = json!({ "easy_skip": ["hopper"] });
         rename_id(&mut ui, "hopper", "hopper-2");
         assert!(easy_skipped(&ui, "hopper-2"));
+    }
+
+    #[test]
+    fn a_game_installed_under_the_settings_switch_keeps_skipping() {
+        let mut ui = json!({ "easy_skip_all": true });
+        assert!(fresh_install_skips(&mut ui, "hopper"));
+    }
+
+    #[test]
+    fn a_game_installed_without_a_skip_gets_easy_setup() {
+        let mut ui = json!({ "easy_skip_all": false, "easy_skip": ["skyracer"] });
+        assert!(!fresh_install_skips(&mut ui, "hopper"));
+    }
+
+    #[test]
+    fn a_ticked_game_skips_and_leaves_the_list() {
+        let mut ui = json!({ "easy_skip": ["hopper"] });
+        assert!(fresh_install_skips(&mut ui, "hopper"));
+        assert!(!easy_skipped(&ui, "hopper"));
     }
 }
 
