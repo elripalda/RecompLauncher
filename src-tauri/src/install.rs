@@ -381,6 +381,8 @@ async fn download_with_api(
     let mut src = asset.browser_download_url.clone();
     let mut by_api = false;
     let mut api_tried = false;
+    // When the site says the file was uploaded: a kept download carries that date, not today's.
+    let mut uploaded: Option<std::time::SystemTime> = None;
     // The same alternate route helps when the edge drops a connection or never answers. It is
     // tried once per download, after repeated failures, with the byte offset and hash preserved.
     let mut try_api = |tries: u32, src: &mut String, by_api: &mut bool| {
@@ -476,6 +478,8 @@ async fn download_with_api(
             out = None;
         }
         total = r.content_length().map(|n| n + done).unwrap_or(asset.size);
+        let last_modified = r.headers().get(reqwest::header::LAST_MODIFIED).and_then(|v| v.to_str().ok());
+        uploaded = last_modified.and_then(uploaded_at);
         if out.is_none() {
             out = Some(if resumed { tokio::fs::OpenOptions::new().append(true).open(&part).await? } else { tokio::fs::File::create(&part).await? });
         }
@@ -551,7 +555,18 @@ async fn download_with_api(
         }
     }
     tokio::fs::rename(&part, &file).await?;
+    if let Some(when) = uploaded {
+        // Only the file's date: a drive that can't set it still has the right file.
+        let _ = std::fs::File::options().write(true).open(&file).and_then(|f| f.set_modified(when));
+    }
     Ok(Downloaded { file, sha256: got, verified: want.is_some() })
+}
+
+/// A Last-Modified answer ("Wed, 27 Aug 2025 00:55:54 GMT") as a time. GitHub's is the upload date.
+fn uploaded_at(header: &str) -> Option<std::time::SystemTime> {
+    let when = chrono::DateTime::parse_from_rfc2822(header).ok()?;
+    let secs = u64::try_from(when.timestamp()).ok()?;
+    Some(std::time::UNIX_EPOCH + Duration::from_secs(secs))
 }
 
 /// A path inside an archive, made safe to join onto the folder: no absolute paths, no `..`.
@@ -3133,5 +3148,22 @@ mod connection_fallback_tests {
         let request = server.join().unwrap()[0].to_ascii_lowercase();
         assert!(request.contains("\r\naccept: application/octet-stream\r\n"));
         assert!(request.contains("\r\nrange: bytes=2-\r\n"));
+    }
+
+    #[tokio::test]
+    async fn a_download_keeps_the_date_its_site_gives() {
+        let dir = TempDir::new();
+        let dated = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nLast-Modified: Wed, 27 Aug 2025 00:55:54 GMT\r\nConnection: close\r\n\r\nabcdef";
+        let (url, server) = download_site(vec![dated]);
+        let result = download_with_api(&reqwest::Client::new(), &asset(url), &dir.0, "date-test", Arc::new(AtomicBool::new(false)), &|_| {}, None).await;
+        let got = result.unwrap_or_else(|e| panic!("the download should finish: {e}"));
+        let modified = fs::metadata(&got.file).unwrap().modified().unwrap();
+        assert_eq!(modified, std::time::UNIX_EPOCH + Duration::from_secs(1_756_256_154));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_date_that_isnt_one_is_left_alone() {
+        assert_eq!(uploaded_at("yesterday"), None);
     }
 }
