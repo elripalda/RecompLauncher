@@ -15,6 +15,7 @@ use crate::saves::{self, Spot};
 use crate::{catalog, App, Error};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -1271,13 +1272,16 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     if let Some(ticket) = (g.cloud == Some(true)).then(|| peek_account(&st.dir)).flatten() {
         // The badge above Play reads the same list, only while this sign-in still owns it.
         match cloud_list(&app, &id).await {
-            Ok((l, sp)) if keep_peek(&ticket, &id, &state.synced_hash, &l) => {
-                next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
-                cloud = serde_json::to_value(l).unwrap_or(Value::Null);
-                space = sp;
+            Ok((l, sp)) => {
+                // A list from a sign-in that has since changed isn't shown either.
+                if keep_peek(&ticket, &id, &state.synced_hash, &l) {
+                    next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
+                    cloud = serde_json::to_value(l).unwrap_or(Value::Null);
+                    space = sp;
+                }
             }
             Err(Error::Net(_)) => offline = true,
-            _ => {}
+            Err(_) => {}
         }
     }
     let waiting = waiting_copies(&local, &state);
@@ -1350,7 +1354,8 @@ struct PeekCache {
 
 impl PeekCache {
     fn account_changed(&mut self, account: Option<&Account>) {
-        let identity = account.map(|a| (a.user.uid.clone(), a.token.clone()));
+        // A hash of the token tells sessions apart without keeping a second copy of it in memory.
+        let identity = account.map(|a| (a.user.uid.clone(), hex::encode(Sha256::digest(a.token.as_bytes()))));
         if self.account == identity {
             return;
         }
