@@ -563,10 +563,8 @@
   }
   // Big Picture's own rows, each under the name the website's Home page list uses for the desktop
   // row it matches (admin: Launcher > Home page), in the order they come without that list.
-  // Jump back in is the row of your games when the dock shows your pinned ones; Favorites and From
-  // developers you follow are desktop rows that Big Picture doesn't have, so the list's place for
-  // them is skipped here.
-  const TV_HOME_ROWS = ['played', 'found', 'ready', 'easy', 'news', 'updated', 'new', 'trend'];
+  // Jump back in is the row of your games when the dock shows your pinned ones.
+  const TV_HOME_ROWS = ['played', 'favs', 'found', 'ready', 'easy', 'news', 'updated', 'follow', 'new', 'trend'];
   // What goes under the dock, top to bottom: the website's list when there is one (the same one the
   // desktop's Home follows: its order, its hidden rows, its info boxes and banners), else the order above.
   function tvHomeRows(d, games) {
@@ -575,9 +573,16 @@
         const mine = d.kind === 'pinned' ? recent().map((x) => x.a) : [];
         return mine.length ? row('cont', t('Continue playing'), mine.slice(0, 14).map((a) => poster(a, 'c2:' + a.id, timeLine(S.library[a.id]))).join('')) : '';
       },
+      favs: () => {
+        const fav = favs().map((id) => libApp(S.library[id]));
+        return fav.length ? row('favs', t('Favorites'), fav.slice(0, 14).map((a) => poster(a, 'fv:' + a.id)).join('')) : '';
+      },
+      // With nothing found and no folder picked yet, the same box as the desktop's: what the scan
+      // does, and a button to pick a folder.
       found: () => {
         const owned = foundInFolders();
-        return owned.length ? row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join('')) : '';
+        if (owned.length) return row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join(''));
+        return (S.settings.rom_dirs || []).length ? '' : tvFoundBox();
       },
       ready: () => {
         const ready = oneEach(games.filter(turnkey).sort(byNew), true);
@@ -595,6 +600,11 @@
         const upd = recentlyUpdated(games).slice(0, 14);
         return upd.length ? row('upd', t('Recently updated'), upd.map((a) => poster(a, 'u:' + a.id, tf('Updated {when}', { when: ago(Date.parse(a.released) / 1000) }))).join('')) : '';
       },
+      follow: () => {
+        if (!follows().length) return '';
+        const mine = oneEach(games.filter((a) => a.dev && follows().includes(a.dev)).sort(byNew), true);
+        return mine.length ? row('follow', t('From developers you follow'), mine.slice(0, 14).map((a) => poster(a, 'fl:' + a.id, (devOf(a) || {}).name || a.author || '')).join('')) : '';
+      },
       new: () => row('new', t('Just added'), turnkeyFirst(oneEach([...games].sort(byNew), true).slice(0, 14)).map((a) => poster(a, 'n:' + a.id)).join('')),
       // This week's chart when it's in (each version on its own, with the chart's ranks), else the most played.
       trend: () => {
@@ -611,6 +621,11 @@
       if (x.k === 'box') return tvHomeBox(x);
       return '';
     });
+  }
+  // The desktop's "It finds the games you already have" box (foundCallout), as an info box.
+  function tvFoundBox() {
+    const add = `<div class="tv-acts"><button type="button" class="tv-btn sm" data-f data-key="found:add" data-tvact="romadd"><span>${esc(t('Add a folder'))}</span></button></div>`;
+    return `<section class="tv-sec tv-hbox" data-sec="found"><div class="tv-hbox-in"><span class="ic">${DISC_L}</span><div class="k"><b dir="auto">${esc(t('It finds the games you already have'))}</b><p dir="auto">${esc(t('Point the launcher at your ROM and disc image folders. It shows which have recomps and sets them up with your copy.'))}</p></div>${add}</div></section>`;
   }
   // An info box from the website's list, as wide as a row, in the player's language when it's
   // translated (homeWord, as on the desktop). Its button and its close button (when
@@ -3168,6 +3183,7 @@
       // Home's info boxes and banners, from the website's list.
       case 'hbgo': return tvHomeBoxGo(id);
       case 'hbclose': return tvHomeBoxClose(id);
+      case 'romadd': sfx('select'); await addRomFolder(); return draw(true);
       case 'spgo': { const n = Number(id); if (!n) return; sfx('select'); return invoke('open_url', { url: `${SITE}/api/spons.php?go=${n}` }).catch(fail); }
       case 'haveit': sfx('select'); return window.haveIt(id);
       case 'pick-copy': case 'setup': case 'setup-reopen': sfx('select'); return tvSetup(id);
