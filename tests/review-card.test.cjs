@@ -35,7 +35,7 @@ test('the card keeps the score to one line, and the rows for each answer are in 
   assert.match(card, /\$\{runsLine\(rep\)\}/);
   assert.doesNotMatch(card, /runRows|runsSummary/);
   assert.match(fn(app, 'runsLine'), /\$\{runBar\(sc\.r\)\}<\/div>`;/);
-  assert.match(fn(app, 'reviewsModal'), /\$\{runsSummary\(rep, pickV\)\}/);
+  assert.match(fn(app, 'reviewsModal'), /\$\{runsSummary\(rep, pickV, only\)\}/);
 });
 
 test('in All Reviews a row narrows the list, and one nobody gave can\'t be picked', () => {
@@ -150,4 +150,29 @@ test('a fresh list without the deleted review ends the hiding', () => {
   const fresh = c.keepGoneOut('karpur', { counts: { runs: 4 }, items: [OTHER] });
   assert.equal(fresh.counts.runs, 4);
   assert.equal(c.reviewGone('karpur'), null);
+});
+
+test('All Reviews\' score and rows follow the version chip', () => {
+  const c = vm.createContext({});
+  vm.runInContext(`${fn(app, 'scoreFor')}\nglobalThis.scoreFor = scoreFor;`, c);
+  const all = { n: 2329 }, cur = { n: 579 };
+  const sc = { r: cur, cur: true, v: 'v3.2.0', all };
+  assert.equal(c.scoreFor(sc, true).r, cur);
+  assert.equal(c.scoreFor(sc, true).cur, true);
+  assert.equal(c.scoreFor(sc, false).r, all);
+  assert.equal(c.scoreFor(sc, false).cur, false);
+});
+
+test('This Version with too few reviews for the page\'s score still shows that version\'s rows', () => {
+  const c = vm.createContext({});
+  vm.runInContext(`${fn(app, 'scoreFor')}\nglobalThis.scoreFor = scoreFor;`, c);
+  const all = { n: 40 }, few = { n: 2 };
+  assert.equal(c.scoreFor({ r: all, cur: false, v: 'v2', l: few, all }, true).r, few);
+  assert.equal(c.scoreFor({ r: all, cur: false, v: '', l: null, all }, true).r, all);
+});
+
+test('All Reviews opens on the reviews the page\'s score is from, and redraws the score with the chip', () => {
+  const m = fn(app, 'reviewsModal');
+  assert.match(m, /only = sc\.cur;/);
+  assert.match(m, /\$\('\.rva-top', s\)\.innerHTML = `\$\{runsSummary\(rep, pickV, only\)\}/);
 });
