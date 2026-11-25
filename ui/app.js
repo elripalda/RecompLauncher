@@ -2550,7 +2550,7 @@ function gameTitle(a, id) {
   const inst = S.library[id], su = S.setup[id];
   // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
   const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   return `${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}`;
 }
 function pageGame(id) {
@@ -3181,7 +3181,7 @@ function gameStrip(a, inst) {
   }
   if (inst) {
     const size = gameDisk(id);
-    boxes.push(gsBox(GS_IC.disk, t('On Disk'), (size ? esc(fmtB(size)) : '—') + selfManagedPill(id)));
+    boxes.push(gsBox(GS_IC.disk, t('On Disk'), size ? esc(fmtB(size)) : '—'));
   }
   return `<div class="gstrip" style="--gs-n:${boxes.length}">${boxes.join('')}</div>`;
 }
@@ -5416,7 +5416,7 @@ function pageSettings() {
         ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${keptLibBtn(l.path)}${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Setup too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
-          + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup on its setup window, or the Easy Setup switch in its Manage tab.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
+          + row(t('Easy Setup'), t('The launcher sets up new games with your copy. Off: they install as they come and you set them up yourself. Games you have keep how they are; change one in its Manage tab.'), sw('easy_skip_all', !ui.easy_skip_all, t('Easy Setup'), 'easy-all')))
         + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
@@ -6415,15 +6415,16 @@ function setSection(k, fade = true) {
 // One save at a time, each with everything changed so far: two quick toggles both stick.
 let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
-// Skip Easy Setup (a game's setup window or Manage tab, or Settings for every game): those games
-// install as they come and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the
-// ones it does. An installed game says it in its own mode ('own': the player sets it up); one not
-// installed yet by ui.easy_skip (set by older versions, from the game's menu).
+// Skip Easy Setup (a game's setup window or Manage tab, or Easy Setup off in Settings for new
+// games): those games install as they come and set themselves up. S.easyAll is every game Easy
+// Setup can do; S.easy the ones it does. An installed game says it in its own mode ('own': the
+// player sets it up), whatever Settings say; one not installed yet by the Settings switch or
+// ui.easy_skip (set by older versions, from the game's menu).
 function applyEasySkip() {
   const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []), lib = S.library || {};
   const record = (id) => lib[id] || (typeof parentId === 'function' ? lib[parentId(id)] : undefined);
-  const own = (id) => { const g = record(id); return g ? g.mode === 'own' : skip.has(id); };
-  S.easy = new Set(ui.easy_skip_all ? [] : [...(S.easyAll || [])].filter((id) => !own(id)));
+  const own = (id) => { const g = record(id); return g ? g.mode === 'own' : !!ui.easy_skip_all || skip.has(id); };
+  S.easy = new Set([...(S.easyAll || [])].filter((id) => !own(id)));
 }
 // Settings → Start with your PC (desktop and Big Picture). The system's own startup list changes
 // first, and the switch shows what the system took: a Flatpak's desktop can ask the player first.
@@ -6990,9 +6991,21 @@ function selfManaged(id) {
   const su = setupOf(id);
   return !!(su && su.own_program);
 }
-function selfManagedPill(id) {
-  if (!selfManaged(id)) return '';
-  return `<span class="own-pill" title="${esc(t('You manage this install. Play starts the executable you picked, as it is, without Easy Setup or the launcher\'s setup steps.'))}">${esc(t('Self-Managed'))}</span>`;
+// The player sets this game up, not the launcher: they picked its executable, or Easy Setup is
+// skipped on a game it could do (that game only, or every game in Settings). Only an installed
+// game's page asks.
+function setUpByYou(id) {
+  if (selfManaged(id)) return true;
+  return !!(S.easyAll && S.easy) && S.easyAll.has(id) && !S.easy.has(id);
+}
+// The pill that says so, on the game's page (under its name, and by Game Executable in Manage), so
+// a player who skipped Easy Setup knows why the launcher doesn't ask for their copy.
+function setUpByYouPill(id) {
+  if (!setUpByYou(id)) return '';
+  const ownTip = t('You set up this game yourself, not RecompLauncher. Play starts the executable you picked, as it is. The launcher only installs its updates and backs up and syncs its saves.');
+  const skipTip = t('You set up this game yourself, not RecompLauncher: Easy Setup is skipped for it. The launcher only starts it, installs its updates and backs up and syncs its saves.');
+  const tip = selfManaged(id) ? ownTip : skipTip;
+  return `<span class="own-pill" title="${esc(tip)}">${esc(t('Set Up by You'))}</span>`;
 }
 // The program's full path (it's kept relative to the game's folder when it's inside it).
 function exePath(inst) {
@@ -7003,18 +7016,16 @@ function exePath(inst) {
 }
 // Easy Setup on the game's Manage tab: the one switch for who sets the game up, the same as Skip
 // Easy Setup. Turning it back on keeps an executable the player picked, for switching back. Only on
-// games Easy Setup can do, and not while it's skipped for every game in Settings.
+// games Easy Setup can do. The Settings switch is for new games, so it never hides this one.
 function easyRow(id) {
-  const ui = S.settings.ui || {};
-  if (!S.easyAll || !S.easyAll.has(id) || ui.easy_skip_all) return '';
+  if (!S.easyAll || !S.easyAll.has(id)) return '';
   const sub = t('The launcher sets this game up with your copy. Off: you set it up yourself.');
   return `<div class="set-row" id="easy-row"><div class="k"><b>${esc(t('Easy Setup'))}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.easy.has(id)}" aria-label="${esc(t('Easy Setup'))}" data-act="easy-skip" data-id="${esc(id)}"></button></div>`;
 }
 // Game Executable on the game's page: what Play starts, in a path box, with Change. On a game Easy
 // Setup does it says what picking the game's own executable does there, and once Play starts the
 // pick as it is, that the player manages the install (the pill). The way back is the Easy Setup
-// switch above it; Use Default only where that switch isn't (a game Easy Setup can't do, or one
-// skipped with every game).
+// switch above it; Use Default only where that switch isn't (a game Easy Setup can't do).
 function programRow(id, inst) {
   const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
   const path = exePath(inst);
@@ -7022,9 +7033,9 @@ function programRow(id, inst) {
     : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
       : t('The file Play starts.');
   const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
-  const hasSwitch = easy && !(S.settings.ui || {}).easy_skip_all;
+  const hasSwitch = easy;
   const back = mine && !hasSwitch ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Use Default'))}</button>` : '';
-  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
+  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${setUpByYouPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
 }
 // Skip Easy Setup for one game, or Easy Setup on for it again. Installed, it's the game's mode:
@@ -7054,6 +7065,12 @@ async function skipEasyHere(id) {
   toast(tf('Easy Setup is off for {name}. You set it up yourself.', { name }));
   render(true);
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+}
+// Asked before Easy Setup goes off for new games in Settings.
+async function askEasyAllOff() {
+  const text = t('New games then install as they come, and you set each one up yourself: the launcher won\'t ask for your copy or set it up. Games you already have keep how they\'re set up.');
+  const v = await ask(t('Turn Off Easy Setup?'), `<p>${esc(text)}</p>`, [{ label: t('Turn Off'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
+  return v === 'yes';
 }
 // Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
 async function askEasyOff(id) {
@@ -9637,9 +9654,15 @@ async function act(el, e) {
       return render(true);
     }
     case 'ui-toggle':
-      // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
-      // leaves every game as it was, a game whose program the player picked included.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
+    // Easy Setup in Settings, for new games (stored the other way round, as easy_skip_all). Turning
+    // it off asks first: it's how the launcher sets games up. Games already installed keep their
+    // own mode either way, and a game installed while it's off takes it as its own.
+    case 'easy-all': {
+      const off = !(S.settings.ui || {}).easy_skip_all;
+      if (off && !(await askEasyAllOff())) return;
+      return saveUi({ easy_skip_all: off });
+    }
     // Show Game Names: the desktop shortcuts and Steam entries already made change pictures too.
     case 'game-names': return saveUi({ game_names: !(S.settings.ui || {}).game_names }).then(refreshShortcutArt);
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);
