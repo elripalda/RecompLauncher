@@ -3862,7 +3862,7 @@ fn setup_run(app: AppHandle, st: &App, id: String, copy: Option<String>) -> Res<
             setup_track(&ev);
             let _ = app.emit("setup", ev);
         };
-        let job = SetupJob { app: &app, rid: &rid, sub: sub.as_deref(), p: &run_p, from_kept, dir: &dir };
+        let job = SetupJob { app: &app, id: &id, rid: &rid, sub: sub.as_deref(), p: &run_p, from_kept, dir: &dir };
         let result = setup_work(&job, &mut g, &emit, &stopped);
         if !stopped() {
             match result {
@@ -3888,6 +3888,8 @@ fn setup_run(app: AppHandle, st: &App, id: String, copy: Option<String>) -> Res<
 /// What one setup run works on.
 struct SetupJob<'a> {
     app: &'a AppHandle,
+    /// The game as the window knows it (its setup log is kept under this).
+    id: &'a str,
     /// The install whose record it changes.
     rid: &'a str,
     /// One game of several: the one being set up.
@@ -3953,7 +3955,8 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
         let extra = prepare_extra(job.dir, &pr, &g.prepare_opts);
         let handed = p.handed(copy.as_deref());
         let report = |pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() });
-        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped, &writing);
+        let out = setup_output_file(job.dir, job.id);
+        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped, &writing, out.as_ref());
         // Built from what it kept and that didn't work: the player's copy builds it.
         done.map_err(|e| if job.from_kept { kept_failed(&e) } else { e })?;
     }
@@ -4450,12 +4453,17 @@ fn set_prepare_opts(st: State<'_, App>, id: String, opts: BTreeMap<String, bool>
     Ok(())
 }
 
-/// A build from what the setup step kept that didn't work: what it said, then that the player's
-/// copy builds it instead. (What it said last may not end a sentence.)
+/// A build from what the setup step kept that didn't work: its first line, then that the player's
+/// copy builds it instead, then what the step printed, on lines of their own as before.
 fn kept_failed(said: &str) -> String {
-    let said = said.trim_end();
-    let stop = if said.ends_with(['.', '!', '?']) { "" } else { "." };
-    format!("{said}{stop} Choose your copy of the game to build it from that.")
+    let (head, printed) = said.split_once('\n').unwrap_or((said, ""));
+    let head = head.trim_end();
+    let stop = if head.ends_with(['.', '!', '?']) { "" } else { "." };
+    let line = format!("{head}{stop} Choose your copy of the game to build it from that.");
+    if printed.is_empty() {
+        return line;
+    }
+    format!("{line}\n{printed}")
 }
 
 /// What the setup step is run with: its own arguments, then those of the options the player
@@ -4582,6 +4590,71 @@ mod win_job {
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
+/// How many of its last lines a setup step that failed shows the player: enough for a reason that
+/// runs over a few lines (an install hint, the top of a stack trace), never the whole output.
+const SAID_LINES: usize = 10;
+
+/// What a setup step printed last, progress lines left out: its last SAID_LINES lines, each as
+/// a terminal would show it.
+#[derive(Default)]
+struct LastSaid(std::collections::VecDeque<String>);
+
+impl LastSaid {
+    fn push(&mut self, line: &str) {
+        let line = plain_line(line);
+        if line.is_empty() {
+            return;
+        }
+        if self.0.len() == SAID_LINES {
+            self.0.pop_front();
+        }
+        self.0.push_back(line);
+    }
+
+    fn text(&self) -> String {
+        Vec::from(self.0.clone()).join("\n")
+    }
+}
+
+/// A line a program printed, as a terminal shows it: colour codes taken out, and only what came
+/// after its last carriage return (a progress bar drawn over itself). Long lines are cut.
+fn plain_line(line: &str) -> String {
+    let shown = line.rsplit('\r').next().unwrap_or(line);
+    without_codes(shown).trim().chars().take(300).collect()
+}
+
+/// A line without its colour and cursor codes, which a log file would show as junk.
+fn without_codes(line: &str) -> String {
+    let mut out = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        // ESC [ ... then one of @ to ~: a colour or cursor code.
+        if chars.next() != Some('[') {
+            continue;
+        }
+        for c in chars.by_ref() {
+            if ('@'..='~').contains(&c) {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// A setup step that stopped with an error code: the launcher's line, then what it printed last
+/// on lines of their own. The UI translates the first line and shows the rest as it was printed.
+fn step_failed(code: &str, said: &str) -> String {
+    let head = format!("Its setup step stopped with code {code}.");
+    if said.is_empty() {
+        return head;
+    }
+    format!("{head}\n{said}")
+}
+
 /// Start a program that may have only just been written (unpacked with the game). On Linux,
 /// another thread starting a program at that moment holds the new file open for a few
 /// milliseconds, and starting it fails with "Text file busy": it's tried again for up to half a
@@ -4598,9 +4671,9 @@ fn spawn_just_written(c: &mut std::process::Command) -> std::io::Result<std::pro
 
 /// Runs the recomp's setup step. `writing` is called once the step has started, when it can
 /// write over the last build; a step that can't start (its program missing, no room, no Proton)
-/// never calls it.
-fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn()) -> Result<(), String> {
-    use std::io::BufRead;
+/// never calls it. `out` gets every line it prints (the full log the player can open or send).
+fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn(), out: Option<&std::fs::File>) -> Result<(), String> {
+    use std::io::{BufRead, Write};
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
     // On Linux an AppImage is never run, its setup step included: Play unpacks the game first.
     if cfg!(target_os = "linux") && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
@@ -4684,22 +4757,26 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         });
     }
     drop(tx);
-    // What it said last (not a progress line): when it stops on an error, that's usually why.
-    let mut said = String::new();
+    // What it said last (not progress lines): when it stops on an error, that's usually why.
+    let mut said = LastSaid::default();
     // Whether it said Windows' path limit stopped it, on any line: the reason is usually followed
     // by a stack trace.
     let mut too_long = false;
     // When it last printed anything: a step that goes quiet for SILENT_FOR has stopped working.
     let mut heard = Instant::now();
-    let read = |said: &mut String, too_long: &mut bool, heard: &mut Instant| {
+    let read = |said: &mut LastSaid, too_long: &mut bool, heard: &mut Instant| {
         while let Ok(l) = rx.try_recv() {
             *heard = Instant::now();
+            // Every line, progress ones too: the full log is for whoever reads it to fix it.
+            if let Some(mut f) = out {
+                let _ = writeln!(f, "{}", without_codes(&l));
+            }
             let mut w = l.splitn(3, ' ');
             if w.next() == Some("progress") {
                 let pct = w.next().and_then(|x| x.parse::<f32>().ok()).unwrap_or(0.0).clamp(0.0, 1.0);
                 report(pct, w.next().unwrap_or("").trim().to_string());
             } else if !l.trim().is_empty() {
-                *said = l.trim().chars().take(300).collect();
+                said.push(&l);
                 *too_long |= setup_temp::says_too_long(&l);
             }
         }
@@ -4714,11 +4791,12 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             std::thread::sleep(std::time::Duration::from_millis(150));
             read(&mut said, &mut too_long, &mut heard);
             let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
-            trail::note(format!("Setup step stopped with code {code}; it said last: {said}"));
+            let said = said.text();
+            trail::note(format!("Setup step stopped with code {code}; it said last: {}", said.replace('\n', " | ")));
             if cfg!(windows) && too_long {
                 return Err(setup_temp::too_long_with(&said));
             }
-            return Err(if said.is_empty() { format!("Its setup step stopped with code {code}.") } else { format!("Its setup step stopped with code {code}: {said}") });
+            return Err(step_failed(&code, &said));
         }
         // No time limit: a full build on a Steam Deck can take hours. Only a step that has printed
         // nothing for SILENT_FOR is given up on, and Cancel stops it any time.
@@ -7142,15 +7220,44 @@ fn webview2_missing() -> bool {
 
 /// Where what a game printed on its last start is kept.
 pub(crate) fn game_output_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join("game-output").join(log_name(id))
+}
+
+/// A game id as a log's file name.
+fn log_name(id: &str) -> String {
     let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
-    dir.join("game-output").join(format!("{safe}.log"))
+    format!("{safe}.log")
 }
 
 /// A fresh file for what a game prints on this start (the last start's is replaced).
 fn game_output_file(dir: &Path, id: &str) -> Option<std::fs::File> {
-    let p = game_output_path(dir, id);
+    fresh_file(&game_output_path(dir, id))
+}
+
+/// Where everything a game's setup step printed on its last run is kept: the full log behind
+/// the few lines a failed setup shows.
+pub(crate) fn setup_output_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join("setup-output").join(log_name(id))
+}
+
+/// A fresh file for what the setup step prints on this run (the last run's is replaced).
+fn setup_output_file(dir: &Path, id: &str) -> Option<std::fs::File> {
+    fresh_file(&setup_output_path(dir, id))
+}
+
+fn fresh_file(p: &Path) -> Option<std::fs::File> {
     std::fs::create_dir_all(p.parent()?).ok()?;
-    std::fs::File::create(&p).ok()
+    std::fs::File::create(p).ok()
+}
+
+/// A failed setup's Open Full Log: everything its setup step printed, in the PC's text viewer.
+#[tauri::command(async)]
+fn open_setup_log(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
+    let p = setup_output_path(&st.dir, &id);
+    if !p.is_file() {
+        return Err(Error::Msg("There's no setup log for it yet.".into()));
+    }
+    open_thing(&app, &p.to_string_lossy(), false)
 }
 
 #[derive(Serialize)]
@@ -10491,7 +10598,7 @@ pub fn run() {
             forget_game,
             remove_github,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder, open_setup_log,
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
@@ -11861,9 +11968,51 @@ mod tests {
 
     #[test]
     fn a_build_from_what_was_kept_that_fails_asks_for_the_copy_in_a_sentence_of_its_own() {
-        let said = "Its setup step stopped with code 3: nothing kept";
-        assert_eq!(kept_failed(said), "Its setup step stopped with code 3: nothing kept. Choose your copy of the game to build it from that.");
+        let said = "Its setup step stopped with code 3.\nnothing kept";
+        assert_eq!(kept_failed(said), "Its setup step stopped with code 3. Choose your copy of the game to build it from that.\nnothing kept");
         assert_eq!(kept_failed("It stopped. "), "It stopped. Choose your copy of the game to build it from that.");
+    }
+
+    #[test]
+    fn a_failed_setup_step_shows_the_launchers_line_then_what_it_printed_last() {
+        let said = step_failed("1", "Missing: vulkan\nsudo apt install libvulkan-dev");
+        assert_eq!(said, "Its setup step stopped with code 1.\nMissing: vulkan\nsudo apt install libvulkan-dev");
+    }
+
+    #[test]
+    fn a_setup_step_that_printed_nothing_shows_only_its_code() {
+        assert_eq!(step_failed("2", ""), "Its setup step stopped with code 2.");
+    }
+
+    #[test]
+    fn a_setup_step_keeps_only_its_last_lines() {
+        let mut said = LastSaid::default();
+        for i in 0..SAID_LINES + 5 {
+            said.push(&format!("line {i}"));
+        }
+        let text = said.text();
+        let last = format!("line {}", SAID_LINES + 4);
+        assert_eq!(text.lines().count(), SAID_LINES);
+        assert_eq!(text.lines().next(), Some("line 5"));
+        assert_eq!(text.lines().last(), Some(last.as_str()));
+    }
+
+    #[test]
+    fn a_setup_steps_blank_lines_are_not_kept() {
+        let mut said = LastSaid::default();
+        said.push("reason");
+        said.push("   ");
+        assert_eq!(said.text(), "reason");
+    }
+
+    #[test]
+    fn a_setup_steps_colour_codes_are_taken_out() {
+        assert_eq!(plain_line("\u{1b}[1;31merror:\u{1b}[0m vulkan missing"), "error: vulkan missing");
+    }
+
+    #[test]
+    fn a_progress_bar_drawn_over_itself_keeps_only_its_last_drawing() {
+        assert_eq!(plain_line("10%\r50%\rdone"), "done");
     }
 
     #[test]
@@ -11912,6 +12061,7 @@ mod tests {
                 stopped.load(std::sync::atomic::Ordering::Relaxed)
             },
             &|| {},
+            None,
         );
 
         assert_eq!(res.unwrap_err(), "Stopped.");
@@ -11954,6 +12104,34 @@ mod prepare_env_tests {
         PathBuf::from(std::fs::read_to_string(dir.join(file)).unwrap().trim())
     }
 
+    /// A step that prints a progress line and 15 numbered lines, then fails with code 1.
+    #[cfg(unix)]
+    fn talker(dir: &Path) -> profile::Prepare {
+        use std::os::unix::fs::PermissionsExt;
+        let script = "#!/bin/sh\necho 'progress 0.5 Checking'\nfor i in $(seq 1 15); do echo \"line $i\"; done\nexit 1\n";
+        std::fs::write(dir.join("talk.sh"), script).unwrap();
+        std::fs::set_permissions(dir.join("talk.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        profile::Prepare { program: vec!["talk.sh".into()], ..Default::default() }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_step_shows_its_last_lines_and_its_full_log_keeps_every_line() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-talk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = talker(&dir);
+        let log = setup_output_file(&dir, "talker").unwrap();
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}, Some(&log)).unwrap_err();
+        let full = std::fs::read_to_string(setup_output_path(&dir, "talker")).unwrap();
+        assert_eq!(e.lines().next(), Some("Its setup step stopped with code 1."));
+        assert_eq!(e.lines().nth(1), Some("line 6"));
+        assert_eq!(e.lines().last(), Some("line 15"));
+        assert_eq!(full.lines().count(), 16, "the progress line and all 15 lines");
+        assert_eq!(full.lines().next(), Some("progress 0.5 Checking"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Set Up Again whose step can't start (its program missing): the last build isn't marked
     /// as cut short, so the game still plays.
     #[test]
@@ -11963,7 +12141,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let pr = profile::Prepare { program: vec!["missing-builder".into()], ..Default::default() };
         let marked = std::cell::Cell::new(0);
-        let res = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1));
+        let res = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1), None);
         assert!(res.is_err());
         assert_eq!(marked.get(), 0, "nothing was written");
         let _ = std::fs::remove_dir_all(&dir);
@@ -11977,7 +12155,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let pr = tattler(&dir);
         let marked = std::cell::Cell::new(0);
-        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1)).unwrap();
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1), None).unwrap();
         assert_eq!(marked.get(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -11988,7 +12166,7 @@ mod prepare_env_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let pr = tattler(&dir);
-        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap();
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}, None).unwrap();
         let temp = dir.join(setup_temp::FOLDER);
         assert_eq!(said(&dir, "temp.txt"), temp);
         assert_eq!(said(&dir, "tmp.txt"), temp);
@@ -12008,7 +12186,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(dir.join(setup_temp::FOLDER)).unwrap();
         std::fs::write(dir.join(setup_temp::FOLDER).join("release.txt"), b"theirs").unwrap();
         let pr = tattler(&dir);
-        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap_err();
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}, None).unwrap_err();
         assert_eq!(e, setup_temp::NOT_OURS);
         assert!(!dir.join("temp.txt").exists(), "the step didn't run");
         assert!(dir.join(setup_temp::FOLDER).join("release.txt").is_file());

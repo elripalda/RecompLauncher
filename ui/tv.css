@@ -912,6 +912,12 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+/* A failed setup step's buttons and its last lines, as on the desktop: read from the couch, so
+   larger. A pad can't scroll the box, so when long lines wrap past its height the newest stay in
+   view (it's filled from the bottom) and the oldest are cut. */
+.tv-setup .tt .tv-logb{display:flex;gap:16px;justify-content:center}
+.tv-setup .tt .tv-logb .tv-btn{height:58px;padding:0 24px;font-size:20px;border-radius:18px}
+.tv-setup .tt pre.tv-tail{margin:0;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.07);color:var(--tvsoft,#c9d3e0);font:17px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;width:1100px;max-width:100%;max-height:15em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
 .tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
