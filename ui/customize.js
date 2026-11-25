@@ -159,8 +159,11 @@
       const ctx = cv.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, sw, sh);
-      $('#cz-empty', box).hidden = !!e;
-      $('#cz-empty', box).textContent = e ? '' : lbShown() ? t('Pick a picture from SteamGridDB, LaunchBox or your own to frame it here.') : t('Pick a picture from SteamGridDB or your own to frame it here.');
+      const empty = $('#cz-empty', box);
+      empty.hidden = !!e;
+      // Inside the frame, so a long line wraps there instead of running across its edges.
+      empty.style.inset = `${fy}px ${sw - fx - fw}px ${sh - fy - fh}px ${fx}px`;
+      empty.textContent = e ? '' : lbShown() ? t('Pick a picture from SteamGridDB, LaunchBox or your own to frame it here.') : t('Pick a picture from SteamGridDB or your own to frame it here.');
       z.disabled = !e;
       for (const b of $$('[data-x="fit"], [data-x="fill"], [data-x="center"]', box)) b.disabled = !e;
       if (e) {
