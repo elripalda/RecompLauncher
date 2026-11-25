@@ -377,13 +377,40 @@ fn capture(app: &tauri::AppHandle, screen: bool, max_width: u32) -> Result<Vec<u
     let pos = w.inner_position().map_err(|e| e.to_string())?;
     let size = w.inner_size().map_err(|e| e.to_string())?;
     let (wx, wy, ww, wh) = (pos.x, pos.y, size.width as i32, size.height as i32);
-    let m = Monitor::from_point(wx + ww / 2, wy + wh / 2).map_err(fail)?;
-    let (mx, my) = (m.x().map_err(fail)?, m.y().map_err(fail)?);
-    let (mw, mh) = (m.width().map_err(fail)? as i32, m.height().map_err(fail)? as i32);
-    let Some((x, y, cw, ch)) = clip((wx, wy, ww, wh), (mx, my, mw, mh)) else {
+    // The screen showing most of the window, not the one under its middle: a window hanging off
+    // the bottom or the side can have its middle on no screen at all.
+    let monitors = Monitor::all().map_err(fail)?;
+    let mut screens = Vec::new();
+    for m in &monitors {
+        let (mx, my) = (m.x().map_err(fail)?, m.y().map_err(fail)?);
+        let (mw, mh) = (m.width().map_err(fail)? as i32, m.height().map_err(fail)? as i32);
+        screens.push((mx, my, mw, mh));
+    }
+    let win = (wx, wy, ww, wh);
+    let Some(i) = most_shown(win, &screens) else {
         return Err("The launcher's window is off the screen.".into());
     };
-    png(m.capture_region(x, y, cw, ch).map_err(fail)?, max_width)
+    let Some((x, y, cw, ch)) = clip(win, screens[i]) else {
+        return Err("The launcher's window is off the screen.".into());
+    };
+    png(monitors[i].capture_region(x, y, cw, ch).map_err(fail)?, max_width)
+}
+
+/// Which of the screens (x, y, width, height on the desktop) shows the most of the window. None
+/// when none of it is on any screen.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn most_shown(win: (i32, i32, i32, i32), screens: &[(i32, i32, i32, i32)]) -> Option<usize> {
+    let mut best = None;
+    let mut best_area = 0;
+    for (i, screen) in screens.iter().enumerate() {
+        let Some((_, _, w, h)) = clip(win, *screen) else { continue };
+        let area = w as u64 * h as u64;
+        if area > best_area {
+            best = Some(i);
+            best_area = area;
+        }
+    }
+    best
 }
 
 /// The part of a window (x, y, width, height on the desktop) on its screen, in that screen's own
@@ -463,6 +490,23 @@ mod tests {
     #[test]
     fn a_window_partly_off_its_screen_is_cut_to_it() {
         assert_eq!(clip((-50, -20, 800, 600), (0, 0, 1920, 1080)), Some((0, 0, 750, 580)));
+    }
+
+    #[test]
+    fn a_window_with_its_middle_off_the_screen_still_has_its_screen() {
+        // 150% scaling at 2560x1440: the window hangs off the bottom right, its middle below the screen.
+        assert_eq!(most_shown((1511, 902, 2042, 1291), &[(0, 0, 2560, 1440)]), Some(0));
+    }
+
+    #[test]
+    fn a_window_across_two_screens_goes_with_the_one_showing_more() {
+        let screens = [(0, 0, 1920, 1080), (1920, 0, 1920, 1080)];
+        assert_eq!(most_shown((1700, 100, 800, 600), &screens), Some(1));
+    }
+
+    #[test]
+    fn a_window_on_no_screen_has_no_screen() {
+        assert_eq!(most_shown((3000, 0, 800, 600), &[(0, 0, 1920, 1080)]), None);
     }
 
     #[test]
