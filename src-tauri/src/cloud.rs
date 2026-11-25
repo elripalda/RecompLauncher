@@ -114,6 +114,43 @@ pub fn signed_in(dir: &Path) -> bool {
     load(dir).is_some()
 }
 
+/// The signed-in account's id, empty when nobody is. For the save notes (saves::state), which
+/// are read often: it reads account.json only, never the sealed token.
+pub(crate) fn account_uid(dir: &Path) -> String {
+    let _guard = ACCOUNT_FILE.lock().unwrap();
+    let Some(a) = std::fs::read(file(dir)).ok().and_then(|b| serde_json::from_slice::<Account>(&b).ok()) else {
+        return String::new();
+    };
+    if a.token.is_empty() && a.sealed.is_empty() {
+        return String::new();
+    }
+    a.user.uid
+}
+
+/// Tests sign in by writing account.json as it is kept off Windows (a plain token). Only
+/// `account_uid` reads it there, so no test reaches Windows' Credential Manager.
+#[cfg(test)]
+pub(crate) fn sign_in_for_tests(dir: &Path, uid: &str) {
+    let a = Account { token: format!("test-token-{uid}"), user: User { uid: uid.into(), ..Default::default() }, ..Default::default() };
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(file(dir), serde_json::to_vec(&a).unwrap()).unwrap();
+}
+
+#[cfg(test)]
+pub(crate) fn sign_out_for_tests(dir: &Path) {
+    let _ = std::fs::remove_file(file(dir));
+}
+
+/// Whether the account a cloud request went out under is still the one signed in. A save that
+/// went up to (or came down from) one account must not be noted as synced for the next.
+fn still_signed_in_as(dir: &Path, a: &Account, id: &str) -> bool {
+    let same = account_uid(dir) == a.user.uid;
+    if !same {
+        crate::trail::note(format!("Cloud saves: {id}'s sync finished after the account changed, so it isn't noted as synced"));
+    }
+    same
+}
+
 /// The website said this PC's token is no good any more (signed out from the website).
 fn forget(app: &AppHandle) {
     let st = app.state::<App>();
@@ -878,6 +915,9 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
         return Err(e);
     }
     copy_went_up(id, name);
+    if !still_signed_in_as(&st.dir, &a, id) {
+        return Ok(());
+    }
     let mut s = saves::state(&st.dir, id);
     s.mark_synced(&man.hash, made_at, &man.device);
     // The copy waiting is this one or an older one: what's in the cloud now is newer, so it
@@ -1138,6 +1178,12 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&s
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
+    // The save is in place either way; only the new account's notes must not claim it as synced.
+    if !still_signed_in_as(&st.dir, &a, id) {
+        s.last_hash = c.hash.clone();
+        saves::set_state(&st.dir, id, &s);
+        return Ok(n);
+    }
     s.mark_synced(&c.hash, c.made, &c.device);
     s.last_hash = c.hash.clone();
     saves::set_state(&st.dir, id, &s);
@@ -2201,6 +2247,7 @@ mod child_retry_tests {
     async fn retries_find_each_games_queued_save_under_its_full_id() {
         let fixture = Fixture::new(games());
         let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
         saves::set_state(&st.dir, "series", &saves::State { pending: Some("100.zip".into()), ..Default::default() });
         saves::set_state(&st.dir, "series--first", &saves::State { pending: Some("101.zip".into()), ..Default::default() });
         saves::set_state(&st.dir, "series--second", &saves::State { pending: Some("102.zip".into()), ..Default::default() });
@@ -2296,6 +2343,7 @@ mod child_retry_tests {
     async fn a_waiting_child_retry_inherits_its_installs_cloud_setting() {
         let fixture = Fixture::new(games());
         let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
         assert_eq!(game(st, "series--first").unwrap().cloud, Some(true));
         saves::set_state(&st.dir, "series--first", &saves::State { pending: Some("101.zip".into()), ..Default::default() });
         let busy = BUSY.lock().await;
@@ -2311,6 +2359,32 @@ mod child_retry_tests {
         st.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(true);
         let (_busy, pending) = pending_copy(&st.dir, "series--first", &st.lib).await;
         assert_eq!(pending.as_deref(), Some("101.zip"));
+    }
+
+    #[tokio::test]
+    async fn a_copy_queued_under_one_account_is_not_sent_for_the_next() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
+        saves::set_state(&st.dir, "series", &saves::State { pending: Some("100.zip".into()), ..Default::default() });
+        sign_in_for_tests(&st.dir, "B");
+        let (_busy, copy) = pending_copy(&st.dir, "series", &st.lib).await;
+        assert_eq!(copy, None);
+    }
+
+    #[test]
+    fn another_accounts_sync_point_does_not_bring_in_this_accounts_cloud_save() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
+        let mut s = saves::State { last_hash: "unchanged".into(), ..Default::default() };
+        s.mark_synced("unchanged", 100, "Desk-PC");
+        saves::set_state(&st.dir, "series", &s);
+        sign_in_for_tests(&st.dir, "B");
+        let s = saves::state(&st.dir, "series");
+        let b_cloud = [CloudCopy { v: "b1".into(), hash: "b-save".into(), ..Default::default() }];
+        assert!(incoming(&s, &b_cloud).is_none());
+        assert!(!should_restore(&s.last_hash, &s.synced_hash, "b-save", false));
     }
 }
 
@@ -2526,6 +2600,7 @@ mod sync_tests {
         let mut library = crate::library::Library::default();
         library.installed.insert("g".into(), Installed { cloud: Some(true), ..Default::default() });
         let library = Mutex::new(library);
+        sign_in_for_tests(&dir, "A");
         saves::set_state(&dir, "g", &saves::State { pending: Some("123.zip".into()), ..Default::default() });
         let busy = BUSY.lock().await;
         let retry = pending_copy(&dir, "g", &library);
@@ -2696,6 +2771,7 @@ mod status_tests {
     #[test]
     fn a_failed_upload_is_remembered() {
         let d = tmp("failed");
+        sign_in_for_tests(&d, "A");
         note_failure(&d, "g", &Error::Net("Can't reach recomplauncher.com right now.".into()));
         let p = saves::state(&d, "g").problem.unwrap();
         assert_eq!(p.kind, "offline");
@@ -2714,6 +2790,7 @@ mod status_tests {
     #[test]
     fn a_readable_folder_again_clears_the_folder_problem() {
         let d = tmp("folder");
+        sign_in_for_tests(&d, "A");
         note_folder_too_big(&d, "g", Some(SYNC_PAUSED.into()));
         assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "too-big-folder");
         note_folder_too_big(&d, "g", None);
@@ -2724,6 +2801,7 @@ mod status_tests {
     #[test]
     fn a_readable_folder_keeps_other_problems() {
         let d = tmp("folder-other");
+        sign_in_for_tests(&d, "A");
         note_failure(&d, "g", &Error::Msg(FULL_TEXT.into()));
         note_folder_too_big(&d, "g", None);
         assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "full");
