@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "請先完成正在進行的設定。",
   "{name} {version} needs a new build of the game.": "{name} {version} 需要重新建置遊戲。",
   "It's built again from your copy.": "會用您的副本重新建置。",
-  "Building the game": "正在建置遊戲",
   "The Update Didn't Finish": "更新沒有完成",
   "Finish the Update": "完成更新",
   "Your other choices stay as they were.": "您的其他選擇維持不變。",

@@ -4,8 +4,8 @@
   python3 tools/launcher-i18n.py              how much of each language is done
   python3 tools/launcher-i18n.py --strings    every English text, as JSON (plural ones marked)
   python3 tools/launcher-i18n.py --missing de the texts German doesn't have yet, as JSON
-  python3 tools/launcher-i18n.py --check      checks every language file: valid JSON, the same
-                                              {placeholders}, the right number of plural forms,
+  python3 tools/launcher-i18n.py --check      checks every language file: valid JSON, no text twice,
+                                              the same {placeholders}, the right number of plural forms,
                                               and texts the launcher no longer uses
 
 The English comes from t('…'), tf('…'), tn(n, '…', '…') and N_('…') in ui/*.js, elements marked
@@ -106,11 +106,21 @@ def strings():
     return sorted(out), plural
 
 
-def load(code):
+def load(code, twice=None):
     p = os.path.join(UI, 'i18n', code + '.json')
     if not os.path.exists(p):
         return {}
-    return json.load(open(p, encoding='utf-8'))
+
+    def pairs(kv):
+        # The last copy of a repeated text wins, as with plain json.load; twice collects the repeats.
+        if twice is not None:
+            seen = set()
+            for k, _ in kv:
+                if k in seen:
+                    twice.append(k)
+                seen.add(k)
+        return dict(kv)
+    return json.load(open(p, encoding='utf-8'), object_pairs_hook=pairs)
 
 
 def holes(s):
@@ -135,11 +145,15 @@ def check():
     bad = 0
     for code in CODES:
         try:
-            d = load(code)
+            twice = []
+            d = load(code, twice)
         except ValueError as e:
             print(f'{code}: not valid JSON: {e}')
             bad += 1
             continue
+        for en in twice:
+            print(f'{code}: in the file twice: {en!r}')
+            bad += 1
         base = BASE.get(code, code)
         for en, tr in d.items():
             if not isinstance(tr, str):

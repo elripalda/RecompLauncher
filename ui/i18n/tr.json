@@ -427,7 +427,6 @@
  "Finish the setup that's running first.": "Önce çalışmakta olan kurulumu bitirin.",
   "{name} {version} needs a new build of the game.": "{name} {version}, oyunun yeniden derlenmesini gerektiriyor.",
   "It's built again from your copy.": "Kopyanızdan yeniden derlenir.",
-  "Building the game": "Oyun derleniyor",
   "The Update Didn't Finish": "Güncelleme Tamamlanmadı",
   "Finish the Update": "Güncellemeyi Tamamla",
   "Your other choices stay as they were.": "Diğer seçimleriniz olduğu gibi kalır.",
