@@ -1415,5 +1415,13 @@
  "{name} is uninstalled, but its folder stayed: a copy of its saves couldn't be made first. It's in {path}.": "{name} est désinstallé, mais son dossier est resté : une copie de ses sauvegardes n'a pas pu être faite avant. Il est dans {path}.",
  "A copy of its saves is kept. Install it again and put them back from its Saves tab.": "Une copie de ses sauvegardes est gardée. Réinstalle-le et remets-les depuis son onglet Sauvegardes.",
  "{path}. A copy of its saves is kept first.": "{path}. Une copie de ses sauvegardes est gardée avant.",
- "Delete its folder and its saves": "Supprimer son dossier et ses sauvegardes"
+ "Delete its folder and its saves": "Supprimer son dossier et ses sauvegardes",
+ "{n} people saved it or are waiting for it": "{n} personnes l'ont enregistré ou l'attendent",
+ "Saved": "Enregistré",
+ "Saved. We'll let you know here and by email when it comes out.": "Enregistré. On vous préviendra ici et par courriel à sa sortie.",
+ "Saved. We'll let you know when it comes out.": "Enregistré. On vous préviendra à sa sortie.",
+ "Save it and we'll let you know here and by email when it comes out.": "Enregistrez-le et on vous préviendra ici et par courriel à sa sortie.",
+ "Save it and we'll let you know when it comes out.": "Enregistrez-le et on vous préviendra à sa sortie.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} est enregistré. On vous préviendra à sa sortie.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Des recomps en route. Enregistrez-en un et on vous préviendra le jour de sa sortie."
 }

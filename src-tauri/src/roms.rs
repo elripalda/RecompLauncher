@@ -1315,8 +1315,19 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
 /// The words in a name, lower case, with the noise taken out: "Zelda - Majora's Mask (USA).z64"
 /// becomes zelda, majoras, mask.
 pub fn words(s: &str) -> Vec<String> {
+    let clean = outside_brackets(s);
+    const NOISE: [&str; 9] = ["the", "of", "a", "and", "usa", "us", "europe", "rev", "v1"];
+    clean
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty() && !NOISE.contains(w))
+        .map(str::to_string)
+        .collect()
+}
+
+/// A name in lower case without its bracketed tags: region and dump tags say nothing about which
+/// game it is.
+fn outside_brackets(s: &str) -> String {
     let s = s.to_lowercase().replace('\'', "").replace('’', "");
-    // Region and dump tags in brackets say nothing about which game it is.
     let mut clean = String::new();
     let mut depth = 0;
     for c in s.chars() {
@@ -1327,12 +1338,37 @@ pub fn words(s: &str) -> Vec<String> {
             _ => {}
         }
     }
-    const NOISE: [&str; 9] = ["the", "of", "a", "and", "usa", "us", "europe", "rev", "v1"];
     clean
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|w| !w.is_empty() && !NOISE.contains(w))
-        .map(str::to_string)
-        .collect()
+}
+
+/// A number or Roman numeral that can be a sequel's. One is left out: "Game 1" is still "Game".
+fn is_sequel_number(word: &str) -> bool {
+    // Up to XX so long series are covered too: Final Fantasy XIII isn't Final Fantasy XII.
+    const ROMAN: [&str; 19] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"];
+    if ROMAN.contains(&word) {
+        return true;
+    }
+    let digits = !word.is_empty() && word.len() <= 4 && word.chars().all(|c| c.is_ascii_digit());
+    digits && !word.trim_start_matches('0').is_empty() && word != "1"
+}
+
+/// Whether the name carries a sequel number the game's name doesn't: "Gears of War 2" isn't
+/// "Gears of War". Dots stay inside a word so a version like "1.2" isn't read as a sequel, and a
+/// number after "Disc" or "Part" is that disc of this game.
+fn names_a_sequel(name: &str, want: &[String]) -> bool {
+    const NUMBERED: [&str; 12] = ["disc", "disk", "cd", "part", "track", "side", "vol", "volume", "rev", "ver", "version", "of"];
+    let clean = outside_brackets(name);
+    let parts: Vec<&str> = clean.split(|c: char| !c.is_ascii_alphanumeric() && c != '.').map(|p| p.trim_matches('.')).filter(|p| !p.is_empty()).collect();
+    for (i, part) in parts.iter().enumerate() {
+        if !is_sequel_number(part) || want.iter().any(|w| w == part) {
+            continue;
+        }
+        let after_a_label = i > 0 && NUMBERED.contains(&parts[i - 1]);
+        if !after_a_label {
+            return true;
+        }
+    }
+    false
 }
 
 /// Does this file look like `game`? Every word of the game's name has to be in the file's.
@@ -1347,7 +1383,8 @@ fn matches(game: &str, rom: &RomFile) -> bool {
     // Every word of the game's name is in the file's, and at least half of the file's words are
     // the game's: "Tony Hawk's Pro Skater 3" isn't "Skate 3", though it has both words in it.
     let all = |pool: &[String]| !pool.is_empty() && want.iter().all(|w| pool.iter().any(|h| hit(w, h))) && pool.iter().filter(|h| want.iter().any(|w| hit(w, h))).count() * 2 >= pool.len();
-    all(&have) || all(&file)
+    let stem = rom.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    (all(&have) && !names_a_sequel(&rom.title, &want)) || (all(&file) && !names_a_sequel(stem, &want))
 }
 
 /// For each catalog app, the player's file for its game, if they have one.
@@ -2228,6 +2265,38 @@ pub(crate) mod tests {
         assert!(!matches("Skate 3", &f("Tony Hawk's Pro Skater 3", "gba")));
         assert!(matches("Skate 3", &f("Skate 3 (USA)", "iso")));
         assert!(matches("The Legend of Zelda: Majora's Mask", &f("Legend of Zelda, The - Majora's Mask (USA)", "z64")));
+    }
+
+    #[test]
+    fn a_sequels_disc_isnt_the_earlier_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(!matches("Gears of War", &f("Gears of War 2 (USA)")));
+        assert!(!matches("God of War", &f("God of War II (USA)")));
+        assert!(matches("Gears of War 2", &f("Gears of War 2 (USA)")));
+    }
+
+    #[test]
+    fn a_disc_number_or_revision_is_still_the_same_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(matches("Gears of War", &f("Gears of War Disc 2")));
+        assert!(matches("Gears of War", &f("Gears of War Track 02")));
+        assert!(matches("Gears of War", &f("Gears of War 1.2")));
+        assert!(matches("Gears of War", &f("Gears of War (USA) (Disc 2)")));
+        assert!(matches("Banjo-Kazooie", &f("Banjo-Kazooie (USA) (Rev 1)")));
+    }
+
+    #[test]
+    fn a_later_roman_numeral_isnt_the_earlier_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(!matches("Final Fantasy XII", &f("Final Fantasy XIII (USA)")));
+        assert!(!matches("Final Fantasy VII", &f("Final Fantasy VIII (USA)")));
+    }
+
+    #[test]
+    fn the_same_roman_numeral_is_still_the_same_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(matches("Final Fantasy XII", &f("Final Fantasy XII (USA)")));
+        assert!(matches("Final Fantasy VII", &f("Final Fantasy VII (USA) (Disc 2)")));
     }
 
     #[test]

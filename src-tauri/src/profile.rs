@@ -1126,6 +1126,18 @@ fn bind_image(raw: &mut Value, image: &Path) -> Option<()> {
     Some(())
 }
 
+/// JSON bytes without the UTF-8 byte order mark some Windows editors put in front. The mark belongs
+/// to the encoding and JSON doesn't allow it, so a recomplauncher.json saved that way would fail to
+/// parse and the game would lose its launcher support.
+pub(crate) fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes)
+}
+
+/// A recomplauncher.json, or another JSON file a person may have saved, read from bytes, BOM or not.
+pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> {
+    serde_json::from_slice(without_bom(bytes)).ok()
+}
+
 /// Embedded metadata belongs to the installed image and wins over a stale
 /// sidecar. Unsupported, missing or unreadable metadata keeps the old fallback.
 pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
@@ -1133,7 +1145,7 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
         return None;
     }
     let parse = |bytes: &[u8], image: Option<&Path>| -> Option<ReleaseProfile> {
-        let mut raw: Value = serde_json::from_slice(bytes).ok()?;
+        let mut raw = parse_json_bytes(bytes)?;
         if let Some(image) = image {
             bind_image(&mut raw, image)?;
         }
@@ -1804,6 +1816,22 @@ impl Profile {
             let in_bundle = want_name.ends_with(".app") && exe.ancestors().any(|a| low(a, false) == want_name);
             want_name == name || in_bundle || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
         })
+    }
+
+    /// Start With's programs, relative to `install`: the one Play starts, and the one the player
+    /// picked in the game's settings. A recomp that ships its own tools (a setup worker, a
+    /// compiler, each kept build's game) offered them all to start by hand (#464). It's the program
+    /// Play resolves, not every file sharing its name: a kept build or a builder named like the
+    /// game isn't the game. None when the start names no program that's there: Start With then
+    /// offers every program in the folder, as before.
+    pub fn start_with(&self, install: &Path, picked: Option<&Path>) -> Option<Vec<String>> {
+        let started = self.program_for(install, self.windows_build.unwrap_or(true))?;
+        let rel = |p: &Path| p.strip_prefix(install).ok().map(|r| r.to_string_lossy().to_string());
+        let mut out = vec![rel(&started)?];
+        // Held Play only starts a program inside the game's folder, so one picked elsewhere can't be offered.
+        let own = picked.filter(|p| p.is_file() && *p != started.as_path()).and_then(rel);
+        out.extend(own);
+        Some(out)
     }
 
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
@@ -2714,6 +2742,29 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 mod tests {
 
     #[test]
+    fn json_bytes_without_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn json_bytes_with_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn a_manifest_saved_with_a_byte_order_mark_is_still_read() {
+        let dir = std::env::temp_dir().join(format!("rl-profile-bom-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("recomplauncher.json"), "\u{feff}{\"format\":1}").unwrap();
+        let found = super::release_profile(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(found.map(|p| p.profile.format), Some(1));
+    }
+
+    #[test]
     fn system_reads_each_part_and_a_profile_without_it_writes_none() {
         let p: super::Profile = serde_json::from_str(r#"{"format":1,"system":{"linux":{"glibc":"2.35","graphics":{"vulkan":"1.3"}},"windows":{"version":"11"}}}"#).unwrap();
         let s = p.system.as_ref().unwrap();
@@ -2836,6 +2887,88 @@ mod tests {
         // The game the builder made, or anything else: the player's own pick.
         assert!(!p.starts_program(Path::new("C:/Games/Hopper/bin/hopper.exe")));
         assert!(!p.starts_program(Path::new("/opt/HopperEditor.exe")));
+    }
+
+    // A release folder like Cubic.Heroes' in #464: the game, the launcher's setup worker, a
+    // compiler and a kept build of the game under the same name.
+    fn cubic_folder(n: &str) -> PathBuf {
+        let d = tmp(n);
+        for rel in ["CubicHeroes.exe", "setup/worker.exe", "setup/zig/zig.exe", "builds/1.0.2/CubicHeroes.exe"] {
+            let file = d.join(rel);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, b"MZ").unwrap();
+        }
+        d
+    }
+
+    fn cubic_profile() -> Profile {
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        p
+    }
+
+    #[test]
+    fn start_with_offers_only_the_program_play_starts() {
+        let d = cubic_folder("sw-only");
+        let got = cubic_profile().start_with(&d, None);
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_keeps_the_program_the_player_picked() {
+        let d = cubic_folder("sw-picked");
+        let picked = d.join("builds").join("1.0.2").join("CubicHeroes.exe");
+        let got = cubic_profile().start_with(&d, Some(&picked)).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(Path::new(&got[1]), Path::new("builds/1.0.2/CubicHeroes.exe"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_leaves_out_a_pick_outside_the_games_folder() {
+        let d = cubic_folder("sw-elsewhere");
+        let elsewhere = tmp("sw-elsewhere-pick").join("Other.exe");
+        std::fs::write(&elsewhere, b"MZ").unwrap();
+        let got = cubic_profile().start_with(&d, Some(&elsewhere));
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(elsewhere.parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn start_with_offers_a_program_built_into_a_subfolder_not_the_builder() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("sw-subfolder");
+        // Longshot's release (#494): the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        p.windows_build = Some(false);
+        assert_eq!(p.start_with(&d, None), Some(vec!["Longshot/longshot".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_without_a_start_program() {
+        let d = cubic_folder("sw-nostart");
+        let p: Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_when_the_named_one_isnt_there() {
+        let d = cubic_folder("sw-renamed");
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Renamed.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

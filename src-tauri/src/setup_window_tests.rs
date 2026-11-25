@@ -181,3 +181,27 @@ fn a_copy_picked_in_easy_setup_changes_nothing_until_it_is_set_up() {
     assert_eq!(with_pending("window-pick-game", now).setup_inputs["game"], other);
     clear_pending("window-pick-game");
 }
+
+#[test]
+fn a_games_setup_run_keeps_its_recomp_busy() {
+    SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert("busy-cogbox--gow1".into(), 1);
+    let busy = setup_busy("busy-cogbox");
+    SETUP_RUN.lock().unwrap().as_mut().unwrap().remove("busy-cogbox--gow1");
+    assert!(busy);
+}
+
+#[test]
+fn a_games_file_copy_keeps_its_recomp_busy() {
+    INPUT_WORKERS.lock().unwrap().push("copy-cogbox--gow1".into());
+    let busy = setup_busy("copy-cogbox");
+    INPUT_WORKERS.lock().unwrap().retain(|x| x != "copy-cogbox--gow1");
+    assert!(busy);
+}
+
+#[test]
+fn a_games_setup_run_leaves_other_recomps_free() {
+    SETUP_RUN.lock().unwrap().get_or_insert_with(HashMap::new).insert("free-cogbox2--gow1".into(), 1);
+    let busy = setup_busy("free-cogbox");
+    SETUP_RUN.lock().unwrap().as_mut().unwrap().remove("free-cogbox2--gow1");
+    assert!(!busy);
+}
