@@ -2284,6 +2284,9 @@
  "Game File": "Tệp trò chơi",
  "Drop your ROM here": "Thả ROM vào đây",
  "Drop your game file here": "Thả tệp trò chơi vào đây",
+ "This game takes a folder, not a file.": "Trò chơi này cần một thư mục, không phải tệp.",
+ "This takes a folder, not a file.": "Mục này cần một thư mục, không phải tệp.",
+ "Drop your game's folder here": "Thả thư mục trò chơi vào đây",
  "The file you made from your own copy": "Tệp bạn đã tạo từ bản sao của chính mình",
  "What the game needs from your copy": "Những gì trò chơi cần từ bản sao của bạn",
  "Reading your copy": "Đang đọc bản sao của bạn",
@@ -3411,5 +3414,13 @@
  "Your LaunchBox": "LaunchBox của bạn",
  "Your LaunchBox has no game by that name. Try another.": "LaunchBox của bạn không có trò nào tên như vậy. Hãy thử tên khác.",
  "Your LaunchBox has no game called {name}.": "LaunchBox của bạn không có trò nào tên {name}.",
+ "{n} people saved it or are waiting for it": "{n} người đã lưu hoặc đang chờ",
+ "Saved": "Đã lưu",
+ "Saved. We'll let you know here and by email when it comes out.": "Đã lưu. Chúng tôi sẽ báo ở đây và qua email khi phát hành.",
+ "Saved. We'll let you know when it comes out.": "Đã lưu. Chúng tôi sẽ báo khi phát hành.",
+ "Save it and we'll let you know here and by email when it comes out.": "Lưu lại và chúng tôi sẽ báo ở đây và qua email khi phát hành.",
+ "Save it and we'll let you know when it comes out.": "Lưu lại và chúng tôi sẽ báo khi phát hành.",
+ "{name} is saved. We'll let you know when it comes out.": "Đã lưu {name}. Chúng tôi sẽ báo khi phát hành.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Các recomp sắp ra mắt. Lưu một cái và chúng tôi sẽ báo vào ngày phát hành.",
  "Game info from LaunchBox Games Database": "Thông tin trò chơi từ LaunchBox Games Database"
 }

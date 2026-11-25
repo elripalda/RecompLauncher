@@ -45,6 +45,8 @@
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     openfolder: '<path d="M3 17.5V7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h7.5A1.5 1.5 0 0 1 20 9.5V11"/><path d="M3 17.5 5.4 12a1.5 1.5 0 0 1 1.4-1H21a1 1 0 0 1 .9 1.4l-2.3 5.7a1.5 1.5 0 0 1-1.4.9H4.5A1.5 1.5 0 0 1 3 17.5z"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+    heart: '<path d="M12 20.3s-7.8-4.6-7.8-10.2A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.8 2.8c0 5.6-7.8 10.2-7.8 10.2z"/>',
+    heartOn: '<path d="M12 20.3s-7.8-4.6-7.8-10.2A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.8 2.8c0 5.6-7.8 10.2-7.8 10.2z" fill="currentColor"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
     chevL: '<path d="m15 5-7 7 7 7"/>',
@@ -364,7 +366,7 @@
     const st = status(a), j = S.jobs[a.id];
     const vers = TV.view !== 'library' && !j && verGroup(a);
     // One label: with a versions count on the poster, Setup Required stays on the game's page.
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${savedSoon(a) ? svg('heartOn', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
@@ -483,8 +485,10 @@
     tvSetupReq(id);
     return true;
   };
-  function mainButton(a, key) {
+  // `want`: the game's page, where Save (Coming Soon) and Add to Library carry how many want it (wantTag in app.js).
+  function mainButton(a, key, want = false) {
     const st = status(a), id = a.id;
+    const wants = () => (want && !a.custom ? wantTag(wantCount(id)) : '');
     switch (st) {
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
       case 'settingup': {
@@ -497,9 +501,9 @@
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
       case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Easy Setup')), { cls: 'main easy', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
-      case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
+      case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : isSaved(id) ? btn(key, 'unsave', esc(t('Saved')) + wants(), { cls: 'save-on', id, icon: 'heartOn' }) : btn(key, 'addlib', esc(t('Save')) + wants(), { cls: 'main', id, icon: 'heart' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
-      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
+      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')) + wants(), { cls: 'main', id, g: 'a' });
     }
   }
 
@@ -1643,7 +1647,7 @@
     const sbNote = sb && sb.note ? `<small>${esc(sb.note)}</small>` : '';
     const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
-      mainButton(a, 'g-main'),
+      mainButton(a, 'g-main', true),
       needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'openfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
@@ -1680,6 +1684,7 @@
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           ${sbLine}
           <div class="tv-acts">${acts}</div>
+          ${a.soon && !a.custom ? `<p class="tv-soon-note" dir="auto">${esc(soonNoteText(a))}</p>` : ''}
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
           ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}${achGameTV(id)}
@@ -3092,7 +3097,7 @@
       case 'shots': await loadAllShots(); return go('shots', id);
       case 'mods': return go('mods', id);
       case 'gsettings': return go('gsettings', id);
-      case 'notify': sfx('select'); return toggleNotify(id).then(() => draw(true));
+      case 'unsave': sfx('select'); await removeFromLibrary(id); TV.focusKey = 'g-main'; return draw(true);
       case 'notex': sfx('back'); return closeNote(el.dataset.n).then(() => draw(true));
       case 'noteurl': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
       // Home's info boxes and banners, from the website's list.

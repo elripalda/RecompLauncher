@@ -201,10 +201,13 @@ body.isl-on main::after{content:'';display:block;height:84px}
 .more{height:1px}
 .grid.compact{gap:22px 16px}
 .tile{position:relative;min-width:0}
-.tile-b{position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;text-align:left;min-width:0;width:100%}
+/* Some Windows WebView2 builds lay out a flex <button> without stretching its children, so the poster
+   (whose only content is absolutely placed) came out 0 x 0 and the Library showed no covers (#454).
+   The explicit stretch and the poster's own width keep it filling the tile everywhere. */
+.tile-b{position:relative;z-index:1;display:flex;flex-direction:column;align-items:stretch;gap:10px;text-align:left;min-width:0;width:100%}
 .qpw{position:absolute;left:0;top:0;width:100%;aspect-ratio:2/3;pointer-events:none;z-index:3}
 .qpw .qp{pointer-events:auto}
-.poster{position:relative;aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:var(--card2);box-shadow:0 10px 24px -14px rgba(0,0,0,.8),inset 0 0 0 1px rgba(244,248,252,.05);transition:transform .32s var(--ease),box-shadow .32s var(--ease);z-index:1}
+.poster{position:relative;width:100%;aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:var(--card2);box-shadow:0 10px 24px -14px rgba(0,0,0,.8),inset 0 0 0 1px rgba(244,248,252,.05);transition:transform .32s var(--ease),box-shadow .32s var(--ease);z-index:1}
 .poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .poster .ph{position:absolute;inset:0;display:grid;place-items:center;padding:14px;text-align:center;font:700 semi-expanded 15px Archivo,sans-serif;color:var(--dim);background:linear-gradient(100deg,var(--card2) 30%,var(--card3) 50%,var(--card2) 70%) 0 0/300% 100%;animation:shimmer 1.6s linear infinite}
 @keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
@@ -239,7 +242,9 @@ body.isl-on main::after{content:'';display:block;height:84px}
 .badge.tl.lib{color:var(--cyan)}
 
 /* ---------- home ---------- */
-.slider{position:relative;height:clamp(340px,40vw,520px);border-radius:28px;overflow:hidden;background:var(--card);box-shadow:0 30px 70px -40px rgba(0,0,0,.9)}
+/* The banner follows the window's width, but also never takes more than half its height: on a
+   1366×768 laptop a width-only banner filled 68% of the screen. 1080p and up keep the full 520px. */
+.slider{position:relative;height:clamp(260px,min(40vw,50vh),520px);border-radius:28px;overflow:hidden;background:var(--card);box-shadow:0 30px 70px -40px rgba(0,0,0,.9)}
 .slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .7s var(--ease),visibility 0s .7s}
 .slide.on{opacity:1;visibility:visible;transition:opacity .7s var(--ease)}
 .slide>.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.04);transition:transform 8s linear}
@@ -270,6 +275,10 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .sl-arrows{position:absolute;z-index:2;right:24px;top:24px;display:flex;gap:8px}
 .sl-arrows button{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(6,11,21,.45);backdrop-filter:blur(12px);border:1px solid rgba(244,248,252,.14);transition:background .15s}
 .sl-arrows button:hover{background:rgba(6,11,21,.75)}
+/* A short window has a short banner: a smaller logo and cover and less space around them, so the
+   text stays clear of the dots and the cover of the arrows. Very short, the blurb goes too. */
+@media (max-height:860px){.sl-ui{top:22px}.sl-arrows{top:16px}.sl-in{bottom:30px;gap:10px}.sl-logo{height:80px}.sl-cover{bottom:30px;width:clamp(110px,21vh,210px)}}
+@media (max-height:640px){.sl-in p{display:none}}
 .based{display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:14.5px}
 .based>span{min-width:0}
 .based>svg{margin-top:.24em}
@@ -829,6 +838,8 @@ body.light .pick .fmt,body.light .ready .set-row .k .fmt{background:rgba(20,120,
 .ss-box .k span{font-size:12.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .ss-box .low{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .ss-box .meta{display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden}
+/* A folder-only copy says so where a file's types would be: two lines at most, so the box keeps its size. */
+.ss-box .ss-hint{font-size:12.5px;font-weight:600;line-height:1.25;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .ss-box .acts{display:flex;gap:5px;flex:none}
 .ss-box .acts .btn{padding:0 9px;min-width:104px}
 .ss-box .fmts,.ss-row .fmts{display:flex;gap:3px;flex-wrap:nowrap}
@@ -2318,8 +2329,13 @@ body.pad-nav .menu .pad-focus{background:var(--fill3)}
 .tag.deck{color:#1a9fff;background:rgba(26,159,255,.1);border-color:rgba(26,159,255,.42)}
 .toggle.deck-t svg{color:#1a9fff}
 .badge.soon svg{margin-right:-1px}
-.btn.notify-on{background:transparent;color:var(--cyan);border:1.5px solid rgba(52,242,232,.6)}
-.btn.notify-on svg{color:var(--cyan)}
+/* A saved Coming Soon game's Save: outlined, filled heart, a soft glow (filled cyan until it's saved). */
+.btn.save-on{background:rgba(52,242,232,.08);color:var(--cyan);border:1.5px solid rgba(52,242,232,.6);box-shadow:0 0 24px -8px rgba(52,242,232,.55)}
+.btn.save-on svg{color:var(--cyan)}
+.gp-soon-note{margin:0;max-width:420px;text-align:right;font-size:13px;color:var(--muted)}
+/* How many want it, after Notify Me or Add to Library on a game's page: "Notify Me · 3,412". */
+.btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.btn .want::before{content:'·';margin-right:9px}
 .tnotes{display:flex;flex-direction:column;gap:10px;margin:0 0 22px}
 .tnote{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--cyan)}
 .tnote.gold{border-left-color:#f5c518}.tnote.violet{border-left-color:#a98bff}

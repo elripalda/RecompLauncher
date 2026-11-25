@@ -108,9 +108,30 @@ test('Use Default lets the pick go in the core', () => {
 test('Before you play doesn\'t ask a self-managed install for the player\'s copy', () => {
   const rows = fn(app, 'readyRows');
   assert.match(rows, /const selfRun = !!\(su && su\.own_program\);/);
-  assert.match(rows, /if \(cs && !selfRun\) rows\.push\(/);
-  assert.match(rows, /else if \(a\.needs && !selfRun\) rows\.push\(/);
-  assert.match(rows, /if \(su && su\.needs && !selfRun\) rows\.push\(\.\.\.otherFileRows\(id, su\)\);/);
+  assert.match(rows, /const askCopy = !selfRun && !building && feedsCopy\(a\);/);
+  assert.match(rows, /if \(cs && askCopy\) rows\.push\(/);
+  assert.match(rows, /else if \(a\.needs && askCopy\) rows\.push\(/);
+  assert.match(rows, /if \(su && su\.needs && askCopy\) rows\.push\(\.\.\.otherFileRows\(id, su\)\);/);
+});
+
+test('Before you play doesn\'t ask for the copy while the game builds', () => {
+  assert.match(fn(app, 'readyRows'), /const building = status\(a\) === 'settingup' \|\| buildWaits\(id\);/);
+});
+
+// The launcher can only hand the copy to the game through Easy Setup or a boot profile's files.
+const line = (src, name) => src.match(new RegExp(`^const ${name} = [^\\n]*$`, 'm'))[0];
+const feeds = (S, builtin = {}) => new Function('S', 'builtinBoot', `${line(app, 'TURNKEY_HOW')} ${line(app, 'feedsCopy')} return feedsCopy;`)(S, () => builtin);
+
+test('a game that asks for its copy itself isn\'t asked for it on Before you play', () => {
+  assert.equal(feeds({ easy: new Set() })({ id: 'g' }), false);
+});
+
+test('an Easy Setup game is asked for its copy on Before you play', () => {
+  assert.equal(feeds({ easy: new Set(['g']) })({ id: 'g' }), true);
+});
+
+test('a game whose boot profile puts its copy in place is asked for it on Before you play', () => {
+  assert.equal(feeds({ easy: new Set() }, { g: { files: { how: 'flag' } } })({ id: 'g' }), true);
 });
 
 // Skip Easy Setup is the one switch for who sets a game up.

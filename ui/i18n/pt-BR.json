@@ -2273,6 +2273,9 @@
  "Game File": "Arquivo do jogo",
  "Drop your ROM here": "Solte sua ROM aqui",
  "Drop your game file here": "Solte seu arquivo do jogo aqui",
+ "This game takes a folder, not a file.": "Este jogo precisa de uma pasta, não de um arquivo.",
+ "This takes a folder, not a file.": "Isto precisa de uma pasta, não de um arquivo.",
+ "Drop your game's folder here": "Solte a pasta do seu jogo aqui",
  "The file you made from your own copy": "O arquivo que você criou a partir da sua própria cópia",
  "What the game needs from your copy": "O que o jogo precisa da sua cópia",
  "Reading your copy": "Lendo sua cópia",
@@ -3400,5 +3403,13 @@
  "Your LaunchBox": "Seu LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "Seu LaunchBox não tem nenhum jogo com esse nome. Tente outro.",
  "Your LaunchBox has no game called {name}.": "Seu LaunchBox não tem nenhum jogo chamado {name}.",
+ "{n} people saved it or are waiting for it": "{n} pessoas salvaram ou estão esperando",
+ "Saved": "Salvo",
+ "Saved. We'll let you know here and by email when it comes out.": "Salvo. Avisaremos aqui e por e-mail quando sair.",
+ "Saved. We'll let you know when it comes out.": "Salvo. Avisaremos quando sair.",
+ "Save it and we'll let you know here and by email when it comes out.": "Salve e avisaremos aqui e por e-mail quando sair.",
+ "Save it and we'll let you know when it comes out.": "Salve e avisaremos quando sair.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} está salvo. Avisaremos quando sair.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomps a caminho. Salve um e avisaremos no dia em que sair.",
  "Game info from LaunchBox Games Database": "Informações do jogo do LaunchBox Games Database"
 }

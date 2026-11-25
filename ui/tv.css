@@ -965,7 +965,11 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
 .tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
 .tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
-.tv-btn.notify-on{background:transparent;border:2px solid rgba(52,242,232,.6);color:#34F2E8}
+/* A saved Coming Soon game: outlined, filled heart, a soft glow (Save until then). */
+.tv-btn.save-on{background:rgba(52,242,232,.08);border:2px solid rgba(52,242,232,.6);color:#34F2E8;box-shadow:0 0 28px -8px rgba(52,242,232,.55)}
+.tv-soon-note{margin:0;font-size:19px;color:rgba(var(--tvinkrgb,244,248,252),.7)}
+.tv-btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.tv-btn .want::before{content:'·';margin:0 12px}
 .tv-home1>.tv-notes{position:absolute;top:6px;right:0;width:500px;z-index:2}
 .tv-tnote{display:flex;flex-direction:column;gap:6px;padding:10px 10px 14px 20px;border-radius:18px;background:rgba(var(--tvrgb),.78);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);border-left:5px solid #34F2E8;box-shadow:0 12px 34px rgba(0,0,0,.28)}
 .tv-tnote.gold{border-left-color:#f5c518}.tv-tnote.violet{border-left-color:#a98bff}
@@ -1017,6 +1021,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-box .k b{font-size:28px}
 .ni-tv.ss .ss-box .k span{font-size:21px}
 .ni-tv.ss .fmt{font-size:17px;padding:6px 9px;border-radius:7px}
+.ni-tv.ss .ss-box .ss-hint{font-size:19px}
 .ni-tv.ss .ss-src{height:34px;font-size:18px;padding:0 13px;border-radius:9px}
 .ni-tv.ss .btn{font-size:20px;height:56px;padding:0 22px;border-radius:12px}
 .ni-tv.ss .ss-box .acts{gap:10px}

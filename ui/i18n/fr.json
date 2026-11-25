@@ -2284,6 +2284,9 @@
  "Game File": "Fichier de jeu",
  "Drop your ROM here": "Déposez votre ROM ici",
  "Drop your game file here": "Déposez votre fichier de jeu ici",
+ "This game takes a folder, not a file.": "Ce jeu demande un dossier, pas un fichier.",
+ "This takes a folder, not a file.": "Il faut un dossier, pas un fichier.",
+ "Drop your game's folder here": "Déposez le dossier de votre jeu ici",
  "The file you made from your own copy": "Le fichier que vous avez créé à partir de votre propre copie",
  "What the game needs from your copy": "Ce dont le jeu a besoin dans votre copie",
  "Reading your copy": "Lecture de votre copie",
@@ -3411,5 +3414,13 @@
  "Your LaunchBox": "Votre LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "Votre LaunchBox n'a aucun jeu de ce nom. Essayez-en un autre.",
  "Your LaunchBox has no game called {name}.": "Votre LaunchBox n'a aucun jeu nommé {name}.",
+ "{n} people saved it or are waiting for it": "{n} personnes l'ont enregistré ou l'attendent",
+ "Saved": "Enregistré",
+ "Saved. We'll let you know here and by email when it comes out.": "Enregistré. Nous vous préviendrons ici et par e-mail à sa sortie.",
+ "Saved. We'll let you know when it comes out.": "Enregistré. Nous vous préviendrons à sa sortie.",
+ "Save it and we'll let you know here and by email when it comes out.": "Enregistrez-le et nous vous préviendrons ici et par e-mail à sa sortie.",
+ "Save it and we'll let you know when it comes out.": "Enregistrez-le et nous vous préviendrons à sa sortie.",
+ "{name} is saved. We'll let you know when it comes out.": "{name} est enregistré. Nous vous préviendrons à sa sortie.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "Des recomps en route. Enregistrez-en un et nous vous préviendrons le jour de sa sortie.",
  "Game info from LaunchBox Games Database": "Infos du jeu de LaunchBox Games Database"
 }

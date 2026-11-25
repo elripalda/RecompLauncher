@@ -2284,6 +2284,9 @@
  "Game File": "遊戲檔案",
  "Drop your ROM here": "將 ROM 拖放到這裡",
  "Drop your game file here": "將遊戲檔案拖放到這裡",
+ "This game takes a folder, not a file.": "此遊戲需要資料夾，而不是檔案。",
+ "This takes a folder, not a file.": "此項需要資料夾，而不是檔案。",
+ "Drop your game's folder here": "將遊戲資料夾拖放到這裡",
  "The file you made from your own copy": "您從自己的副本製作的檔案",
  "What the game needs from your copy": "遊戲需要您副本中的哪些內容",
  "Reading your copy": "正在讀取您的副本",
@@ -3411,5 +3414,13 @@
  "Your LaunchBox": "你的 LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "你的 LaunchBox 裡沒有這個名稱的遊戲。換個名稱試試。",
  "Your LaunchBox has no game called {name}.": "你的 LaunchBox 裡沒有名為 {name} 的遊戲。",
+ "{n} people saved it or are waiting for it": "{n} 人已儲存或正在等待",
+ "Saved": "已儲存",
+ "Saved. We'll let you know here and by email when it comes out.": "已儲存。推出時我們會在這裡和透過電子郵件通知你。",
+ "Saved. We'll let you know when it comes out.": "已儲存。推出時我們會通知你。",
+ "Save it and we'll let you know here and by email when it comes out.": "儲存後，推出時我們會在這裡和透過電子郵件通知你。",
+ "Save it and we'll let you know when it comes out.": "儲存後，推出時我們會通知你。",
+ "{name} is saved. We'll let you know when it comes out.": "已儲存 {name}。推出時我們會通知你。",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "即將推出的 Recomp。儲存一個，推出當天我們會通知你。",
  "Game info from LaunchBox Games Database": "遊戲資訊來自 LaunchBox Games Database"
 }

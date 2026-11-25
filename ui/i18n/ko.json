@@ -2284,6 +2284,9 @@
  "Game File": "게임 파일",
  "Drop your ROM here": "여기에 ROM을 놓으세요",
  "Drop your game file here": "여기에 게임 파일을 놓으세요",
+ "This game takes a folder, not a file.": "이 게임은 파일이 아니라 폴더가 필요합니다.",
+ "This takes a folder, not a file.": "여기에는 파일이 아니라 폴더가 필요합니다.",
+ "Drop your game's folder here": "여기에 게임 폴더를 놓으세요",
  "The file you made from your own copy": "내 게임 사본으로 만든 파일",
  "What the game needs from your copy": "게임 사본에서 필요한 것",
  "Reading your copy": "게임 사본을 읽는 중",
@@ -3411,5 +3414,13 @@
  "Your LaunchBox": "내 LaunchBox",
  "Your LaunchBox has no game by that name. Try another.": "내 LaunchBox에 그 이름의 게임이 없습니다. 다른 이름으로 시도해 보세요.",
  "Your LaunchBox has no game called {name}.": "내 LaunchBox에 {name}(이)라는 게임이 없습니다.",
+ "{n} people saved it or are waiting for it": "{n}명이 저장했거나 기다리고 있어요",
+ "Saved": "저장됨",
+ "Saved. We'll let you know here and by email when it comes out.": "저장했어요. 출시되면 여기와 이메일로 알려 드려요.",
+ "Saved. We'll let you know when it comes out.": "저장했어요. 출시되면 알려 드려요.",
+ "Save it and we'll let you know here and by email when it comes out.": "저장하면 출시될 때 여기와 이메일로 알려 드려요.",
+ "Save it and we'll let you know when it comes out.": "저장하면 출시될 때 알려 드려요.",
+ "{name} is saved. We'll let you know when it comes out.": "{name}을(를) 저장했어요. 출시되면 알려 드려요.",
+ "Recomps on the way. Save one and we'll let you know the day it comes out.": "곧 나올 Recomp예요. 저장하면 출시 당일에 알려 드려요.",
  "Game info from LaunchBox Games Database": "게임 정보 출처: LaunchBox Games Database"
 }
