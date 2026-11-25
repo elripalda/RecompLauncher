@@ -248,7 +248,7 @@ impl Prepare {
         if named.is_some() || cfg!(windows) {
             return named;
         }
-        self.program.iter().find_map(|p| native_twin(install, p))
+        self.program.iter().find_map(|p| twin_beside(install, p))
     }
 }
 
@@ -832,7 +832,7 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
 /// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
 /// instead. The one in a folder named after the AppImage first (a release with several), else the
 /// one at the top.
-fn to_apprun(p: &mut Profile, dir: &Path) {
+pub(crate) fn to_apprun(p: &mut Profile, dir: &Path) {
     if dir.as_os_str().is_empty() {
         return;
     }
@@ -874,6 +874,15 @@ pub fn named_program(path: PathBuf) -> Option<PathBuf> {
         return None;
     }
     crate::macos::bundle_executable(&path, crate::assets::arch_now())
+}
+
+/// The native twin of a program a profile names, looked for in the folder that name points into.
+/// A program in a subfolder (`Longshot/longshot`, built there by the setup step) must not match a
+/// tool at the top of the release that shares its name (`longshot-builder`).
+fn twin_beside(install: &Path, named: &str) -> Option<PathBuf> {
+    let path = install.join(named);
+    let folder = path.parent().unwrap_or(install);
+    native_twin(folder, named)
 }
 
 /// A native build's program for the Windows one a game's setup names: the same name without its
@@ -1117,6 +1126,18 @@ fn bind_image(raw: &mut Value, image: &Path) -> Option<()> {
     Some(())
 }
 
+/// JSON bytes without the UTF-8 byte order mark some Windows editors put in front. The mark belongs
+/// to the encoding and JSON doesn't allow it, so a recomplauncher.json saved that way would fail to
+/// parse and the game would lose its launcher support.
+pub(crate) fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes)
+}
+
+/// A recomplauncher.json, or another JSON file a person may have saved, read from bytes, BOM or not.
+pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> {
+    serde_json::from_slice(without_bom(bytes)).ok()
+}
+
 /// Embedded metadata belongs to the installed image and wins over a stale
 /// sidecar. Unsupported, missing or unreadable metadata keeps the old fallback.
 pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
@@ -1124,7 +1145,7 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
         return None;
     }
     let parse = |bytes: &[u8], image: Option<&Path>| -> Option<ReleaseProfile> {
-        let mut raw: Value = serde_json::from_slice(bytes).ok()?;
+        let mut raw = parse_json_bytes(bytes)?;
         if let Some(image) = image {
             bind_image(&mut raw, image)?;
         }
@@ -1147,6 +1168,125 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
     }
     let bytes = std::fs::read(dir.join(crate::appimage::MANIFEST)).ok()?;
     parse(&bytes, None)
+}
+
+/// Why the launcher skips the release's recomplauncher.json in this folder, in plain words, for a
+/// folder where release_profile found nothing to use. None when there is no file at all: that
+/// isn't a problem, the launcher just sets the game up without one.
+pub(crate) fn release_file_problem(dir: &Path) -> Option<String> {
+    if dir.as_os_str().is_empty() {
+        return None;
+    }
+    let embedded = crate::appimage::installed_image(dir).and_then(|image| crate::appimage::manifest(&image).ok());
+    let bytes = embedded.or_else(|| std::fs::read(dir.join(crate::appimage::MANIFEST)).ok())?;
+    Some(file_problem(without_bom(&bytes)))
+}
+
+/// What's wrong with a recomplauncher.json the launcher can't use: the first thing, as the
+/// developer would fix it ("config[0].file" should be a list).
+fn file_problem(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let v = match serde_json::from_str::<Value>(&text) {
+        Ok(v) => v,
+        Err(e) => return format!("It isn't valid JSON (line {}, column {}).", e.line(), e.column()),
+    };
+    if v.get("format").and_then(Value::as_u64) != Some(1) {
+        return "\"format\" has to be 1.".into();
+    }
+    let Err(e) = serde_json::from_str::<Profile>(&text) else {
+        return "The launcher can't read it.".into();
+    };
+    let at = json_path_at(&text, e.line(), e.column());
+    // serde_json ends its message with where it stopped; the path says that better.
+    let full = e.to_string();
+    let said = full.split(" at line ").next().unwrap_or(&full);
+    let what = plain_type_error(said);
+    if at.is_empty() {
+        return format!("The file {what}.");
+    }
+    format!("\"{at}\" {what}.")
+}
+
+/// A serde message in the words of the format guide.
+fn plain_type_error(said: &str) -> String {
+    if let Some(field) = said.strip_prefix("missing field `").and_then(|s| s.split('`').next()) {
+        return format!("needs \"{field}\"");
+    }
+    if let Some(value) = said.strip_prefix("unknown variant `").and_then(|s| s.split('`').next()) {
+        return format!("can't be \"{value}\"");
+    }
+    let expected = said.rsplit("expected ").next().unwrap_or("");
+    let kind = match expected {
+        "a sequence" => "a list",
+        "a string" => "text",
+        "a boolean" => "true or false",
+        "a map" => "an object, in { }",
+        _ if expected.starts_with("struct ") => "an object, in { }",
+        _ if expected.starts_with('u') || expected.starts_with('i') || expected.starts_with('f') => "a number",
+        _ => return said.to_string(),
+    };
+    format!("should be {kind}")
+}
+
+/// The place in a JSON text where a parse stopped (serde_json's line and column), as a path like
+/// config[0].file: the keys and list positions around it.
+fn json_path_at(text: &str, line: usize, column: usize) -> String {
+    enum Frame {
+        Object { key: Option<String>, wants_key: bool },
+        List { at: usize },
+    }
+    let start: usize = text.split('\n').take(line.saturating_sub(1)).map(|l| l.len() + 1).sum();
+    let last = (start + column).saturating_sub(1).min(text.len());
+    let bytes = text.as_bytes();
+    let mut stack: Vec<Frame> = vec![];
+    let mut i = 0;
+    while i < last {
+        match bytes[i] {
+            b'"' => {
+                let from = i + 1;
+                i = from;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                if let Some(Frame::Object { key, wants_key: wants @ true }) = stack.last_mut() {
+                    *key = Some(text[from..i.min(text.len())].to_string());
+                    *wants = false;
+                }
+            }
+            b'{' => stack.push(Frame::Object { key: None, wants_key: true }),
+            b'[' => stack.push(Frame::List { at: 0 }),
+            b'}' | b']' => {
+                stack.pop();
+            }
+            b',' => match stack.last_mut() {
+                Some(Frame::Object { key, wants_key }) => {
+                    *key = None;
+                    *wants_key = true;
+                }
+                Some(Frame::List { at }) => *at += 1,
+                None => {}
+            },
+            _ => {}
+        }
+        i += 1;
+    }
+    // Stopped on an object's closing brace (a missing field): the error is about the whole object,
+    // not its last key.
+    if bytes.get(last) == Some(&b'}') {
+        if let Some(Frame::Object { key, .. }) = stack.last_mut() {
+            *key = None;
+        }
+    }
+    let mut path = String::new();
+    for frame in &stack {
+        match frame {
+            Frame::Object { key: Some(k), .. } if path.is_empty() => path.push_str(k),
+            Frame::Object { key: Some(k), .. } => path.push_str(&format!(".{k}")),
+            Frame::Object { key: None, .. } => {}
+            Frame::List { at } => path.push_str(&format!("[{at}]")),
+        }
+    }
+    path
 }
 
 fn find_own(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
@@ -1548,7 +1688,7 @@ impl Profile {
 
     fn program_for(&self, install: &Path, windows_build: bool) -> Option<PathBuf> {
         let s = self.start.as_ref()?;
-        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
+        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| twin_beside(install, p)) };
         let program = (if windows_build { None } else { twin() })
             .or_else(|| s.program.iter().find_map(|p| named_program(install.join(p))))
             .or_else(twin)?;
@@ -1795,6 +1935,22 @@ impl Profile {
             let in_bundle = want_name.ends_with(".app") && exe.ancestors().any(|a| low(a, false) == want_name);
             want_name == name || in_bundle || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
         })
+    }
+
+    /// Start With's programs, relative to `install`: the one Play starts, and the one the player
+    /// picked in the game's settings. A recomp that ships its own tools (a setup worker, a
+    /// compiler, each kept build's game) offered them all to start by hand (#464). It's the program
+    /// Play resolves, not every file sharing its name: a kept build or a builder named like the
+    /// game isn't the game. None when the start names no program that's there: Start With then
+    /// offers every program in the folder, as before.
+    pub fn start_with(&self, install: &Path, picked: Option<&Path>) -> Option<Vec<String>> {
+        let started = self.program_for(install, self.windows_build.unwrap_or(true))?;
+        let rel = |p: &Path| p.strip_prefix(install).ok().map(|r| r.to_string_lossy().to_string());
+        let mut out = vec![rel(&started)?];
+        // Held Play only starts a program inside the game's folder, so one picked elsewhere can't be offered.
+        let own = picked.filter(|p| p.is_file() && *p != started.as_path()).and_then(rel);
+        out.extend(own);
+        Some(out)
     }
 
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
@@ -2705,6 +2861,62 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 mod tests {
 
     #[test]
+    fn json_bytes_without_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn json_bytes_with_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn a_manifest_saved_with_a_byte_order_mark_is_still_read() {
+        let dir = std::env::temp_dir().join(format!("rl-profile-bom-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("recomplauncher.json"), "\u{feff}{\"format\":1}").unwrap();
+        let found = super::release_profile(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(found.map(|p| p.profile.format), Some(1));
+    }
+
+    // Mario Tennis Fever's mistake (v0.1.2): config.file as one path instead of a list.
+    const ONE_PATH: &str = "{\n  \"format\": 1,\n  \"start\": { \"program\": [\"game.exe\"] },\n  \"config\": [\n    { \"id\": \"main\", \"format\": \"ini\", \"file\": \"{install}/game.ini\" }\n  ]\n}";
+
+    #[test]
+    fn a_file_problem_names_the_field_and_what_it_should_be() {
+        assert_eq!(super::file_problem(ONE_PATH.as_bytes()), "\"config[0].file\" should be a list.");
+    }
+
+    #[test]
+    fn a_file_problem_names_a_missing_field() {
+        let text = r#"{"format":1,"settings":[{"id":"a","label":"A","choices":[]},{"label":"B"}]}"#;
+        assert_eq!(super::file_problem(text.as_bytes()), "\"settings[1]\" needs \"id\".");
+    }
+
+    #[test]
+    fn a_file_problem_gives_the_line_of_broken_json() {
+        assert_eq!(super::file_problem(b"{\n  \"format\": 1,\n}"), "It isn't valid JSON (line 3, column 1).");
+    }
+
+    #[test]
+    fn a_file_problem_asks_for_format_1() {
+        assert_eq!(super::file_problem(br#"{"format":2}"#), "\"format\" has to be 1.");
+    }
+
+    #[test]
+    fn a_folder_without_a_file_has_no_file_problem() {
+        let dir = std::env::temp_dir().join(format!("rl-no-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let problem = super::release_file_problem(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(problem, None);
+    }
+
+    #[test]
     fn system_reads_each_part_and_a_profile_without_it_writes_none() {
         let p: super::Profile = serde_json::from_str(r#"{"format":1,"system":{"linux":{"glibc":"2.35","graphics":{"vulkan":"1.3"}},"windows":{"version":"11"}}}"#).unwrap();
         let s = p.system.as_ref().unwrap();
@@ -2827,6 +3039,88 @@ mod tests {
         // The game the builder made, or anything else: the player's own pick.
         assert!(!p.starts_program(Path::new("C:/Games/Hopper/bin/hopper.exe")));
         assert!(!p.starts_program(Path::new("/opt/HopperEditor.exe")));
+    }
+
+    // A release folder like Cubic.Heroes' in #464: the game, the launcher's setup worker, a
+    // compiler and a kept build of the game under the same name.
+    fn cubic_folder(n: &str) -> PathBuf {
+        let d = tmp(n);
+        for rel in ["CubicHeroes.exe", "setup/worker.exe", "setup/zig/zig.exe", "builds/1.0.2/CubicHeroes.exe"] {
+            let file = d.join(rel);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, b"MZ").unwrap();
+        }
+        d
+    }
+
+    fn cubic_profile() -> Profile {
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        p
+    }
+
+    #[test]
+    fn start_with_offers_only_the_program_play_starts() {
+        let d = cubic_folder("sw-only");
+        let got = cubic_profile().start_with(&d, None);
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_keeps_the_program_the_player_picked() {
+        let d = cubic_folder("sw-picked");
+        let picked = d.join("builds").join("1.0.2").join("CubicHeroes.exe");
+        let got = cubic_profile().start_with(&d, Some(&picked)).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(Path::new(&got[1]), Path::new("builds/1.0.2/CubicHeroes.exe"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_leaves_out_a_pick_outside_the_games_folder() {
+        let d = cubic_folder("sw-elsewhere");
+        let elsewhere = tmp("sw-elsewhere-pick").join("Other.exe");
+        std::fs::write(&elsewhere, b"MZ").unwrap();
+        let got = cubic_profile().start_with(&d, Some(&elsewhere));
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(elsewhere.parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn start_with_offers_a_program_built_into_a_subfolder_not_the_builder() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("sw-subfolder");
+        // Longshot's release (#494): the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        p.windows_build = Some(false);
+        assert_eq!(p.start_with(&d, None), Some(vec!["Longshot/longshot".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_without_a_start_program() {
+        let d = cubic_folder("sw-nostart");
+        let p: Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_when_the_named_one_isnt_there() {
+        let d = cubic_folder("sw-renamed");
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Renamed.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -3023,6 +3317,24 @@ mod tests {
         assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0.file_name().unwrap(), "parasite-eve-pc");
         // The plain call keeps the Windows-first behavior for callers that don't know the build.
         assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_program_built_into_a_subfolder_starts_not_the_builder_beside_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("twin-subfolder");
+        // Longshot's release: the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        let exe = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(exe, d.join("Longshot").join("longshot"));
         let _ = std::fs::remove_dir_all(&d);
     }
 

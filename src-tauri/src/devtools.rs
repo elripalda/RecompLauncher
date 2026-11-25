@@ -132,7 +132,7 @@ fn name_main_input(key: &str, v: &mut Value) {
 
 fn read_raw(dir: &Path) -> Option<Value> {
     profile::release_profile(dir).map(|p| p.raw)
-        .or_else(|| std::fs::read(dir.join(FILE)).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()))
+        .or_else(|| std::fs::read(dir.join(FILE)).ok().and_then(|b| profile::parse_json_bytes(&b)))
 }
 
 /// The program Play starts: the file's own `start.program`, or the likeliest one in the folder.
@@ -200,7 +200,7 @@ fn add_appimage(st: &App, image: &Path) -> Res<Installed> {
 #[cfg(target_os = "linux")]
 fn add_image_record(st: &App, image: &Path) -> Res<String> {
     let dir = image.parent().map(Path::to_path_buf).ok_or_else(|| Error::Msg("That file has no folder.".into()))?;
-    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    let raw: Option<Value> = crate::appimage::manifest(image).ok().and_then(|b| profile::parse_json_bytes(&b));
     let said = |k: &str| raw.as_ref().and_then(|v| v.get(k)).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from);
     let name = said("name").unwrap_or_else(|| crate::plain::image_title(image));
     let mut l = st.lib.lock().unwrap();
@@ -351,7 +351,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
         let text = embedded.as_ref().map(|p| Ok(p.raw.to_string())).unwrap_or_else(|| std::fs::read_to_string(&file));
         match text {
             Err(e) => error = format!("It can't be read: {e}"),
-            Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(text) => match serde_json::from_slice::<Value>(profile::without_bom(text.as_bytes())) {
                 Err(e) => error = format!("It isn't valid JSON: {e}."),
                 Ok(v) => {
                     conv = converted(&v).and_then(|c| serde_json::to_string_pretty(&c).ok());
@@ -387,8 +387,8 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
                         error = "The file has to be one JSON object, in { }.".into();
                     }
                     if error.is_empty() {
-                        match serde_json::from_value::<profile::Profile>(v.clone()) {
-                            Err(e) => error = format!("It doesn't fit the format: {e}."),
+                        match read_profile(&v, &dir) {
+                            Err(e) => error = e,
                             Ok(p) => prof = Some(p),
                         }
                     }
@@ -450,6 +450,31 @@ fn check_item(c: &profile::Check) -> Item {
     ok("Checks the player's copy and finds it in their folders")
 }
 
+/// The developer's file as Play reads it: an AppImage unpacked at install is gone, so a program
+/// named `….AppImage` starts its AppRun (profile::to_apprun). Checked as written, such a file said
+/// none of its programs was in the folder.
+fn read_profile(v: &Value, dir: &Path) -> Result<profile::Profile, String> {
+    let mut p = serde_json::from_value::<profile::Profile>(v.clone()).map_err(|e| format!("It doesn't fit the format: {e}."))?;
+    profile::to_apprun(&mut p, dir);
+    Ok(p)
+}
+
+/// A program the profile names inside an unpacked AppImage instead of the AppImage itself, which
+/// starts its AppRun. The launcher gives it the AppImage's library folders, APPDIR and OWD, but not
+/// the rest of what that AppRun sets up, so a game that worked as an AppImage can stop at once
+/// (mkw-recomp's `mkw`: libvpx.so.6 not found). Nothing for the AppRun itself or a plain folder.
+fn inside_appimage_item(field: &str, program: &Path, dir: &Path) -> Option<Item> {
+    if program.file_name().is_some_and(|n| n == "AppRun") {
+        return None;
+    }
+    crate::appimage_root(program, dir)?;
+    let name = program.strip_prefix(dir).unwrap_or(program).display().to_string();
+    Some(warn(
+        format!("\"{field}\" starts {name} inside your AppImage, not its AppRun"),
+        "It gets your AppImage's library folders, APPDIR and OWD, but nothing else your AppRun sets up. Name the AppImage itself (MyGame-x86_64.AppImage) so it starts through AppRun, unless your program runs on its own, with an rpath like $ORIGIN/lib for its libraries.",
+    ))
+}
+
 /// The checks, top to bottom in the order of the developer guide. Gives back the level reached.
 fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Vec<Item>) -> u8 {
     let mut level = 0u8;
@@ -463,9 +488,10 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
     match p.start.as_ref() {
         None => items.push(warn("No \"start\"", "Play starts the program the launcher found, with no arguments of yours.")),
         Some(s) if s.program.is_empty() => items.push(err("\"start.program\" is empty", "List the path of your program, from the top of your release.")),
-        Some(s) => match s.program.iter().find(|x| profile::named_program(dir.join(profile::fill(x, dir, None))).is_some()) {
-            Some(x) => {
+        Some(s) => match s.program.iter().find_map(|x| profile::named_program(dir.join(profile::fill(x, dir, None))).map(|path| (x, path))) {
+            Some((x, path)) => {
                 items.push(ok(format!("Play starts {x}{}", if s.args.is_empty() { String::new() } else { format!(" {}", s.args.join(" ")) })));
+                items.extend(inside_appimage_item("start.program", &path, dir));
                 level = 1;
             }
             None => items.push(err(format!("None of \"start.program\" is in this folder: {}", s.program.join(", ")), "The paths start from the top of your release, next to recomplauncher.json.")),
@@ -612,6 +638,7 @@ fn check_profile(p: &profile::Profile, dir: &Path, g: &Installed, items: &mut Ve
         match pr.program_in(dir) {
             Some(x) => {
                 items.push(ok(format!("Setup step: {}", x.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())));
+                items.extend(inside_appimage_item("prepare.program", &x, dir));
                 if level >= 2 {
                     level = 3;
                 }
@@ -794,6 +821,53 @@ pub fn is_local(st: &App, id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    /// A game folder that is an unpacked AppImage like mkw-recomp's: AppRun with the program beside it.
+    fn unpacked(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-devtools-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("AppRun"), "#!/bin/sh\n").unwrap();
+        std::fs::write(d.join("mkw"), "").unwrap();
+        d
+    }
+
+    #[test]
+    fn a_program_named_inside_an_unpacked_appimage_is_a_warning() {
+        let d = unpacked("inside");
+        let item = super::inside_appimage_item("start.program", &d.join("mkw"), &d).unwrap();
+        assert_eq!(item.level, "warn");
+        assert_eq!(item.text, "\"start.program\" starts mkw inside your AppImage, not its AppRun");
+    }
+
+    #[test]
+    fn an_appimages_apprun_is_no_warning() {
+        let d = unpacked("apprun");
+        assert!(super::inside_appimage_item("start.program", &d.join("AppRun"), &d).is_none());
+    }
+
+    #[test]
+    fn a_profile_naming_its_unpacked_appimage_is_checked_as_its_apprun() {
+        let d = unpacked("named-appimage");
+        let v = serde_json::json!({ "format": 1, "start": { "program": ["MyGame-x86_64.AppImage"] } });
+        let p = super::read_profile(&v, &d).unwrap();
+        let mut items = vec![];
+        super::check_profile(&p, &d, &crate::library::Installed { path: d.clone(), ..Default::default() }, &mut items);
+        let said: Vec<String> = items.iter().map(|i| format!("{}: {}", i.level, i.text)).collect();
+        assert!(said.contains(&"ok: Play starts AppRun".to_string()), "{said:?}");
+        assert!(!said.iter().any(|s| s.starts_with("err:") || s.contains("inside your AppImage")), "{said:?}");
+    }
+
+    #[test]
+    fn a_program_in_a_plain_folder_is_no_warning() {
+        let d = std::env::temp_dir().join(format!("rl-devtools-plain-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("game"), "").unwrap();
+        assert!(super::inside_appimage_item("start.program", &d.join("game"), &d).is_none());
+    }
+
     #[test]
     fn keeps_copy_says_what_would_stop_a_build_without_the_copy() {
         let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({

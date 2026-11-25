@@ -914,6 +914,12 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+/* A failed setup step's buttons and its last lines, as on the desktop: read from the couch, so
+   larger. A pad can't scroll the box, so when long lines wrap past its height the newest stay in
+   view (it's filled from the bottom) and the oldest are cut. */
+.tv-setup .tt .tv-logb{display:flex;gap:16px;justify-content:center}
+.tv-setup .tt .tv-logb .tv-btn{height:58px;padding:0 24px;font-size:20px;border-radius:18px}
+.tv-setup .tt pre.tv-tail{margin:0;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.07);color:var(--tvsoft,#c9d3e0);font:17px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;width:1100px;max-width:100%;max-height:15em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
 .tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
@@ -967,7 +973,11 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
 .tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
 .tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
-.tv-btn.notify-on{background:transparent;border:2px solid rgba(52,242,232,.6);color:#34F2E8}
+/* A saved Coming Soon game: outlined, filled heart, a soft glow (Save until then). */
+.tv-btn.save-on{background:rgba(52,242,232,.08);border:2px solid rgba(52,242,232,.6);color:#34F2E8;box-shadow:0 0 28px -8px rgba(52,242,232,.55)}
+.tv-soon-note{margin:0;font-size:19px;color:rgba(var(--tvinkrgb,244,248,252),.7)}
+.tv-btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.tv-btn .want::before{content:'·';margin:0 12px}
 .tv-home1>.tv-notes{position:absolute;top:6px;right:0;width:500px;z-index:2}
 .tv-tnote{display:flex;flex-direction:column;gap:6px;padding:10px 10px 14px 20px;border-radius:18px;background:rgba(var(--tvrgb),.78);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);border-left:5px solid #34F2E8;box-shadow:0 12px 34px rgba(0,0,0,.28)}
 .tv-tnote.gold{border-left-color:#f5c518}.tv-tnote.violet{border-left-color:#a98bff}
@@ -977,6 +987,22 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-tnote .tn-acts{display:flex;margin-top:6px}
 .tv-tnote .tv-btn.sm{min-height:0;height:46px;padding:0 20px;font-size:17px}
 .tv-tnote .tv-tnote-x{width:46px;padding:0;justify-content:center}
+/* Home's info boxes and banners, from the website's list (admin: Launcher > Home page), as wide as a row. */
+.tv-hbox{margin:18px 0 30px}
+.tv-hbox-in{display:flex;align-items:center;gap:26px;padding:24px 28px;border-radius:24px;background:linear-gradient(90deg,rgba(52,242,232,.12),rgba(52,242,232,.03)),rgba(var(--tvrgb),.6);border:1.5px solid rgba(52,242,232,.26);backdrop-filter:blur(14px)}
+.tv-hbox .ic{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;flex:none;background:rgba(52,242,232,.14);color:#34F2E8}
+.tv-hbox .ic svg{width:36px;height:36px}
+.tv-hbox .k{flex:1;min-width:0}
+.tv-hbox b{display:block;font:700 semi-expanded 27px Archivo,sans-serif;letter-spacing:-.01em}
+.tv-hbox p{margin:6px 0 0;font-size:21px;line-height:1.4;color:var(--tvsoft,#c9d3e0);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tv-hbox .tv-acts{margin-top:0;flex:none}
+.tv-hbox .tv-btn.sm{height:60px;padding:0 28px;font-size:21px}
+.tv-hbox .tv-hbox-x{width:60px;padding:0;justify-content:center}
+.tv-hban{margin:18px 0 30px}
+.tv-spb{position:relative;display:block;width:100%;padding:0;border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.14);border-radius:24px;overflow:hidden;background:var(--tvcard)}
+.tv-spb img{display:block;width:100%;height:auto;max-height:260px;object-fit:cover}
+.tv-spb .sp-tag{position:absolute;right:14px;bottom:14px;font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(244,248,252,.9);background:rgba(11,18,32,.74);padding:6px 10px;border-radius:8px}
+.tv-spb.f{transform:scale(1.015)}
 /* Easy Setup's steps (setup-steps.js) in Big Picture: the desktop's layout at TV size. One height
    for every step, so the footer and its buttons stay where they are; the list scrolls inside. */
 .tv-setup[data-stage="steps"]{gap:0;padding:60px 120px;align-items:stretch;justify-content:center}
@@ -1003,6 +1029,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-box .k b{font-size:28px}
 .ni-tv.ss .ss-box .k span{font-size:21px}
 .ni-tv.ss .fmt{font-size:17px;padding:6px 9px;border-radius:7px}
+.ni-tv.ss .ss-box .ss-hint{font-size:19px}
 .ni-tv.ss .ss-src{height:34px;font-size:18px;padding:0 13px;border-radius:9px}
 .ni-tv.ss .btn{font-size:20px;height:56px;padding:0 22px;border-radius:12px}
 .ni-tv.ss .ss-box .acts{gap:10px}
@@ -1061,3 +1088,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-svp-set{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#3ee08f}
 .tv-svp-set svg{flex:none;width:20px;height:20px}
 .tv-svp-set.ours{color:#34F2E8}
+/* The named folder while the player's own is used instead: greyed, as on the desktop. */
+.tv-item.tv-svp-unused .k{opacity:.6}

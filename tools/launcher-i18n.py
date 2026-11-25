@@ -117,6 +117,18 @@ def holes(s):
     return sorted(set(re.findall(r'\{(\w+)\}', s)))
 
 
+def coded(en):
+    """The code in front of a coded core message (PICK_EXE|…, NEED_COPY|…), or None.
+
+    The UI matches these codes (app.js: /^PICK_EXE\\|/), so a translation must keep the code and
+    every bar. A text like 'Light|theme' only has context after the bar and translates as one form.
+    """
+    prefix = en.split('|')[0]
+    if '|' in en and re.fullmatch(r'[A-Z][A-Z_]*', prefix):
+        return prefix
+    return None
+
+
 def check():
     eng, plural = strings()
     have = set(eng)
@@ -138,8 +150,12 @@ def check():
                 print(f'{code}: no longer used: {en!r}')
             parts = tr.split('|')
             want = FORMS.get(base, 1) if en in plural else 1
-            if '|' in en:
+            code_prefix = coded(en)
+            if code_prefix:
                 want = len(en.split('|'))
+            if code_prefix and parts[0] != code_prefix:
+                print(f'{code}: starts {parts[0]!r}, wants {code_prefix!r}: {en!r} -> {tr!r}')
+                bad += 1
             if len(parts) != want and not (en in plural and base == 'ar' and len(parts) == 1):
                 print(f'{code}: {len(parts)} forms, wants {want}: {en!r} -> {tr!r}')
                 bad += 1

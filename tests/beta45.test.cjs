@@ -62,7 +62,9 @@ test('a game nobody says where it saves asks the player to pick its folder', () 
   const tv = read('tv.js');
   assert.match(account, /if \(savesUnknown\(s\)\) return `<div class="stack">\$\{unknownCard\(id\)\}/);
   assert.match(tv, /data-tvact="gs-place"/);
-  assert.match(tv, /case 'gs-place':[\s\S]{0,400}invoke\('saves_set_place'/);
+  assert.match(tv, /case 'gs-place': return pickSavesFolder\(id\);/);
+  assert.match(tv, /async function pickSavesFolder\(id\) \{[\s\S]{0,400}invoke\(placeCommand\(TV\.saves\[id\]\)/);
+  assert.match(account, /case 'saves-place': \{[\s\S]{0,400}invoke\(placeCommand\(S\.saves\[id\]\)/);
 });
 
 test('the Settings section list sits below the window bar', () => {
