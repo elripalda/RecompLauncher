@@ -37,7 +37,7 @@ test('the menu keeps what no tab has', () => {
 });
 
 test('Uninstall stays in the menu of an installed game, last and in red', () => {
-  assert.match(fn(app, 'gameMenu'), /\.\.\.\(g \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
+  assert.match(fn(app, 'gameMenu'), /\.\.\.\(g && st !== 'uninstalling' \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
 });
 
 // One submenu of the game's menu, from its label to its closing bracket.

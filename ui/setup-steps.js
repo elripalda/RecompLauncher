@@ -29,8 +29,9 @@ function stepsRows(id, su, ns) {
   for (const r of rows) r.how = r.path ? (r.shared ? 'shared' : picked[r.id] ? '' : 'prev') : '';
   const game = rows.find((r) => r.legacy && r.id === 'game');
   if (!game) return rows;
+  // A copy that is only a folder takes no file types, whatever files its console has.
   const fm = copyFormats(id);
-  game.extensions = fm.exts;
+  game.extensions = game.file ? fm.exts : [];
   if (ns.copy) Object.assign(game, { path: ns.copy, how: '' });
   else if (!game.path && S.owned[id]) Object.assign(game, { path: S.owned[id].path, how: 'found' });
   return rows;
@@ -68,6 +69,17 @@ const ssTag = (r) => {
   return '';
 };
 const ssFmts = (r) => (r.extensions || []).map((e) => `<span class="fmt">.${esc(e)}</span>`).join('');
+// An input the manifest lets be only a folder: its picker shows no files, so a player holding a
+// file (an .nsp dump) would see nothing happen. Said from its declared formats alone, never the
+// file's extension or the console; a recomp that wants more (exefs and romfs) says it in its label.
+const ssFolderOnly = (r) => !!r.folder && !r.file;
+// "This game" only on the game itself (its copy or a disc); an update or add-on folder is "This".
+const ssIsGame = (r) => (r.legacy && r.id === 'game') || r.role === 'game' || r.role === 'disc';
+function ssFolderHint(r) {
+  const text = ssIsGame(r) ? t('This game takes a folder, not a file.') : t('This takes a folder, not a file.');
+  return `<span class="ss-hint">${esc(text)}</span>`;
+}
+const ssEmptyMeta = (r) => (ssFolderOnly(r) ? ssFolderHint(r) : `<span class="fmts">${ssFmts(r)}</span>`);
 // The ways to give a row its file. The same buttons empty or filled: choosing again changes it.
 function ssPickBtns(r, busy) {
   const off = busy ? ' disabled' : '';
@@ -81,7 +93,7 @@ function ssPickBtns(r, busy) {
 function ssBox(id, su, ns, r, title) {
   const on = !!r.path;
   const line = on ? baseName(r.path) : r.label;
-  const meta = on ? ssTag(r) : `<span class="fmts">${ssFmts(r)}</span>`;
+  const meta = on ? ssTag(r) : ssEmptyMeta(r);
   const icon = on ? CHECK : r.file ? DISC_L : SS_FOLDER;
   return `<div class="ss-box${on ? ' on' : ''}"><span class="ss-ic">${icon}</span><div class="k"><b>${esc(title)}</b><span title="${esc(on ? r.path : r.label)}">${esc(line)}</span></div><div class="low"><div class="meta">${meta}</div><div class="acts">${ssPickBtns(r, ns.busy)}</div></div></div>`;
 }
@@ -89,8 +101,8 @@ function ssBox(id, su, ns, r, title) {
 // A compact row: discs, keys, updates, add-ons. Remove keeps its place while the row is empty.
 function ssRow(r, ns) {
   const on = !!r.path;
-  const sub = on ? (r.shared ? t('Kept once on this PC for every game that needs it') : baseName(r.path)) : r.legacy ? '' : ssFmts(r) ? '' : t('Not chosen yet');
-  const fmts = !on && ssFmts(r) ? `<span class="fmts">${ssFmts(r)}</span>` : '';
+  const sub = on ? (r.shared ? t('Kept once on this PC for every game that needs it') : baseName(r.path)) : r.legacy || ssFolderOnly(r) ? '' : ssFmts(r) ? '' : t('Not chosen yet');
+  const fmts = on ? '' : ssFolderOnly(r) ? ssFolderHint(r) : ssFmts(r) ? `<span class="fmts">${ssFmts(r)}</span>` : '';
   const canRemove = r.optional || (r.shared && !r.legacy);
   const rm = canRemove ? `<button type="button" class="btn sm rm" data-ss="${r.shared ? 'remove-key' : 'clear'}" data-input="${esc(r.id)}" aria-label="${esc(t('Remove') + ': ' + r.label)}" title="${esc(t('Remove'))}"${on && !ns.busy ? '' : ' disabled'}>${XMARK}</button>` : '';
   // A shared key's path is the launcher's private copy: never shown, not even as a tooltip.
@@ -170,7 +182,7 @@ function stepsView(id, su, ns, game) {
   }
   // Rather set it up yourself: Easy Setup off for this game, from its first step. Its Manage tab
   // has the switch to turn it back on.
-  const skippable = m.at === 0 && S.easyAll && S.easyAll.has(id) && !(S.settings.ui || {}).easy_skip_all;
+  const skippable = m.at === 0 && S.easyAll && S.easyAll.has(id);
   if (skippable) body += `<p class="ss-alt">${esc(t('Rather set it up yourself?'))} <button type="button" data-ss="skip-easy">${esc(t('Skip Easy Setup'))}</button></p>`;
   // The check mark only on the lines that say it's ready.
   const ok = [t('Everything it needs is here.'), t('Ready to set up.')].includes(status);
@@ -205,8 +217,13 @@ function stepsShell(id, su, ns, game, tv) {
   const discs = discRows(m.own);
   const sum = discs.length > 1 ? `<p class="ni-disc-summary" role="status">${esc(tf('{ready} of {total} discs selected', { ready: discs.filter((r) => r.path).length, total: discs.length }))}</p>` : '';
   const art = gameMediaHtml(game, any ? '' : 'ghost');
+  // The drop area asks for what a drop fills (stepsDrop: the copy, else the first empty row, which
+  // is the first row while nothing is in): a folder when that's all that row takes.
+  const dropRow = m.own.find((r) => r.legacy && r.id === 'game') || m.own[0];
+  const folderDrop = !!dropRow && ssFolderOnly(dropRow);
+  const dropText = folderDrop ? t('Drop your game\'s folder here') : copyDrop(copyFormats(id));
   if (tv) return `<div class="ni-tv-layout"><div class="ni-tv-art"><div class="tv-media" aria-hidden="true">${art}</div>${sum}</div><div class="ni-tv su-r ss">${stepsView(id, su, ns, game)}</div></div>`;
-  const drop = any ? `<div class="su-media">${art}</div>` : `<div class="su-drop"><div class="su-media">${art}</div><b>${esc(copyDrop(copyFormats(id)))}</b><span>${esc(t('or choose it on the right'))}</span></div>`;
+  const drop = any ? `<div class="su-media">${art}</div>` : `<div class="su-drop"><div class="su-media">${art}</div><b>${esc(dropText)}</b><span>${esc(t('or choose it on the right'))}</span></div>`;
   return `<div class="su-in ss-in"><div class="su-stage">${drop}<div class="drive" aria-hidden="true"><i></i></div>${sum}</div><div class="su-r ss">${stepsView(id, su, ns, game)}</div></div>`;
 }
 

@@ -51,6 +51,13 @@ The Windows launcher is code-signed, and every download comes from the developer
 - Make sure you downloaded it from [Releases](https://github.com/elripalda/RecompLauncher/releases) or recomplauncher.com.
 - Tell me on Discord which antivirus it was and what it said. A screenshot helps. I report false positives to the antivirus company.
 
+## The launcher won't open on Windows
+
+If it shows a box instead of its window, the box says why:
+
+- **"RecompLauncher couldn't open its window, because Microsoft Edge WebView2 isn't installed on this PC."** Install the WebView2 Runtime from Microsoft (search for "WebView2 Runtime"), then open RecompLauncher again.
+- **"RecompLauncher couldn't start."** Report it on [GitHub](https://github.com/elripalda/RecompLauncher/issues) and attach `launcher-trail.log` from `%APPDATA%\com.recomplauncher.app`.
+
 ## A game won't start
 
 1. Check the game's page. If it says **Setup Required**, do the steps under **How to Set Up** first.

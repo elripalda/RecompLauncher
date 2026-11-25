@@ -33,7 +33,7 @@ const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N
 
 const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
-  library: {}, arts: {}, settings: {}, running: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
+  library: {}, arts: {}, settings: {}, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), easyAll: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
@@ -137,7 +137,16 @@ function setupGuide(a) {
 const isMulti = (a) => !!((((a && a.boot) || builtinBoot()[a && a.id] || {}).multiplayer) || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
 // A game's tags (Widescreen, 60 FPS, Online…), as the site lists them. They stay in English.
 const tagsOf = (a) => (a && Array.isArray(a.tags) ? a.tags.filter((x) => typeof x === 'string' && x.trim()) : []);
-// Facts about the original game (from IGDB), only the ones there are.
+// Where the facts about the original game came from, for the line under them: LaunchBox's
+// database when the store got them there (src "launchbox"), else IGDB's page for the game.
+// -> { label, url } or null when there's nothing to credit.
+function aboutSource(ab) {
+  if (!ab) return null;
+  if (ab.src === 'launchbox') return { label: t('Game info from LaunchBox Games Database'), url: 'https://gamesdb.launchbox-app.com/' };
+  if (ab.url && /^https:\/\//.test(ab.url)) return { label: t('Game info from IGDB'), url: ab.url };
+  return null;
+}
+// Facts about the original game (from IGDB or LaunchBox), only the ones there are.
 function aboutFacts(ab) {
   if (!ab) return [];
   const list = (v, n) => (Array.isArray(v) ? v.filter(Boolean).slice(0, n || 99).join(', ') : v || '');
@@ -274,6 +283,9 @@ const copyGoneText = (id) => updateBuildDue(id) ? t('Your copy isn\'t needed: it
 // files where the game reads them), with no setup steps on its first start.
 const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
 // A game of a multi-game recomp is set up as its recomp is.
+// The launcher hands the player's copy to the game (Easy Setup, or a boot profile that puts it where
+// the game reads it). Otherwise the game asks for it itself on its first start.
+const feedsCopy = (a) => S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || ''));
 const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
@@ -1022,6 +1034,7 @@ function status(a) {
   // One game of several: its install, downloads and updates are the recomp's.
   const id = a.id, rid = parentId(id), job = S.jobs[rid], inst = S.library[id];
   if (S.running.has(id)) return 'running';
+  if (S.uninstalling.has(rid)) return 'uninstalling';
   if (S.settingUp.has(id) || S.settingUp.has(rid) || (S.setupJobs && (S.setupJobs[id] || S.setupJobs[rid]))) return 'settingup';
   if (job) return 'busy';
   if ((S.paused || {})[rid]) return 'paused';
@@ -1172,6 +1185,7 @@ function poster(a, mine, inst, wide, w, rank) {
   const badge = S.missing && S.missing.has(a.id) ? `<span class="badge tr miss">${esc(t('Missing'))}</span>`
     : st === 'update' ? `<span class="badge tr">${esc(t('Update'))}</span>`
     : st === 'running' ? `<span class="badge tr">${esc(t('Playing'))}</span>`
+    : st === 'uninstalling' ? `<span class="badge tr">${esc(t('Uninstalling…'))}</span>`
       : st === 'soon' ? `<span class="badge tr soon"${savedSoon(a) ? ` title="${esc(soonNoteText(a))}"` : ''}>${savedSoon(a) ? SAVE_ICON(12, true) : ''}${esc(t('Soon'))}</span>`
         : st === 'installed' && !mine ? `<span class="badge tl">${esc(t('Installed'))}</span>`
           : !S.library[a.id] && isSaved(a.id) && !mine ? `<span class="badge tl lib">${esc(t('In Library'))}</span>`
@@ -1236,7 +1250,7 @@ function tile(a, opts = {}) {
   const cov = a.cover ? media(thumbOf(a.cover, 160)) : '';
   const sub = opts.sub != null ? opts.sub : a.parent ? gameTileLine(a) : a.game ? `${DISC_S}<span>${esc(a.game)}</span>` : `<span>${esc(originName(a.origin))}</span>`;
   const vt = (devOf(a) || {}).verified;
-  const quick = opts.quick && S.library[a.id] && !S.jobs[a.id];
+  const quick = opts.quick && S.library[a.id] && !S.jobs[a.id] && !S.uninstalling.has(parentId(a.id));
   // Not in the Library yet: add it from the cover; added: install from the cover.
   const qadd = !quick && !opts.mine && !S.library[a.id] && !S.jobs[a.id] && status(a) === 'get';
   const qsaved = qadd && isSaved(a.id);
@@ -1332,6 +1346,8 @@ function actions(a, size = 'big', { want = false } = {}) {
   const b = (cls, act, label, icon = '', tail = '') => `<button type="button" class="btn ${size} ${cls}" data-act="${act}" data-id="${id}">${icon}${label}${tail}</button>`;
   switch (st) {
     case 'running': return b('main', 'resume', esc(t('Back to the game')), PLAY) + b('', 'stop', esc(t('Close game'))) + more;
+    // Deleting a big folder takes a while: show it's on its way, with nothing to press meanwhile.
+    case 'uninstalling': return `<div class="prog"><div class="track busy"><i></i></div><div class="lbl"><span>${esc(t('Uninstalling…'))}</span><span></span></div></div>`;
     case 'settingup': {
       const sj = S.setupJobs && (S.setupJobs[a.id] || S.setupJobs[parentId(a.id)]);
       if (sj) {
@@ -1360,6 +1376,11 @@ const SUP_KEYS = { easy_setup: '`game` and `start`', settings: '`config` and `se
 function supportIssue(ask) {
   const lines = ['Hi! I play this through RecompLauncher.', ''];
   if (ask.kind === 'repo') lines.push('Your repo has a `recomplauncher.json`, but your releases don\'t include it yet, so players don\'t get it. Could you put it at the top of your next release zip, next to the executable?');
+  if (ask.kind === 'broken') {
+    lines.push(`RecompLauncher can't read the \`recomplauncher.json\` in ${ask.game} ${ask.version}, so it skips the whole file: no Easy Setup, settings or save backups from it. The game still installs and plays as it is.`, '');
+    lines.push(`The problem: ${ask.error}`, '');
+    lines.push('To check a fix before you release it, turn on Developer tools in RecompLauncher (Settings → Developers) and add your build: its Developer tab reads the file and marks problems in red.');
+  }
   if (ask.kind === 'none') lines.push('Could you add a `recomplauncher.json` to your releases? Then RecompLauncher sets the game up from the player\'s copy, shows its settings and backs up its saves.');
   if (ask.kind === 'gaps' || ask.kind === 'ours') {
     lines.push('Your `recomplauncher.json` already does a lot. These would finish it:');
@@ -1367,7 +1388,7 @@ function supportIssue(ask) {
   }
   if (ask.kind === 'verify') lines.push('Your game already gets its setup from your own `recomplauncher.json`. Thank you!');
   lines.push('');
-  if (ask.kind !== 'verify') {
+  if (ask.kind !== 'verify' && ask.kind !== 'broken') {
     lines.push('The quickest way: ask your AI coding agent to read this and follow it. It writes the file and adds it to your release:', 'https://recomplauncher.com/sdk-files/recomplauncher-agent.md', '');
     lines.push('The guide, if you\'d rather do it yourself: https://recomplauncher.com/sdk', '');
   }
@@ -1377,14 +1398,15 @@ function supportIssue(ask) {
 // A new issue on the recomp's own page, asking for what Launcher Support says is missing. Opened for
 // the player to send themselves; nothing is sent from here.
 function askSupportUrl(a, ask) {
-  const title = ask.kind === 'verify' ? 'RecompLauncher: verify as the developer' : 'RecompLauncher support';
+  const titles = { verify: 'RecompLauncher: verify as the developer', broken: `RecompLauncher can't read recomplauncher.json in ${ask.version}` };
+  const title = titles[ask.kind] || 'RecompLauncher support';
   const body = supportIssue(ask);
   if (isSF(a.repo)) return repoIssues(a.repo);
   if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
   return `${repoIssues(a.repo)}/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
 // What a recomplauncher.json covers, the way support_local counts it, for a file the catalog
-// carries as the project's own (a Forgejo project's repo file).
+// carries as the project's own (a release the store checked, or a Forgejo project's repo file).
 function fileCovers(p) {
   const list = (v) => Array.isArray(v) && v.length > 0;
   const game = p && p.game && typeof p.game === 'object' ? p.game : null;
@@ -1392,21 +1414,26 @@ function fileCovers(p) {
   // required input of role game or disc that isn't a shared key, as the site counts it.
   const inputs = Array.isArray(p && p.inputs) ? p.inputs : [];
   const copyInput = inputs.some((i) => i && !i.optional && !i.shared && ['game', 'disc'].includes(i.role || 'game'));
+  // A `game` block needs a program to start, as in Profile::easy_setup.
+  const started = !!(p && p.start);
   return {
-    easy_setup: !!game || copyInput,
+    easy_setup: (started && !!game) || copyInput,
     settings: list(p && p.settings),
     prepare: !!(p && p.prepare),
     verified: !!game && (list(game.dumps) || list(game.check && game.check.ids)),
     saves: list(p && p.saves),
   };
 }
-// Where a game's setup comes from. 'own': the project's own file reaches players (in the installed
-// release, a release the store checked, or a Forgejo repo the launcher reads itself). 'repo': only
-// its repo has one, which the launcher never reads for GitHub or GitLab. '' otherwise.
+// Where a game's setup comes from. 'own': the launcher has the project's own file (in the
+// installed release, the copy of a checked release the catalog carries, or a Forgejo repo the
+// launcher reads itself). 'unchecked': the store says the release has one, but the catalog
+// carries no copy, so the launcher hasn't read it and claims nothing from it until it's
+// installed (the copy can be missing because the file is broken, or for another reason). 'repo':
+// only its repo has one, which the launcher never reads for GitHub or GitLab. '' otherwise.
 function supportSource(a, local, sup) {
   if (local || a.launcher_from === 'repo') return 'own';
   const sdk = sup ? sup.sdk : '';
-  if (sdk === 'release') return 'own';
+  if (sdk === 'release') return a.launcher ? 'own' : 'unchecked';
   if (sdk === 'repo') return 'repo';
   return '';
 }
@@ -1416,8 +1443,13 @@ function supportSource(a, local, sup) {
 // own file they're the project's or nothing. Copy checks and save folders can come from us too.
 function supportStates(a, local, sup, source) {
   const own = source === 'own';
-  const file = local || (a.launcher_from === 'repo' ? fileCovers(a.launcher) : null);
-  const theirs = (k) => own && (file ? !!file[k] : !!sup && sup[k] === 'dev');
+  // Only the file the launcher reads counts, never the catalog's labels alone: they were counted
+  // from the file as the store found it, even one the launcher can't read.
+  const file = local || (own ? fileCovers(a.launcher) : null);
+  // Before it's installed, Easy Setup is the project's only when Install offers it (the
+  // easy_setup command, from the same file), so the box and the button agree.
+  const easyOffered = !!local || !!(S.easyAll && S.easyAll.has(a.parent || a.id));
+  const theirs = (k) => own && !!file && !!file[k] && (k !== 'easy_setup' || easyOffered);
   const boot = a.boot || builtinBoot()[a.id] || {};
   const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
   // Offline, without the catalog's labels: what our boot profile does.
@@ -1427,7 +1459,9 @@ function supportStates(a, local, sup, source) {
     prepare: !!(boot.setup || boot.prepare),
     verified: !!(files && files.sha256),
   };
-  const ours = (k) => (sup ? sup[k] === 'launcher' : !!guess[k]);
+  // With a release file the launcher hasn't read, the catalog's labels describe that file, while
+  // Install uses our boot profile: what it does is the guess.
+  const ours = (k) => (sup && source !== 'unchecked' ? sup[k] === 'launcher' : !!guess[k]);
   const setup = (k) => {
     if (theirs(k)) return 'p';
     if (own) return k === 'prepare' ? 'na' : '';
@@ -1472,6 +1506,8 @@ function supportAsk(a, source, rows) {
   const filled = asked.filter((r) => r.s === 'l');
   const base = { verified, todo: [...gaps, ...filled] };
   if (source === 'repo') return { ...base, kind: 'repo', text: verified ? tf('{who}\'s repo has a setup file, but their releases don\'t include it yet. Ask them to add it to their next release.', { who }) : tf('{who}\'s repo has a setup file, but their releases don\'t include it yet. Ask them to add it to their next release, and to sign up as a developer and verify.', { who }) };
+  // Not read yet: nothing is known to be missing, so there's nothing to ask for.
+  if (source === 'unchecked') return null;
   if (source !== 'own') return { ...base, kind: 'none', text: verified ? t('Ask the developer to add RecompLauncher support.') : t('Ask the developer to add RecompLauncher support, and to sign up as a developer and verify.') };
   if (gaps.length) return { ...base, kind: 'gaps', text: verified ? t('Is a feature missing? Ask the developer to add it.') : t('Is a feature missing? Ask the developer to add it, and to sign up as a developer and verify.') };
   const features = listOf(filled.map((r) => t(r.name)));
@@ -1503,10 +1539,24 @@ function supLocalFor(id) {
   }).catch(() => {});
   return null;
 }
+// The release's recomplauncher.json is there, but the launcher can't read it, so Play and Easy
+// Setup skip it. The box says why instead of showing features, and the player can pass the
+// problem on to the developer. The game still installs and plays as a plain install.
+function supportProblemCard(a, problem) {
+  const d = devOf(a);
+  const g = S.library[a.id];
+  const version = (g && g.tag) || a.tag || a.version || '';
+  const ask = { kind: 'broken', verified: !!(d && d.verified), todo: [], game: a.name || a.id, version, error: problem };
+  const tell = a.repo ? `<button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(t('Tell the Developer'))}</button>` : '';
+  return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3><span class="tag paused">${esc(t('File Problem'))}</span></div>
+    <div class="sup-src">${byDev(a)}</div>
+    <div class="sup-ask sup-problem"><p>${esc(t('This game\'s recomplauncher.json has a problem, so the launcher can\'t use it and sets nothing up from it. It still installs and plays; set it up the way its project explains.'))}</p><p class="sup-err">${esc(problem)}</p>${tell}</div></div>`;
+}
 function supportCard(a) {
   if (!a || a.soon) return '';
   const id = a.id;
   const local = supLocalFor(id);
+  if (local && local.problem) return supportProblemCard(a, String(local.problem));
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
   const source = supportSource(a, local, sup);
   const st = supportStates(a, local, sup, source);
@@ -1541,7 +1591,7 @@ function supportCard(a) {
   const row = (r) => `<div class="sup-row${r.s ? ' on st-' + r.s : ''}"><span class="sup-ib">${svg(r.icon, 'sup-i')}</span><span class="sup-k"><b>${esc(t(r.name))}</b><span>${esc(r.line)}</span></span><span class="sup-st" role="img" data-tip="${esc(tipOf(r))}" aria-label="${esc(tipOf(r))}">${markOf(r)}</span></div>`;
   // Where the setup comes from, and who made the game (with the tick when they're verified).
   const ourSetup = ['easy_setup', 'settings', 'prepare', 'verified'].some((k) => st[k] === 'l');
-  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
+  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : source === 'unchecked' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the release, read once it\'s installed')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
   const badge = full ? `<span class="tag sup-full" data-tip="${esc(t(SUP_FULL_TIP))}">${svg('<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor" stroke="none"/>', 'sup-star')}${esc(t('Full Support'))}</span>` : `<span class="tag ${n >= 3 ? 'complete' : 'paused'}" data-raw>${esc(tf('{n} of {total}', { n, total: shown.length }))}</span>`;
   const askBox = ask ? `<div class="sup-ask"><p>${esc(ask.text)}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(ask.kind === 'verify' ? t('Ask to Verify') : t('Ask the Developer'))}</button></div>` : '';
   return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3>${badge}</div>
@@ -1607,23 +1657,27 @@ function readyRows(a) {
   // A self-managed install doesn't need the player's copy or its update: Play just starts their
   // executable.
   const selfRun = !!(su && su.own_program);
+  // While it builds, its copy and other files are in use: asking for them then only reads as missing.
+  const building = status(a) === 'settingup' || buildWaits(id);
+  // Only ask for the copy when the launcher can hand it to the game, and not while it builds.
+  const askCopy = !selfRun && !building && feedsCopy(a);
   const cs = su && su.needs ? copyState(id, su) : null;
   // Set up without a copy to show: built from the copy (it plays without it).
   const st = setupStatus(id);
   // (or, after an update, built again from what its setup step kept)
   const builtOnly = !!(cs && !cs.file && st && ((st.ready && st.reason === 'built') || copyNotNeeded(id)));
-  if (builtOnly && !selfRun) rows.push({ k: t('Your copy of the game'), v: true, d: copyGoneText(id), fix: '' });
-  else if (cs && !selfRun) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
+  if (builtOnly && askCopy) rows.push({ k: t('Your copy of the game'), v: true, d: copyGoneText(id), fix: '' });
+  else if (cs && askCopy) rows.push({ k: t('Your copy of the game'), v: cs.file ? true : own ? null : null,
     d: cs.file ? tf('Set up with {file}', { file: baseName(cs.file) }) : own ? '' : t('Insert it once and the launcher sets the game up for you.'), html: !cs.file && own ? copyLine(id) : '',
     tags: cs.file || own ? '' : fmtTags(cs.exts),
     fix: cs.file ? '' : `<button type="button" class="btn sm main" data-act="setup" data-id="${esc(id)}">${esc(own ? t('Set it up') : t('Insert it'))}</button>` });
-  else if (!g && S.easy.has(id)) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
+  else if (!g && S.easy.has(id) && askCopy) rows.push({ k: t('Your copy of the game'), v: own ? true : null,
     d: own ? t('It\'s set up for you after it installs.') : t('You insert it after it installs, and the launcher sets the game up.'), html: own ? copyLine(id) : '', tags: own ? '' : fmtTags(copyFormats(id).exts), fix: '' });
-  else if (a.needs && !selfRun) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
+  else if (a.needs && askCopy) rows.push({ k: t('Your copy of the game'), v: own ? true : g && g.last_played ? true : null,
     d: own ? '' : g && g.last_played ? t('Set up the first time you played') : t('Not found'), html: own ? copyLine(id) : '',
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
-  if (su && su.needs && !selfRun) rows.push(...otherFileRows(id, su));
-  if (st && st.detail === 'cut' && !selfRun) rows.push(cutRow(id));
+  if (su && su.needs && askCopy) rows.push(...otherFileRows(id, su));
+  if (st && st.detail === 'cut' && askCopy) rows.push(cutRow(id));
   rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
@@ -1768,13 +1822,13 @@ function factGrid(facts) {
   const odd = cols === 2 && facts.length % 2 === 1;
   return `<dl class="facts-grid c${cols}">${facts.map(([k, v], i) => `<div${odd && i === facts.length - 1 ? ' class="wide"' : ''}><dt>${esc(k)}</dt><dd dir="auto">${esc(v)}</dd></div>`).join('')}</dl>`;
 }
-// About the original game, from IGDB: what it is, then the facts there are.
+// About the original game, from IGDB or LaunchBox: what it is, then the facts there are.
 function igdbCard(ab) {
-  const facts = aboutFacts(ab), score = Number.isFinite(Number(ab.rating)) && ab.rating !== null && ab.rating !== '' ? Math.round(Number(ab.rating)) : null;
+  const facts = aboutFacts(ab), src = aboutSource(ab), score = Number.isFinite(Number(ab.rating)) && ab.rating !== null && ab.rating !== '' ? Math.round(Number(ab.rating)) : null;
   return `<div class="card about-game igdb"><div class="card-h" style="margin-bottom:10px"><h3>${esc(t('About the game'))}</h3>${score !== null ? `<span class="score-b" title="${esc(t('Critic and player score'))}"><b>${score}</b>${esc(t('Critic and player score'))}</span>` : ''}</div>
     ${ab.summary ? String(ab.summary).split(/\n\s*\n/).map((p) => `<p dir="auto">${esc(p.trim())}</p>`).join('') : ''}
     ${facts.length ? factGrid(facts) : ''}
-    ${ab.url && /^https:\/\//.test(ab.url) ? `<p class="src"><a href="#" data-url="${esc(ab.url)}">${esc(t('Game info from IGDB'))}</a></p>` : ''}</div>`;
+    ${src ? `<p class="src"><a href="#" data-url="${esc(src.url)}">${esc(src.label)}</a></p>` : ''}</div>`;
 }
 
 // What's new for the games you have: their releases from the last two months.
@@ -2496,7 +2550,7 @@ function gameTitle(a, id) {
   const inst = S.library[id], su = S.setup[id];
   // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
   const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   return `${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}`;
 }
 function pageGame(id) {
@@ -3127,7 +3181,7 @@ function gameStrip(a, inst) {
   }
   if (inst) {
     const size = gameDisk(id);
-    boxes.push(gsBox(GS_IC.disk, t('On Disk'), (size ? esc(fmtB(size)) : '—') + selfManagedPill(id)));
+    boxes.push(gsBox(GS_IC.disk, t('On Disk'), size ? esc(fmtB(size)) : '—'));
   }
   return `<div class="gstrip" style="--gs-n:${boxes.length}">${boxes.join('')}</div>`;
 }
@@ -3196,7 +3250,7 @@ function manageTab(a) {
   const shotsCard = `<div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
       ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div>`;
   const leave = inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>`
-    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div><button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button></div>`;
+    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div>${S.uninstalling.has(id) ? `<button type="button" class="btn danger" disabled>${esc(t('Uninstalling…'))}</button>` : `<button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button>`}</div>`;
   return `<div class="stack">${card(t('Updates'), manageUpdateRows(id, inst))}${card(t('Starting the Game'), manageStartRows(id, inst))}${card(t('Files and Saves'), manageFileRows(id, inst))}${shotsCard}<div class="card">${leave}</div></div>`;
 }
 // Which version it has, and how it gets the next one.
@@ -3681,6 +3735,9 @@ async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
   switch (b.dataset.su) {
     case 'close': return closeSetup();
+    // A failed setup step's Copy and Open Full Log.
+    case 'fail-copy': return setupFailAct('copy', SU.id, SU.err);
+    case 'fail-open': return setupFailAct('open', SU.id, SU.err);
     // Back to the steps, with the copy that didn't work taken out of its box.
     case 'again': SU.stage = 'steps'; SU.err = ''; SU.named = Object.assign({}, SU.named, { copy: '', busy: false }); return suDraw();
     case 'anyway': return suBegin(SU.path, true);
@@ -4016,6 +4073,58 @@ async function suAfterCopy() {
   SU.stage = 'ready';
   suDraw();
 }
+// A setup that stopped, as the core says it: the launcher's line first, then what the recomp's
+// setup step printed last, on lines of their own. The launcher's line is translated (with the
+// step's code in it); the step's own words stay as it printed them.
+function setupFail(text) {
+  const [head, ...printed] = String(text || '').split('\n');
+  const coded = /^Its setup step stopped with code (.+?)\.(?: (.+))?$/.exec(head);
+  if (!coded) return { head: t(head), printed, step: false };
+  const said = tf('Its setup step stopped with code {code}.', { code: coded[1] });
+  return { head: coded[2] ? `${said} ${t(coded[2])}` : said, printed, step: true };
+}
+// The error screen's text, desktop and Big Picture alike: the reason, then (when the step printed
+// anything) the last lines the core sent in a box, with Copy and Open Full Log under it.
+// `o`: the reason's class (p), the box's (tail), the buttons' row (row), and how the screen draws
+// a button (button(act, label)): each screen has its own buttons and focus.
+function setupFailHtml(text, o) {
+  const f = setupFail(text);
+  const reason = `<p class="${o.p}">${esc(f.head)}</p>`;
+  if (!f.printed.length) return reason;
+  const box = `<pre class="${o.tail}">${esc(f.printed.join('\n'))}</pre>`;
+  const buttons = `<div class="${o.row}">${o.button('copy', t('Copy'))}${o.button('open', t('Open Full Log'))}</div>`;
+  return `${reason}${box}${buttons}`;
+}
+// The desktop's Easy Setup error: its buttons go through suAct as fail-copy and fail-open.
+const SU_FAIL = { p: 'su-err', row: 'su-logb', tail: 'su-tail', button: (act, label) => `<button type="button" class="btn sm" data-su="fail-${act}">${esc(label)}</button>` };
+// What Copy puts on the clipboard, for a player who pastes it to the recomp's developer: the game,
+// its version, the PC, then the error as the core said it (in English, which they read).
+function setupFailDetails(id, text) {
+  const g = S.library[id] || S.library[parentId(id)] || {};
+  const name = (byId(id) || {}).name || g.name || id;
+  const about = [name, g.tag, OS_NAME[S.os], `RecompLauncher ${S.version}`].filter(Boolean).join(' · ');
+  return `${about}\n${text}`;
+}
+// Copy and Open Full Log, the same on both screens.
+async function setupFailAct(act, id, text) {
+  if (act === 'copy') {
+    try { await navigator.clipboard.writeText(setupFailDetails(id, text)); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); }
+    return;
+  }
+  if (act === 'open') {
+    try { await invoke('open_setup_log', { id }); } catch (e) { toast(t(String(e && e.message ? e.message : e)), true); }
+  }
+}
+// The error screen's heading: a setup step that stopped didn't fail because of the copy.
+function setupFailTitle(text) {
+  return setupFail(text).step ? t('Setup Didn\'t Finish') : t('That copy didn\'t work');
+}
+// For a toast: the reason and the last line the step printed.
+function setupFailShort(text) {
+  const f = setupFail(text);
+  const last = f.printed[f.printed.length - 1];
+  return last ? `${f.head} ${last}` : f.head;
+}
 // Steps that finish quickly still show for a moment, so each one can be seen.
 function suPump() {
   clearTimeout(SU.timer);
@@ -4052,7 +4161,7 @@ T.event.listen('setup', ({ payload: p }) => {
     buildLeft(p.id);
     setTimeout(nextInLine, 0);
     if (!SU.el || SU.id !== p.id) {
-      toast(p.text || t("Setup didn't finish."), true);
+      toast(p.text ? setupFailShort(p.text) : t("Setup didn't finish."), true);
       render(true);
       if (S.view === 'game') refreshGame();
     }
@@ -4147,7 +4256,7 @@ function suDraw() {
       <p class="muted">${esc(t('The launcher can make a plain copy beside it and set the game up with that. Your own file stays as it is.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="convert">${esc(t('Make a Plain Copy'))}</button><button type="button" class="btn big" data-su="again">${esc(t('Try another copy'))}</button></div>`;
   } else {
-    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(setupFailTitle(SU.err))}</h2>${setupFailHtml(SU.err, SU_FAIL)}
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>`;
   }
   const keepDisc = $('.su-media .mdisc', box);
@@ -4157,7 +4266,9 @@ function suDraw() {
     box.dataset.stage = SU.stage;
     box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>
       <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive" aria-hidden="true"><i></i></div></div><div class="su-r">${right}</div></div>`;
-    const f = $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
+    // A failed setup: Try Another Copy, not the log's Copy above it.
+    const retry = SU.stage === 'error' ? $('.su-r .btn.main', box) : null;
+    const f = retry || $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
     $('.su-r', box).innerHTML = right;
@@ -5256,6 +5367,16 @@ function pageSettings() {
   const nOwned = ownedGames().length;
   const row = (b, s, ctl) => `<div class="set-row"><div class="k"><b>${esc(b)}</b><span>${esc(s)}</span></div>${ctl}</div>`;
   const group = (title, inner, extra = '') => `<section class="set-group"><div class="set-gh"><h3>${esc(title)}</h3>${extra}</div><div class="card">${inner}</div></section>`;
+  // Keep downloaded files: with it on, Open goes to the kept zips, which sit in a hidden folder
+  // players wouldn't find on their own. Each library keeps its own games' zips, so every library
+  // in Libraries gets a Kept Downloads button too.
+  const keepToggle = sw('keep_downloads', st.keep_downloads, t('Keep downloaded files'));
+  const keptIn = (dir) => String(dir).replace(/[\\/]+$/, '') + (String(dir).includes('\\') ? '\\' : '/') + '.downloads';
+  const keptLibBtn = (dir) => st.keep_downloads ? `<button type="button" class="btn sm" data-act="folder" data-path="${esc(keptIn(dir))}">${esc(t('Kept Downloads'))}</button>` : '';
+  const libDir = String(st.library_dir || '');
+  const keptFolder = keptIn(libDir);
+  const keptOpen = `<button type="button" class="btn sm" data-act="folder" data-path="${esc(keptFolder)}">${esc(t('Open'))}</button>`;
+  const keepCtl = st.keep_downloads && libDir ? `<span class="set-ctl2">${keptOpen}${keepToggle}</span>` : keepToggle;
   const shown = (k) => (k !== 'pc' || S.pc) && (k !== 'dev' || devAllowed());
   const sec = SET_SECTIONS.some(([k]) => k === S.setTab && shown(k)) ? S.setTab : 'general';
   let body = '';
@@ -5292,10 +5413,10 @@ function pageSettings() {
       break;
     case 'library':
       body = group(t('Recomp Library'), `<p class="set-note">${esc(t('Each game gets its own folder in a library. Add folders on other drives to spread games out; new games go to the default one unless you pick another when you install.'))}</p>
-        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
+        ${libs.map((l) => `<div class="set-row"><div class="k"><b class="path">${esc(l.path)}</b><span>${l.free != null ? esc(tf('{free} free', { free: fmtB(l.free) })) + ' · ' : ''}${esc(tn(l.games, '1 recomp', '{n} recomps'))}${l.default ? ' · ' + esc(t('default')) : ''}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(l.path)}">${esc(t('Open'))}</button>${keptLibBtn(l.path)}${l.default ? '' : `<button type="button" class="btn sm" data-act="lib-default" data-path="${esc(l.path)}">${esc(t('Make default'))}</button><button type="button" class="btn sm danger" data-act="lib-remove" data-path="${esc(l.path)}" data-n="${l.games || 0}">${esc(t('Remove'))}</button>`}</div></div>`).join('')}${sharedLibraryNote(libs.map((l) => l.path))}`,
         `<button type="button" class="btn sm" data-act="lib-add">${esc(t('Add a folder'))}</button>`)
         + group(t('Installing'), row(t('Ask Where to Install'), t('Pick the folder for each new game when you install it, Easy Setup too. Off: new games go to the default library.'), sw('ask_where', ui.ask_where, t('Ask Where to Install'), 'ui-toggle'))
-          + row(t('Skip Easy Setup'), t('Every game installs as it comes, and its own installer or launcher sets it up. To skip it for one game only, use Skip Easy Setup on its setup window, or the Easy Setup switch in its Manage tab.'), sw('easy_skip_all', ui.easy_skip_all, t('Skip Easy Setup'), 'ui-toggle')))
+          + row(t('Easy Setup'), t('The launcher sets up new games with your copy. Off: they install as they come and you set them up yourself. Games you have keep how they are; change one in its Manage tab.'), sw('easy_skip_all', !ui.easy_skip_all, t('Easy Setup'), 'easy-all')))
         + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
         ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
@@ -5319,7 +5440,7 @@ function pageSettings() {
           + row(t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one, with your saves backed up first. To keep one game waiting for you, turn off Update automatically in its Manage tab.'), sw('auto_update_all', autoUpdateAll(), t('Update All Games Automatically')))
           + row(t('Back up saves before updates'), t('Keeps the newest five copies of the saves in each game\'s folder.'), sw('backup_before_update', st.backup_before_update, t('Back up before updates')))
           + row(t('Auto-Install'), t('When an Easy Setup game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
-        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: it stays in the library\'s .downloads folder.'), sw('keep_downloads', st.keep_downloads, t('Keep downloaded files')))
+        + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: every zip stays as it came, an update\'s too, in its library\'s .downloads folder with the date it was released.'), keepCtl)
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
           + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
         + networkGroup(group, row, st);
@@ -6294,15 +6415,16 @@ function setSection(k, fade = true) {
 // One save at a time, each with everything changed so far: two quick toggles both stick.
 let settingsSaving = Promise.resolve();
 // `quiet`: the caller has already shown the change itself, so the page isn't drawn again.
-// Skip Easy Setup (a game's setup window or Manage tab, or Settings for every game): those games
-// install as they come and set themselves up. S.easyAll is every game Easy Setup can do; S.easy the
-// ones it does. An installed game says it in its own mode ('own': the player sets it up); one not
-// installed yet by ui.easy_skip (set by older versions, from the game's menu).
+// Skip Easy Setup (a game's setup window or Manage tab, or Easy Setup off in Settings for new
+// games): those games install as they come and set themselves up. S.easyAll is every game Easy
+// Setup can do; S.easy the ones it does. An installed game says it in its own mode ('own': the
+// player sets it up), whatever Settings say; one not installed yet by the Settings switch or
+// ui.easy_skip (set by older versions, from the game's menu).
 function applyEasySkip() {
   const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []), lib = S.library || {};
   const record = (id) => lib[id] || (typeof parentId === 'function' ? lib[parentId(id)] : undefined);
-  const own = (id) => { const g = record(id); return g ? g.mode === 'own' : skip.has(id); };
-  S.easy = new Set(ui.easy_skip_all ? [] : [...(S.easyAll || [])].filter((id) => !own(id)));
+  const own = (id) => { const g = record(id); return g ? g.mode === 'own' : !!ui.easy_skip_all || skip.has(id); };
+  S.easy = new Set([...(S.easyAll || [])].filter((id) => !own(id)));
 }
 // Settings → Start with your PC (desktop and Big Picture). The system's own startup list changes
 // first, and the switch shows what the system took: a Flatpak's desktop can ask the player first.
@@ -6869,9 +6991,21 @@ function selfManaged(id) {
   const su = setupOf(id);
   return !!(su && su.own_program);
 }
-function selfManagedPill(id) {
-  if (!selfManaged(id)) return '';
-  return `<span class="own-pill" title="${esc(t('You manage this install. Play starts the executable you picked, as it is, without Easy Setup or the launcher\'s setup steps.'))}">${esc(t('Self-Managed'))}</span>`;
+// The player sets this game up, not the launcher: they picked its executable, or Easy Setup is
+// skipped on a game it could do (that game only, or every game in Settings). Only an installed
+// game's page asks.
+function setUpByYou(id) {
+  if (selfManaged(id)) return true;
+  return !!(S.easyAll && S.easy) && S.easyAll.has(id) && !S.easy.has(id);
+}
+// The pill that says so, on the game's page (under its name, and by Game Executable in Manage), so
+// a player who skipped Easy Setup knows why the launcher doesn't ask for their copy.
+function setUpByYouPill(id) {
+  if (!setUpByYou(id)) return '';
+  const ownTip = t('You set up this game yourself, not RecompLauncher. Play starts the executable you picked, as it is. The launcher only installs its updates and backs up and syncs its saves.');
+  const skipTip = t('You set up this game yourself, not RecompLauncher: Easy Setup is skipped for it. The launcher only starts it, installs its updates and backs up and syncs its saves.');
+  const tip = selfManaged(id) ? ownTip : skipTip;
+  return `<span class="own-pill" title="${esc(tip)}">${esc(t('Set Up by You'))}</span>`;
 }
 // The program's full path (it's kept relative to the game's folder when it's inside it).
 function exePath(inst) {
@@ -6882,18 +7016,16 @@ function exePath(inst) {
 }
 // Easy Setup on the game's Manage tab: the one switch for who sets the game up, the same as Skip
 // Easy Setup. Turning it back on keeps an executable the player picked, for switching back. Only on
-// games Easy Setup can do, and not while it's skipped for every game in Settings.
+// games Easy Setup can do. The Settings switch is for new games, so it never hides this one.
 function easyRow(id) {
-  const ui = S.settings.ui || {};
-  if (!S.easyAll || !S.easyAll.has(id) || ui.easy_skip_all) return '';
+  if (!S.easyAll || !S.easyAll.has(id)) return '';
   const sub = t('The launcher sets this game up with your copy. Off: you set it up yourself.');
   return `<div class="set-row" id="easy-row"><div class="k"><b>${esc(t('Easy Setup'))}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.easy.has(id)}" aria-label="${esc(t('Easy Setup'))}" data-act="easy-skip" data-id="${esc(id)}"></button></div>`;
 }
 // Game Executable on the game's page: what Play starts, in a path box, with Change. On a game Easy
 // Setup does it says what picking the game's own executable does there, and once Play starts the
 // pick as it is, that the player manages the install (the pill). The way back is the Easy Setup
-// switch above it; Use Default only where that switch isn't (a game Easy Setup can't do, or one
-// skipped with every game).
+// switch above it; Use Default only where that switch isn't (a game Easy Setup can't do).
 function programRow(id, inst) {
   const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
   const path = exePath(inst);
@@ -6901,9 +7033,9 @@ function programRow(id, inst) {
     : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
       : t('The file Play starts.');
   const box = path ? `<div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div>` : `<div class="path-box empty">${esc(t('Not found. Pick it so Play knows what to start.'))}</div>`;
-  const hasSwitch = easy && !(S.settings.ui || {}).easy_skip_all;
+  const hasSwitch = easy;
   const back = mine && !hasSwitch ? `<button type="button" class="btn" data-act="forget-program" data-id="${esc(id)}">${esc(t('Use Default'))}</button>` : '';
-  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${selfManagedPill(id)}</b><span>${esc(sub)}</span>
+  return `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}${setUpByYouPill(id)}</b><span>${esc(sub)}</span>
     <div class="path-line">${box}<button type="button" class="btn" data-act="setexe" data-id="${esc(id)}">${esc(t('Change'))}</button>${back}</div></div></div>`;
 }
 // Skip Easy Setup for one game, or Easy Setup on for it again. Installed, it's the game's mode:
@@ -6933,6 +7065,12 @@ async function skipEasyHere(id) {
   toast(tf('Easy Setup is off for {name}. You set it up yourself.', { name }));
   render(true);
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+}
+// Asked before Easy Setup goes off for new games in Settings.
+async function askEasyAllOff() {
+  const text = t('New games then install as they come, and you set each one up yourself: the launcher won\'t ask for your copy or set it up. Games you already have keep how they\'re set up.');
+  const v = await ask(t('Turn Off Easy Setup?'), `<p>${esc(text)}</p>`, [{ label: t('Turn Off'), v: 'yes', main: true }, { label: t('Not Now'), v: null }]);
+  return v === 'yes';
 }
 // Asked before Set Game Executable on a game Easy Setup does: the pick turns Easy Setup off.
 async function askEasyOff(id) {
@@ -7003,7 +7141,7 @@ function gameMenu(id) {
       ] },
       ...(hasOwnPlaytime(id) ? [{ act: 'play-reset', id, label: t('Reset Play Time…'), icon: 'history' }] : []),
     ] : links.length ? ['-', ...links] : []),
-    ...(g ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
+    ...(g && st !== 'uninstalling' ? ['-', { act: 'uninstall', id, label: t('Uninstall…'), cls: 'danger', icon: 'bin' }] : []),
   ];
 }
 // Its project page, one row with the site's logo: its README is on Overview, its releases on
@@ -7071,6 +7209,8 @@ window.hasOwnPlaytime = hasOwnPlaytime;
 function confirmUninstall(id) {
   id = parentId(id);
   const g = S.library[id];
+  // Already on its way out: a second press would only fail once the first one is done.
+  if (!g || S.uninstalling.has(id)) return;
   // A recomp with several games: they all go with it.
   const many = hasGames(id) ? S.gameSets[id].games : null;
   const s = document.createElement('div');
@@ -7092,9 +7232,13 @@ function confirmUninstall(id) {
     if (!x) return;
     const del = !!($('#u-del', s) || {}).checked, unins = !!($('#u-unins', s) || {}).checked, keep = !!($('#u-keep', s) || {}).checked;
     s.remove();
+    if (S.uninstalling.has(id)) return;
     if (unins) toast(tf('{name}\'s uninstaller is opening. Finish it there.', { name: g.name }));
+    S.uninstalling.add(id);
+    render(true);
     let r = {};
-    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins, keepSaves: keep })) || {}; } catch (err) { await refreshState(); render(true); return fail(err); }
+    try { r = (await invoke('uninstall', { id, deleteFiles: del, runUninstaller: unins, keepSaves: keep })) || {}; } catch (err) { S.uninstalling.delete(id); await refreshState(); render(true); return fail(err); }
+    S.uninstalling.delete(id);
     if (window.usageUninstall) window.usageUninstall(id);
     await keepOut(id);
     delete S.updates[id]; await refreshState(); render(true);
@@ -7509,6 +7653,8 @@ function setupReqModal(id) {
 }
 
 async function playGame(id, program) {
+  // Its files are being deleted: starting it now would fail halfway.
+  if (S.uninstalling.has(parentId(id))) return;
   if (S.missing && S.missing.has(parentId(id))) return missingModal(parentId(id));
   // Another game of the same recomp is running: one at a time, since they share one install.
   if (subOf(id) && S.running.has(parentId(id)) && !S.running.has(id)) return toast(tf('{name} is running. Close it first to play another of its games.', { name: (S.library[parentId(id)] || {}).name || '' }), true);
@@ -9508,9 +9654,15 @@ async function act(el, e) {
       return render(true);
     }
     case 'ui-toggle':
-      // (Skip Easy Setup for every game: each game keeps its own mode under it, so turning it off
-      // leaves every game as it was, a game whose program the player picked included.)
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
+    // Easy Setup in Settings, for new games (stored the other way round, as easy_skip_all). Turning
+    // it off asks first: it's how the launcher sets games up. Games already installed keep their
+    // own mode either way, and a game installed while it's off takes it as its own.
+    case 'easy-all': {
+      const off = !(S.settings.ui || {}).easy_skip_all;
+      if (off && !(await askEasyAllOff())) return;
+      return saveUi({ easy_skip_all: off });
+    }
     // Show Game Names: the desktop shortcuts and Steam entries already made change pictures too.
     case 'game-names': return saveUi({ game_names: !(S.settings.ui || {}).game_names }).then(refreshShortcutArt);
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);

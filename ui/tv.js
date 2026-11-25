@@ -366,7 +366,7 @@
     const st = status(a), j = S.jobs[a.id];
     const vers = TV.view !== 'library' && !j && verGroup(a);
     // One label: with a versions count on the poster, Setup Required stays on the game's page.
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${savedSoon(a) ? svg('heartOn', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'uninstalling' ? `<span class="tv-badge">${esc(t('Uninstalling…'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${savedSoon(a) ? svg('heartOn', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
@@ -491,6 +491,7 @@
     const wants = () => (want && !a.custom ? wantTag(wantCount(id)) : '');
     switch (st) {
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
+      case 'uninstalling': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Uninstalling…'))}</span></button>`;
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
         // Said as on the desktop's game page and Downloads: "Building the game · 42%".
@@ -689,6 +690,7 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
+      case 'uninstalling': return null;
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelDownload(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
@@ -711,6 +713,7 @@
   function mainWords(a) {
     const st = status(a);
     if (st === 'busy') return progLabel(S.jobs[a.id])[0];
+    if (st === 'uninstalling') return t('Uninstalling…');
     if (st === 'soon') return t('Coming soon');
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
     if (st === 'settingup') {
@@ -1675,7 +1678,7 @@
     ].filter(Boolean).join('');
     const ab = a.about && (a.about.summary || aboutFacts(a.about).length) ? a.about : null;
     const score = ab && ab.rating !== null && ab.rating !== undefined && ab.rating !== '' && Number.isFinite(Number(ab.rating)) ? Math.round(Number(ab.rating)) : null;
-    const about = ab ? `<section class="tv-block"><h3>${esc(t('About the game'))}${score !== null ? ` <small class="tv-score"><b>${score}</b>${esc(t('Critic and player score'))}</small>` : ''}</h3><div class="tv-panel tv-igdb" data-f data-key="g-about">${ab.summary ? `<p class="tv-about" dir="auto">${esc(String(ab.summary).split(/\n\s*\n/)[0])}</p>` : ''}${aboutFacts(ab).length ? `<dl>${aboutFacts(ab).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}<p class="tv-src">${esc(t('Game info from IGDB'))}</p></div></section>`
+    const about = ab ? `<section class="tv-block"><h3>${esc(t('About the game'))}${score !== null ? ` <small class="tv-score"><b>${score}</b>${esc(t('Critic and player score'))}</small>` : ''}</h3><div class="tv-panel tv-igdb" data-f data-key="g-about">${ab.summary ? `<p class="tv-about" dir="auto">${esc(String(ab.summary).split(/\n\s*\n/)[0])}</p>` : ''}${aboutFacts(ab).length ? `<dl>${aboutFacts(ab).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}${aboutSource(ab) ? `<p class="tv-src">${esc(aboutSource(ab).label)}</p>` : ''}</div></section>`
       : info ? `<section class="tv-block"><h3>${esc(tf('About {title}', { title: info.title }))}</h3><p class="tv-about">${esc(info.text.split('\n\n')[0])}</p><p class="tv-src">${esc(t('From Wikipedia'))}</p></section>`
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
@@ -1693,7 +1696,7 @@
           ${titleOf(a)}
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
-          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
+          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.library[id] && setUpByYou(id) ? `<span class="tv-easy">${esc(t('Set Up by You'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${byLine}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           ${sbLine}
@@ -1980,7 +1983,7 @@
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
         ...(!S.running.has(id) && window.hasOwnPlaytime(id) ? [{ label: t('Reset Play Time'), sub: t('Its play time on this PC starts again from zero'), icon: 'history', run: () => { closeSheet(); setTimeout(() => window.resetPlaytime(id), 250); } }] : []),
-        ...(!S.running.has(id) && !S.jobs[id] ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
+        ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
       ] : []),
     ];
     const st = S.running.has(id) ? t('Playing now') : g ? timeLine(g) : a.game ? tf('Based on {game}', { game: a.game }) : '';
@@ -2032,13 +2035,18 @@
   // Uninstall, from a controller: the same choices as on the desktop.
   function tvUninstall(id) {
     const g = S.library[id];
-    if (!g) return;
+    // Already on its way out: a second press would only fail once the first one is done.
+    if (!g || S.uninstalling.has(id)) return;
     if (S.running.has(id)) return toast(t('Close the game first.'), true);
     // keep: a copy of its saves first, as the desktop's tick does (on unless the player picks the
     // item that deletes them too).
     const run = (del, keep = true) => async () => {
+      if (S.uninstalling.has(id)) return;
+      S.uninstalling.add(id);
+      draw(true);
       let r = {};
-      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
+      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { S.uninstalling.delete(id); await refreshState(); draw(true); return fail(e); }
+      S.uninstalling.delete(id);
       if (window.usageUninstall) window.usageUninstall(id);
       if (window.keepOut) await window.keepOut(id);
       delete S.updates[id];
@@ -2399,7 +2407,18 @@
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = 'steps'; TS.named = Object.assign({}, TS.named, { copy: '', busy: false }); setTimeout(tsDraw, 0); } }];
-      body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
+      // Copy and Open Full Log: items like the rest, so A presses them.
+      const runs = {
+        copy: () => setupFailAct('copy', id, TS.err),
+        open: () => setupFailAct('open', id, TS.err),
+      };
+      const button = (act, label) => {
+        items.push({ run: runs[act] });
+        const at = items.length - 1;
+        return `<button type="button" class="tv-btn" data-f data-key="ts:fail-${act}" data-sheet="${at}"><span>${esc(label)}</span></button>`;
+      };
+      const failHtml = setupFailHtml(TS.err, { p: 'err', row: 'tv-logb', tail: 'tv-tail', button });
+      body = `${med('ghost')}<div class="tt"><h2>${esc(setupFailTitle(TS.err))}</h2>${failHtml}</div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
@@ -2461,7 +2480,9 @@
     // The same control again after a redraw; on a new step, its main button (Next or Set Up).
     const same = TS.stage === 'steps' && prevKey ? $$('[data-sheet]', el).find((x) => x.dataset.key === prevKey) : null;
     const main = TS.stage === 'steps' ? $('.ss-foot .btn.main[data-sheet]', el) : null;
-    const f = same || main || $('[data-sheet]', el);
+    // A failed setup: Try Another Copy, not the log's Copy above it.
+    const retry = TS.stage === 'error' ? $('[data-key="ts:0"]', el) : null;
+    const f = same || main || retry || $('[data-sheet]', el);
     if (f) focus(f, true);
   }
   // A button of the steps, pressed with A: the same actions as the desktop window's (ssAct).
@@ -3177,7 +3198,7 @@
         if (!g) return;
         sfx('open');
         return sheet(g.name, [
-          ...(!S.running.has(id) && !S.jobs[id] ? [{ label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
+          ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
           { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
           { label: t('Game page'), icon: 'page', run: () => go('game', id) },
         ]);

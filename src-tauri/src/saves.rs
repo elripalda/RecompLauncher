@@ -1123,6 +1123,22 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     Ok(n)
 }
 
+/// Said when the saves here changed after they were checked, so a cloud save wasn't put over them.
+pub const CHANGED_SINCE_CHECK: &str = "Your saves on this PC changed while the cloud save was downloading, so they weren't replaced. Sync again to choose which one to keep.";
+
+/// `restore`, but only over the saves that were checked: `checked` is their set's checksum as
+/// `current` gave it. A game opened outside the launcher can save while a cloud save downloads,
+/// and that newer save would be replaced without the player being asked. A save made in the
+/// milliseconds between this check and `restore`'s own backup isn't seen: accepted, as that
+/// backup still keeps what was there.
+pub fn restore_if_unchanged(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g: &Installed, checked: &str) -> Result<usize, Error> {
+    let (_, _, now, _) = current(spots_now, g);
+    if now != checked {
+        return Err(Error::Msg(CHANGED_SINCE_CHECK.into()));
+    }
+    restore(app_dir, id, zip_file, spots_now, g)
+}
+
 pub fn manifest(zip_file: &Path) -> Option<Manifest> {
     read_manifest(zip_file)
 }
@@ -2127,6 +2143,46 @@ mod tests {
         assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"original backup");
         assert!(fs::symlink_metadata(to.join("g")).unwrap().file_type().is_symlink());
         fs::remove_dir_all(d).unwrap();
+    }
+
+    // A copy of the saves holding `text`, as a cloud save would bring it; the save is put back to
+    // "one" afterwards.
+    fn copy_holding(app: &Path, g: &Installed, s: &[Spot], save: &Path, text: &str) -> PathBuf {
+        fs::write(save, text).unwrap();
+        let copy = backup(app, "g", s, g).unwrap().unwrap();
+        fs::write(save, "one").unwrap();
+        dir_of(app, "g", g).join(copy.name)
+    }
+
+    #[test]
+    fn restore_if_unchanged_leaves_a_save_made_after_the_check() {
+        let d = tmp("restore-changed-after-check");
+        let (g, s, app) = game_with_a_save(&d);
+        let save = d.join("lib/Game/save/slot.sav");
+        let cloud = copy_holding(&app, &g, &s, &save, "cloud");
+        let checked = current(&s, &g).2;
+        // The game, opened outside the launcher, saves while the cloud save downloads.
+        fs::write(&save, "newer").unwrap();
+
+        let err = restore_if_unchanged(&app, "g", &cloud, &s, &g, &checked).unwrap_err();
+
+        assert_eq!(err.to_string(), CHANGED_SINCE_CHECK);
+        assert_eq!(fs::read_to_string(&save).unwrap(), "newer");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn restore_if_unchanged_puts_the_copy_over_the_checked_save() {
+        let d = tmp("restore-unchanged-since-check");
+        let (g, s, app) = game_with_a_save(&d);
+        let save = d.join("lib/Game/save/slot.sav");
+        let cloud = copy_holding(&app, &g, &s, &save, "cloud");
+        let checked = current(&s, &g).2;
+
+        assert_eq!(restore_if_unchanged(&app, "g", &cloud, &s, &g, &checked).unwrap(), 1);
+
+        assert_eq!(fs::read_to_string(&save).unwrap(), "cloud");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

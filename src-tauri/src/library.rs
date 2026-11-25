@@ -289,10 +289,10 @@ impl Installed {
         !self.installer_setup.is_empty() && self.exe.is_none() && !self.path.is_dir()
     }
 
-    /// The player sets this game up their own way (Skip Easy Setup): for this game, or for every
-    /// game (`all`, the Settings switch).
-    pub fn player_sets_up(&self, all: bool) -> bool {
-        self.mode == SetupMode::Own || all
+    /// The player sets this game up their own way (Skip Easy Setup). Only its own mode counts: the
+    /// Settings switch is for new games, and a game installed under it took it as its mode then.
+    pub fn player_sets_up(&self) -> bool {
+        self.mode == SetupMode::Own
     }
 
 }
@@ -1298,19 +1298,17 @@ mod mode_tests {
     fn switching_who_sets_it_up_keeps_the_players_program() {
         let mut g = picked();
         g.mode = SetupMode::Own;
-        assert!(g.player_sets_up(false));
+        assert!(g.player_sets_up());
         // Easy Setup on: only the mode changes; the pick is still there for coming back.
         g.mode = SetupMode::Easy;
-        assert!(!g.player_sets_up(false));
+        assert!(!g.player_sets_up());
         assert_eq!(g.exe, Some(PathBuf::from("bin/hopper.exe")));
         assert_eq!(g.exe_rules, u8::MAX);
     }
 
     #[test]
-    fn skip_for_every_game_covers_easy_games_and_leaves_their_mode() {
-        let g = Installed::default();
-        assert!(g.player_sets_up(true));
-        assert_eq!(g.mode, SetupMode::Easy);
+    fn an_installed_game_is_easy_setup_by_its_own_mode() {
+        assert!(!Installed::default().player_sets_up());
     }
 
     #[test]

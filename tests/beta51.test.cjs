@@ -17,7 +17,7 @@ test('cards show only Easy Setup and the versions count', () => {
   assert.doesNotMatch(tvPoster, /deckb|stb|greatOnDeck|STATE_NAME/);
   assert.match(tvPoster, /turnkey\(a\) \? `<span class="tv-easyb\$\{vers \? ' ico' : ''\}"/);
   // The game page keeps the project's state and Great on Deck.
-  assert.match(app, /const chips = \[quiet \? '' : sp, turnkey\(a\)/);
+  assert.match(app, /const chips = \[quiet \? '' : sp, inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : turnkey\(a\)/);
   assert.match(tv, /\$\{deckChip\}\$\{stChip\}/);
 });
 
