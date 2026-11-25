@@ -7215,24 +7215,41 @@ fn already_open(exe: &Path) -> bool {
     }
 }
 
-/// A log whose first dated line is from more than a day before `since`: one a game renamed or
-/// copied (log rotation keeps the old file's times), not the one from this start.
+/// A log whose newest dated line is from more than a day before `since`: one a game renamed or
+/// copied (log rotation keeps the old file's times), not the one from this start. A log the game
+/// adds to on every start begins with its first session's date, so its end is read too.
 fn old_inside(p: &Path, since: u64) -> bool {
-    use std::io::Read;
+    let Some(day) = newest_day_in(p) else { return false };
+    day * 86400 + 86400 < since as i64
+}
+
+/// The newest date (days since 1970) written in a log's first 400 bytes or its last 4 KB.
+fn newest_day_in(p: &Path) -> Option<i64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(p).ok()?;
     let mut head = [0u8; 400];
-    let n = std::fs::File::open(p).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
-    let text = String::from_utf8_lossy(&head[..n]);
-    let b = text.as_bytes();
-    for i in 0..b.len().saturating_sub(10) {
+    let n = f.read(&mut head).unwrap_or(0);
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut tail = Vec::new();
+    if f.seek(SeekFrom::Start(len.saturating_sub(4096))).is_ok() {
+        let _ = f.read_to_end(&mut tail);
+    }
+    days_in(&head[..n]).into_iter().chain(days_in(&tail)).max()
+}
+
+/// Every date like 2026-11-25 in some bytes, as days since 1970.
+fn days_in(b: &[u8]) -> Vec<i64> {
+    let mut out = vec![];
+    for i in 0..b.len().saturating_sub(9) {
         let d = &b[i..i + 10];
         let digits = |r: std::ops::Range<usize>| d[r].iter().all(u8::is_ascii_digit);
-        if d[0] == b'2' && d[1] == b'0' && digits(0..4) && d[4] == b'-' && digits(5..7) && d[7] == b'-' && digits(8..10) {
-            let num = |r: std::ops::Range<usize>| std::str::from_utf8(&d[r]).ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
-            let day = days_from_civil(num(0..4), num(5..7), num(8..10));
-            return day * 86400 + 86400 < since as i64;
+        if !(d[0] == b'2' && d[1] == b'0' && digits(0..4) && d[4] == b'-' && digits(5..7) && d[7] == b'-' && digits(8..10)) {
+            continue;
         }
+        let num = |r: std::ops::Range<usize>| std::str::from_utf8(&d[r]).ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+        out.push(days_from_civil(num(0..4), num(5..7), num(8..10)));
     }
-    false
+    out
 }
 
 /// Days since 1970-01-01 for a calendar date.
@@ -12253,6 +12270,35 @@ mod tests {
         said.push("reason");
         said.push("   ");
         assert_eq!(said.text(), "reason");
+    }
+
+    /// A log file at `<temp>/rl-<name>-<pid>.log` with `text` in it.
+    fn log_with(name: &str, text: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("rl-{name}-{}.log", std::process::id()));
+        std::fs::write(&p, text).unwrap();
+        p
+    }
+
+    fn noon_today() -> u64 {
+        released_secs("2026-11-25T12:00:00Z").unwrap() as u64
+    }
+
+    #[test]
+    fn a_log_the_game_adds_to_each_start_is_this_starts_log() {
+        let filler = "[2020-01-01 10:00:05] loading\n".repeat(40);
+        let text = format!("[2020-01-01 10:00:00] first start\n{filler}[2026-11-25 12:00:01] fatal: out of memory\n");
+        let p = log_with("appended", &text);
+        let old = old_inside(&p, noon_today());
+        let _ = std::fs::remove_file(&p);
+        assert!(!old);
+    }
+
+    #[test]
+    fn a_log_with_only_old_dates_is_still_old() {
+        let p = log_with("rotated", "[2020-01-01 10:00:00] first start\n[2020-01-01 10:05:00] quit\n");
+        let old = old_inside(&p, noon_today());
+        let _ = std::fs::remove_file(&p);
+        assert!(old);
     }
 
     #[test]
