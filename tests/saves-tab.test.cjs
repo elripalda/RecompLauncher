@@ -33,6 +33,11 @@ function tab(S) {
     ${line(account, 'const FROM = ')}
     ${line(account, 'const SET_ICON = ')}
     ${line(account, 'const spotSet = ')}
+    ${line(account, 'const FROM_CHANGED = ')}
+    ${block(account, 'const NAMED_UNUSED = ')}
+    ${line(account, 'const USE_NAMED = ')}
+    ${line(account, 'const overrideOn = ')}
+    ${line(account, 'const spotFrom = ')}
     ${line(account, 'const CURRENT_ICON = ')}
     ${line(account, 'const NEXT_ICON = ')}
     ${line(account, 'const SYNCS_ON_PLAY = ')}
@@ -48,6 +53,7 @@ function tab(S) {
     ${block(account, 'function historyCard(')}
     ${block(account, 'function whereCard(')}
     ${block(account, 'function spotRow(')}
+    ${block(account, 'function namedRow(')}
     return { saveHistory, historyShown, historyToggle, historyCard, whereCard };`)(S);
 }
 const fresh = () => ({ savesMore: new Set() });
@@ -147,6 +153,65 @@ test('a folder the player picked can be changed, or more added', () => {
   const html = tab(fresh()).whereCard('g', { spots: [myFolder] });
   assert.match(html, /data-act="saves-place"/);
   assert.match(html, /data-act="saves-place-add"/);
+});
+
+// ---------- the player's folder in place of the named one (Easy Setup skipped) ----------
+const offered = { on: false, by: 'developer', path: '/games/g/save' };
+const changed = { on: true, by: 'developer', path: '/games/g/save' };
+const mine = { ...myFolder, path: '/elsewhere/save' };
+
+test('with Easy Setup skipped, a folder its developer set can be changed', () => {
+  const html = tab(fresh()).whereCard('g', { spots: [devFolder], override: offered });
+  assert.match(html, /data-act="saves-place"/);
+});
+
+test('with Easy Setup skipped, a folder its developer set is still not one of several', () => {
+  assert.doesNotMatch(tab(fresh()).whereCard('g', { spots: [devFolder], override: offered }), /data-act="saves-place-add"/);
+});
+
+test('a changed folder says the player changed it', () => {
+  assert.match(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /You changed this folder/);
+});
+
+test('a changed folder can be changed again', () => {
+  assert.match(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /data-act="saves-place"/);
+});
+
+test('a changed folder offers no more folders', () => {
+  assert.doesNotMatch(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /data-act="saves-place-add"/);
+});
+
+test('while changed, the developer\'s folder stays on the list, greyed, without the shield', () => {
+  const html = tab(fresh()).whereCard('g', { spots: [mine], override: changed });
+  assert.match(html, /class="set-row svp-unused"><div class="k"><b class="path">\/games\/g\/save/);
+  assert.doesNotMatch(html, /svp-set/);
+});
+
+test('while changed, the developer\'s folder can be used again', () => {
+  assert.match(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /data-act="saves-place-named"/);
+});
+
+test('a folder RecompLauncher set and the player replaced says RecompLauncher names it', () => {
+  const html = tab(fresh()).whereCard('g', { spots: [mine], override: { ...changed, by: 'catalog' } });
+  assert.match(html, /RecompLauncher names this folder/);
+});
+
+test('picking a folder goes in place of the named one only when that is offered', () => {
+  assert.match(line(account, 'const placeCommand = '), /s && s\.override \? 'saves_set_override' : 'saves_set_place'/);
+});
+
+test('the desktop and Big Picture go back to the named folder the same way', () => {
+  assert.match(block(account, "case 'saves-place-named':"), /invoke\('saves_set_override', \{ id, path: null \}\)/);
+  assert.match(block(tv, "case 'gs-named':"), /invoke\('saves_set_override', \{ id, path: null \}\)/);
+});
+
+test('Big Picture offers Open and Change on a folder the player may change', () => {
+  assert.match(block(tv, 'function savesSpotItem('), /sv\.override \? 'gs-spot' : 'gs-open'/);
+  assert.match(block(tv, "case 'gs-spot':"), /pickSavesFolder\(id\)/);
+});
+
+test('Big Picture lists the named folder while the player\'s own is used', () => {
+  assert.match(tv, /\$\{overrideOn\(sv\) \? savesNamedItem\(id, sv\.override\) : ''\}/);
 });
 
 // ---------- no dead ends ----------

@@ -76,6 +76,26 @@ pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
     mine.into_iter().map(|template| Spot { template, from: "player" }).collect()
 }
 
+/// The player may put their own folder in place of the one the developer or RecompLauncher named
+/// (a recomplauncher.json that names an old folder) only for a game they set up themselves: Easy
+/// Setup is hands-off. Only over one named folder: restore matches a copy's folders by position,
+/// so one folder standing in for several would put files in the wrong place.
+pub fn can_override(named: &[Spot], sets_up: bool) -> bool {
+    let [one] = named else { return false };
+    sets_up && matches!(one.from, "developer" | "catalog")
+}
+
+/// The game's save places with the player's override (`over`) in place of the named folder, when
+/// `can_override` allows it. A "player" place: it's the player's folder, and restore and sharing
+/// treat it as one.
+pub fn with_override(named: Vec<Spot>, over: Option<&str>, sets_up: bool) -> Vec<Spot> {
+    let Some(over) = over.map(str::trim).filter(|t| !t.is_empty()) else { return named };
+    if !can_override(&named, sets_up) {
+        return named;
+    }
+    vec![Spot { template: over.to_string(), from: "player" }]
+}
+
 /// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
 /// them already, or inside one or around one (its files would be in two places).
 pub fn add_place(now: &[String], dir: &Path, g: &Installed) -> Result<Vec<String>, String> {
@@ -187,14 +207,25 @@ const BIN_SAVE_MAX: u64 = 16 * 1024 * 1024;
 /// A folder with programs in it (a runtime a game downloads on its first start, like Java or
 /// Python, or its own tools): never a save place, even when the game writes small files there.
 pub fn holds_programs(dir: &Path) -> bool {
+    programs_in(dir).unwrap_or(false)
+}
+
+/// Whether `dir` has programs in it, or None when it holds too much to look through (a home
+/// folder, a drive). holds_programs takes that as no; a folder the player picks doesn't.
+fn programs_in(dir: &Path) -> Option<bool> {
+    programs_within(dir, 4000)
+}
+
+/// programs_in, looking at no more than `most` entries.
+fn programs_within(dir: &Path, most: usize) -> Option<bool> {
     const PROGRAMS: [&str; 7] = [".exe", ".dll", ".so", ".dylib", ".jar", ".jmod", ".pyd"];
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
     let mut seen = 0usize;
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
             seen += 1;
-            if seen > 4000 {
-                return false;
+            if seen > most {
+                return None;
             }
             let Ok(t) = e.file_type() else { continue };
             let n = e.file_name().to_string_lossy().to_lowercase();
@@ -203,12 +234,38 @@ pub fn holds_programs(dir: &Path) -> bool {
                     stack.push((e.path(), depth + 1));
                 }
             } else if PROGRAMS.iter().any(|x| n.ends_with(x)) || n.contains(".so.") || crate::proton::elf_arch(&e.path()).is_some() {
-                return true;
+                return Some(true);
             }
         }
     }
-    false
+    Some(false)
 }
+
+/// Why a folder the player picks can't stand in for the named save folder, or None when it can.
+/// Backups, cloud uploads and restore's clearing would take everything in it for saves, so not
+/// the game's folder or one around it, a home folder, a drive, one with programs, or one too big
+/// to look through.
+pub fn override_refused(dir: &Path, game: &Path, home: Option<&Path>) -> Option<&'static str> {
+    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let game = game.canonicalize().unwrap_or_else(|_| game.to_path_buf());
+    // A home folder or a drive holds the game's folder too: said as too big, which it is.
+    let is_home = home.and_then(|h| h.canonicalize().ok()).is_some_and(|h| h == dir);
+    if is_home || dir.parent().is_none() {
+        return Some(OVERRIDE_TOO_BIG);
+    }
+    if game.starts_with(&dir) {
+        return Some(OVERRIDE_GAME_FOLDER);
+    }
+    match programs_in(&dir) {
+        Some(false) => None,
+        Some(true) => Some(OVERRIDE_GAME_FOLDER),
+        None => Some(OVERRIDE_TOO_BIG),
+    }
+}
+
+/// Fixed texts, so the window can translate them.
+pub(crate) const OVERRIDE_GAME_FOLDER: &str = "That's the game's own folder, or it holds programs. Pick the folder its saves are in.";
+pub(crate) const OVERRIDE_TOO_BIG: &str = "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.";
 
 fn is_save_file(name: &str, size: u64) -> bool {
     let n = name.to_lowercase();
@@ -1590,6 +1647,104 @@ mod tests {
     }
 
     #[test]
+    fn the_override_replaces_the_developers_folder_when_the_player_sets_up() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/real", "player")]);
+    }
+
+    #[test]
+    fn the_override_replaces_recomplaunchers_folder_when_the_player_sets_up() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&[], &["{local}/Test/saves".into()], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/real", "player")]);
+    }
+
+    #[test]
+    fn easy_setup_ignores_a_left_over_override() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), false);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn the_override_is_not_used_over_several_named_folders() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/one".into(), "{install}/two".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.len(), 2);
+    }
+
+    #[test]
+    fn an_override_can_be_a_plain_save_folder() {
+        let d = tmp("override-plain");
+        fs::create_dir_all(d.join("game")).unwrap();
+        fs::create_dir_all(d.join("saves")).unwrap();
+        fs::write(d.join("saves/slot.sav"), "save").unwrap();
+        assert_eq!(override_refused(&d.join("saves"), &d.join("game"), None), None);
+    }
+
+    #[test]
+    fn an_override_is_not_the_games_own_folder() {
+        let d = tmp("override-game");
+        assert_eq!(override_refused(&d, &d, None), Some(OVERRIDE_GAME_FOLDER));
+    }
+
+    #[test]
+    fn an_override_is_not_a_folder_around_the_game() {
+        let d = tmp("override-around");
+        fs::create_dir_all(d.join("lib/game")).unwrap();
+        assert_eq!(override_refused(&d.join("lib"), &d.join("lib/game"), None), Some(OVERRIDE_GAME_FOLDER));
+    }
+
+    #[test]
+    fn an_override_is_not_the_home_folder() {
+        let d = tmp("override-home");
+        fs::create_dir_all(d.join("home")).unwrap();
+        assert_eq!(override_refused(&d.join("home"), &d.join("game"), Some(&d.join("home"))), Some(OVERRIDE_TOO_BIG));
+    }
+
+    #[test]
+    fn an_override_is_not_a_whole_drive() {
+        let root = Path::new(if cfg!(windows) { "C:\\" } else { "/" });
+        assert_eq!(override_refused(root, Path::new("/nowhere/game"), None), Some(OVERRIDE_TOO_BIG));
+    }
+
+    #[test]
+    fn a_folder_too_big_to_look_through_is_not_said_to_be_free_of_programs() {
+        // A small limit, not 4000 files: writing that many slows the tests that time a restart.
+        let d = tmp("override-big");
+        for i in 0..4 {
+            fs::write(d.join(format!("{i}.txt")), "").unwrap();
+        }
+        assert_eq!(programs_within(&d, 3), None);
+    }
+
+    #[test]
+    fn an_override_is_not_a_folder_with_programs() {
+        let d = tmp("override-programs");
+        fs::write(d.join("tool.dll"), "").unwrap();
+        assert_eq!(override_refused(&d, Path::new("/nowhere/game"), None), Some(OVERRIDE_GAME_FOLDER));
+    }
+
+    #[test]
+    fn the_override_is_not_used_when_nobody_named_a_folder() {
+        assert!(!can_override(&[Spot { template: "{install}/mine".into(), from: "player" }], true));
+    }
+
+    #[test]
+    fn an_old_pick_does_not_come_back_without_an_override() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, None, true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
     fn sharing_keeps_the_previous_save_and_the_source() {
         let d = tmp("sharing-copy");
         let source = game(&d.join("source"));
@@ -2199,6 +2354,17 @@ mod tests {
         let second = why.lines().nth(1).unwrap_or_default();
         assert!(second.starts_with(&g.path.display().to_string()), "{why}");
         assert!(second.contains("saves"), "{why}");
+    }
+
+    #[test]
+    fn restore_puts_a_copy_of_the_developers_folder_into_the_override() {
+        let d = tmp("restore-override");
+        let (g, archive) = copy_from_old_folder(&d);
+        let named = spots(&["{install}/old".into()], &[], &g);
+        let now = with_override(named, Some("{install}/real"), true);
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("real/progress.sav")).unwrap(), "progress");
     }
 
     #[test]

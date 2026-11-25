@@ -575,12 +575,21 @@ fn own_saves(st: &App, id: &str) -> Option<crate::GamePick> {
 /// Where this game's saves are, best first.
 pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     if let Some(p) = own_saves(st, id) {
-        // Only the game's own: the recomp's other places are the other games'.
+        // Only the game's own: the recomp's other places are the other games'. Its override too:
+        // that's the recomp's, and one folder can't stand in for every game's.
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
         return named_spots(p.game.saves, vec![], &g);
     }
+    let named = named_of(st, id, g);
+    // Asked only with an override set: most games have none, and it takes the library's lock.
+    let Some(over) = g.save_override.as_deref() else { return named };
+    saves::with_override(named, Some(over), crate::player_sets_up(st, id))
+}
+
+/// Where its developer, the catalog or the player's own picks say it saves, without the override.
+fn named_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
@@ -1459,6 +1468,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             SpotInfo { exists: shown.exists(), path: p.to_string_lossy().to_string(), template: s.template, from: s.from }
         })
         .collect();
+    let swap = override_info(&st, &id, &g);
     let local = saves::list(&st.dir, &id, &g);
     let state = saves::state(&st.dir, &id);
     let mut cloud = Value::Null;
@@ -1491,7 +1501,22 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
+        "override": swap,
     }))
+}
+
+/// Whether the Saves tab offers Change on the folder its developer or RecompLauncher named, and
+/// that folder (still shown while the player's own is used). Null when it doesn't.
+fn override_info(st: &App, id: &str, g: &Installed) -> Value {
+    if own_saves(st, id).is_some() {
+        return Value::Null;
+    }
+    let named = named_of(st, id, g);
+    if !saves::can_override(&named, crate::player_sets_up(st, id)) {
+        return Value::Null;
+    }
+    let path = saves::resolve_for(&named[0].template, g);
+    json!({ "on": g.save_override.is_some(), "by": named[0].from, "path": path.to_string_lossy() })
 }
 
 /// Where players see whether the site is having trouble on our side.
@@ -1864,6 +1889,43 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
     let _ = l.save(&st.dir);
     Ok(g)
 }
+
+/// The player's folder in place of the one its developer or RecompLauncher named (a
+/// recomplauncher.json that still names an old folder), or None to use the named one again. Only
+/// for a game set up without Easy Setup, whose saves are in one named folder (saves::can_override).
+#[tauri::command(async)]
+pub fn saves_set_override(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
+    let g = game(&st, &id)?;
+    let path = path.filter(|p| !p.trim().is_empty());
+    let template = match path {
+        Some(p) => Some(override_template(&st, &id, &g, &PathBuf::from(p))?),
+        None => None,
+    };
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.save_override = template;
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// `dir` as the game's override, or why it can't be (saves::override_refused).
+fn override_template(st: &App, id: &str, g: &Installed, dir: &Path) -> Res<String> {
+    let named = named_of(st, id, g);
+    if own_saves(st, id).is_some() || !saves::can_override(&named, crate::player_sets_up(st, id)) {
+        return Err(Error::Msg(OVERRIDE_NOT_HERE.into()));
+    }
+    if !dir.is_dir() {
+        return Err(Error::Msg("That folder couldn't be found.".into()));
+    }
+    if let Some(why) = saves::override_refused(dir, &g.path, dirs::home_dir().as_deref()) {
+        return Err(Error::Msg(why.into()));
+    }
+    Ok(saves::templatize_for(dir, g))
+}
+
+/// A fixed text, so the window can translate it.
+pub(crate) const OVERRIDE_NOT_HERE: &str = "Its save folder can only be changed when Easy Setup is skipped for it.";
 
 /// One more folder where the game saves (a launcher with several games in it, each saving in its
 /// own folder): the ones it has now stay, and backups and cloud saves cover all of them.
