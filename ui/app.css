@@ -1909,13 +1909,31 @@ body.still *, body.still *::before, body.still *::after { animation: none !impor
 .tile-size{position:fixed;right:22px;bottom:18px;z-index:20;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line2);color:var(--muted);box-shadow:0 6px 24px rgba(0,0,0,.35)}
 .tile-size input{width:120px;accent-color:var(--cyan)}
 body.tv-on .tile-size{display:none}
-/* Light theme (Settings, Appearance). Pictures with text over them (the Home slider, a game's
-   header, the badges on covers) keep their dark look so the words stay readable. */
-body.light{--noise:url(img/noise-light.png);--bg:#F3F5F8;--bg2:#E9EDF2;--side:#EDF0F4;--card:#FFFFFF;--card2:#F4F6F9;--card3:#E8ECF1;
-  --ink:#0E1626;--muted:#4A5568;--dim:#6B7688;--cyan:#0B9E97;--blue:#2A6AA5;
-  --line:rgba(14,22,38,.08);--line2:rgba(14,22,38,.14);--line3:rgba(14,22,38,.24);
+/* Light theme (Settings, Appearance). Paper white, not screen white: the brightest surface is a
+   soft off-white (--paper), so a page of cards doesn't glare at full brightness the way a blank
+   white page does. The teal and the greys are dark enough to read as text on it (4.5:1 or more).
+   Pictures with text over them (the Home slider, a game's header, the badges on covers) keep
+   their dark look so the words stay readable. */
+body.light{--noise:url(img/noise-light.png);--paper:#F7F8FA;--bg:#ECEEF2;--bg2:#E3E6EB;--side:#E6E9EE;--card:var(--paper);--card2:#EFF1F4;--card3:#E3E7EC;
+  --ink:#0E1626;--muted:#465163;--dim:#5A6577;--cyan:#077570;--cyan-h:#055C58;--blue:#2A6AA5;
+  --warn:#8A5A00;--bad:#B42318;--ai:#5B3FD1;--ok:#127A45;
+  --line:rgba(14,22,38,.09);--line2:rgba(14,22,38,.15);--line3:rgba(14,22,38,.26);
   --fill:rgba(14,22,38,.035);--fill2:rgba(14,22,38,.06);--fill3:rgba(14,22,38,.1);color-scheme:light}
-body.light .slide, body.light .gp-hero, body.light .sl-in, body.light .gp-amb, body.light .sl-arrows, body.light .badge{--ink:#F4F8FC;--muted:#C9D2DE;--dim:#AAB4C4;--cyan:#34F2E8;--line2:rgba(244,248,252,.14);--fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065)}
+body.light .slide, body.light .gp-hero, body.light .sl-in, body.light .gp-amb, body.light .sl-arrows, body.light .badge{--ink:#F4F8FC;--muted:#C9D2DE;--dim:#AAB4C4;--cyan:#34F2E8;--cyan-h:#6ff7f0;--warn:#f5b83d;--bad:#ff7a7a;--ai:#c9b6ff;--ok:#3ee08f;--line2:rgba(244,248,252,.14);--fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065)}
+/* The dark theme's bright greens and cyans, written as fixed colours, as words or ticks on paper. */
+body.light :is(.tag.complete,.tag.ok,.known-fix b,.gp-note.complete b,.oob-pick .oob-rec,.ca-pick em,.sup-ok,.ach-verdict.yes,.ach-grp code.yes,.ach-rep.fixed,.pick-newer,.set-row .k .svp-set){color:var(--ok)}
+body.light :is(.vtick,.vpill,.follow-btn.on){color:var(--cyan)}
+body.light .vpill{background:rgba(7,117,112,.08);box-shadow:inset 0 0 0 1px rgba(7,117,112,.3)}
+body.light .follow-btn.on{border-color:rgba(7,117,112,.35);background:rgba(7,117,112,.08)}
+/* Fills in the darker warning and error colours take paper-coloured words and icons. */
+body.light :is(.btn.main.bad,.dev-item.warn svg,.dev-item.err svg,.scan-pill.bad i){color:var(--paper)}
+/* A game's header: the art fades out sooner, so its name and details sit on paper, not on the
+   picture's darker half, and they lose the dark glow they have on the dark theme. */
+body.light .gp-hero>img{-webkit-mask-image:linear-gradient(180deg,#000 22%,rgba(0,0,0,.35) 52%,transparent 78%);mask-image:linear-gradient(180deg,#000 22%,rgba(0,0,0,.35) 52%,transparent 78%)}
+body.light .gp-name h1{text-shadow:0 2px 24px rgba(236,238,242,.85)}
+body.light .dev-line{text-shadow:none}
+body.light .follow-btn:not(.on), body.light .ver-pill{background:rgba(247,248,250,.78)}
+body.light .ver-pill:hover, body.light .ver-pill[aria-expanded="true"]{background:var(--paper);border-color:rgba(7,117,112,.5)}
 /* The slider's arrows sit on the picture but outside the slide, so they don't inherit its ink. */
 body.light .sl-arrows button{color:var(--ink)}
 /* Badges on covers write in the page colour (Soon, In Library, a game's state): dark, as on the
@@ -1925,16 +1943,22 @@ body.light .badge{--bg:#0B1220}
 body.light :is(.slide,.gp-hero) .btn.warn-o{color:#f5c518;border-color:rgba(245,197,24,.55);background:rgba(245,197,24,.06)}
 body.light :is(.slide,.gp-hero) .btn.warn-o svg{color:#f5c518}
 body.light :is(.slide,.gp-hero) .btn.warn-o:hover{background:rgba(245,197,24,.12)}
+/* Switches: a paper knob on a grey track when off, as light themes do. The dark theme's ink-coloured
+   knob read as "on" here. */
+body.light .switch{background:rgba(14,22,38,.14)}
+body.light .switch::after{background:var(--paper);box-shadow:0 1px 3px rgba(14,22,38,.35)}
 body.light .menu, body.light .modal, body.light .toast{box-shadow:0 12px 40px rgba(14,22,38,.18)}
-body.light .chip.on{color:#fff}
-body.light .btn.main, body.light .chip.main{color:#fff}
-body.light .topbar.solid{background:rgba(243,245,248,.85)}
+body.light .chip.on{color:var(--paper)}
+body.light .btn.main, body.light .chip.main{color:var(--paper)}
+/* The dark theme's hover is a brighter cyan, which white words can't be read on. */
+body.light .btn.main:not(.warn,.easy):hover, body.light .chip.main:hover{background:var(--cyan-h);border-color:var(--cyan-h);box-shadow:0 10px 26px -10px rgba(7,117,112,.5)}
+body.light .topbar.solid{background:rgba(236,238,242,.85)}
 body.light .scrim{background:rgba(14,22,38,.35)}
 body.light .poster, body.light .tile-size{box-shadow:0 4px 16px rgba(14,22,38,.10)}
 body.light .slide .btn.main, body.light .gp-hero .btn.main{color:#06121A}
 body.light .slide{--bg:#0B1220;--bg2:#08101c}
-body.light .btn.glass{background:rgba(255,255,255,.75);color:var(--ink);border-color:var(--line2)}
-body.light .btn.glass:hover{background:#fff}
+body.light .btn.glass{background:rgba(247,248,250,.78);color:var(--ink);border-color:var(--line2)}
+body.light .btn.glass:hover{background:var(--paper)}
 body.light .slide .btn.glass{background:rgba(8,14,26,.82);color:#F4F8FC;border-color:rgba(244,248,252,.14)}
 body.light .modal{box-shadow:0 30px 80px -20px rgba(14,22,38,.35)}
 body.light .gp-hero .btn.glass{background:rgba(8,14,26,.82);color:#F4F8FC;border-color:rgba(244,248,252,.14)}
@@ -1947,7 +1971,7 @@ body.light .tag.paused, body.light .gp-note.paused b{color:#8a5a00}
 body.light .tag.complete, body.light .gp-note.complete b{color:#127a45}
 body.light .sup-h .tag.sup-full{color:#8a5a00;box-shadow:none}
 body.light .sup-chip.sup-ours, body.light .sup-row.st-l .sup-ib{color:#2a6aa5}
-body.light .gp-note{background:rgba(255,255,255,.75)}
+body.light .gp-note{background:rgba(247,248,250,.8)}
 
 /* Covers Only (Settings, Appearance): just the covers, no names under them. */
 body.nonames .tile .t,body.nonames .tile .s,body.nonames .tile .trow{display:none}
@@ -2051,7 +2075,7 @@ body.light .dropmenu::-webkit-scrollbar-thumb{background-color:rgba(14,22,38,.18
 .ach-acts .acts{display:flex;gap:10px}
 .ach-ok{margin:0;font-size:14px;color:var(--ink)}
 .ach-btn{box-shadow:none}
-body.light .ach-card::after{background:linear-gradient(180deg,transparent 30%,rgba(243,245,248,.55))}
+body.light .ach-card::after{background:linear-gradient(180deg,transparent 30%,rgba(236,238,242,.55))}
 .ach-ok{margin:10px 0 0;color:var(--gold);font-weight:600}
 body.light .ach-ok{color:#8a6400}
 .ach .head{align-items:flex-start}
