@@ -670,6 +670,31 @@ const NOT_RESTORED: &str = "Your cloud save couldn't be put in place.";
 /// The cloud save downloaded, but it couldn't be kept in the folder of the game's save copies.
 const CLOUD_NOT_KEPT: &str = "The cloud save couldn't be kept on this PC.";
 
+/// The file name of a program running from the game's folder that this launcher didn't start: the
+/// game opened straight from its .exe, or a mod tool kept beside it. A save put in place under the
+/// game could replace what it just saved. Named, because it isn't always the game. Not while the
+/// launcher's own setup step runs: its tools run from the game's folder too. Not seen on macOS, or
+/// under Wine where the program is Wine's own; the saves are checked again just before anything
+/// replaces them (`saves::restore_if_unchanged`) for those.
+async fn open_outside(id: &str, g: &Installed) -> Res<Option<String>> {
+    if crate::setup_busy(id) {
+        return Ok(None);
+    }
+    let dir = g.path.clone();
+    blocking(move || crate::program_running_in(&dir)).await
+}
+
+/// Sync Now and restores, when a program runs from the game's folder. Fixed texts so the window
+/// can translate them; the program's name goes on the line under it, as it is.
+const PROGRAM_OPEN: &str = "A program from this game's folder is still running. Close it, then try again.";
+
+/// Before Play, said in the prompt that offers to play with this PC's save instead.
+const PROGRAM_OPEN_PLAY: &str = "A program from this game's folder is already running. Close it to get your cloud save.";
+
+fn still_open(program: &str) -> Error {
+    Error::Msg(format!("{PROGRAM_OPEN}\n{program}"))
+}
+
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
 /// name, so the window can translate it: the player just pressed Play on that game.
 const SYNC_PAUSED: &str = "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.";
@@ -1063,7 +1088,10 @@ fn open_sessions(saves_dir: &Path) -> Vec<String> {
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
-async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
+/// `checked`: the checksum of the saves the caller looked at before deciding. Then the copy goes
+/// in only over those saves, not over ones made while it downloaded. None: the player picked
+/// this cloud save themselves, over whatever is there.
+async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&str>) -> Res<usize> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let _working = working(app, id, "down");
@@ -1080,15 +1108,24 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
+    let g = game(&st, id)?;
+    // Checked after the download too: a big save takes a while, and the game can be opened
+    // from its folder meanwhile.
+    if let Some(program) = open_outside(id, &g).await? {
+        return Err(still_open(&program));
+    }
     let d = copies_dir(&st, id);
     let not_kept = |path: &Path, e: std::io::Error| Error::Msg(format!("{CLOUD_NOT_KEPT}\n{}: {e}", path.display()));
     tokio::fs::create_dir_all(&d).await.map_err(|e| not_kept(&d, e))?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
-    let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
-    let n = blocking(move || saves::restore(&dir, &id2, &t2, &spots, &g)).await;
+    let checked = checked.map(String::from);
+    let n = blocking(move || match checked {
+        Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
+        None => saves::restore(&dir, &id2, &t2, &spots, &g),
+    }).await;
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
@@ -1246,7 +1283,17 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        let taken = take_cloud(&app, &id, top).await;
+        // Before Play it doesn't stop the game: the program may be a mod tool, not the game. The
+        // player is asked whether to play with this PC's save, as when a restore fails.
+        if let Some(program) = open_outside(&id, &g).await? {
+            if manual {
+                return Err(still_open(&program));
+            }
+            crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place: {program} runs from its folder"));
+            let why = format!("{PROGRAM_OPEN_PLAY}\n{program}");
+            return Ok(json!({"action": "not-restored", "why": why, "cloud": top}));
+        }
+        let taken = take_cloud(&app, &id, top, Some(&local)).await;
         // Sync Now says why. Before Play the player is asked whether to play with this PC's save
         // instead (saves_play_without_cloud); nothing about the sync changes until they say so.
         if let (Err(e), false) = (&taken, manual) {
@@ -1341,7 +1388,7 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
             return Err(changed());
         }
         match keep.as_str() {
-            "cloud" => take_cloud(&app, &id, top).await.map(|_| ()),
+            "cloud" => take_cloud(&app, &id, top, Some(&hash)).await.map(|_| ()),
             "local" => upload_current(&app, &id, g, spots, hash, top.made).await,
             _ => Err(Error::Msg("Choose this PC or the cloud.".into())),
         }
@@ -1759,13 +1806,16 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
         let c = list.into_iter().find(|c| c.v == v).ok_or_else(|| Error::Msg("That cloud save is gone.".into()))?;
-        return take_cloud(&app, &id, &c).await;
+        return take_cloud(&app, &id, &c, None).await;
     }
     let name = name.unwrap_or_default();
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
         return Err(Error::Msg("That isn't one of its save copies.".into()));
     }
     let g = game(&st, &id)?;
+    if let Some(program) = open_outside(&id, &g).await? {
+        return Err(still_open(&program));
+    }
     let spots = spots_of(&st, &id, &g);
     let (dir, id2) = (st.dir.clone(), id.clone());
     let file = saves::dir_of(&st.dir, &id, &g).join(&name);
