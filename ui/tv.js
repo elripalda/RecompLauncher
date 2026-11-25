@@ -1488,6 +1488,19 @@
     const side = r.current ? cur : r.incoming ? next : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
     return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
+  // A save folder. A opens it, or, when the player may change it (Easy Setup skipped), asks
+  // whether to open it or pick another, as the desktop's Open and Change.
+  function savesSpotItem(id, p, i, sv) {
+    const from = esc(t(spotFrom(p, sv)));
+    const said = spotSet(p) ? `<span class="tv-svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${from}</span>` : from;
+    const act = sv.override ? 'gs-spot' : 'gs-open';
+    return `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="${act}" data-id="${esc(id)}"${p.exists ? ' data-exists="1"' : ''}>${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${said}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`;
+  }
+  // The folder its developer or RecompLauncher names, while the player's own is used: A goes back to it.
+  function savesNamedItem(id, o) {
+    const text = NAMED_UNUSED[o.by] || NAMED_UNUSED.developer;
+    return `<button type="button" class="tv-item tv-svp-unused" data-f data-key="gs:named" data-tvact="gs-named" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(o.path)}<small>${esc(t(text))}</small></span><span class="tv-pill">${esc(t(USE_NAMED))}</span></button>`;
+  }
   function pageGameSaves(id) {
     const a = libAppOf(id), g = S.library[id] || {};
     const s0 = TV.saves[id];
@@ -1517,7 +1530,8 @@
         ${shareTitle ? `<h3 class="tv-lh">${esc(t('Settings'))}</h3>` : ''}
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
         ${unknown ? '' : `<h3 class="tv-lh">${esc(t('Where it saves'))}</h3>`}
-        ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${spotSet(p) ? `<span class="tv-svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${esc(t(FROM[p.from] || ''))}</span>` : esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
+        ${(sv.spots || []).map((p, i) => savesSpotItem(id, p, i, sv)).join('')}
+        ${overrideOn(sv) ? savesNamedItem(id, sv.override) : ''}
       </div>`;
     }
     return `${backdrop(a, 'game')}${gameBar()}
@@ -3061,6 +3075,16 @@
     draw();
   }
 
+  // The same pick as the desktop's Where it saves: the player's folder from now on, or in place
+  // of the named one for a game set up without Easy Setup.
+  async function pickSavesFolder(id) {
+    const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
+    if (!p) return;
+    try { S.library[id] = await invoke(placeCommand(TV.saves[id]), { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+    toast(t('Saved. Backups and cloud saves use that folder now.'));
+    return loadGameSaves(id);
+  }
+
   async function activate(el) {
     if (!el || el.disabled) return;
     // With a sheet open, only what's on it can be picked.
@@ -3208,12 +3232,17 @@
         return loadGameSaves(id);
       }
       case 'gs-open': return invoke('saves_open', { id }).catch(fail);
-      case 'gs-place': {
-        // The same pick as the desktop's Where it saves: the player's folder from now on.
-        const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
-        if (!p) return;
-        try { S.library[id] = await invoke('saves_set_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
-        toast(t('Saved. Backups and cloud saves use that folder now.'));
+      case 'gs-place': return pickSavesFolder(id);
+      case 'gs-spot': {
+        sfx('open');
+        const open = { label: t('Open'), sub: t('Where the game keeps its saves'), icon: 'folder', run: () => invoke('saves_open', { id }).catch(fail) };
+        const change = { label: t('Change'), sub: t('The folder where the game keeps its saves'), icon: 'folder', run: () => pickSavesFolder(id) };
+        return sheet(t('Where it saves'), el.dataset.exists ? [open, change] : [change]);
+      }
+      case 'gs-named': {
+        sfx('select');
+        try { S.library[id] = await invoke('saves_set_override', { id, path: null }); } catch (e) { return fail(e); }
+        toast(t('Saved. Backups and cloud saves use that folder again.'));
         return loadGameSaves(id);
       }
       case 'gs-restore': {
