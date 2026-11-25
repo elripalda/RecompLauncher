@@ -32,7 +32,7 @@ function actionsWhile(ev) {
     forOS: () => true,
   });
   const fnStatus = appSrc.match(/function status\(a\) \{[^]*?\n\}/)[0];
-  const fnActions = appSrc.match(/function actions\(a, size = 'big'\) \{[^]*?\n\}/)[0];
+  const fnActions = appSrc.match(/function actions\(a, size = 'big'[^)]*\) \{[^]*?\n\}/)[0];
   const fnProg = appSrc.match(/^function setupProg\([^]*?^}/m)[0];
   vm.runInContext(fnStatus + fnActions + fnProg, c);
   return c.actions({ id: 'test-game' });
@@ -110,7 +110,7 @@ function tvWhile(ev) {
   });
   const fnStatus = appSrc.match(/function status\(a\) \{[^]*?\n\}/)[0];
   const fnProg = appSrc.match(/^function setupProg\([^]*?^}/m)[0] + appSrc.match(/^function setupLine\([^]*?^}/m)[0];
-  const mainButton = tvSrc.match(/function mainButton\(a, key\) \{[^]*?\n  \}/)[0];
+  const mainButton = tvSrc.match(/function mainButton\(a, key[^)]*\) \{[^]*?\n  \}/)[0];
   const mainWords = tvSrc.match(/function mainWords\(a\) \{[^]*?\n  \}/)[0];
   vm.runInContext(fnStatus + fnProg + mainButton + mainWords, c);
   return c;

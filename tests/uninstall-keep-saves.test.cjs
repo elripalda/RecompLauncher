@@ -9,7 +9,8 @@ const app = read('app.js'), tv = read('tv.js');
 function fn(src, name) {
   const start = src.indexOf(`function ${name}(`);
   assert.ok(start >= 0, name);
-  let i = src.indexOf('{', start), depth = 0;
+  // The body's brace, after the parameters (which can hold a { … } default of their own).
+  let i = src.indexOf(') {', start) + 2, depth = 0;
   for (; i < src.length; i++) {
     if (src[i] === '{') depth++;
     if (src[i] === '}' && --depth === 0) break;

@@ -1,3 +1,11 @@
+# Fixes for one recomp go in that recomp, not here
+
+Changes to RecompLauncher are for the launcher itself. When one recomp misbehaves because of its own
+release (wrong folder layout, a broken AppImage entry point, odd file names, its own quirks), the fix
+belongs in that recomp's project, following docs/DEVELOPERS.md and docs/ADD-SUPPORT.md. Do not add
+special cases, name checks or workarounds for a single recomp to the launcher's code. If many recomps
+hit the same gap in the standard, say so in an issue instead of coding around it. See CONTRIBUTING.md.
+
 # Docs and schema stay in step with the launcher
 
 Any change that adds or changes something a developer can write in recomplauncher.json (a field, a
