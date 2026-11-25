@@ -39,6 +39,7 @@ This one makes Home yours to follow from the website, brings new consoles, gives
 - **Xbox Wireless Adapter:** controllers no longer switch off when they reconnect. — Improved by @Xarishark ([#517](https://github.com/elripalda/RecompLauncher/pull/517)).
 - A game's buttons in Big Picture go on to a second line when they don't fit. — Improved by @AngeloAscheri ([#577](https://github.com/elripalda/RecompLauncher/pull/577)).
 - Pick a release's build with the controller in Big Picture, turn the controller off outside Big Picture in Settings, and A waits for a direction after the window loses focus. — Improved by @AngeloAscheri and @thehobbit85 ([#469](https://github.com/elripalda/RecompLauncher/pull/469), [#482](https://github.com/elripalda/RecompLauncher/pull/482), [#478](https://github.com/elripalda/RecompLauncher/pull/478)).
+- A dialog from the desktop view shown over Big Picture lets you reach every choice with the controller, not only its main button. — Improved by @AngeloAscheri ([#470](https://github.com/elripalda/RecompLauncher/pull/470)).
 
 **Fixes**
 - Pages that load while the launcher is behind another window show right away instead of staying blank until you click it ([#569](https://github.com/elripalda/RecompLauncher/pull/569)).
