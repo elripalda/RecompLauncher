@@ -972,6 +972,8 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-deckb{position:absolute;right:12px;bottom:12px;z-index:2;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:15px;font-weight:700;color:#fff;background:#1a9fff}
 .tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
 .tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
+/* On the light theme badges write in paper, which can't be read on Soon's yellow. */
+body.light .tv-badge.soon{color:#1a1400}
 .tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
 /* A saved Coming Soon game: outlined, filled heart, a soft glow (Save until then). */
 .tv-btn.save-on{background:rgba(52,242,232,.08);border:2px solid rgba(52,242,232,.6);color:#34F2E8;box-shadow:0 0 28px -8px rgba(52,242,232,.55)}
