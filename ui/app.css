@@ -201,10 +201,13 @@ body.isl-on main::after{content:'';display:block;height:84px}
 .more{height:1px}
 .grid.compact{gap:22px 16px}
 .tile{position:relative;min-width:0}
-.tile-b{position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;text-align:left;min-width:0;width:100%}
+/* Some Windows WebView2 builds lay out a flex <button> without stretching its children, so the poster
+   (whose only content is absolutely placed) came out 0 x 0 and the Library showed no covers (#454).
+   The explicit stretch and the poster's own width keep it filling the tile everywhere. */
+.tile-b{position:relative;z-index:1;display:flex;flex-direction:column;align-items:stretch;gap:10px;text-align:left;min-width:0;width:100%}
 .qpw{position:absolute;left:0;top:0;width:100%;aspect-ratio:2/3;pointer-events:none;z-index:3}
 .qpw .qp{pointer-events:auto}
-.poster{position:relative;aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:var(--card2);box-shadow:0 10px 24px -14px rgba(0,0,0,.8),inset 0 0 0 1px rgba(244,248,252,.05);transition:transform .32s var(--ease),box-shadow .32s var(--ease);z-index:1}
+.poster{position:relative;width:100%;aspect-ratio:2/3;border-radius:16px;overflow:hidden;background:var(--card2);box-shadow:0 10px 24px -14px rgba(0,0,0,.8),inset 0 0 0 1px rgba(244,248,252,.05);transition:transform .32s var(--ease),box-shadow .32s var(--ease);z-index:1}
 .poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .poster .ph{position:absolute;inset:0;display:grid;place-items:center;padding:14px;text-align:center;font:700 semi-expanded 15px Archivo,sans-serif;color:var(--dim);background:linear-gradient(100deg,var(--card2) 30%,var(--card3) 50%,var(--card2) 70%) 0 0/300% 100%;animation:shimmer 1.6s linear infinite}
 @keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
