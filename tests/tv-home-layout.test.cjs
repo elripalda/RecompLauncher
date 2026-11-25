@@ -36,12 +36,12 @@ function ctx(S) {
     row: (name) => `[${name}]`, poster: () => '', card: () => '', timeLine: () => '', date: () => '', ago: () => '',
     recent: () => games.map((a) => ({ a })), foundInFolders: () => games, oneEach: same, turnkey: () => true, byNew: () => 0,
     haveAny: () => false, recentlyUpdated: same, turnkeyFirst: same, trendList: () => [], pool: () => games, notPC: () => true, byDl: () => 0,
-    HOME_ROW: 14,
+    HOME_ROW: 14, favs: () => c._favs || [], follows: () => c._follows || [], libApp: (g) => ({ id: g.id, dev: 'dev1' }), devOf: () => ({ name: 'Dev' }),
   });
   vm.runInContext(line(app, 'const HOME_ROWS') + line(app, 'const HOME_GO') + line(app, 'const homeClosed') + line(app, 'const HOME_ICONS = {').replace('{', '{};'), c);
   vm.runInContext(line(app, 'const homeIcon') + line(app, 'const HOME_TR_BASE'), c);
   vm.runInContext(fnApp('homePlan') + fnApp('homeBoxShows') + fnApp('homeWord') + fnApp('homeBoxAct'), c);
-  vm.runInContext(line(tv, 'const TV_HOME_ROWS') + fnTv('tvHomeRows') + fnTv('tvHomeBox') + fnTv('tvHomeBanner'), c);
+  vm.runInContext(line(tv, 'const TV_HOME_ROWS') + fnTv('tvHomeRows') + fnTv('tvFoundBox') + fnTv('tvHomeBox') + fnTv('tvHomeBanner'), c);
   return c;
 }
 function page(home, kind = 'mine', S = {}) {
@@ -69,9 +69,37 @@ test('A row hidden on the website stays out of Big Picture', () => {
   assert.doesNotMatch(page({ v: 1, items, hide: ['news'] }), /\[news\]/);
 });
 
-test('Rows only the desktop has (Favorites, From developers you follow) are skipped', () => {
+function pageWith(home, set) {
+  const c = ctx(Object.assign({ home, library: { a: { id: 'a' } } }, set.S || {}));
+  const { S: _, ...rest } = set;
+  Object.assign(c, rest, { dock: { kind: 'mine' } });
+  if (set.games) c.pool = () => set.games;
+  return vm.runInContext('tvHomeRows(dock, pool()).join("")', c);
+}
+
+test('Favorites and From developers you follow show in Big Picture, as on the desktop', () => {
   const items = [{ k: 'row', id: 'favs' }, { k: 'row', id: 'follow' }];
-  assert.equal(page({ v: 1, items, hide: ALL.filter((id) => id !== 'favs' && id !== 'follow') }), '');
+  const home = { v: 1, items, hide: ALL.filter((id) => id !== 'favs' && id !== 'follow') };
+  assert.equal(pageWith(home, { _favs: ['a'], _follows: ['dev1'], games: [{ id: 'x', dev: 'dev1' }, { id: 'y', dev: 'other' }] }), '[favs][follow]');
+});
+
+test('Favorites and followed developers stay out while there are none', () => {
+  const items = [{ k: 'row', id: 'favs' }, { k: 'row', id: 'follow' }];
+  const home = { v: 1, items, hide: ALL.filter((id) => id !== 'favs' && id !== 'follow') };
+  assert.equal(pageWith(home, {}), '');
+  assert.equal(pageWith(home, { _follows: ['dev1'], games: [{ id: 'y', dev: 'other' }] }), '');
+});
+
+test('Without the website\'s list, Favorites and followed developers have their place in Big Picture\'s order', () => {
+  assert.equal(pageWith(null, { _favs: ['a'], _follows: ['dev1'], games: [{ id: 'x', dev: 'dev1' }] }), '[favs][own][news][upd][follow][new][top]');
+});
+
+test('With nothing found and no folder picked, Home shows the box to add a folder', () => {
+  const home = { v: 1, items: [{ k: 'row', id: 'found' }], hide: ALL.filter((id) => id !== 'found') };
+  const html = pageWith(home, { foundInFolders: () => [], S: { settings: { ui: {}, rom_dirs: [] } } });
+  assert.match(html, /It finds the games you already have/);
+  assert.match(html, /data-f data-key="found:add" data-tvact="romadd"/);
+  assert.equal(pageWith(home, { foundInFolders: () => [], S: { settings: { ui: {}, rom_dirs: ['D:/roms'] } } }), '');
 });
 
 test('An info box shows in Big Picture with a button the controller can reach', () => {
