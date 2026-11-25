@@ -71,6 +71,10 @@ through us, and every release you publish reaches players the next time the laun
 - **Keep extras out of the way.** Files with `debug`, `symbols`, `pdb` or `source` in the name, and
   `.sha256`, `.sig` and `.asc` files, are never taken for the game. So a source archive you upload
   yourself says `source` in its name: `MyRecomp-v1.2.0-source.tar.gz`.
+- **Name your tools for what they do.** Without [`start.program`](#start), and with no program in
+  the release named like your game, players are asked once which program starts it. A tool or
+  server you release beside the game says so in its file name (`MyRecomp-v1.2.0-server-Linux-x64.zip`,
+  `MyRecomp-v1.2.0-shader-translator-Windows-x64.zip`), so it's never taken for the game's build.
 - **Checked on the way in.** GitHub keeps a SHA-256 of every file you upload, and the launcher
   checks the download against it before installing. You don't have to do anything.
 - **Updates keep what the game made.** An update unpacks over the game's folder, so saves,

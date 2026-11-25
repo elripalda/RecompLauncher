@@ -38,6 +38,17 @@ pub fn pending_for_play(st: &App, id: &str, g: &Installed) -> Option<PathBuf> {
     pending_with(st, id, g, true)
 }
 
+/// Played this long with its program, a game's program is the right one.
+const PLAYED_A_WHILE: u64 = 120;
+
+/// Whether the program a game has stays when the launcher can't pick one again itself: one that
+/// can start and isn't a setup or tool. An older version's guess between programs that don't name
+/// the game doesn't, unless the game has played a while with it: the player is asked once instead.
+fn keeps_old_program(usable: bool, unclear: bool, played_secs: u64) -> bool {
+    let unproven_guess = unclear && played_secs < PLAYED_A_WHILE;
+    usable && !unproven_guess
+}
+
 /// Installs from before the launcher knew about setups are looked at once here.
 fn pending_with(st: &App, id: &str, g: &Installed, play: bool) -> Option<PathBuf> {
     if g.local {
@@ -95,8 +106,12 @@ fn pending_with(st: &App, id: &str, g: &Installed, play: bool) -> Option<PathBuf
                     g.args = String::new();
                 }
                 g.exe = Some(e);
-            } else if !g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e) && !install::looks_like_tool(e, &nr)).unwrap_or(false) {
-                g.exe = None;
+            } else {
+                let usable = g.exe.as_ref().map(|e| g.path.join(e).is_file() && !install::looks_like_setup(e) && !install::looks_like_tool(e, &nr)).unwrap_or(false);
+                let unclear = install::unclear_game_exe(&g.path, os, &nr);
+                if !keeps_old_program(usable, unclear, g.played_secs) {
+                    g.exe = None;
+                }
             }
         }
         // A game whose installer builds it (its profile names the program it makes): a program in
@@ -1063,6 +1078,80 @@ fn pick(list: &[Value], names: &[&str], since: SystemTime, ours: &Path, then: Op
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unclear_guess_not_played_long_is_asked_again() {
+        assert!(!keeps_old_program(true, true, 30));
+    }
+
+    #[test]
+    fn an_unclear_guess_played_a_while_is_kept() {
+        assert!(keeps_old_program(true, true, 600));
+    }
+
+    #[test]
+    fn a_clear_pick_is_kept() {
+        assert!(keeps_old_program(true, false, 0));
+    }
+
+    /// A program file this system starts: an .exe on Windows, an executable elsewhere. It opens
+    /// with "#!" because a Mac only takes a Mach-O program or a script for one.
+    fn put_program(dir: &Path, stem: &str, bytes: usize) -> PathBuf {
+        let ext = match crate::assets::os_now() {
+            "windows" => ".exe",
+            "linux" => ".x86_64",
+            _ => "",
+        };
+        let rel = PathBuf::from(format!("{stem}{ext}"));
+        let p = dir.join(&rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut body = b"#!/bin/sh\n".to_vec();
+        body.resize(bytes, b'#');
+        std::fs::write(&p, body).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        rel
+    }
+
+    /// An install from an older version, left on its automatic guess between two programs that
+    /// don't name the game (the bigger one won), and what it starts after the next look.
+    fn exe_after_look(tag: &str, played_secs: u64, exe_rules: u8) -> Option<PathBuf> {
+        let d = std::env::temp_dir().join(format!("rl-unclear-old-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let game = d.join("game");
+        put_program(&game, "runtime/EntryRunner", 4_000_000);
+        let guess = put_program(&game, "host/FrameHost", 30_000_000);
+        let id = format!("unclear-old-{tag}");
+        let id = id.as_str();
+        let g = Installed { id: id.into(), name: "Night Harbor".into(), path: game, exe: Some(guess), exe_rules, setup_checked: true, played_secs, ..Default::default() };
+        let mut lib = crate::library::Library::default();
+        lib.installed.insert(id.into(), g.clone());
+        let st = crate::tests::app_in(&d, lib);
+        let _ = pending(&st, id, &g);
+        let exe = st.lib.lock().unwrap().installed.get(id).and_then(|r| r.exe.clone());
+        let _ = std::fs::remove_dir_all(&d);
+        exe
+    }
+
+    #[test]
+    fn an_older_guess_played_briefly_is_cleared_so_the_player_is_asked() {
+        assert_eq!(exe_after_look("brief", 30, install::EXE_RULES - 1), None);
+    }
+
+    #[test]
+    fn an_older_guess_played_a_while_is_kept() {
+        let kept = exe_after_look("long", 600, install::EXE_RULES - 1).and_then(|e| e.file_stem().map(|s| s.to_string_lossy().into_owned()));
+        assert_eq!(kept.as_deref(), Some("FrameHost"));
+    }
+
+    #[test]
+    fn the_players_own_pick_is_never_looked_at_again() {
+        let kept = exe_after_look("mine", 0, u8::MAX).and_then(|e| e.file_stem().map(|s| s.to_string_lossy().into_owned()));
+        assert_eq!(kept.as_deref(), Some("FrameHost"));
+    }
+
     #[test]
     fn a_setups_leftovers_are_not_searched() {
         assert!(!super::search_into("temp"));
