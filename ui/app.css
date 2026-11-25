@@ -2222,7 +2222,7 @@ body.playing *,body.playing *::before,body.playing *::after{animation-duration:0
 .cz-stage{position:relative;height:360px;border-radius:16px;background:var(--bg2);border:1px solid var(--line2);overflow:hidden;cursor:grab;touch-action:none;outline:none}
 .cz-stage:active{cursor:grabbing}
 .cz-stage canvas{display:block}
-.cz-empty{position:absolute;inset:0;display:grid;place-items:center;padding:30px;text-align:center;color:var(--muted);font-size:14px;pointer-events:none}
+.cz-empty{position:absolute;inset:0;display:grid;place-items:center;padding:14px;text-align:center;color:var(--muted);font-size:14px;pointer-events:none}
 .cz-ctl{display:flex;align-items:center;gap:14px;margin:12px 0}
 .cz-zoom{flex:1;display:flex;align-items:center;gap:10px;color:var(--muted);font-weight:600;font-size:13px}
 .cz-zoom input{flex:1;accent-color:var(--cyan)}
