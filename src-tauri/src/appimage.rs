@@ -144,6 +144,7 @@ pub(crate) fn installed_image(dir: &Path) -> Option<PathBuf> {
             .map(|s| s.eq_ignore_ascii_case("appimage"))
             != Some(true)
             || !entry.file_type().ok()?.is_file()
+            || crate::install::mac_metadata(&path)
         {
             continue;
         }
@@ -523,6 +524,18 @@ pub(crate) mod tests {
         let mut bytes = image(None, Compressor::Gzip)[..128].to_vec();
         bytes.extend(squashfs.into_inner());
         bytes
+    }
+
+    #[test]
+    fn a_macs_metadata_file_beside_the_appimage_isnt_a_second_one() {
+        let d = std::env::temp_dir().join(format!("rl-appledouble-image-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Game.AppImage"), b"image").unwrap();
+        std::fs::write(d.join("._Game.AppImage"), b"\x00\x05\x16\x07AppleDouble").unwrap();
+        let got = installed_image(&d);
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(d.join("Game.AppImage")));
     }
 
     #[cfg(unix)]

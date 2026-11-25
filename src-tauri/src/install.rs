@@ -1497,7 +1497,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
                 }
                 continue;
             }
-            if !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
+            if mac_metadata(&p) || !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
                 continue;
             }
             let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
@@ -1532,7 +1532,16 @@ pub fn looks_like_setup(p: &Path) -> bool {
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
 
+/// A Mac's metadata file ("._Game.exe"), which a Mac writes beside each file on a drive formatted
+/// for Windows, or into an archive it packs. It's never a program, whatever its name ends in.
+pub fn mac_metadata(p: &Path) -> bool {
+    p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))
+}
+
 pub fn is_program(p: &Path, os: &str) -> bool {
+    if mac_metadata(p) {
+        return false;
+    }
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     if os == "windows" {
         return n.ends_with(".exe");
@@ -2072,6 +2081,31 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    /// What a Mac writes beside a file on a drive or in an archive: "._" and the file's name.
+    fn mac_metadata_beside(p: &Path) {
+        let name = format!("._{}", p.file_name().unwrap().to_string_lossy());
+        fs::write(p.with_file_name(name), b"\x00\x05\x16\x07AppleDouble").unwrap();
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_the_setup() {
+        let d = tmp("appledouble-setup");
+        put(&d.join("Game.exe"), 2_000_000);
+        put(&d.join("Game-setup.exe"), 1_000_000);
+        mac_metadata_beside(&d.join("Game-setup.exe"));
+        assert_eq!(find_setup(&d, "windows", Some(Path::new("Game.exe"))), Some(PathBuf::from("Game-setup.exe")));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_linux_program() {
+        assert!(!is_program(Path::new("/games/x/._game.x86_64"), "linux"));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_windows_program() {
+        assert!(!is_program(Path::new("/games/x/._Game.exe"), "windows"));
     }
 
     #[test]
