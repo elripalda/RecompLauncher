@@ -187,7 +187,7 @@ function updateCheckContext(uninstalling) {
   c.started = [];
   c.startInstall = async (id) => { c.started.push(id); };
   c.buildsAfterUpdate = () => false;
-  vm.runInContext(fn(app, 'checkUpdates') + '\n' + fn(app, 'updateGame'), c);
+  vm.runInContext(fn(app, 'checkUpdates') + '\n' + fn(app, 'stillChecked') + '\n' + fn(app, 'updateGame'), c);
   return c;
 }
 
