@@ -727,10 +727,12 @@ fn search_into(name: &str) -> bool {
 const GENERIC: [&str; 18] = ["recomp", "recompiled", "decomp", "decompiled", "port", "the", "launcher", "online", "edition", "native", "windows", "game", "x64", "x86", "bit", "version", "beta", "alpha"];
 
 fn words(s: &str) -> Vec<String> {
+    // A version isn't part of the name: "Hopper PC Port 1.2" is Hopper.
+    let named: Vec<&str> = name_parts(s).into_iter().filter(|p| !is_version(p)).collect();
     // A lone digit is part of the word before it ("Resistance 3" is resistance3, as
     // "Resistance3Port" is), so sequels tell apart and still count as a word of the name.
     let mut joined: Vec<String> = vec![];
-    for t in install::name_tokens(s) {
+    for t in install::name_tokens(&named.join(" ")) {
         let digit = t.len() == 1 && t.chars().all(|c| c.is_ascii_digit());
         match joined.last_mut() {
             Some(prev) if digit && !prev.chars().all(|c| c.is_ascii_digit()) => prev.push_str(&t),
@@ -740,23 +742,115 @@ fn words(s: &str) -> Vec<String> {
     joined.into_iter().filter(|t| (t.len() > 2 || (t.len() == 2 && t.chars().all(|c| c.is_ascii_digit()))) && !GENERIC.contains(&t.as_str())).collect()
 }
 
+/// Whether `word` is a shortened `full`. A lone digit after it is a sequel's: "hopper3" is a
+/// different game from "hopper". Two digits aren't: "zelda64" is how Zelda's projects are named.
+fn starts_the_word(word: &str, full: &str) -> bool {
+    if word.len() <= 3 {
+        return false;
+    }
+    let Some(rest) = full.strip_prefix(word) else { return false };
+    let sequel_number = rest.len() == 1 && rest.chars().all(|c| c.is_ascii_digit());
+    !sequel_number
+}
+
+/// A name split at anything but letters, digits and dots, so a version like "1.2" stays whole.
+fn name_parts(s: &str) -> Vec<&str> {
+    s.split(|c: char| !c.is_ascii_alphanumeric() && c != '.').map(|p| p.trim_matches('.')).filter(|p| !p.is_empty()).collect()
+}
+
+/// A version ("1.2", "v2"): which build of the game it is, not which game.
+fn is_version(part: &str) -> bool {
+    let number = part.strip_prefix(|c: char| c == 'v' || c == 'V').unwrap_or(part);
+    let numeric = number.starts_with(|c: char| c.is_ascii_digit()) && number.chars().all(|c| c.is_ascii_digit() || c == '.');
+    numeric && (number.len() < part.len() || number.contains('.'))
+}
+
+/// Words a number after is that disc, part or build of this game, not a sequel.
+const NUMBERED: [&str; 8] = ["disc", "disk", "part", "vol", "volume", "version", "ver", "build"];
+
+/// The number a sequel is named with that words() drops: a lone digit 2 to 9, or a Roman numeral
+/// "ii" to "xx" (so "Hopper II" is "Hopper 2"). One isn't: "Hopper 1" is still Hopper. Two digits
+/// are left to words(), which keeps them: shortcuts glue them on ("MarioKart64", "MaddenNFL08"),
+/// and a glued number can't be told from a project's name ("Zelda64Recompiled" for Zelda Recomp).
+fn sequel_number(part: &str) -> Option<u32> {
+    const ROMAN: [&str; 19] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"];
+    let lower = part.to_ascii_lowercase();
+    if let Some(i) = ROMAN.iter().position(|r| *r == lower) {
+        return Some(i as u32 + 2);
+    }
+    if part.len() != 1 || !part.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let n: u32 = part.parse().ok()?;
+    (2..=9).contains(&n).then_some(n)
+}
+
+/// A lone digit glued to the end of a word ("hopper3"), which words() already reads as a sequel.
+/// Two glued digits aren't one: "zelda64" is how Zelda's projects are named.
+fn glued_digit(token: &str) -> Option<u32> {
+    let cut = token.len().checked_sub(1)?;
+    let (word, digit) = token.split_at(cut);
+    let glued = word.ends_with(|c: char| c.is_ascii_alphabetic()) && digit.chars().all(|c| c.is_ascii_digit());
+    if !glued || NUMBERED.contains(&word) {
+        return None;
+    }
+    sequel_number(digit)
+}
+
+/// The sequel numbers in a name. words() drops a short word like "ii" or a "2" on its own, so
+/// these come from the name itself.
+fn sequel_numbers(name: &str) -> Vec<u32> {
+    let parts = name_parts(name);
+    let mut out = vec![];
+    for (i, part) in parts.iter().enumerate() {
+        let after_a_label = i > 0 && NUMBERED.contains(&parts[i - 1].to_ascii_lowercase().as_str());
+        if after_a_label || is_version(part) {
+            continue;
+        }
+        if let Some(n) = sequel_number(part) {
+            out.push(n);
+            continue;
+        }
+        out.extend(install::name_tokens(part).iter().filter_map(|t| glued_digit(t)));
+    }
+    out
+}
+
+/// What an app's or shortcut's name is checked against: the words of the game's names and the
+/// sequel numbers in them.
+struct Want {
+    words: Vec<String>,
+    sequels: Vec<u32>,
+}
+
 /// Whether an app's or shortcut's name is this game's: every word of it is in the game's names,
-/// and enough of them ("Madden NFL 08" for Madden NFL 08 Recompiled, not Madden NFL 25).
-fn is_ours(want: &[String], name: &str) -> bool {
+/// and enough of them ("Madden NFL 08" for Madden NFL 08 Recompiled, not Madden NFL 25). A sequel
+/// number on only one side means another game of the series ("Hopper II" isn't Hopper).
+fn is_ours(want: &Want, name: &str) -> bool {
     let have = words(name);
     if have.is_empty() || have.iter().any(|h| h.starts_with("unins")) {
         return false;
     }
-    let hit = |h: &String| want.iter().any(|w| w == h || (h.len() > 3 && w.starts_with(h.as_str())) || (w.len() > 3 && h.starts_with(w.as_str())));
+    let sequels = sequel_numbers(name);
+    let theirs_only = sequels.iter().any(|n| !want.sequels.contains(n));
+    let ours_only = want.sequels.iter().any(|n| !sequels.contains(n));
+    if theirs_only || ours_only {
+        return false;
+    }
+    let want = &want.words;
+    let hit = |h: &String| want.iter().any(|w| w == h || starts_the_word(h, w) || starts_the_word(w, h));
     let hits = have.iter().filter(|h| hit(h)).count();
     hits == have.len() && hits >= want.len().min(2)
 }
 
-fn want_of(names: &[&str]) -> Vec<String> {
-    let mut w: Vec<String> = names.iter().flat_map(|n| words(n)).collect();
-    w.sort();
-    w.dedup();
-    w
+fn want_of(names: &[&str]) -> Want {
+    let mut words: Vec<String> = names.iter().flat_map(|n| self::words(n)).collect();
+    words.sort();
+    words.dedup();
+    let mut sequels: Vec<u32> = names.iter().flat_map(|n| sequel_numbers(n)).collect();
+    sequels.sort();
+    sequels.dedup();
+    Want { words, sequels }
 }
 
 /// Where an installer put the game: (program, its options). Its fresh shortcuts first, then its
@@ -1022,6 +1116,57 @@ mod tests {
         assert!(!is_ours(&want_of(&["Hopper 2 Port", "Hopper2Port"]), "Hopper 3 PC Port"));
         // Two-digit numbers stay their own word, as before.
         assert_eq!(words("Hopper NFL 08"), vec!["hopper", "nfl", "08"]);
+    }
+
+    #[test]
+    fn the_original_and_its_sequel_arent_each_other() {
+        assert!(!is_ours(&want_of(&["Hopper Port", "Hopper", "HopperPort"]), "Hopper 3 PC Port"));
+        assert!(!is_ours(&want_of(&["Hopper 3 Port", "Hopper3Port"]), "Hopper PC Port"));
+        assert!(!is_ours(&want_of(&["Mass Effect"]), "Mass Effect 2"));
+    }
+
+    #[test]
+    fn a_two_digit_number_in_a_project_name_still_matches() {
+        assert!(is_ours(&want_of(&["Zelda Recomp"]), "Zelda64Recompiled"));
+    }
+
+    #[test]
+    fn a_sequel_number_as_its_own_word_isnt_the_original() {
+        assert!(!is_ours(&want_of(&["Hopper"]), "Hopper 2 PC Port"));
+        assert!(!is_ours(&want_of(&["Hopper"]), "Hopper II PC Port"));
+    }
+
+    #[test]
+    fn a_roman_numeral_sequel_matches_itself() {
+        assert!(is_ours(&want_of(&["Hopper II"]), "Hopper II PC Port"));
+    }
+
+    #[test]
+    fn a_version_isnt_a_sequel_number() {
+        assert!(is_ours(&want_of(&["Hopper"]), "Hopper PC Port 1.2"));
+        assert!(is_ours(&want_of(&["Hopper"]), "Hopper PC Port v2"));
+    }
+
+    #[test]
+    fn a_disc_number_isnt_a_sequel_number() {
+        assert!(sequel_numbers("Hopper Disc 2").is_empty());
+        assert!(sequel_numbers("Hopper Part II").is_empty());
+    }
+
+    #[test]
+    fn a_glued_sequel_digit_matches_the_same_number_written_apart() {
+        assert!(is_ours(&want_of(&["Hopper 3 Port", "Hopper 3"]), "Hopper3Port"));
+    }
+
+    #[test]
+    fn a_two_digit_title_number_matches_glued_on() {
+        assert!(is_ours(&want_of(&["Mario Kart 64"]), "MarioKart64Recompiled"));
+        assert!(is_ours(&want_of(&["Madden NFL 08", "MaddenNFL08"]), "MaddenNFL08"));
+    }
+
+    #[test]
+    fn another_two_digit_title_number_isnt_ours() {
+        assert!(!is_ours(&want_of(&["Madden NFL 08"]), "Madden NFL 25"));
     }
 
     #[test]

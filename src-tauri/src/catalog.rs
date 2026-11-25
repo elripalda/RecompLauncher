@@ -69,7 +69,7 @@ fn age_of(p: &Path) -> Option<u64> {
     Some(SystemTime::now().duration_since(m).unwrap_or_default().as_secs())
 }
 
-fn save(p: &Path, v: &Value) {
+pub(crate) fn save(p: &Path, v: &Value) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -79,7 +79,7 @@ fn save(p: &Path, v: &Value) {
     }
 }
 
-fn load(p: &Path) -> Option<Value> {
+pub(crate) fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
@@ -1224,7 +1224,14 @@ async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
     if !r.status().is_success() {
         return None;
     }
-    let v: Value = r.json().await.ok()?;
+    let bytes = r.bytes().await.ok()?;
+    repo_profile_reply(&bytes)
+}
+
+/// What a project's recomplauncher.json from its repo gives: the file, or "none" when it isn't one
+/// the launcher reads. A body that isn't JSON at all is a failed answer, asked again later.
+fn repo_profile_reply(bytes: &[u8]) -> Option<Value> {
+    let v = crate::profile::parse_json_bytes(bytes)?;
     Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
 }
 
@@ -1287,7 +1294,8 @@ pub fn latest(rels: &[Release]) -> Option<&Release> {
 /// pre-release, the newest of all. Never one older than what they have (a beta of the next
 /// version is newer than the last stable one).
 pub fn latest_for<'a>(rels: &'a [Release], installed: &str) -> Option<&'a Release> {
-    let cur = rels.iter().find(|r| r.tag_name == installed);
+    // An imported game's tag can lack the release's "v": it's still the release it's on.
+    let cur = rels.iter().find(|r| crate::same_tag(&r.tag_name, installed));
     let pick = if cur.map(|r| r.prerelease).unwrap_or(false) { rels.iter().find(|r| !r.draft) } else { latest(rels) }?;
     if let (Some(c), Some(new), Some(old)) = (cur, pick.published_at.as_deref(), cur.and_then(|r| r.published_at.as_deref())) {
         if new < old {
@@ -1325,6 +1333,12 @@ pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_repo_profile_saved_with_a_byte_order_mark_is_read() {
+        let v = super::repo_profile_reply(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
     #[test]
     fn a_backup_release_keeps_only_checked_files_for_this_pc() {
         let sha = "a".repeat(64);

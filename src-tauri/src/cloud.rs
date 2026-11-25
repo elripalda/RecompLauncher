@@ -390,6 +390,43 @@ pub async fn spons_mine(app: AppHandle) -> Res<Value> {
     Ok(play_call(req, &url).await.unwrap_or(Value::Null))
 }
 
+/// Home's order from the website (admin: Launcher > Home page): which rows go where, the info boxes
+/// and banners between them. Signed in, it also has the blocks for App Testers. The last good
+/// answer is kept on disk so Home stays the same offline; null when there has never been one,
+/// and Home keeps its built-in order.
+#[tauri::command]
+pub async fn home_layout(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let file = st.dir.join("cache/home.json");
+    let acct = load(&st.dir);
+    let me = if acct.is_some() { "&me=1" } else { "" };
+    let url = format!("{}/api/home.php?page=app{me}", crate::catalog::base());
+    let mut req = st.http.get(&url).timeout(crate::net::QUICK);
+    if let Some(a) = &acct {
+        req = req.bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    }
+    if let Some(v) = home_fetch(req, &url).await {
+        crate::catalog::save(&file, &v);
+        return Ok(v);
+    }
+    Ok(crate::catalog::load(&file).filter(home_ok).unwrap_or(Value::Null))
+}
+
+async fn home_fetch(req: reqwest::RequestBuilder, url: &str) -> Option<Value> {
+    let r = crate::net::send(req, url, false).await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    home_ok(&v).then_some(v)
+}
+
+/// A Home list this launcher can read: version 1 with its items. A newer version is left alone, so
+/// a later change to the format can't break Home here.
+fn home_ok(v: &Value) -> bool {
+    v.get("v").and_then(Value::as_u64) == Some(1) && v.get("items").map(Value::is_array).unwrap_or(false)
+}
+
 /// A sponsor spot was on screen: one view, sent and forgotten.
 #[tauri::command]
 pub async fn spons_seen(app: AppHandle, id: u64) -> Res<()> {
@@ -937,9 +974,7 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
     if g.cloud == Some(true) && signed_in(&st.dir) {
-        let s = saves::state(&st.dir, id);
-        let latest = saves::list(&st.dir, id, &g).into_iter().next();
-        if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
+        if let Some(l) = newest_unsent(&st.dir, id, &g) {
             if let Err(e) = upload(app, id, &l.name).await {
                 let too_big = e.to_string().starts_with("This save is too big");
                 if !too_big {
@@ -1503,7 +1538,21 @@ fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<O
     if running && latest.as_ref().map(|l| l.hash != s.last_hash).unwrap_or(false) {
         return Err(Error::Msg("Close the game first to back up and upload its restored save.".into()));
     }
-    Ok(latest.filter(|l| l.hash != s.synced_hash))
+    Ok(newest_unsent(dir, id, g))
+}
+
+/// The newest copy, if it's the current save and the cloud doesn't have it. After a restore the
+/// newest archive can be the save the player replaced: sending it would make it the cloud's newest.
+fn newest_unsent(dir: &Path, id: &str, g: &Installed) -> Option<saves::Copy> {
+    let s = saves::state(dir, id);
+    let latest = saves::list(dir, id, g).into_iter().next()?;
+    if latest.hash == s.synced_hash {
+        return None;
+    }
+    if !s.last_hash.is_empty() && latest.hash != s.last_hash {
+        return None;
+    }
+    Some(latest)
 }
 
 /// Upload Now, from a game's Saves tab: the current save copied (when the game isn't running)
@@ -2404,6 +2453,30 @@ mod sync_tests {
         assert_eq!(upload_candidate(&app, "g", &game, false).unwrap().unwrap().hash, chosen.hash);
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn an_emptied_save_folder_cannot_send_the_pre_restore_archive() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rl-save-upload-emptied-{}", std::process::id()));
+        let app = dir.join("app");
+        let inst = dir.join("game");
+        std::fs::create_dir_all(inst.join("save")).unwrap();
+        let path = inst.join("save/slot.sav");
+        let game = Installed { id: "g".into(), path: inst, ..Default::default() };
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        std::fs::write(&path, "chosen save").unwrap();
+        let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        std::fs::write(&path, "superseded save").unwrap();
+        saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
+        let mut state = saves::state(&app, "g");
+        state.synced_hash = chosen.hash.clone();
+        saves::set_state(&app, "g", &state);
+        std::fs::remove_file(&path).unwrap();
+        assert!(saves::backup(&app, "g", &spots, &game).unwrap().is_none());
+        assert!(upload_candidate(&app, "g", &game, false).unwrap().is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -2550,5 +2623,26 @@ mod status_tests {
         let local = vec![saves::Copy { name: "200.zip".into(), when: 200, size: 1, files: 1, hash: "b".into(), device: String::new(), played: 0 }];
         let s = saves::State { synced_hash: "a".into(), ..Default::default() };
         assert_eq!(waiting_copies(&local, &s), 0);
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::home_ok;
+    use serde_json::json;
+
+    #[test]
+    fn home_list_version_one_is_read() {
+        assert!(home_ok(&json!({"v": 1, "items": []})));
+    }
+
+    #[test]
+    fn home_list_of_a_newer_version_is_left_alone() {
+        assert!(!home_ok(&json!({"v": 2, "items": []})));
+    }
+
+    #[test]
+    fn home_list_without_items_is_left_alone() {
+        assert!(!home_ok(&json!({"v": 1, "error": "Try again in a moment."})));
     }
 }

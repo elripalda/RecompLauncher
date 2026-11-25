@@ -306,6 +306,9 @@ body.oled .slide::after{background:var(--noise),linear-gradient(90deg,#000 0%,rg
 .callout{display:flex;align-items:center;gap:18px;padding:20px 22px;border-radius:20px;background:var(--noise),linear-gradient(90deg,rgba(52,242,232,.09),rgba(52,242,232,.02));border:1px solid rgba(52,242,232,.22)}
 .callout .ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:rgba(52,242,232,.12);color:var(--cyan);flex:none}
 .callout .k{flex:1;min-width:0}.callout b{font-size:16px;display:block}.callout span{color:var(--muted);font-size:14px}
+.callout.home-box .tn-x{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--dim);margin-left:-6px}
+.callout.home-box .tn-x:hover{color:var(--ink);background:var(--fill2)}
+.callout.home-box .tn-x svg{width:14px;height:14px}
 .callout.lib-note{margin-top:12px;padding:12px 16px;gap:12px;border-radius:14px;text-align:left}.callout.lib-note .ic{width:34px;height:34px;border-radius:10px}
 
 /* ---------- discover and library ---------- */
@@ -2212,6 +2215,8 @@ body.playing *,body.playing *::before,body.playing *::after{animation-duration:0
 .cz-fit{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .cz-src{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .cz-src .btn{white-space:normal;height:auto;min-height:42px;padding:8px 10px;line-height:1.2}
+/* With LaunchBox too: four sources in two rows. */
+.cz-src.four{grid-template-columns:repeat(2,minmax(0,1fr))}
 .cz-right h4{margin:2px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .cz-prev{display:flex;flex-direction:column;gap:12px}
 .cz-tip{margin:12px 0 0;font-size:13px}
@@ -2242,6 +2247,7 @@ span.pv-logo{display:none}
 .ap-grid.icon .ap-it img,.ap-grid.logo .ap-it img{object-fit:contain;padding:8px;background:repeating-conic-gradient(#232a36 0 25%,#1b212c 0 50%) 0 0/16px 16px}
 .cz-key{max-width:560px}
 .cz-keyrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0}
+.cz-lbpath{margin:12px 0}
 @media (max-width:860px){.cz-art{grid-template-columns:1fr}.cz-stage{height:300px}}
 
 /* After a game's own setup: which program starts it */
@@ -2354,6 +2360,7 @@ body.light .tag.deck{color:#0b6fbf}
 /* Customize, Info: the player's own words about the game. */
 .cz-desc{width:100%;min-height:110px;resize:vertical;line-height:1.5;font:inherit;padding:10px 12px}
 .cz-name .cz-lab+.cz-desc{margin-top:6px}
+.cz-from{margin-top:8px}
 .own-about .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .own-about p{white-space:pre-line}
 /* Discover's pinned search and filters: slides in under the window's top once the page's own scroll away. */

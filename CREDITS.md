@@ -23,5 +23,6 @@ The launcher can set up and use these. Each belongs to its own project and keeps
 - [ReShade](https://reshade.me) and [vkBasalt](https://github.com/DadSchoorse/vkBasalt) for Looks (screen effects)
 - [umu-run](https://github.com/Open-Wine-Components/umu-launcher) and [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom) for Windows recomps on Linux
 - [SteamGridDB](https://www.steamgriddb.com) for cover art, with your own API key
+- [LaunchBox](https://www.launchbox-app.com) for the box art, logos, backgrounds and descriptions your own LaunchBox saved, read from its folder on your PC
 
 RecompLauncher isn't affiliated with or endorsed by any game's makers or platform holders.
