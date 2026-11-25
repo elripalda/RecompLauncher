@@ -137,9 +137,20 @@ fn tool_build(name: &str, assets: &[Asset]) -> bool {
 }
 
 /// The files a build is guessed from when no list pattern names one: every file but the tools'.
-/// A pattern from the list is used as it is: a wrong one is the list's to fix.
 fn guessable(assets: &[Asset]) -> Vec<&Asset> {
     assets.iter().filter(|a| !tool_build(&a.name, assets)).collect()
+}
+
+/// What a list's pattern matches, less the tools' files when the game's is among them: one
+/// pattern can match both (armagetronad-*.win32.exe matches the dedicated server too). A pattern
+/// that matches only a tool's file (a patch, a compiler) is used as it is.
+fn named<'a>(assets: &'a [Asset], p: &str) -> Vec<&'a Asset> {
+    let all = matching(assets, p);
+    let games: Vec<&Asset> = all.iter().copied().filter(|a| !tool_build(&a.name, assets)).collect();
+    if games.is_empty() {
+        return all;
+    }
+    games
 }
 
 /// A compiler, SDK or library a release keeps for building the game (a "deps" mirror):
@@ -242,7 +253,7 @@ fn pool<'a>(assets: &'a [Asset], arch: &str, pattern: Option<&str>) -> Vec<&'a A
     let Some(p) = pattern.filter(|p| !p.trim().is_empty()) else {
         return guessable(assets);
     };
-    let named = matching(assets, p);
+    let named = named(assets, p);
     let only_other_arch = !named.is_empty() && named.iter().all(|a| other_arch(&a.name, arch));
     if only_other_arch {
         return guessable(assets);
@@ -414,7 +425,7 @@ fn same_shape(a: &str, b: &str) -> bool {
 
 pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Option<&'a Asset> {
     if let Some(p) = pattern.filter(|p| !p.trim().is_empty()) {
-        let named = matching(assets, p);
+        let named = named(assets, p);
         let usable: Vec<&Asset> = named
             .iter()
             .copied()
@@ -496,6 +507,41 @@ mod tests {
         let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
         let got = pick(&rel, "linux", "x64", Some("Harbor-*-shader-translator-linux-x64.tar.gz")).map(|a| a.name.as_str());
         assert_eq!(got, Some("Harbor-1.0-shader-translator-linux-x64.tar.gz"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_server_picks_the_game() {
+        let rel = release(&["armagetronad-0.2.9.3.1.win32.exe", "armagetronad-dedicated-0.2.9.3.1.win32.exe"]);
+        let got = pick(&rel, "windows", "x64", Some("armagetronad-*.win32.exe")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("armagetronad-0.2.9.3.1.win32.exe"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_server_offers_only_the_game() {
+        let rel = release(&["armagetronad-0.2.9.3.1.win32.exe", "armagetronad-dedicated-0.2.9.3.1.win32.exe"]);
+        let names: Vec<&str> = all_for(&rel, "windows", "x64", Some("armagetronad-*.win32.exe")).iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["armagetronad-0.2.9.3.1.win32.exe"]);
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_translator_picks_the_game() {
+        let rel = release(&["Harbor-1.0-linux-x64.tar.gz", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let got = pick(&rel, "linux", "x64", Some("Harbor-*linux-x64.tar.gz")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("Harbor-1.0-linux-x64.tar.gz"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_translator_offers_only_the_game() {
+        let rel = release(&["Harbor-1.0-linux-x64.tar.gz", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let names: Vec<&str> = all_for(&rel, "linux", "x64", Some("Harbor-*linux-x64.tar.gz")).iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Harbor-1.0-linux-x64.tar.gz"]);
+    }
+
+    #[test]
+    fn a_catalog_pattern_naming_only_a_patch_still_picks_it() {
+        let rel = release(&["PGR4-1.0-patch.zip"]);
+        let got = pick(&rel, "windows", "x64", Some("PGR4-*-patch.zip")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("PGR4-1.0-patch.zip"));
     }
 
     #[test]
