@@ -363,6 +363,7 @@
  "Download and install games from {sites} (asks you each time)": "Şu sitelerden oyun indirip yükleme: {sites} (her seferinde sorar)",
  "Download and install {name}?": "{name} indirilip yüklensin mi?",
  "Downloading the new RecompLauncher…": "Yeni RecompLauncher indiriliyor…",
+ "The download page opened in your browser.": "İndirme sayfası tarayıcınızda açıldı.",
  "Downloading {name}…": "{name} indiriliyor…",
  "Downloading…": "İndiriliyor…",
  "Downloads": "İndirmeler",

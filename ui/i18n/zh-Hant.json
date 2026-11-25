@@ -363,6 +363,7 @@
  "Download and install games from {sites} (asks you each time)": "從 {sites} 下載並安裝遊戲（每次都會詢問）",
  "Download and install {name}?": "要下載並安裝 {name} 嗎？",
  "Downloading the new RecompLauncher…": "正在下載新版 RecompLauncher…",
+ "The download page opened in your browser.": "已在瀏覽器中開啟下載頁面。",
  "Downloading {name}…": "正在下載 {name}…",
  "Downloading…": "正在下載…",
  "Downloads": "下載",

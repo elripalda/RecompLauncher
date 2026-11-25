@@ -8886,11 +8886,16 @@ pub(crate) fn trusted_update_url(raw: &str, base: &str) -> bool {
     ["https://github.com", net::SITE, base].into_iter().any(under)
 }
 
+/// What `update_launcher` answers when it handed the download to the browser instead of installing
+/// it: the update window closes and says so. A real install answers nothing, because the launcher
+/// is quitting and the window stays busy until it's gone.
+const UPDATE_OPENED: &str = "opened";
+
 /// Download the newer launcher, check it, and start it: the installer on Windows, the AppImage in
 /// place of this one on Linux, the .app from the disk image in place of this one on a Mac. Anything
 /// else opens the download page.
 #[tauri::command]
-async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option<bool>) -> Res<()> {
+async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option<bool>) -> Res<Option<&'static str>> {
     let result = update_launcher_inner(&app, &st, big_picture).await;
     if result.is_err() {
         let _ = app.emit("self-update", json!({"failed": true}));
@@ -8898,7 +8903,7 @@ async fn update_launcher(app: AppHandle, st: State<'_, App>, big_picture: Option
     result
 }
 
-async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<bool>) -> Res<()> {
+async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<bool>) -> Res<Option<&'static str>> {
     if flatpak::sandboxed() {
         return Err(Error::Msg("RecompLauncher updates through Flatpak. Update it from your software center, or run: flatpak update".into()));
     }
@@ -8913,7 +8918,8 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     if let Some(target) = std::env::var_os("APPIMAGE") {
         // An AppImage reports missing/invalid metadata in the launcher and can be retried there.
         // A missing image on disk is an error too, not a reason to open a browser.
-        return appimage_update::update(app, st, Path::new(&target), &v, _big_picture.unwrap_or_else(|| BIG_PICTURE.load(Ordering::Relaxed))).await;
+        let big_picture = _big_picture.unwrap_or_else(|| BIG_PICTURE.load(Ordering::Relaxed));
+        return appimage_update::update(app, st, Path::new(&target), &v, big_picture).await.map(|()| None);
     }
     let file_url = str_of(&v, "url").to_string();
     let ok_host = trusted_update_url(&file_url, &catalog::base());
@@ -8921,12 +8927,10 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     // the folder it's in. Otherwise (run from the disk image, or from a folder only an administrator
     // can change) the player gets the disk image to drag in themselves.
     let mac_app = if cfg!(target_os = "macos") { mac_update::running_bundle().filter(|b| mac_update::can_replace(b)) } else { None };
-    let mac_dmg = file_url.to_ascii_lowercase().ends_with(".dmg");
-    if cfg!(target_os = "macos") && (mac_app.is_none() || !mac_dmg) {
-        return open_thing(&app, if ok_host { &file_url } else { &page }, true);
-    }
-    if !(cfg!(windows) || mac_app.is_some()) || file_url.is_empty() || !ok_host {
-        return open_thing(&app, &page, true);
+    let os = if cfg!(target_os = "macos") { "macos" } else if cfg!(windows) { "windows" } else { "linux" };
+    if let Some(link) = update_handoff(os, mac_app.is_some(), &file_url, ok_host, &page) {
+        open_thing(&app, link, true)?;
+        return Ok(Some(UPDATE_OPENED));
     }
     let mut r = update_download::response(&st.http, &file_url).await?;
     if !r.status().is_success() {
@@ -8978,7 +8982,7 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
         if !reopen_after_update(&app) {
             mac_update::forget_old(&bundle);
             app.exit(0);
-            return Ok(());
+            return Ok(None);
         }
         // Noted, so that if the new version fails to start and this one is put back, its next
         // start tells the player (see update_check_last). No installer to run again on a Mac.
@@ -8989,7 +8993,7 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
             return Err(Error::Msg(format!("The new version is in place, but it didn't start: {e}. Open RecompLauncher again.")));
         }
         app.exit(0);
-        return Ok(());
+        return Ok(None);
     }
     let file = std::env::temp_dir().join(format!("RecompLauncher-{}-setup.exe", str_of(&v, "version").trim_start_matches('v')));
     std::fs::write(&file, &bytes)?;
@@ -9002,7 +9006,7 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
     // Quit during that moment: the launcher is on its way out, so nothing starts behind the
     // player's back, and the next start doesn't take the update for one that failed.
     if update_launch::quitting() {
-        return Ok(());
+        return Ok(None);
     }
     // Noted, so the next start can tell whether it went in (see update_check_last).
     let _ = std::fs::write(st.dir.join("update-pending.json"), json!({"to": str_of(&v, "version").trim_start_matches('v'), "from": env!("CARGO_PKG_VERSION"), "at": now(), "installer": file, "url": file_url, "sha256": want}).to_string());
@@ -9012,7 +9016,23 @@ async fn update_launcher_inner(app: &AppHandle, st: &App, _big_picture: Option<b
         .spawn()
         .map_err(|e| if is_blocked(&e) { defender_msg(e, "the installer") } else { Error::Msg(format!("Couldn't start the installer: {e}")) })?;
     app.exit(0);
-    Ok(())
+    Ok(None)
+}
+
+/// The link the browser gets when this install can't take the update in place, or None when it
+/// downloads and installs it itself. A Mac replaces itself only from a disk image into a folder this
+/// account can change (`mac_replaceable`); otherwise it gets the disk image to drag in, or the
+/// download page when the link isn't one of ours. Windows needs a trusted link. Anything else on
+/// Linux (an AppImage is handled before this) is a package the player updates from the page.
+fn update_handoff<'a>(os: &str, mac_replaceable: bool, file_url: &'a str, ok_host: bool, page: &'a str) -> Option<&'a str> {
+    let mac_dmg = file_url.to_ascii_lowercase().ends_with(".dmg");
+    if os == "macos" && (!mac_replaceable || !mac_dmg) {
+        return Some(if ok_host { file_url } else { page });
+    }
+    if !(os == "windows" || mac_replaceable) || file_url.is_empty() || !ok_host {
+        return Some(page);
+    }
+    None
 }
 
 /// Whether the launcher opens again after its own update: only while the player still has its
@@ -12025,6 +12045,25 @@ mod tests {
         for bad in ["http://github.com/a.exe", "https://github.com.evil.example/a.exe", "https://name@github.com/a.exe", "https://github.com/a.exe#x", "http://127.0.0.1:8787/api-evil/a.exe", "not a url"] {
             assert!(!trusted_update_url(bad, base), "{bad}");
         }
+    }
+
+    // These answer "opened" to the update window, which then closes; an install in place doesn't.
+    #[test]
+    fn launcher_update_hands_off_to_the_browser_when_it_cant_install() {
+        let (exe, dmg, page) = ("https://github.com/o/r/a.exe", "https://github.com/o/r/a.dmg", "https://recomplauncher.com/download");
+        assert_eq!(update_handoff("linux", false, exe, true, page), Some(page));
+        assert_eq!(update_handoff("windows", false, "", false, page), Some(page));
+        assert_eq!(update_handoff("windows", false, exe, false, page), Some(page));
+        assert_eq!(update_handoff("macos", false, dmg, true, page), Some(dmg));
+        assert_eq!(update_handoff("macos", false, dmg, false, page), Some(page));
+        assert_eq!(update_handoff("macos", true, exe, true, page), Some(exe));
+    }
+
+    #[test]
+    fn launcher_update_installs_in_place_when_it_can() {
+        let page = "https://recomplauncher.com/download";
+        assert_eq!(update_handoff("windows", false, "https://github.com/o/r/a.exe", true, page), None);
+        assert_eq!(update_handoff("macos", true, "https://github.com/o/r/a.dmg", true, page), None);
     }
 
     #[test]

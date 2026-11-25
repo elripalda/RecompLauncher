@@ -7877,20 +7877,32 @@ function updateFailedModal(f) {
   }, t('The Update Didn\'t Install'));
 }
 // `win`: the update window it was started from, which shows the download in its own button;
-// without one, a toast says it started.
+// without one, a toast says it started. True when the download went to the browser instead
+// ("opened": a Mac run from the disk image, a Linux package, a link the launcher doesn't trust), so
+// the window can close. Any other success means the launcher is quitting to install it: the window
+// stays busy until it's gone, so Update Now can't start a second one meanwhile.
 async function selfUpdate(win) {
-  if (S.selfUpdating) return;
+  if (S.selfUpdating) return false;
   S.selfUpdating = true;
-  if (!win) toast(t('Downloading the new RecompLauncher…'));
+  const busyMsg = t('Downloading the new RecompLauncher…');
+  if (!win) toast(busyMsg);
+  let r;
   try {
-    if (S.os === 'linux') await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
-    else await invoke('update_launcher');
+    if (S.os === 'linux') r = await invoke('update_launcher', { bigPicture: document.body.classList.contains('tv-on') });
+    else r = await invoke('update_launcher');
   } catch (e) {
+    S.selfUpdating = false;
     if (win) updWinReset(win);
     if (!blocked('', e) && !cantReplace(e)) fail(e);
     lookForLauncher();
+    return false;
   }
-  finally { S.selfUpdating = false; }
+  if (r !== 'opened') return false;
+  S.selfUpdating = false;
+  // Without a window (Big Picture, Downloads), "Downloading…" was already up and isn't true now.
+  for (const el of document.querySelectorAll('#toasts .toast')) if (el.dataset.msg === busyMsg) el.remove();
+  toast(t('The download page opened in your browser.'));
+  return true;
 }
 // The AppImage sits in a folder this account can't change, so it can't update itself in place.
 // Say where and why, and offer the new AppImage to download instead of a bare error.
@@ -8330,7 +8342,7 @@ function updateStart(v, opts = {}) {
   const busy = () => el.classList.contains('busy');
   const key = (e) => { if (e.key === 'Escape' && !v.required && !busy()) { e.preventDefault(); e.stopPropagation(); putOff(); } };
   document.addEventListener('keydown', key, true);
-  const go = () => { updWinStart(el, v); selfUpdate(el); };
+  const go = () => updWinGo(el, v, close);
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-x]');
     if (!b || busy()) return;
@@ -8344,6 +8356,11 @@ function updateStart(v, opts = {}) {
   });
   if (opts.auto) return go();
   setTimeout(() => { const b = $('[data-x="now"]', el); if (b) b.focus(); }, 50);
+}
+// Update Now: the window shows the download, and closes when the browser took it instead.
+async function updWinGo(el, v, close) {
+  updWinStart(el, v);
+  if (await selfUpdate(el)) close();
 }
 // Update Now pressed: the bar says it's downloading and the button becomes the progress bar.
 function updWinStart(el, v) {
