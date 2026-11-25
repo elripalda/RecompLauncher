@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.70" date="2026-11-25">
+      <description>
+        <p>Everything from Beta 69, plus Favorites and followed developers in Big Picture's Home, All Reviews numbers that follow the version you pick, and fixes for pages that stayed blank while the launcher was in the background.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.69" date="2026-11-25">
       <description>
         <p>Home follows the order set on the website with info boxes in your language, new consoles, one Save button for Coming Soon games, a Set Up by You pill and an Easy Setup switch for new games, safer cloud saves, clearer setup failures, and many fixes.</p>
