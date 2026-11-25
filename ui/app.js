@@ -137,7 +137,16 @@ function setupGuide(a) {
 const isMulti = (a) => !!((((a && a.boot) || builtinBoot()[a && a.id] || {}).multiplayer) || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
 // A game's tags (Widescreen, 60 FPS, Online…), as the site lists them. They stay in English.
 const tagsOf = (a) => (a && Array.isArray(a.tags) ? a.tags.filter((x) => typeof x === 'string' && x.trim()) : []);
-// Facts about the original game (from IGDB), only the ones there are.
+// Where the facts about the original game came from, for the line under them: LaunchBox's
+// database when the store got them there (src "launchbox"), else IGDB's page for the game.
+// -> { label, url } or null when there's nothing to credit.
+function aboutSource(ab) {
+  if (!ab) return null;
+  if (ab.src === 'launchbox') return { label: t('Game info from LaunchBox Games Database'), url: 'https://gamesdb.launchbox-app.com/' };
+  if (ab.url && /^https:\/\//.test(ab.url)) return { label: t('Game info from IGDB'), url: ab.url };
+  return null;
+}
+// Facts about the original game (from IGDB or LaunchBox), only the ones there are.
 function aboutFacts(ab) {
   if (!ab) return [];
   const list = (v, n) => (Array.isArray(v) ? v.filter(Boolean).slice(0, n || 99).join(', ') : v || '');
@@ -1775,13 +1784,13 @@ function factGrid(facts) {
   const odd = cols === 2 && facts.length % 2 === 1;
   return `<dl class="facts-grid c${cols}">${facts.map(([k, v], i) => `<div${odd && i === facts.length - 1 ? ' class="wide"' : ''}><dt>${esc(k)}</dt><dd dir="auto">${esc(v)}</dd></div>`).join('')}</dl>`;
 }
-// About the original game, from IGDB: what it is, then the facts there are.
+// About the original game, from IGDB or LaunchBox: what it is, then the facts there are.
 function igdbCard(ab) {
-  const facts = aboutFacts(ab), score = Number.isFinite(Number(ab.rating)) && ab.rating !== null && ab.rating !== '' ? Math.round(Number(ab.rating)) : null;
+  const facts = aboutFacts(ab), src = aboutSource(ab), score = Number.isFinite(Number(ab.rating)) && ab.rating !== null && ab.rating !== '' ? Math.round(Number(ab.rating)) : null;
   return `<div class="card about-game igdb"><div class="card-h" style="margin-bottom:10px"><h3>${esc(t('About the game'))}</h3>${score !== null ? `<span class="score-b" title="${esc(t('Critic and player score'))}"><b>${score}</b>${esc(t('Critic and player score'))}</span>` : ''}</div>
     ${ab.summary ? String(ab.summary).split(/\n\s*\n/).map((p) => `<p dir="auto">${esc(p.trim())}</p>`).join('') : ''}
     ${facts.length ? factGrid(facts) : ''}
-    ${ab.url && /^https:\/\//.test(ab.url) ? `<p class="src"><a href="#" data-url="${esc(ab.url)}">${esc(t('Game info from IGDB'))}</a></p>` : ''}</div>`;
+    ${src ? `<p class="src"><a href="#" data-url="${esc(src.url)}">${esc(src.label)}</a></p>` : ''}</div>`;
 }
 
 // What's new for the games you have: their releases from the last two months.
