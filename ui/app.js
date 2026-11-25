@@ -3701,6 +3701,9 @@ async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
   switch (b.dataset.su) {
     case 'close': return closeSetup();
+    // A failed setup step's Copy and Open Full Log.
+    case 'fail-copy': return setupFailAct('copy', SU.id, SU.err);
+    case 'fail-open': return setupFailAct('open', SU.id, SU.err);
     // Back to the steps, with the copy that didn't work taken out of its box.
     case 'again': SU.stage = 'steps'; SU.err = ''; SU.named = Object.assign({}, SU.named, { copy: '', busy: false }); return suDraw();
     case 'anyway': return suBegin(SU.path, true);
@@ -4036,6 +4039,58 @@ async function suAfterCopy() {
   SU.stage = 'ready';
   suDraw();
 }
+// A setup that stopped, as the core says it: the launcher's line first, then what the recomp's
+// setup step printed last, on lines of their own. The launcher's line is translated (with the
+// step's code in it); the step's own words stay as it printed them.
+function setupFail(text) {
+  const [head, ...printed] = String(text || '').split('\n');
+  const coded = /^Its setup step stopped with code (.+?)\.(?: (.+))?$/.exec(head);
+  if (!coded) return { head: t(head), printed, step: false };
+  const said = tf('Its setup step stopped with code {code}.', { code: coded[1] });
+  return { head: coded[2] ? `${said} ${t(coded[2])}` : said, printed, step: true };
+}
+// The error screen's text, desktop and Big Picture alike: the reason, then (when the step printed
+// anything) the last lines the core sent in a box, with Copy and Open Full Log under it.
+// `o`: the reason's class (p), the box's (tail), the buttons' row (row), and how the screen draws
+// a button (button(act, label)): each screen has its own buttons and focus.
+function setupFailHtml(text, o) {
+  const f = setupFail(text);
+  const reason = `<p class="${o.p}">${esc(f.head)}</p>`;
+  if (!f.printed.length) return reason;
+  const box = `<pre class="${o.tail}">${esc(f.printed.join('\n'))}</pre>`;
+  const buttons = `<div class="${o.row}">${o.button('copy', t('Copy'))}${o.button('open', t('Open Full Log'))}</div>`;
+  return `${reason}${box}${buttons}`;
+}
+// The desktop's Easy Setup error: its buttons go through suAct as fail-copy and fail-open.
+const SU_FAIL = { p: 'su-err', row: 'su-logb', tail: 'su-tail', button: (act, label) => `<button type="button" class="btn sm" data-su="fail-${act}">${esc(label)}</button>` };
+// What Copy puts on the clipboard, for a player who pastes it to the recomp's developer: the game,
+// its version, the PC, then the error as the core said it (in English, which they read).
+function setupFailDetails(id, text) {
+  const g = S.library[id] || S.library[parentId(id)] || {};
+  const name = (byId(id) || {}).name || g.name || id;
+  const about = [name, g.tag, OS_NAME[S.os], `RecompLauncher ${S.version}`].filter(Boolean).join(' · ');
+  return `${about}\n${text}`;
+}
+// Copy and Open Full Log, the same on both screens.
+async function setupFailAct(act, id, text) {
+  if (act === 'copy') {
+    try { await navigator.clipboard.writeText(setupFailDetails(id, text)); toast(t('Copied.')); } catch (e) { toast(t('Couldn\'t copy.'), true); }
+    return;
+  }
+  if (act === 'open') {
+    try { await invoke('open_setup_log', { id }); } catch (e) { toast(t(String(e && e.message ? e.message : e)), true); }
+  }
+}
+// The error screen's heading: a setup step that stopped didn't fail because of the copy.
+function setupFailTitle(text) {
+  return setupFail(text).step ? t('Setup Didn\'t Finish') : t('That copy didn\'t work');
+}
+// For a toast: the reason and the last line the step printed.
+function setupFailShort(text) {
+  const f = setupFail(text);
+  const last = f.printed[f.printed.length - 1];
+  return last ? `${f.head} ${last}` : f.head;
+}
 // Steps that finish quickly still show for a moment, so each one can be seen.
 function suPump() {
   clearTimeout(SU.timer);
@@ -4072,7 +4127,7 @@ T.event.listen('setup', ({ payload: p }) => {
     buildLeft(p.id);
     setTimeout(nextInLine, 0);
     if (!SU.el || SU.id !== p.id) {
-      toast(p.text || t("Setup didn't finish."), true);
+      toast(p.text ? setupFailShort(p.text) : t("Setup didn't finish."), true);
       render(true);
       if (S.view === 'game') refreshGame();
     }
@@ -4167,7 +4222,7 @@ function suDraw() {
       <p class="muted">${esc(t('The launcher can make a plain copy beside it and set the game up with that. Your own file stays as it is.'))}</p>
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="convert">${esc(t('Make a Plain Copy'))}</button><button type="button" class="btn big" data-su="again">${esc(t('Try another copy'))}</button></div>`;
   } else {
-    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(t('That copy didn\'t work'))}</h2><p class="su-err">${esc(t(SU.err))}</p>
+    right = `<span class="kick">${esc(t('Easy Setup'))} · ${esc(a.name)}</span><h2>${esc(setupFailTitle(SU.err))}</h2>${setupFailHtml(SU.err, SU_FAIL)}
       <div class="picks" style="margin-top:auto"><button type="button" class="btn main big" data-su="again">${esc(t('Try another copy'))}</button><button type="button" class="btn big" data-su="close">${esc(t('Close'))}</button></div>`;
   }
   const keepDisc = $('.su-media .mdisc', box);
@@ -4177,7 +4232,9 @@ function suDraw() {
     box.dataset.stage = SU.stage;
     box.innerHTML = `${cov ? `<div class="su-glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}<button type="button" class="su-x" data-su="close" aria-label="${esc(t('Close'))}">${XMARK}</button>
       <div class="su-in"><div class="su-stage">${stageHtml}<div class="drive" aria-hidden="true"><i></i></div></div><div class="su-r">${right}</div></div>`;
-    const f = $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
+    // A failed setup: Try Another Copy, not the log's Copy above it.
+    const retry = SU.stage === 'error' ? $('.su-r .btn.main', box) : null;
+    const f = retry || $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
     $('.su-r', box).innerHTML = right;
