@@ -59,6 +59,7 @@ pub mod setup_state;
 mod setup_window_tests;
 pub mod sysenv;
 pub mod sysneeds;
+mod test_control;
 mod emus;
 pub mod roms;
 pub mod saves;
@@ -10481,6 +10482,11 @@ pub fn run() {
             }
             // A new build or a recomp's release, pushed by the website the moment it's out.
             push::start(app.handle().clone());
+            // Test control, for testing a build with an agent (off unless asked for: see
+            // test_control). Not for a game's shortcut start, which has no window to drive.
+            if play.is_none() {
+                test_control::start(app.handle());
+            }
             // Discord: "RecompLauncher" while the launcher's window is open and no game runs.
             if g_discord(&app.state::<App>()) {
                 discord_idle(&app.state::<App>(), true);

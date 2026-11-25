@@ -250,6 +250,9 @@
   // A redraw from outside (a download's scan result came in): only on Downloads, keeping focus.
   window.tvRedraw = () => { if (TV.on && TV.view === 'downloads' && !TV.sheet) draw(true); };
   window.startTV = enter;
+  // For test control (src-tauri/src/test_control): Big Picture's own page, and a way back out.
+  window.tvWhere = () => ({ view: TV.view, arg: TV.arg == null ? null : TV.arg, starting: !!TV.booting });
+  window.leaveTV = leave;
 
   function boot() {
     sfx('boot');
