@@ -6366,8 +6366,9 @@ async function checkUpdates(loud) {
   renderSide();
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
   if (S.view === 'downloads') render(true);
-  // Never on its own to a version the site found crashing for a lot of players.
-  const auto = Object.keys(S.updates).filter((id) => autoUpdates(id) && !S.running.has(id) && !S.jobs[id] && !(S.paused || {})[id] && !badVersion(byId(id), S.updates[id]));
+  // Never on its own to a version the site found crashing for a lot of players, nor into a game
+  // that's being uninstalled.
+  const auto = Object.keys(S.updates).filter((id) => autoUpdates(id) && !S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(parentId(id)) && !(S.paused || {})[id] && !badVersion(byId(id), S.updates[id]));
   for (const id of auto) updateGame(id);
   if (auto.length) toast(updatingLine(auto));
   const waiting = Object.keys(S.updates).filter((k) => !auto.includes(k));
@@ -7457,6 +7458,8 @@ async function startInstall(id, dir, tag, anyway) {
 // version goes to the one the store let out, which isn't always it (#393). One that builds right
 // after it downloads waits while another such update downloads or builds (pumpUpdates).
 function updateGame(id) {
+  // Its folder is being deleted: an update waiting its turn (pumpUpdates) mustn't download into it.
+  if (S.uninstalling.has(parentId(id))) return Promise.resolve();
   const go = () => startInstall(id, undefined, S.updates[parentId(id)] || undefined);
   if (!buildsAfterUpdate(id) || S.jobs[id]) return go();
   if (updateChainBusy()) {

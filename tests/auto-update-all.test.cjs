@@ -173,3 +173,32 @@ test('Big Picture\'s Turn off automatic updates reads in Title Case in English',
   vm.runInContext(src, c);
   assert.equal(c.titleCase('Turn off automatic updates'), 'Turn Off Automatic Updates');
 });
+
+// The update check, with a library of games that all update by themselves. What it started.
+function updateCheckContext(uninstalling) {
+  const c = settingsContext({ auto_update_all: true });
+  c.S.library = { a: { id: 'a' }, b: { id: 'b' } };
+  c.S.running = new Set(); c.S.jobs = {}; c.S.uninstalling = new Set(uninstalling);
+  c.S.view = 'downloads'; c.updateCheckRevision = 0;
+  c.invoke = async () => ({ a: 'v2', b: 'v2' });
+  c.parentId = (id) => id; c.holdUpdates = () => {}; c.badVersion = () => false; c.byId = () => ({});
+  c.renderSide = () => {}; c.render = () => {}; c.toast = () => {};
+  c.updatingLine = () => ''; c.readyLine = () => '';
+  c.started = [];
+  c.startInstall = async (id) => { c.started.push(id); };
+  c.buildsAfterUpdate = () => false;
+  vm.runInContext(fn(app, 'checkUpdates') + '\n' + fn(app, 'updateGame'), c);
+  return c;
+}
+
+test('the update check leaves a game that\'s being uninstalled alone', async () => {
+  const c = updateCheckContext(['b']);
+  await c.checkUpdates();
+  assert.deepEqual(plain(c.started), ['a']);
+});
+
+test('an update waiting its turn doesn\'t start for a game that\'s being uninstalled', async () => {
+  const c = updateCheckContext(['a']);
+  await c.updateGame('a');
+  assert.deepEqual(plain(c.started), []);
+});

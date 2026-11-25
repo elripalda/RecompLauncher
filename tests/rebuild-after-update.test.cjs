@@ -12,7 +12,7 @@ function harness(library, setup, due) {
   const block = app.slice(app.indexOf('// Builds after an update:'), app.indexOf('async function toggleRebuildAfterUpdate'));
   const updateGame = app.match(/^function updateGame\([^]*?^}/m)[0];
   const log = { runs: [], toasts: [], windows: [], downloads: [] };
-  const S = { library, setup, setupJobs: {}, running: new Set(), jobs: {}, updates: {} };
+  const S = { library, setup, setupJobs: {}, running: new Set(), uninstalling: new Set(), jobs: {}, updates: {} };
   const SU = { stage: 'steps' };
   const startInstall = (id) => { log.downloads.push(id); S.jobs[id] = { id, phase: 'download' }; return Promise.resolve(); };
   const names = ['S', 'SU', 'loadSetup', 'updateBuildDue', 'prepBlocked', 'newPrepOpts', 'invoke', 'toast', 'tf', 't', 'esc', 'cleanMsg', 'byId', 'render', 'updateBuildModal', 'parentId', 'startInstall', 'window'];

@@ -13,7 +13,7 @@ const fn = (name) => app.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^
 
 function context(extra) {
   const c = vm.createContext(Object.assign({
-    S: { library: {}, updates: {}, jobs: {}, dlArgs: {} },
+    S: { library: {}, updates: {}, jobs: {}, dlArgs: {}, uninstalling: new Set() },
     t: (x) => x,
     tf: (x, v) => x.replace(/\{(\w+)\}/g, (_, k) => v[k]),
     esc: (x) => String(x),
