@@ -80,7 +80,8 @@ test('there is no Move Build: the build is the launcher\'s own, in the folder th
 test('a setup the game asks for runs, and a setup step that stops says what it said', () => {
   // (Only Play answers it: a shortcut or the page asking doesn't use up the game's request.)
   assert.match(own, /if g\.setup_done && asked_for_setup\(st, id, &g, play\) \{/);
-  assert.match(rust, /format!\("Its setup step stopped with code \{code\}: \{said\}"\)/);
+  assert.match(rust, /format!\("Its setup step stopped with code \{code\}\."\);/);
+  assert.match(rust, /format!\("\{head\}\\n\{said\}"\)/);
   assert.match(read('src-tauri/src/nup.rs'), /fn wrong_folder\(dir: &Path\) -> String/);
   assert.match(rust, /fn say_why_it_stopped\(\)/);
 });

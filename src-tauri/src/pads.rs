@@ -11,7 +11,7 @@
 use crate::{ingame, App};
 use serde::Serialize;
 use sdl3_sys::everything as sdl;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
@@ -134,6 +134,43 @@ impl Axes {
             out.push((true, name(dir)));
         }
         out
+    }
+}
+
+/// Buttons already held when the launcher's window gets focus back, such as the A that quit a
+/// game: they press nothing in the launcher until they're let go. By name, like every press past
+/// SDL's thread, so the same button on two pads (one through Steam Input) counts once.
+#[derive(Default)]
+struct HeldOver {
+    focused: bool,
+    down: HashSet<&'static str>,
+    stale: HashSet<&'static str>,
+}
+
+impl HeldOver {
+    /// The window's focus now. Gaining it makes everything held stale.
+    fn focus(&mut self, focused: bool) {
+        if focused && !self.focused {
+            self.stale = self.down.clone();
+        }
+        self.focused = focused;
+    }
+
+    /// A press or a release came in. A release makes the button fresh again.
+    fn saw(&mut self, ev: &Ev) {
+        match *ev {
+            Ev::Down(n, _) => {
+                self.down.insert(n);
+            }
+            Ev::Up(n) => {
+                self.down.remove(n);
+                self.stale.remove(n);
+            }
+        }
+    }
+
+    fn stale(&self, name: &str) -> bool {
+        self.stale.contains(name)
     }
 }
 
@@ -389,12 +426,15 @@ pub fn start(app: AppHandle) {
         let mut last_name = "";
         // A direction held down repeats, like a keyboard: after 0.4 s, then every 0.12 s.
         let mut held: Option<(&'static str, &'static str, Instant, Instant)> = None;
+        let mut held_over = HeldOver::default();
         loop {
-            let ev = match rx.recv_timeout(Duration::from_millis(30)) {
+            let got = rx.recv_timeout(Duration::from_millis(30));
+            held_over.focus(FOCUSED.load(Ordering::Relaxed));
+            let ev = match got {
                 Ok(ev) => ev,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                     if let Some((t, k)) = menu_since {
-                        if t.elapsed() > Duration::from_millis(900) {
+                        if t.elapsed() > Duration::from_millis(900) && !waits_for_release(&app, &held_over, "menu") {
                             menu_since = None;
                             send(&app, "menu-hold", k);
                         }
@@ -408,7 +448,8 @@ pub fn start(app: AppHandle) {
                         }
                     }
                     if let Some((n, k, since, last)) = held {
-                        if since.elapsed() > Duration::from_millis(400) && last.elapsed() > Duration::from_millis(120) {
+                        let due = since.elapsed() > Duration::from_millis(400) && last.elapsed() > Duration::from_millis(120);
+                        if due && !waits_for_release(&app, &held_over, n) {
                             held = Some((n, k, since, Instant::now()));
                             send(&app, n, k);
                         }
@@ -417,6 +458,11 @@ pub fn start(app: AppHandle) {
                 }
                 Err(_) => return,
             };
+            held_over.saw(&ev);
+            let stale = matches!(ev, Ev::Down(n, _) if waits_for_release(&app, &held_over, n));
+            if stale {
+                continue;
+            }
             let (name, kind) = match ev {
                 Ev::Up("view") => {
                     view_held = false;
@@ -470,6 +516,12 @@ pub fn start(app: AppHandle) {
             send(&app, name, kind);
         }
     });
+}
+
+/// A button held since before the launcher's window got focus presses nothing there. The quick
+/// menu isn't that window: it takes every press as it always has.
+fn waits_for_release(app: &AppHandle, held_over: &HeldOver, name: &str) -> bool {
+    held_over.stale(name) && !app.state::<App>().overlay_open.load(Ordering::Relaxed)
 }
 
 /// The quick menu gets the controller while it's up, focused or not (Windows may not let it take
@@ -682,6 +734,21 @@ mod tests {
     #[cfg(not(windows))]
     fn the_window_reads_controllers_outside_windows() {
         assert!(!window_stays_off());
+    }
+
+    #[test]
+    fn a_held_across_focus_waits_for_its_release() {
+        let mut h = HeldOver::default();
+        // The A that quit the game, still down as the launcher comes back.
+        h.saw(&Ev::Down("a", "xbox"));
+        h.focus(true);
+        assert!(h.stale("a"));
+        h.saw(&Ev::Down("a", "xbox"));
+        assert!(h.stale("a"));
+        h.saw(&Ev::Up("a"));
+        // Pressed again: a real press.
+        h.saw(&Ev::Down("a", "xbox"));
+        assert!(!h.stale("a"));
     }
 
     #[test]

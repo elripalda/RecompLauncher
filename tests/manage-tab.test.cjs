@@ -37,7 +37,7 @@ test('the menu keeps what no tab has', () => {
 });
 
 test('Uninstall stays in the menu of an installed game, last and in red', () => {
-  assert.match(fn(app, 'gameMenu'), /\.\.\.\(g \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
+  assert.match(fn(app, 'gameMenu'), /\.\.\.\(g && st !== 'uninstalling' \? \['-', \{ act: 'uninstall', id, label: t\('Uninstall…'\), cls: 'danger', icon: 'bin' \}\] : \[\]\),\n  \];/);
 });
 
 // One submenu of the game's menu, from its label to its closing bracket.
@@ -102,8 +102,9 @@ test('Customize is called Edit Name and Artwork', () => {
 test('the side column has no buttons, and Launcher Support is a box on Overview', () => {
   const rail = fn(app, 'gameRail');
   assert.doesNotMatch(rail, /quickActs|btn/);
-  // (Beta 68) The store card can sit between them (Placement in RecompLauncher on the site).
-  assert.match(rail, /S\.tab === 'overview' \? readyCard\(a\) \+ igSlot\(a, 'side'\) \+ supportCard\(a\) : ''/);
+  // (Beta 68) The store card can sit between them (Placement in RecompLauncher on the site),
+  // (Beta 69) and the spot above Ready to Play holds what the site places there.
+  assert.match(rail, /S\.tab === 'overview' \? topSpot\(a\) \+ readyCard\(a\) \+ igSlot\(a, 'side'\) \+ supportCard\(a\) : ''/);
 });
 
 test('the facts card leaves out who made it (it is under the title)', () => {

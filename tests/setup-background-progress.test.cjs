@@ -9,7 +9,7 @@ const tvSrc = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 
 test('status returns settingup when setupJobs has an active setup', () => {
   const c = vm.createContext({
-    S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.5 } }, jobs: {}, library: {} },
+    S: { running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.5 } }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     forOS: () => true,
   });
@@ -22,7 +22,7 @@ test('status returns settingup when setupJobs has an active setup', () => {
 // The game page's main buttons while a setup runs, with the real status, actions and setupProg.
 function actionsWhile(ev) {
   const c = vm.createContext({
-    S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': ev }, jobs: {}, library: {} },
+    S: { running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: { 'test-game': ev }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     t: (s) => s,
     esc: String,
@@ -32,7 +32,7 @@ function actionsWhile(ev) {
     forOS: () => true,
   });
   const fnStatus = appSrc.match(/function status\(a\) \{[^]*?\n\}/)[0];
-  const fnActions = appSrc.match(/function actions\(a, size = 'big'\) \{[^]*?\n\}/)[0];
+  const fnActions = appSrc.match(/function actions\(a, size = 'big'[^)]*\) \{[^]*?\n\}/)[0];
   const fnProg = appSrc.match(/^function setupProg\([^]*?^}/m)[0];
   vm.runInContext(fnStatus + fnActions + fnProg, c);
   return c.actions({ id: 'test-game' });
@@ -100,7 +100,7 @@ test('onSetupFinished auto-adds to library and sets setup_ok', async () => {
 // Big Picture's main button and Home's words for it while a setup runs, with the real helpers.
 function tvWhile(ev) {
   const c = vm.createContext({
-    S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': ev }, jobs: {}, library: {} },
+    S: { running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: { 'test-game': ev }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     t: (s) => s,
     esc: String,
@@ -110,7 +110,7 @@ function tvWhile(ev) {
   });
   const fnStatus = appSrc.match(/function status\(a\) \{[^]*?\n\}/)[0];
   const fnProg = appSrc.match(/^function setupProg\([^]*?^}/m)[0] + appSrc.match(/^function setupLine\([^]*?^}/m)[0];
-  const mainButton = tvSrc.match(/function mainButton\(a, key\) \{[^]*?\n  \}/)[0];
+  const mainButton = tvSrc.match(/function mainButton\(a, key[^)]*\) \{[^]*?\n  \}/)[0];
   const mainWords = tvSrc.match(/function mainWords\(a\) \{[^]*?\n  \}/)[0];
   vm.runInContext(fnStatus + fnProg + mainButton + mainWords, c);
   return c;

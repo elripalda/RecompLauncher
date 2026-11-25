@@ -18,11 +18,16 @@
 //! (`inputs_ready`, each game's own) and `prepare_version` go: what they said is kept in `upgrade`
 //! for the launcher to read once with the game's profile. An Easy Setup left open when the
 //! launcher last closed (`setup_before`) is put back first, as that launcher would have.
+//!
+//! Format 4: Skip Easy Setup in Settings (`ui.easy_skip_all`) is for new games only. Before, it
+//! covered every installed game while it was on, without changing their mode. With it on, each
+//! installed game takes it as its own mode, so nothing changes for the player now that installed
+//! games go by their mode alone.
 
 use serde_json::Value;
 
 /// The format this launcher writes.
-pub const FORMAT: u32 = 3;
+pub const FORMAT: u32 = 4;
 
 /// A program the player picked (`Installed::exe_rules`): the launcher never picks again over it.
 const PLAYER_PICK: u64 = u8::MAX as u64;
@@ -36,10 +41,27 @@ pub fn to_current(v: &mut Value) -> bool {
     if from < 2 {
         modes_from_old_fields(v);
     }
-    two_roads(v);
-    one_way_inputs(v);
+    if from < 3 {
+        two_roads(v);
+        one_way_inputs(v);
+    }
+    skip_all_is_each_games(v);
     v["format"] = FORMAT.into();
     true
+}
+
+/// Format 3 -> 4: with Skip Easy Setup on in Settings, every installed game takes it as its own
+/// mode. See the top of this file.
+fn skip_all_is_each_games(v: &mut Value) {
+    let on = v.pointer("/settings/ui/easy_skip_all").and_then(Value::as_bool).unwrap_or(false);
+    if !on {
+        return;
+    }
+    let Some(games) = v.get_mut("installed").and_then(Value::as_object_mut) else { return };
+    for g in games.values_mut() {
+        let Some(g) = g.as_object_mut() else { continue };
+        g.insert("mode".into(), "own".into());
+    }
 }
 
 /// Format 2 -> 3: hand setups and the player's own builds become Skip Easy Setup. A hand setup's
@@ -171,6 +193,28 @@ mod tests {
     }
 
     #[test]
+    fn skip_for_every_game_becomes_each_installed_games_mode() {
+        let mut v = json!({ "format": 3, "installed": { "hopper": {}, "skyracer": { "mode": "own" } }, "settings": { "ui": { "easy_skip_all": true } } });
+        assert!(to_current(&mut v));
+        assert_eq!(mode(&v, "hopper").as_deref(), Some("own"));
+        assert_eq!(mode(&v, "skyracer").as_deref(), Some("own"));
+    }
+
+    #[test]
+    fn without_skip_for_every_game_installed_games_keep_easy_setup() {
+        let mut v = json!({ "format": 3, "installed": { "hopper": {} }, "settings": { "ui": { "easy_skip_all": false } } });
+        assert!(to_current(&mut v));
+        assert_eq!(mode(&v, "hopper"), None);
+    }
+
+    #[test]
+    fn a_format_4_library_is_left_as_it_is() {
+        let mut v = json!({ "format": 4, "installed": { "hopper": {} }, "settings": { "ui": { "easy_skip_all": true } } });
+        assert!(!to_current(&mut v));
+        assert_eq!(mode(&v, "hopper"), None);
+    }
+
+    #[test]
     fn set_up_by_hand_becomes_skip_easy_setup() {
         let mut v = json!({ "installed": { "hopper": { "manual": { "how": "none" } } } });
         assert!(to_current(&mut v));
@@ -259,8 +303,8 @@ mod tests {
         });
         to_current(&mut v);
         let game = |id: &str| serde_json::from_value::<crate::library::Installed>(v["installed"][id].clone()).unwrap();
-        assert!(game("hopper").player_sets_up(false));
-        assert!(game("skyracer").player_sets_up(false));
+        assert!(game("hopper").player_sets_up());
+        assert!(game("skyracer").player_sets_up());
     }
 
     #[test]

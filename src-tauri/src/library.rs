@@ -190,9 +190,15 @@ pub struct Installed {
     /// what they picked for every game (see `cloud_on`).
     #[serde(default)]
     pub cloud: Option<bool>,
-    /// Where the player says the game saves (Saves, Change): ahead of everything else.
+    /// Where the player says the game saves (Saves, Change). Only used while neither its developer
+    /// nor the catalog names a folder (saves::spots): a pick made before one was named is stale.
     #[serde(default)]
     pub save_place: Option<String>,
+    /// The player's folder in place of the one its developer or the catalog names (Saves, Change
+    /// on that folder), for a game they set up themselves. Its own field, not `save_place`: old
+    /// stale picks there must not come back. Ignored while Easy Setup is on (saves::with_override).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_override: Option<String>,
     /// More folders the player added (a launcher with several games, each saving in its own).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub more_save_places: Vec<String>,
@@ -283,10 +289,10 @@ impl Installed {
         !self.installer_setup.is_empty() && self.exe.is_none() && !self.path.is_dir()
     }
 
-    /// The player sets this game up their own way (Skip Easy Setup): for this game, or for every
-    /// game (`all`, the Settings switch).
-    pub fn player_sets_up(&self, all: bool) -> bool {
-        self.mode == SetupMode::Own || all
+    /// The player sets this game up their own way (Skip Easy Setup). Only its own mode counts: the
+    /// Settings switch is for new games, and a game installed under it took it as its mode then.
+    pub fn player_sets_up(&self) -> bool {
+        self.mode == SetupMode::Own
     }
 
 }
@@ -369,6 +375,12 @@ pub struct Settings {
     /// only the d-pad does (for players whose stick drifts, or who move a mouse with it).
     #[serde(default = "yes")]
     pub pad_stick: bool,
+    /// Settings → Controllers: the controller moves around the desktop view too. Off, the desktop
+    /// view leaves the controller alone (for players who use it as a mouse, where its buttons would
+    /// also press things in the launcher); holding Menu still opens Big Picture mode. Its switch,
+    /// Controller as a Mouse, shows the opposite: on when this is false.
+    #[serde(default = "yes")]
+    pub pad_desktop: bool,
     /// On Linux: recomps with only a Windows version install that and play through Proton.
     #[serde(default)]
     pub proton: bool,
@@ -453,6 +465,7 @@ impl Default for Settings {
             close_to_tray: false,
             start_at_login: false,
             pad_stick: true,
+            pad_desktop: true,
             proton: false,
             proton_auto: false,
             tray_told: false,
@@ -501,6 +514,9 @@ pub struct Library {
     /// For recomps by developers the player follows: the version last seen, to tell a new one apart.
     #[serde(default)]
     pub seen_versions: BTreeMap<String, String>,
+    /// Coming Soon recomps in the last catalog, so a saved one that came out can be told apart.
+    #[serde(default)]
+    pub seen_soon: Vec<String>,
     /// Mods the launcher put in, by game id.
     #[serde(default)]
     pub mods: BTreeMap<String, Vec<crate::mods::ModRec>>,
@@ -844,6 +860,7 @@ impl Library {
         l.roms = serde_json::from_value(field("roms")).unwrap_or_default();
         l.seen_apps = serde_json::from_value(field("seen_apps")).unwrap_or_default();
         l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
+        l.seen_soon = serde_json::from_value(field("seen_soon")).unwrap_or_default();
         l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
         l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
         l.removed_play_history = serde_json::from_value(field("removed_play_history")).unwrap_or_default();
@@ -911,6 +928,22 @@ mod tests {
         let saved = serde_json::to_string(&settings).unwrap();
         let restored: super::Settings = serde_json::from_str(&saved).unwrap();
         assert!(!restored.auto_install);
+    }
+
+    #[test]
+    fn the_controller_moves_around_the_desktop_view_by_default_and_for_settings_saved_before_it() {
+        // On keeps what every launcher before the switch did.
+        assert!(super::Settings::default().pad_desktop);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(settings.pad_desktop);
+    }
+
+    #[test]
+    fn the_controller_turned_off_on_the_desktop_view_stays_off() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","pad_desktop":false}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(!restored.pad_desktop);
     }
 
     #[test]
@@ -1265,19 +1298,17 @@ mod mode_tests {
     fn switching_who_sets_it_up_keeps_the_players_program() {
         let mut g = picked();
         g.mode = SetupMode::Own;
-        assert!(g.player_sets_up(false));
+        assert!(g.player_sets_up());
         // Easy Setup on: only the mode changes; the pick is still there for coming back.
         g.mode = SetupMode::Easy;
-        assert!(!g.player_sets_up(false));
+        assert!(!g.player_sets_up());
         assert_eq!(g.exe, Some(PathBuf::from("bin/hopper.exe")));
         assert_eq!(g.exe_rules, u8::MAX);
     }
 
     #[test]
-    fn skip_for_every_game_covers_easy_games_and_leaves_their_mode() {
-        let g = Installed::default();
-        assert!(g.player_sets_up(true));
-        assert_eq!(g.mode, SetupMode::Easy);
+    fn an_installed_game_is_easy_setup_by_its_own_mode() {
+        assert!(!Installed::default().player_sets_up());
     }
 
     #[test]
