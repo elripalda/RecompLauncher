@@ -1,0 +1,3 @@
+# Nothing in here is source: it is what a run produces.
+out/
+.docker/

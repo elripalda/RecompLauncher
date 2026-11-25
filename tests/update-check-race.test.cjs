@@ -16,14 +16,14 @@ function checking(automatic = true) {
   const game = { repo: 'Studio/Game', path: 'C:/Games/Game', tag: 'v1', installed_at: 10, updated_at: 10 };
   const S = {
     library: { chosen: { ...game }, other: { ...game, path: 'C:/Games/Other' } },
-    settings: { ui: {} }, running: new Set(), jobs: {}, paused: {}, dlArgs: {}, view: 'library',
+    settings: { ui: {} }, running: new Set(), jobs: {}, paused: {}, dlArgs: {}, uninstalling: new Set(), view: 'library',
   };
   const c = vm.createContext({
     S, updateCheckRevision: 0, invoke: () => pending, window: {},
     document: { body: { classList: { contains: () => false } } },
     holdUpdates() {}, renderSide() {}, render() {}, toast() {},
     updatingLine: () => '', readyLine: () => '', badVersion: () => false,
-    byId: (id) => ({ id }), autoUpdates: () => automatic,
+    byId: (id) => ({ id }), parentId: (id) => id, autoUpdates: () => automatic,
     updateGame: (id) => { starts.push(id); }, fail: (error) => { throw error; },
   });
   vm.runInContext(fn('checkUpdates') + '\n' + fn('stillChecked') + '\n' + app.match(/^function dlArgs\(.*$/m)[0], c);
