@@ -31,6 +31,7 @@ No. Everything works without one. A free account adds cloud saves, so the same s
 | Games | `C:\Recomp Library` on Windows, `~/Games/Recomp Library` on Linux and Mac. You can change it or add more folders in Settings. |
 | Settings and covers | The launcher's data folder: `%APPDATA%\com.recomplauncher.app` on Windows, `~/.local/share/com.recomplauncher.app` on Linux, `~/Library/Application Support/com.recomplauncher.app` on Mac |
 | Save backups | Beside each game, in its library's `.backups` folder (or a folder you pick on the Saves page) |
+| Release zips | Deleted once unpacked. With **Keep downloaded files** on (Settings → Updates and Downloads), each one, updates too, stays as it came in its library's `.downloads` folder, with the date it was released. Each library in Settings → Games and folders has a **Kept Downloads** button for its folder |
 | Screenshots | `Pictures\RecompLauncher` |
 
 The Windows default is a short folder near the top of the drive because some games break in long or OneDrive-synced paths.

@@ -59,6 +59,7 @@ pub mod setup_state;
 mod setup_window_tests;
 pub mod sysenv;
 pub mod sysneeds;
+mod test_control;
 mod emus;
 pub mod roms;
 pub mod saves;
@@ -699,7 +700,11 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         report(Progress::new(id, "unpack", 0, 0));
         let (file, sdir) = (got.file.clone(), installer::staging(&st.dir, id));
         let setup = tokio::task::spawn_blocking(move || installer::stage(&file, &sdir)).await.map_err(|e| Error::Msg(e.to_string()))??;
-        let _ = std::fs::remove_file(&got.file);
+        // A zip with the installer in it stays with Keep downloaded files on, like a game's zip.
+        // (A lone setup program has already moved to staging, so there's nothing left to keep.)
+        if !keep {
+            let _ = std::fs::remove_file(&got.file);
+        }
         {
             let mut l = st.lib.lock().unwrap();
             match l.installed.get_mut(id) {
@@ -901,6 +906,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         look_amount: prev.as_ref().map(|p| p.look_amount).unwrap_or(50),
         cloud: prev.as_ref().and_then(|p| p.cloud),
         save_place: prev.as_ref().and_then(|p| p.save_place.clone()),
+        save_override: prev.as_ref().and_then(|p| p.save_override.clone()),
         more_save_places: prev.as_ref().map(|p| p.more_save_places.clone()).unwrap_or_default(),
         cover_file: prev.as_ref().and_then(|p| p.cover_file.clone()),
         hero_file: prev.as_ref().and_then(|p| p.hero_file.clone()),
@@ -927,8 +933,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     };
     {
         let mut l = st.lib.lock().unwrap();
-        // Skip Easy Setup ticked before it was installed: from now on it's the game's own mode.
-        if prev.is_none() && take_skip_choice(&mut l.settings.ui, id) {
+        // Skip Easy Setup ticked before it was installed, or on for every game in Settings: from
+        // now on it's the game's own mode. A game installed under the Settings switch then stays
+        // the player's when the switch goes off, instead of asking for their copy.
+        if prev.is_none() && fresh_install_skips(&mut l.settings.ui, id) {
             rec.mode = library::SetupMode::Own;
         }
         l.put(id, rec);
@@ -1124,6 +1132,15 @@ async fn play_reports(st: State<'_, App>, id: String, force: Option<bool>) -> Re
         o.insert("offline".into(), Value::Bool(f.offline));
     }
     Ok(v)
+}
+
+/// How many people want a recomp (saved it, or wait for its Notify Me email), for the buttons on its
+/// page. 0 when the website can't say: it can't be reached and nothing is kept yet, it's an older site
+/// without the count, or it doesn't list that recomp.
+#[tauri::command]
+async fn want_count(st: State<'_, App>, id: String) -> Res<u64> {
+    let got = catalog::interest(&st.http, &st.dir, &id).await;
+    Ok(got.map(|f| catalog::interest_n(&f.data)).unwrap_or(0))
 }
 
 /// Finished downloads, newest first, for the Downloads page.
@@ -1790,8 +1807,18 @@ async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, drop
 #[tauri::command]
 fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
     let dir = st.lib.lock().unwrap().installed.get(&id).map(|g| g.path.clone())?;
-    let p = profile::release_profile(&dir)?.profile;
-    Some(profile_covers(&p))
+    support_in(&dir)
+}
+
+/// What the recomplauncher.json in a game's folder covers. Null when there is none. A file the
+/// launcher can't read sets nothing up (Play and Easy Setup skip it): `{"problem": …}` says why,
+/// for the box to show instead of the catalog's labels.
+fn support_in(dir: &Path) -> Option<Value> {
+    if let Some(owned) = profile::release_profile(dir) {
+        return Some(profile_covers(&owned.profile));
+    }
+    let problem = profile::release_file_problem(dir)?;
+    Some(json!({ "problem": problem }))
 }
 
 /// Each Launcher Support feature a recomplauncher.json sets up itself.
@@ -1801,7 +1828,9 @@ fn profile_covers(p: &profile::Profile) -> Value {
     // required input of role game or disc that isn't a shared key. The site counts it the same way
     // (rs_sdk_easy), so the card agrees with the catalog.
     let copy_input = p.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
-    let easy_setup = game.is_some() || copy_input;
+    // A `game` block alone sets nothing up: Easy Setup (Profile::easy_setup) also needs a program
+    // to start, so without one the box would tick what Install doesn't offer.
+    let easy_setup = (p.start.is_some() && game.is_some()) || copy_input;
     json!({
         "easy_setup": easy_setup,
         "settings": !p.settings.is_empty(),
@@ -2173,19 +2202,28 @@ pub(crate) fn note_new_apps(app: &AppHandle, st: &App, cat: &Value) {
     if ids.is_empty() {
         return;
     }
-    let (first_time, new_ids, notify, found, news) = {
+    let (first_time, new_ids, notify, found, news, out_now) = {
         let mut l = st.lib.lock().unwrap();
         let first = l.seen_apps.is_empty();
         let new_ids: Vec<String> = ids.iter().filter(|i| !l.seen_apps.contains(i)).cloned().collect();
         l.seen_apps = ids.clone();
         let news = followed_news(cat, &mut l, &new_ids, first);
-        (first, new_ids, l.settings.notify, l.roms.clone(), news)
+        let saved: Vec<String> = l.settings.ui.get("saved").and_then(Value::as_object).map(|o| o.keys().cloned().collect()).unwrap_or_default();
+        let out_now = saved_out_now(cat, &saved, &l.seen_soon);
+        l.seen_soon = soon_ids(cat);
+        (first, new_ids, l.settings.notify, l.roms.clone(), news, out_now)
     };
     st.save();
     if notify {
         for (title, body, id) in &news {
             ingame::notify(app, title, body);
             let _ = app.emit("followed", id);
+        }
+        // Saved while it was Coming Soon (its Save button): now it can be installed.
+        for id in &out_now {
+            if let Some(a) = catalog::app(cat, id) {
+                ingame::notify(app, &format!("{} is out", str_of(a, "name")), "A game you saved can be installed now. It's in your Library.");
+            }
         }
     }
     if first_time || new_ids.is_empty() || !notify {
@@ -2198,6 +2236,21 @@ pub(crate) fn note_new_apps(app: &AppHandle, st: &App, cat: &Value) {
             let _ = app.emit("new-recomp", id);
         }
     }
+}
+
+/// The catalog's Coming Soon recomps (not the player's own, added by link).
+fn soon_ids(cat: &Value) -> Vec<String> {
+    let apps = cat.get("apps").and_then(Value::as_array).into_iter().flatten();
+    let soon = apps.filter(|a| a.get("soon").and_then(Value::as_bool).unwrap_or(false) && !a.get("custom").and_then(Value::as_bool).unwrap_or(false));
+    soon.filter_map(|a| a.get("id")?.as_str().map(str::to_string)).collect()
+}
+
+/// Saved games that were Coming Soon in the last catalog and are out in this one: each is told about
+/// once, as the next catalog no longer has it as Coming Soon. One that left the catalog isn't out.
+fn saved_out_now(cat: &Value, saved: &[String], was_soon: &[String]) -> Vec<String> {
+    let soon_now = soon_ids(cat);
+    let listed = |id: &str| catalog::app(cat, id).is_some();
+    saved.iter().filter(|id| was_soon.contains(id) && !soon_now.contains(id) && listed(id)).cloned().collect()
 }
 
 /// Developers the player follows (Settings: ui.follow): a new recomp of theirs, or a new version of
@@ -3691,8 +3744,13 @@ static SETUP_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 static INPUT_WORKERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static SETUP_STATUS: Mutex<Option<HashMap<String, SetupEv>>> = Mutex::new(None);
 
-fn setup_busy(id: &str) -> bool {
-    SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.contains_key(id)) || INPUT_WORKERS.lock().unwrap().iter().any(|x| x == id)
+/// A setup is going for `id`. For a recomp's id that counts a run kept under one of its games'
+/// ids too: every game of a recomp is set up in the same install, so two at once would each write
+/// the record back and the last one would drop the other's picks.
+pub(crate) fn setup_busy(id: &str) -> bool {
+    let busy = |run: &str| run == id || games::split(run).is_some_and(|(recomp, _)| recomp == id);
+    let running = SETUP_RUN.lock().unwrap().as_ref().is_some_and(|m| m.keys().any(|k| busy(k)));
+    running || INPUT_WORKERS.lock().unwrap().iter().any(|x| busy(x))
 }
 
 fn setup_stopped(id: &str, run: u64) -> bool {
@@ -3820,7 +3878,7 @@ fn setup_run(app: AppHandle, st: &App, id: String, copy: Option<String>) -> Res<
             setup_track(&ev);
             let _ = app.emit("setup", ev);
         };
-        let job = SetupJob { app: &app, rid: &rid, sub: sub.as_deref(), p: &run_p, from_kept, dir: &dir };
+        let job = SetupJob { app: &app, id: &id, rid: &rid, sub: sub.as_deref(), p: &run_p, from_kept, dir: &dir };
         let result = setup_work(&job, &mut g, &emit, &stopped);
         if !stopped() {
             match result {
@@ -3846,6 +3904,8 @@ fn setup_run(app: AppHandle, st: &App, id: String, copy: Option<String>) -> Res<
 /// What one setup run works on.
 struct SetupJob<'a> {
     app: &'a AppHandle,
+    /// The game as the window knows it (its setup log is kept under this).
+    id: &'a str,
     /// The install whose record it changes.
     rid: &'a str,
     /// One game of several: the one being set up.
@@ -3911,7 +3971,8 @@ fn setup_work(job: &SetupJob, g: &mut Installed, emit: &dyn Fn(SetupEv), stopped
         let extra = prepare_extra(job.dir, &pr, &g.prepare_opts);
         let handed = p.handed(copy.as_deref());
         let report = |pct, t| emit(SetupEv { step: "extras".into(), pct, text: t, ..Default::default() });
-        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped, &writing);
+        let out = setup_output_file(job.dir, job.id);
+        let done = run_prepare(&pr, &g.path, handed.as_deref(), &extra, &report, stopped, &writing, out.as_ref());
         // Built from what it kept and that didn't work: the player's copy builds it.
         done.map_err(|e| if job.from_kept { kept_failed(&e) } else { e })?;
     }
@@ -4408,12 +4469,17 @@ fn set_prepare_opts(st: State<'_, App>, id: String, opts: BTreeMap<String, bool>
     Ok(())
 }
 
-/// A build from what the setup step kept that didn't work: what it said, then that the player's
-/// copy builds it instead. (What it said last may not end a sentence.)
+/// A build from what the setup step kept that didn't work: its first line, then that the player's
+/// copy builds it instead, then what the step printed, on lines of their own as before.
 fn kept_failed(said: &str) -> String {
-    let said = said.trim_end();
-    let stop = if said.ends_with(['.', '!', '?']) { "" } else { "." };
-    format!("{said}{stop} Choose your copy of the game to build it from that.")
+    let (head, printed) = said.split_once('\n').unwrap_or((said, ""));
+    let head = head.trim_end();
+    let stop = if head.ends_with(['.', '!', '?']) { "" } else { "." };
+    let line = format!("{head}{stop} Choose your copy of the game to build it from that.");
+    if printed.is_empty() {
+        return line;
+    }
+    format!("{line}\n{printed}")
 }
 
 /// What the setup step is run with: its own arguments, then those of the options the player
@@ -4540,11 +4606,90 @@ mod win_job {
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
+/// How many of its last lines a setup step that failed shows the player: enough for a reason that
+/// runs over a few lines (an install hint, the top of a stack trace), never the whole output.
+const SAID_LINES: usize = 10;
+
+/// What a setup step printed last, progress lines left out: its last SAID_LINES lines, each as
+/// a terminal would show it.
+#[derive(Default)]
+struct LastSaid(std::collections::VecDeque<String>);
+
+impl LastSaid {
+    fn push(&mut self, line: &str) {
+        let line = plain_line(line);
+        if line.is_empty() {
+            return;
+        }
+        if self.0.len() == SAID_LINES {
+            self.0.pop_front();
+        }
+        self.0.push_back(line);
+    }
+
+    fn text(&self) -> String {
+        Vec::from(self.0.clone()).join("\n")
+    }
+}
+
+/// A line a program printed, as a terminal shows it: colour codes taken out, and only what came
+/// after its last carriage return (a progress bar drawn over itself). Long lines are cut.
+fn plain_line(line: &str) -> String {
+    let shown = line.rsplit('\r').next().unwrap_or(line);
+    without_codes(shown).trim().chars().take(300).collect()
+}
+
+/// A line without its colour and cursor codes, which a log file would show as junk.
+fn without_codes(line: &str) -> String {
+    let mut out = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        // ESC [ ... then one of @ to ~: a colour or cursor code.
+        if chars.next() != Some('[') {
+            continue;
+        }
+        for c in chars.by_ref() {
+            if ('@'..='~').contains(&c) {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// A setup step that stopped with an error code: the launcher's line, then what it printed last
+/// on lines of their own. The UI translates the first line and shows the rest as it was printed.
+fn step_failed(code: &str, said: &str) -> String {
+    let head = format!("Its setup step stopped with code {code}.");
+    if said.is_empty() {
+        return head;
+    }
+    format!("{head}\n{said}")
+}
+
+/// Start a program that may have only just been written (unpacked with the game). On Linux,
+/// another thread starting a program at that moment holds the new file open for a few
+/// milliseconds, and starting it fails with "Text file busy": it's tried again for up to half a
+/// second.
+fn spawn_just_written(c: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    for _ in 0..20 {
+        match c.spawn() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => std::thread::sleep(std::time::Duration::from_millis(25)),
+            started => return started,
+        }
+    }
+    c.spawn()
+}
+
 /// Runs the recomp's setup step. `writing` is called once the step has started, when it can
 /// write over the last build; a step that can't start (its program missing, no room, no Proton)
-/// never calls it.
-fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn()) -> Result<(), String> {
-    use std::io::BufRead;
+/// never calls it. `out` gets every line it prints (the full log the player can open or send).
+fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn(), out: Option<&std::fs::File>) -> Result<(), String> {
+    use std::io::{BufRead, Write};
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
     // On Linux an AppImage is never run, its setup step included: Play unpacks the game first.
     if cfg!(target_os = "linux") && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
@@ -4602,7 +4747,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     // The launcher killed or crashing (no Exit to stop it): on Linux the step goes with it.
     #[cfg(target_os = "linux")]
     die_with_launcher(&mut c);
-    let mut child = c.spawn().map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
+    let mut child = spawn_just_written(&mut c).map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
     // Started: from here it can write over the last build. (Not before: a step Windows Security
     // blocked never ran.)
     writing();
@@ -4628,22 +4773,26 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         });
     }
     drop(tx);
-    // What it said last (not a progress line): when it stops on an error, that's usually why.
-    let mut said = String::new();
+    // What it said last (not progress lines): when it stops on an error, that's usually why.
+    let mut said = LastSaid::default();
     // Whether it said Windows' path limit stopped it, on any line: the reason is usually followed
     // by a stack trace.
     let mut too_long = false;
     // When it last printed anything: a step that goes quiet for SILENT_FOR has stopped working.
     let mut heard = Instant::now();
-    let read = |said: &mut String, too_long: &mut bool, heard: &mut Instant| {
+    let read = |said: &mut LastSaid, too_long: &mut bool, heard: &mut Instant| {
         while let Ok(l) = rx.try_recv() {
             *heard = Instant::now();
+            // Every line, progress ones too: the full log is for whoever reads it to fix it.
+            if let Some(mut f) = out {
+                let _ = writeln!(f, "{}", without_codes(&l));
+            }
             let mut w = l.splitn(3, ' ');
             if w.next() == Some("progress") {
                 let pct = w.next().and_then(|x| x.parse::<f32>().ok()).unwrap_or(0.0).clamp(0.0, 1.0);
                 report(pct, w.next().unwrap_or("").trim().to_string());
             } else if !l.trim().is_empty() {
-                *said = l.trim().chars().take(300).collect();
+                said.push(&l);
                 *too_long |= setup_temp::says_too_long(&l);
             }
         }
@@ -4658,11 +4807,12 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             std::thread::sleep(std::time::Duration::from_millis(150));
             read(&mut said, &mut too_long, &mut heard);
             let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
-            trail::note(format!("Setup step stopped with code {code}; it said last: {said}"));
+            let said = said.text();
+            trail::note(format!("Setup step stopped with code {code}; it said last: {}", said.replace('\n', " | ")));
             if cfg!(windows) && too_long {
                 return Err(setup_temp::too_long_with(&said));
             }
-            return Err(if said.is_empty() { format!("Its setup step stopped with code {code}.") } else { format!("Its setup step stopped with code {code}: {said}") });
+            return Err(step_failed(&code, &said));
         }
         // No time limit: a full build on a Steam Deck can take hours. Only a step that has printed
         // nothing for SILENT_FOR is given up on, and Cancel stops it any time.
@@ -4674,8 +4824,8 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     }
 }
 
-/// Skip Easy Setup for every game (the Settings switch). Each game keeps its own mode under it, so
-/// turning it off again leaves every game as it was.
+/// Easy Setup off for new games (the Settings switch, stored as `easy_skip_all`). A game takes it as
+/// its own mode when it's installed; games already installed keep theirs, whichever way it goes.
 fn easy_skipped_for_all(ui: &Value) -> bool {
     ui.get("easy_skip_all").and_then(Value::as_bool).unwrap_or(false)
 }
@@ -4694,14 +4844,20 @@ fn take_skip_choice(ui: &mut Value, id: &str) -> bool {
     list.len() != before
 }
 
+/// A game being installed for the first time skips Easy Setup: its own tick (taken off the list),
+/// or Easy Setup off for new games in Settings.
+fn fresh_install_skips(ui: &mut Value, id: &str) -> bool {
+    let ticked = take_skip_choice(ui, id);
+    ticked || easy_skipped_for_all(ui)
+}
+
 /// The player sets this game up their own way (Skip Easy Setup): its own mode once installed, or
-/// the tick in its menu before. A game of several in one recomp follows its recomp.
-fn player_sets_up(st: &App, id: &str) -> bool {
+/// its tick or the Settings switch before. A game of several in one recomp follows its recomp.
+pub(crate) fn player_sets_up(st: &App, id: &str) -> bool {
     let rid = setup_record_id(st, id);
     let l = st.lib.lock().unwrap();
-    let all = easy_skipped_for_all(&l.settings.ui);
     match l.installed.get(&rid) {
-        Some(g) => g.player_sets_up(all),
+        Some(g) => g.player_sets_up(),
         None => easy_skipped(&l.settings.ui, id),
     }
 }
@@ -7086,15 +7242,44 @@ fn webview2_missing() -> bool {
 
 /// Where what a game printed on its last start is kept.
 pub(crate) fn game_output_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join("game-output").join(log_name(id))
+}
+
+/// A game id as a log's file name.
+fn log_name(id: &str) -> String {
     let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
-    dir.join("game-output").join(format!("{safe}.log"))
+    format!("{safe}.log")
 }
 
 /// A fresh file for what a game prints on this start (the last start's is replaced).
 fn game_output_file(dir: &Path, id: &str) -> Option<std::fs::File> {
-    let p = game_output_path(dir, id);
+    fresh_file(&game_output_path(dir, id))
+}
+
+/// Where everything a game's setup step printed on its last run is kept: the full log behind
+/// the few lines a failed setup shows.
+pub(crate) fn setup_output_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join("setup-output").join(log_name(id))
+}
+
+/// A fresh file for what the setup step prints on this run (the last run's is replaced).
+fn setup_output_file(dir: &Path, id: &str) -> Option<std::fs::File> {
+    fresh_file(&setup_output_path(dir, id))
+}
+
+fn fresh_file(p: &Path) -> Option<std::fs::File> {
     std::fs::create_dir_all(p.parent()?).ok()?;
-    std::fs::File::create(&p).ok()
+    std::fs::File::create(p).ok()
+}
+
+/// A failed setup's Open Full Log: everything its setup step printed, in the PC's text viewer.
+#[tauri::command(async)]
+fn open_setup_log(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
+    let p = setup_output_path(&st.dir, &id);
+    if !p.is_file() {
+        return Err(Error::Msg("There's no setup log for it yet.".into()));
+    }
+    open_thing(&app, &p.to_string_lossy(), false)
 }
 
 #[derive(Serialize)]
@@ -7158,6 +7343,18 @@ fn show_screenshot(app: AppHandle, path: String) -> Res<()> {
 #[tauri::command(async)]
 fn controllers() -> Vec<pads::Pad> {
     pads::connected()
+}
+
+/// The window must leave controllers to the launcher (see pads::window_stays_off).
+#[tauri::command(async)]
+fn pads_window_off() -> bool {
+    pads::window_stays_off()
+}
+
+/// The right stick, for Big Picture's box tilt.
+#[tauri::command(async)]
+fn pad_right_stick() -> [f32; 2] {
+    pads::right_stick()
 }
 
 /// Keep these pictures on disk, so pages show at once and work offline.
@@ -7314,10 +7511,14 @@ fn open_folder(app: AppHandle, st: State<'_, App>, id: Option<String>, path: Opt
         let l = st.lib.lock().unwrap();
         match (id, path) {
             (Some(id), _) => l.installed.get(&id).map(|g| g.path.clone()).ok_or_else(|| Error::Msg("It isn't installed.".into()))?,
-            // Only folders the launcher knows about: libraries and ROM folders.
+            // Only folders the launcher knows about: libraries, their kept downloads and ROM folders.
             (None, Some(p)) => {
                 let p = PathBuf::from(p);
+                let named_downloads = p.file_name() == Some(std::ffi::OsStr::new(".downloads"));
+                let in_library = p.parent().is_some_and(|lib| l.settings.all_libraries().iter().any(|x| x == lib));
+                let kept_downloads = named_downloads && in_library;
                 let known = l.settings.all_libraries().contains(&p)
+                    || kept_downloads
                     || l.settings.rom_dirs.contains(&p)
                     || l.roms.iter().any(|r| r.path == p || r.path.parent() == Some(p.as_path()))
                     || p == st.dir
@@ -7737,29 +7938,40 @@ fn leftover_helper(name: &str) -> bool {
 
 /// A program from this folder (or deeper) is running, other than RecompLauncher itself. Only for a
 /// game's own folder: a drive or a folder near the top is too broad to tell anything.
-fn still_running_in(dir: &Path) -> bool {
+pub(crate) fn still_running_in(dir: &Path) -> bool {
+    program_running_in(dir).is_some()
+}
+
+/// The file name of a program running from this folder (or deeper), as `still_running_in` finds
+/// it: so a message can say what to close, when it isn't the game itself (a mod tool, say).
+pub(crate) fn program_running_in(dir: &Path) -> Option<String> {
     if dir.components().count() < 3 {
-        return false;
+        return None;
     }
     let me = std::process::id();
     #[cfg(windows)]
     {
         let d = dir.to_string_lossy().trim_end_matches('\\').to_lowercase() + "\\";
-        return win::processes().into_iter().any(|(pid, name)| pid != me && pid != 0 && !leftover_helper(&name) && win::process_file(pid).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false));
+        let inside = |pid: u32| win::process_file(pid).map(|f| f.to_string_lossy().to_lowercase().starts_with(&d)).unwrap_or(false);
+        return win::processes().into_iter().find(|(pid, name)| *pid != me && *pid != 0 && !leftover_helper(name) && inside(*pid)).map(|(_, name)| name);
     }
     #[cfg(target_os = "linux")]
     {
-        let Ok(rd) = std::fs::read_dir("/proc") else { return false };
-        return rd
-            .flatten()
-            .filter_map(|e| e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()))
-            .filter(|&p| p != me)
-            .any(|p| std::fs::read_link(format!("/proc/{p}/exe")).map(|f| f.starts_with(dir) && !leftover_helper(&f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())).unwrap_or(false));
+        let rd = std::fs::read_dir("/proc").ok()?;
+        let pids = rd.flatten().filter_map(|e| e.file_name().to_str().and_then(|n| n.parse::<u32>().ok())).filter(|&p| p != me);
+        for p in pids {
+            let Ok(exe) = std::fs::read_link(format!("/proc/{p}/exe")) else { continue };
+            let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if exe.starts_with(dir) && !leftover_helper(&name) {
+                return Some(name);
+            }
+        }
+        return None;
     }
     #[allow(unreachable_code)]
     {
         let _ = me;
-        false
+        None
     }
 }
 
@@ -10283,6 +10495,11 @@ pub fn run() {
             }
             // A new build or a recomp's release, pushed by the website the moment it's out.
             push::start(app.handle().clone());
+            // Test control, for testing a build with an agent (off unless asked for: see
+            // test_control). Not for a game's shortcut start, which has no window to drive.
+            if play.is_none() {
+                test_control::start(app.handle());
+            }
             // Discord: "RecompLauncher" while the launcher's window is open and no game runs.
             if g_discord(&app.state::<App>()) {
                 discord_idle(&app.state::<App>(), true);
@@ -10420,10 +10637,10 @@ pub fn run() {
             forget_game,
             remove_github,
             take_options_asked,
-            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder,
+            get_state, get_catalog, get_releases, net_state, check_updates, launcher_update, install, cancel, uninstall, play, stop, set_exe, forget_program, set_setup_mode, open_folder, open_setup_log,
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
-            copy_screenshot, show_screenshot, controllers, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
+            copy_screenshot, show_screenshot, controllers, pads_window_off, pad_right_stick, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
@@ -10431,7 +10648,7 @@ pub fn run() {
             convert_copy,
             convert_cancel, looks_info, set_look, look_picture, ui_data,
             reset_settings, tray::tray_words, tray::quit_launcher, ach::ach_access, ach::ach_status, ach::ach_apply, ach::ach_profile, ach::ach_games, ach::ach_board, ach::ach_game_web, ach::ach_report, ach::ach_tracker_get, ach::ach_game, ach::ach_set_disc, ach::ach_set_folder, ach::ach_sound, ach::ach_log, ach::ach_peek, ach::ach_rule, ach::ach_reset, ach::ach_test_toast, ach::ach_toast_take, ach::ach_toast_done, cloud::account_start, cloud::account_poll, cloud::account_cancel, cloud::account_state, cloud::account_signout,
-            cloud::saves_check, cloud::saves_pick, cloud::saves_play_without_cloud, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::notifies, usage::notify, usage::pc_specs, usage::recomp_request,
+            cloud::saves_check, cloud::saves_pick, cloud::saves_play_without_cloud, cloud::saves_cloud, cloud::saves_cloud_follow_all, download_history, report_counts, play_reports, want_count, cloud::saves_info, cloud::saves_status, cloud::saves_peek, cloud::saves_upload_now, cloud::cloud_retry, cloud::saves_overview, cloud::saves_backup, cloud::saves_restore, cloud::saves_cloud_delete, cloud::saves_share, cloud::saves_set_place, cloud::saves_set_override, cloud::saves_add_place, cloud::saves_remove_place, cloud::saves_open, saves_set_root, saves_open_root, missing_files, missing_made, dll_check, dll_aside, gpu_choice, prefer_fast_gpu, copy_check, wine_tools, deck_scores, latest_counts, team_notes, trending, ig_info, ig_view, usage::pc_specs, usage::recomp_request,
             adopt::adopt_scan, adopt::migrate_scan, adopt::migrate_pick, adopt::adopt_pick, adopt::adopt_add, adopt::adopt_check, adopt::set_project, usage::usage_hello, usage::usage_event, usage::data_ids, usage::reset_ids, ping::usage_open, ping::usage_mode, usage::run_report, cloud::inbox, cloud::inbox_done, cloud::betas, cloud::beta_join, cloud::beta_leave, launcher_notes, scan_info, devtools::dev_add, devtools::add_any, devtools::dev_check, devtools::dev_starter, fs_places, fs_list, fs_extract, gb_mods, gb_mod, gb_install
         ])
         .build(tauri::generate_context!())
@@ -10551,6 +10768,62 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(super::profile_covers(&p)["easy_setup"], false);
+    }
+
+    #[test]
+    fn launcher_support_does_not_count_a_game_block_without_a_program_as_easy_setup() {
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "folder" } })).unwrap();
+        assert_eq!(super::profile_covers(&p)["easy_setup"], false);
+    }
+
+    // A game folder holding this recomplauncher.json, for support_in.
+    fn folder_with_file(name: &str, file: serde_json::Value) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rl-support-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("recomplauncher.json"), file.to_string()).unwrap();
+        dir
+    }
+
+    // Mario Tennis Fever's file as released (v0.1.2): `config.file` is one path, not a list, so
+    // the launcher can't read the file at all, though every section is there.
+    fn unreadable_like_mtf() -> serde_json::Value {
+        serde_json::json!({
+            "format": 1,
+            "game": { "kind": "folder", "check": { "file": "exefs/main" } },
+            "start": { "program": ["mtf-recomp.exe"] },
+            "saves": ["{install}/profile"],
+            "config": [{ "id": "main", "format": "ini", "file": "{install}/mtf.ini" }],
+            "settings": [{ "id": "fps", "label": "FPS", "choices": [{ "label": "60", "set": { "FPS_LIMIT": "60" } }] }],
+            "prepare": { "program": ["Setup.exe"], "args": ["--prepare", "--game", "{game}"], "done": ["{install}/mtf-recomp.exe"] }
+        })
+    }
+
+    #[test]
+    fn launcher_support_gives_only_the_problem_for_a_file_the_launcher_cant_read() {
+        let dir = folder_with_file("unreadable", unreadable_like_mtf());
+        let found = super::support_in(&dir);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(found, Some(serde_json::json!({ "problem": "\"config[0].file\" should be a list." })));
+    }
+
+    #[test]
+    fn launcher_support_gives_nothing_for_a_folder_without_a_file() {
+        let dir = std::env::temp_dir().join(format!("rl-support-none-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let found = super::support_in(&dir);
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn launcher_support_counts_every_feature_of_a_complete_file() {
+        let mut file = unreadable_like_mtf();
+        file["config"][0]["file"] = serde_json::json!([{ "path": "{install}/mtf.ini" }]);
+        file["game"]["dumps"] = serde_json::json!([{ "name": "USA", "crc32": "1234abcd" }]);
+        let dir = folder_with_file("complete", file);
+        let all = serde_json::json!({ "easy_setup": true, "settings": true, "prepare": true, "verified": true, "saves": true });
+        assert_eq!(super::support_in(&dir), Some(all));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -11790,9 +12063,51 @@ mod tests {
 
     #[test]
     fn a_build_from_what_was_kept_that_fails_asks_for_the_copy_in_a_sentence_of_its_own() {
-        let said = "Its setup step stopped with code 3: nothing kept";
-        assert_eq!(kept_failed(said), "Its setup step stopped with code 3: nothing kept. Choose your copy of the game to build it from that.");
+        let said = "Its setup step stopped with code 3.\nnothing kept";
+        assert_eq!(kept_failed(said), "Its setup step stopped with code 3. Choose your copy of the game to build it from that.\nnothing kept");
         assert_eq!(kept_failed("It stopped. "), "It stopped. Choose your copy of the game to build it from that.");
+    }
+
+    #[test]
+    fn a_failed_setup_step_shows_the_launchers_line_then_what_it_printed_last() {
+        let said = step_failed("1", "Missing: vulkan\nsudo apt install libvulkan-dev");
+        assert_eq!(said, "Its setup step stopped with code 1.\nMissing: vulkan\nsudo apt install libvulkan-dev");
+    }
+
+    #[test]
+    fn a_setup_step_that_printed_nothing_shows_only_its_code() {
+        assert_eq!(step_failed("2", ""), "Its setup step stopped with code 2.");
+    }
+
+    #[test]
+    fn a_setup_step_keeps_only_its_last_lines() {
+        let mut said = LastSaid::default();
+        for i in 0..SAID_LINES + 5 {
+            said.push(&format!("line {i}"));
+        }
+        let text = said.text();
+        let last = format!("line {}", SAID_LINES + 4);
+        assert_eq!(text.lines().count(), SAID_LINES);
+        assert_eq!(text.lines().next(), Some("line 5"));
+        assert_eq!(text.lines().last(), Some(last.as_str()));
+    }
+
+    #[test]
+    fn a_setup_steps_blank_lines_are_not_kept() {
+        let mut said = LastSaid::default();
+        said.push("reason");
+        said.push("   ");
+        assert_eq!(said.text(), "reason");
+    }
+
+    #[test]
+    fn a_setup_steps_colour_codes_are_taken_out() {
+        assert_eq!(plain_line("\u{1b}[1;31merror:\u{1b}[0m vulkan missing"), "error: vulkan missing");
+    }
+
+    #[test]
+    fn a_progress_bar_drawn_over_itself_keeps_only_its_last_drawing() {
+        assert_eq!(plain_line("10%\r50%\rdone"), "done");
     }
 
     #[test]
@@ -11841,6 +12156,7 @@ mod tests {
                 stopped.load(std::sync::atomic::Ordering::Relaxed)
             },
             &|| {},
+            None,
         );
 
         assert_eq!(res.unwrap_err(), "Stopped.");
@@ -11883,6 +12199,34 @@ mod prepare_env_tests {
         PathBuf::from(std::fs::read_to_string(dir.join(file)).unwrap().trim())
     }
 
+    /// A step that prints a progress line and 15 numbered lines, then fails with code 1.
+    #[cfg(unix)]
+    fn talker(dir: &Path) -> profile::Prepare {
+        use std::os::unix::fs::PermissionsExt;
+        let script = "#!/bin/sh\necho 'progress 0.5 Checking'\nfor i in $(seq 1 15); do echo \"line $i\"; done\nexit 1\n";
+        std::fs::write(dir.join("talk.sh"), script).unwrap();
+        std::fs::set_permissions(dir.join("talk.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        profile::Prepare { program: vec!["talk.sh".into()], ..Default::default() }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_step_shows_its_last_lines_and_its_full_log_keeps_every_line() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-talk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pr = talker(&dir);
+        let log = setup_output_file(&dir, "talker").unwrap();
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}, Some(&log)).unwrap_err();
+        let full = std::fs::read_to_string(setup_output_path(&dir, "talker")).unwrap();
+        assert_eq!(e.lines().next(), Some("Its setup step stopped with code 1."));
+        assert_eq!(e.lines().nth(1), Some("line 6"));
+        assert_eq!(e.lines().last(), Some("line 15"));
+        assert_eq!(full.lines().count(), 16, "the progress line and all 15 lines");
+        assert_eq!(full.lines().next(), Some("progress 0.5 Checking"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Set Up Again whose step can't start (its program missing): the last build isn't marked
     /// as cut short, so the game still plays.
     #[test]
@@ -11892,7 +12236,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let pr = profile::Prepare { program: vec!["missing-builder".into()], ..Default::default() };
         let marked = std::cell::Cell::new(0);
-        let res = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1));
+        let res = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1), None);
         assert!(res.is_err());
         assert_eq!(marked.get(), 0, "nothing was written");
         let _ = std::fs::remove_dir_all(&dir);
@@ -11906,7 +12250,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let pr = tattler(&dir);
         let marked = std::cell::Cell::new(0);
-        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1)).unwrap();
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| marked.set(marked.get() + 1), None).unwrap();
         assert_eq!(marked.get(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -11917,7 +12261,7 @@ mod prepare_env_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let pr = tattler(&dir);
-        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap();
+        run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}, None).unwrap();
         let temp = dir.join(setup_temp::FOLDER);
         assert_eq!(said(&dir, "temp.txt"), temp);
         assert_eq!(said(&dir, "tmp.txt"), temp);
@@ -11937,7 +12281,7 @@ mod prepare_env_tests {
         std::fs::create_dir_all(dir.join(setup_temp::FOLDER)).unwrap();
         std::fs::write(dir.join(setup_temp::FOLDER).join("release.txt"), b"theirs").unwrap();
         let pr = tattler(&dir);
-        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}).unwrap_err();
+        let e = run_prepare(&pr, &dir, Some(&dir), &[], &|_, _| {}, &|| false, &|| {}, None).unwrap_err();
         assert_eq!(e, setup_temp::NOT_OURS);
         assert!(!dir.join("temp.txt").exists(), "the step didn't run");
         assert!(dir.join(setup_temp::FOLDER).join("release.txt").is_file());
@@ -12084,6 +12428,25 @@ mod easy_skip_tests {
         rename_id(&mut ui, "hopper", "hopper-2");
         assert!(easy_skipped(&ui, "hopper-2"));
     }
+
+    #[test]
+    fn a_game_installed_under_the_settings_switch_keeps_skipping() {
+        let mut ui = json!({ "easy_skip_all": true });
+        assert!(fresh_install_skips(&mut ui, "hopper"));
+    }
+
+    #[test]
+    fn a_game_installed_without_a_skip_gets_easy_setup() {
+        let mut ui = json!({ "easy_skip_all": false, "easy_skip": ["skyracer"] });
+        assert!(!fresh_install_skips(&mut ui, "hopper"));
+    }
+
+    #[test]
+    fn a_ticked_game_skips_and_leaves_the_list() {
+        let mut ui = json!({ "easy_skip": ["hopper"] });
+        assert!(fresh_install_skips(&mut ui, "hopper"));
+        assert!(!easy_skipped(&ui, "hopper"));
+    }
 }
 
 #[cfg(test)]
@@ -12149,5 +12512,48 @@ mod beta54_tests {
         std::fs::create_dir_all(from.join(swap::FOLDER).join("old")).unwrap();
         assert!(holds_same_game(&g, &to), "old files an update set aside aren't the game's");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod saved_soon_tests {
+    use super::*;
+
+    fn cat(apps: Value) -> Value {
+        json!({ "apps": apps })
+    }
+
+    #[test]
+    fn coming_soon_ids_leave_out_the_players_own() {
+        let c = cat(json!([{ "id": "a", "soon": true }, { "id": "b" }, { "id": "c", "soon": true, "custom": true }]));
+        assert_eq!(soon_ids(&c), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn a_saved_game_that_came_out_is_told_about() {
+        let c = cat(json!([{ "id": "a" }, { "id": "b", "soon": true }]));
+        let saved = vec!["a".to_string(), "b".to_string()];
+        let was = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(saved_out_now(&c, &saved, &was), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn only_saved_games_that_were_coming_soon_are_told_about() {
+        let c = cat(json!([{ "id": "a" }, { "id": "b" }]));
+        // b was never Coming Soon, and c wasn't saved.
+        assert!(saved_out_now(&c, &["b".to_string()], &["a".to_string()]).is_empty());
+        assert!(saved_out_now(&c, &[], &["a".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn a_saved_game_that_left_the_catalog_is_not_out() {
+        let c = cat(json!([{ "id": "b", "soon": true }]));
+        assert!(saved_out_now(&c, &["a".to_string()], &["a".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn nothing_is_told_before_a_catalog_was_seen() {
+        let c = cat(json!([{ "id": "a" }]));
+        assert!(saved_out_now(&c, &["a".to_string()], &[]).is_empty());
     }
 }

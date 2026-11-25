@@ -575,12 +575,21 @@ fn own_saves(st: &App, id: &str) -> Option<crate::GamePick> {
 /// Where this game's saves are, best first.
 pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     if let Some(p) = own_saves(st, id) {
-        // Only the game's own: the recomp's other places are the other games'.
+        // Only the game's own: the recomp's other places are the other games'. Its override too:
+        // that's the recomp's, and one folder can't stand in for every game's.
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
         return named_spots(p.game.saves, vec![], &g);
     }
+    let named = named_of(st, id, g);
+    // Asked only with an override set: most games have none, and it takes the library's lock.
+    let Some(over) = g.save_override.as_deref() else { return named };
+    saves::with_override(named, Some(over), crate::player_sets_up(st, id))
+}
+
+/// Where its developer, the catalog or the player's own picks say it saves, without the override.
+fn named_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
@@ -669,6 +678,31 @@ const NOT_RESTORED: &str = "Your cloud save couldn't be put in place.";
 
 /// The cloud save downloaded, but it couldn't be kept in the folder of the game's save copies.
 const CLOUD_NOT_KEPT: &str = "The cloud save couldn't be kept on this PC.";
+
+/// The file name of a program running from the game's folder that this launcher didn't start: the
+/// game opened straight from its .exe, or a mod tool kept beside it. A save put in place under the
+/// game could replace what it just saved. Named, because it isn't always the game. Not while the
+/// launcher's own setup step runs: its tools run from the game's folder too. Not seen on macOS, or
+/// under Wine where the program is Wine's own; the saves are checked again just before anything
+/// replaces them (`saves::restore_if_unchanged`) for those.
+async fn open_outside(id: &str, g: &Installed) -> Res<Option<String>> {
+    if crate::setup_busy(id) {
+        return Ok(None);
+    }
+    let dir = g.path.clone();
+    blocking(move || crate::program_running_in(&dir)).await
+}
+
+/// Sync Now and restores, when a program runs from the game's folder. Fixed texts so the window
+/// can translate them; the program's name goes on the line under it, as it is.
+const PROGRAM_OPEN: &str = "A program from this game's folder is still running. Close it, then try again.";
+
+/// Before Play, said in the prompt that offers to play with this PC's save instead.
+const PROGRAM_OPEN_PLAY: &str = "A program from this game's folder is already running. Close it to get your cloud save.";
+
+fn still_open(program: &str) -> Error {
+    Error::Msg(format!("{PROGRAM_OPEN}\n{program}"))
+}
 
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
 /// name, so the window can translate it: the player just pressed Play on that game.
@@ -1063,7 +1097,10 @@ fn open_sessions(saves_dir: &Path) -> Vec<String> {
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
-async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
+/// `checked`: the checksum of the saves the caller looked at before deciding. Then the copy goes
+/// in only over those saves, not over ones made while it downloaded. None: the player picked
+/// this cloud save themselves, over whatever is there.
+async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&str>) -> Res<usize> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let _working = working(app, id, "down");
@@ -1080,15 +1117,24 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
+    let g = game(&st, id)?;
+    // Checked after the download too: a big save takes a while, and the game can be opened
+    // from its folder meanwhile.
+    if let Some(program) = open_outside(id, &g).await? {
+        return Err(still_open(&program));
+    }
     let d = copies_dir(&st, id);
     let not_kept = |path: &Path, e: std::io::Error| Error::Msg(format!("{CLOUD_NOT_KEPT}\n{}: {e}", path.display()));
     tokio::fs::create_dir_all(&d).await.map_err(|e| not_kept(&d, e))?;
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
-    let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
-    let n = blocking(move || saves::restore(&dir, &id2, &t2, &spots, &g)).await;
+    let checked = checked.map(String::from);
+    let n = blocking(move || match checked {
+        Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
+        None => saves::restore(&dir, &id2, &t2, &spots, &g),
+    }).await;
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
@@ -1246,7 +1292,17 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        let taken = take_cloud(&app, &id, top).await;
+        // Before Play it doesn't stop the game: the program may be a mod tool, not the game. The
+        // player is asked whether to play with this PC's save, as when a restore fails.
+        if let Some(program) = open_outside(&id, &g).await? {
+            if manual {
+                return Err(still_open(&program));
+            }
+            crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place: {program} runs from its folder"));
+            let why = format!("{PROGRAM_OPEN_PLAY}\n{program}");
+            return Ok(json!({"action": "not-restored", "why": why, "cloud": top}));
+        }
+        let taken = take_cloud(&app, &id, top, Some(&local)).await;
         // Sync Now says why. Before Play the player is asked whether to play with this PC's save
         // instead (saves_play_without_cloud); nothing about the sync changes until they say so.
         if let (Err(e), false) = (&taken, manual) {
@@ -1341,7 +1397,7 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
             return Err(changed());
         }
         match keep.as_str() {
-            "cloud" => take_cloud(&app, &id, top).await.map(|_| ()),
+            "cloud" => take_cloud(&app, &id, top, Some(&hash)).await.map(|_| ()),
             "local" => upload_current(&app, &id, g, spots, hash, top.made).await,
             _ => Err(Error::Msg("Choose this PC or the cloud.".into())),
         }
@@ -1412,6 +1468,7 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             SpotInfo { exists: shown.exists(), path: p.to_string_lossy().to_string(), template: s.template, from: s.from }
         })
         .collect();
+    let swap = override_info(&st, &id, &g);
     let local = saves::list(&st.dir, &id, &g);
     let state = saves::state(&st.dir, &id);
     let mut cloud = Value::Null;
@@ -1444,7 +1501,22 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
+        "override": swap,
     }))
+}
+
+/// Whether the Saves tab offers Change on the folder its developer or RecompLauncher named, and
+/// that folder (still shown while the player's own is used). Null when it doesn't.
+fn override_info(st: &App, id: &str, g: &Installed) -> Value {
+    if own_saves(st, id).is_some() {
+        return Value::Null;
+    }
+    let named = named_of(st, id, g);
+    if !saves::can_override(&named, crate::player_sets_up(st, id)) {
+        return Value::Null;
+    }
+    let path = saves::resolve_for(&named[0].template, g);
+    json!({ "on": g.save_override.is_some(), "by": named[0].from, "path": path.to_string_lossy() })
 }
 
 /// Where players see whether the site is having trouble on our side.
@@ -1759,13 +1831,16 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
         let c = list.into_iter().find(|c| c.v == v).ok_or_else(|| Error::Msg("That cloud save is gone.".into()))?;
-        return take_cloud(&app, &id, &c).await;
+        return take_cloud(&app, &id, &c, None).await;
     }
     let name = name.unwrap_or_default();
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
         return Err(Error::Msg("That isn't one of its save copies.".into()));
     }
     let g = game(&st, &id)?;
+    if let Some(program) = open_outside(&id, &g).await? {
+        return Err(still_open(&program));
+    }
     let spots = spots_of(&st, &id, &g);
     let (dir, id2) = (st.dir.clone(), id.clone());
     let file = saves::dir_of(&st.dir, &id, &g).join(&name);
@@ -1814,6 +1889,43 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
     let _ = l.save(&st.dir);
     Ok(g)
 }
+
+/// The player's folder in place of the one its developer or RecompLauncher named (a
+/// recomplauncher.json that still names an old folder), or None to use the named one again. Only
+/// for a game set up without Easy Setup, whose saves are in one named folder (saves::can_override).
+#[tauri::command(async)]
+pub fn saves_set_override(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
+    let g = game(&st, &id)?;
+    let path = path.filter(|p| !p.trim().is_empty());
+    let template = match path {
+        Some(p) => Some(override_template(&st, &id, &g, &PathBuf::from(p))?),
+        None => None,
+    };
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.save_override = template;
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// `dir` as the game's override, or why it can't be (saves::override_refused).
+fn override_template(st: &App, id: &str, g: &Installed, dir: &Path) -> Res<String> {
+    let named = named_of(st, id, g);
+    if own_saves(st, id).is_some() || !saves::can_override(&named, crate::player_sets_up(st, id)) {
+        return Err(Error::Msg(OVERRIDE_NOT_HERE.into()));
+    }
+    if !dir.is_dir() {
+        return Err(Error::Msg("That folder couldn't be found.".into()));
+    }
+    if let Some(why) = saves::override_refused(dir, &g.path, dirs::home_dir().as_deref()) {
+        return Err(Error::Msg(why.into()));
+    }
+    Ok(saves::templatize_for(dir, g))
+}
+
+/// A fixed text, so the window can translate it.
+pub(crate) const OVERRIDE_NOT_HERE: &str = "Its save folder can only be changed when Easy Setup is skipped for it.";
 
 /// One more folder where the game saves (a launcher with several games in it, each saving in its
 /// own folder): the ones it has now stay, and backups and cloud saves cover all of them.

@@ -912,6 +912,12 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+/* A failed setup step's buttons and its last lines, as on the desktop: read from the couch, so
+   larger. A pad can't scroll the box, so when long lines wrap past its height the newest stay in
+   view (it's filled from the bottom) and the oldest are cut. */
+.tv-setup .tt .tv-logb{display:flex;gap:16px;justify-content:center}
+.tv-setup .tt .tv-logb .tv-btn{height:58px;padding:0 24px;font-size:20px;border-radius:18px}
+.tv-setup .tt pre.tv-tail{margin:0;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.07);color:var(--tvsoft,#c9d3e0);font:17px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;width:1100px;max-width:100%;max-height:15em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
 .tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
@@ -965,7 +971,11 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
 .tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
 .tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
-.tv-btn.notify-on{background:transparent;border:2px solid rgba(52,242,232,.6);color:#34F2E8}
+/* A saved Coming Soon game: outlined, filled heart, a soft glow (Save until then). */
+.tv-btn.save-on{background:rgba(52,242,232,.08);border:2px solid rgba(52,242,232,.6);color:#34F2E8;box-shadow:0 0 28px -8px rgba(52,242,232,.55)}
+.tv-soon-note{margin:0;font-size:19px;color:rgba(var(--tvinkrgb,244,248,252),.7)}
+.tv-btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.tv-btn .want::before{content:'·';margin:0 12px}
 .tv-home1>.tv-notes{position:absolute;top:6px;right:0;width:500px;z-index:2}
 .tv-tnote{display:flex;flex-direction:column;gap:6px;padding:10px 10px 14px 20px;border-radius:18px;background:rgba(var(--tvrgb),.78);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);border-left:5px solid #34F2E8;box-shadow:0 12px 34px rgba(0,0,0,.28)}
 .tv-tnote.gold{border-left-color:#f5c518}.tv-tnote.violet{border-left-color:#a98bff}
@@ -1017,6 +1027,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-box .k b{font-size:28px}
 .ni-tv.ss .ss-box .k span{font-size:21px}
 .ni-tv.ss .fmt{font-size:17px;padding:6px 9px;border-radius:7px}
+.ni-tv.ss .ss-box .ss-hint{font-size:19px}
 .ni-tv.ss .ss-src{height:34px;font-size:18px;padding:0 13px;border-radius:9px}
 .ni-tv.ss .btn{font-size:20px;height:56px;padding:0 22px;border-radius:12px}
 .ni-tv.ss .ss-box .acts{gap:10px}
@@ -1075,3 +1086,5 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-svp-set{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#3ee08f}
 .tv-svp-set svg{flex:none;width:20px;height:20px}
 .tv-svp-set.ours{color:#34F2E8}
+/* The named folder while the player's own is used instead: greyed, as on the desktop. */
+.tv-item.tv-svp-unused .k{opacity:.6}

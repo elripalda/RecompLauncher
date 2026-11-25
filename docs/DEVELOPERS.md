@@ -36,7 +36,10 @@ dump. Verification works with either.
 Game pages have a Launcher Support box. Each feature in it is marked as coming from your own
 `recomplauncher.json`, from RecompLauncher, or not there yet. A file that is only in your repo
 doesn't reach players, except on a Forgejo or Gitea server (see
-[Where the file goes](#where-the-file-goes)). When everything you can control comes from
+[Where the file goes](#where-the-file-goes)). Only what the launcher can use counts: a file that
+doesn't fit the format is skipped whole (the box says the launcher can't read it), Easy Setup
+needs `start` with `game` (or a required game input), and Verified Copies needs `game.dumps` or
+`game.check.ids`, not only a `check.file`. When everything you can control comes from
 your own file, the box says Full Support. A free
 [developer account](https://recomplauncher.com/developers?signup=1) puts the verified tick next to
 your name there.
@@ -828,7 +831,18 @@ settings are written. It runs again whenever the player changes their copy.
   text after it shows under the step.
 - There's no time limit: a full build on a Steam Deck can take hours. A step that prints nothing at
   all for an hour is taken as stuck and stopped, so print a line now and then on long work.
-- Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
+- Exit with 0 when it worked. Anything else shows as a failed setup: the player sees "Its setup
+  step stopped with code N.", the last 10 lines your step printed (stdout and stderr, `progress`
+  lines and colour codes left out) and two buttons: Copy puts those lines with the game, its
+  version and the player's OS on the clipboard, for them to paste to you, and Open Full Log opens
+  everything it printed on that run. Players read the short log first, so print the reason last,
+  in words a player can act on, rather than ending on the tail of a long hint:
+
+  ```sh
+  echo "Missing: the Vulkan SDK and the .NET 10 SDK."
+  echo "Install them, then press Set Up again: https://example.com/dkb-recomp#linux"
+  exit 1
+  ```
 - Write what you make to `{data}` (pass it in `args`, or read `RECOMPLAUNCHER_DATA`), and have your
   own launcher use the same place when it's given that path, so both stay in step.
 - It gets `RECOMPLAUNCHER=1`, `RECOMPLAUNCHER_VERSION` and `RECOMPLAUNCHER_DATA`, like the game.
@@ -972,8 +986,9 @@ when it's on its `args` are added after the step's own:
   ```
 - Your setup step gets these args added to its own, with the step's usual environment. Where to put
   the SDK and its runtime files: [Vendor SDKs the build needs](#vendor-sdks-the-build-needs).
-- Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
-  player sees "Its setup step stopped with code N", so put the reason in your own log.
+- Print `progress` lines for the download too. If it fails, exit with a code other than 0 and
+  print the reason last: the player sees "Its setup step stopped with code N." and the last 10
+  lines your step printed.
 - An option you add in a later release reaches players who already set the game up: Set Up
   Again, beside Play, gets a New mark, and the next time they press Play they're asked once to turn
   it on (the setup runs again with the copy they set up with) or play as it is. Their answer is
@@ -999,7 +1014,8 @@ the player agrees to the vendor's license:
    in the game's folder.
 5. With the tick off, the build must be the one you ship today.
 6. Print `progress` lines while it downloads. If it fails, exit with a code other than 0 and
-   write the reason in your own log: the player sees "Its setup step stopped with code N".
+   print the reason last: the player sees "Its setup step stopped with code N." and the last
+   10 lines your step printed.
 
 ### `dumps`: known good copies
 

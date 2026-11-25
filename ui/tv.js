@@ -45,6 +45,8 @@
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     openfolder: '<path d="M3 17.5V7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h7.5A1.5 1.5 0 0 1 20 9.5V11"/><path d="M3 17.5 5.4 12a1.5 1.5 0 0 1 1.4-1H21a1 1 0 0 1 .9 1.4l-2.3 5.7a1.5 1.5 0 0 1-1.4.9H4.5A1.5 1.5 0 0 1 3 17.5z"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+    heart: '<path d="M12 20.3s-7.8-4.6-7.8-10.2A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.8 2.8c0 5.6-7.8 10.2-7.8 10.2z"/>',
+    heartOn: '<path d="M12 20.3s-7.8-4.6-7.8-10.2A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.8 2.8c0 5.6-7.8 10.2-7.8 10.2z" fill="currentColor"/>',
     stop: '<path d="m6 6 12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
     chevL: '<path d="m15 5-7 7 7 7"/>',
@@ -248,6 +250,9 @@
   // A redraw from outside (a download's scan result came in): only on Downloads, keeping focus.
   window.tvRedraw = () => { if (TV.on && TV.view === 'downloads' && !TV.sheet) draw(true); };
   window.startTV = enter;
+  // For test control (src-tauri/src/test_control): Big Picture's own page, and a way back out.
+  window.tvWhere = () => ({ view: TV.view, arg: TV.arg == null ? null : TV.arg, starting: !!TV.booting });
+  window.leaveTV = leave;
 
   function boot() {
     sfx('boot');
@@ -364,7 +369,7 @@
     const st = status(a), j = S.jobs[a.id];
     const vers = TV.view !== 'library' && !j && verGroup(a);
     // One label: with a versions count on the poster, Setup Required stays on the game's page.
-    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${notifyOn(a.id) ? svg('bell', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
+    const badge = st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : st === 'uninstalling' ? `<span class="tv-badge">${esc(t('Uninstalling…'))}</span>` : st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'soon' ? `<span class="tv-badge soon">${savedSoon(a) ? svg('heartOn', 15) : ''}${esc(t('Soon'))}</span>` : (vers ? '' : sreqBadge(a)) || (st === 'installed' && TV.view !== 'library' && !String(key).startsWith('c:') ? `<span class="tv-badge left${rank ? ' low' : ''}">${esc(t('Installed'))}</span>` : '');
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
@@ -483,10 +488,13 @@
     tvSetupReq(id);
     return true;
   };
-  function mainButton(a, key) {
+  // `want`: the game's page, where Save (Coming Soon) and Add to Library carry how many want it (wantTag in app.js).
+  function mainButton(a, key, want = false) {
     const st = status(a), id = a.id;
+    const wants = () => (want && !a.custom ? wantTag(wantCount(id)) : '');
     switch (st) {
       case 'running': return btn(key, 'resume', esc(t('Back to the game')), { cls: 'main', id, g: 'a' });
+      case 'uninstalling': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Uninstalling…'))}</span></button>`;
       case 'settingup': {
         const sj = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);
         // Said as on the desktop's game page and Downloads: "Building the game · 42%".
@@ -497,9 +505,9 @@
       case 'paused': return btn(key, 'dl-resume', esc(t('Resume')), { cls: 'main', id, g: 'a' });
       case 'update': return btn(key, 'install', esc(t('Update now')), { cls: 'main', id, g: 'a' });
       case 'installed': { if (setupDue(a)) return btn(key, 'setupreq', esc(t('Set Up')), { cls: 'main warn', id, g: 'a' }); return easyNotReady(id) ? btn(key, 'setup', esc(t('Easy Setup')), { cls: 'main easy', id, g: 'a' }) : btn(key, 'play', esc(isServer(byId(id) || { id }) ? t('Start Server') : t('Play')), { cls: 'main', id, g: 'a' }); }
-      case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : notifyOn(id) ? btn(key, 'notify', esc(t('We\'ll Email You')), { cls: 'notify-on', id, icon: 'bell' }) : btn(key, 'notify', esc(t('Notify Me')), { cls: 'main', id, icon: 'bell' });
+      case 'soon': return a.custom ? `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(t('Coming soon'))}</span></button>` : isSaved(id) ? btn(key, 'unsave', esc(t('Saved')) + wants(), { cls: 'save-on', id, icon: 'heartOn' }) : btn(key, 'addlib', esc(t('Save')) + wants(), { cls: 'main', id, icon: 'heart' });
       case 'nobuild': return `<button type="button" class="tv-btn" data-f data-key="${key}" disabled><span>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] }))}</span></button>`;
-      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')), { cls: 'main', id, g: 'a' });
+      default: return isSaved(id) ? btn(key, 'install', esc(turnkey(a) ? t('Easy Setup') : t('Install')), { cls: turnkey(a) ? 'main easy' : 'main', id, g: 'a' }) : btn(key, 'addlib', esc(t('Add to Library')) + wants(), { cls: 'main', id, g: 'a' });
     }
   }
 
@@ -685,6 +693,7 @@
     const st = status(a), id = a.id;
     switch (st) {
       case 'running': return { label: t('Back to the game'), icon: 'play', run: () => invoke('resume_game').catch(fail) };
+      case 'uninstalling': return null;
       case 'busy': return { label: t('Cancel the download'), sub: progLabel(S.jobs[id])[0], icon: 'stop', run: () => cancelDownload(id) };
       case 'paused': return { label: t('Resume'), sub: progLabel(S.paused[id])[1], icon: 'down', run: () => resumeDl(id) };
       case 'update': return { label: t('Update now'), sub: S.updates[id] ? tf('{v} is out', { v: S.updates[id] }) : '', icon: 'refresh', run: () => updateGame(id).then(() => draw(true)) };
@@ -707,6 +716,7 @@
   function mainWords(a) {
     const st = status(a);
     if (st === 'busy') return progLabel(S.jobs[a.id])[0];
+    if (st === 'uninstalling') return t('Uninstalling…');
     if (st === 'soon') return t('Coming soon');
     if (st === 'nobuild') return tf('No {os} version yet', { os: OS_NAME[S.os] });
     if (st === 'settingup') {
@@ -865,8 +875,21 @@
     PRE.set(src, im);
     if (PRE.size > 60) PRE.delete(PRE.keys().next().value);
   }
+  // Whether this window must leave controllers to the core; null until it answers. On Windows,
+  // while SDL reads them, asking for gamepads starts WebView2's own controller reading, and the two
+  // together switch off a controller reconnecting through the Xbox Wireless Adapter (#496).
+  let padsWindowOff = null;
+  // Outside the launcher (a page opened on its own) there's no core to ask: the window reads them.
+  const padsAnswer = Promise.resolve().then(() => invoke('pads_window_off')).catch(() => false).then((off) => { padsWindowOff = off; return off; });
   // The box you're on tilts with the right stick (or the mouse over it), like turning it in your hands.
-  const TILT = { raf: 0, x: 0, y: 0, mx: 0, my: 0, mouseAt: 0, el: null };
+  const TILT = { raf: 0, x: 0, y: 0, mx: 0, my: 0, mouseAt: 0, el: null, stick: [0, 0], asking: false, askedAt: 0 };
+  // The core's right stick, asked for every 50 ms at most; the tilt eases towards the last answer.
+  function askRightStick() {
+    if (TILT.asking || performance.now() - TILT.askedAt < 50) return;
+    TILT.asking = true;
+    TILT.askedAt = performance.now();
+    invoke('pad_right_stick').then((s) => { TILT.stick = s; }).catch(() => {}).finally(() => { TILT.asking = false; });
+  }
   function tiltStart() {
     if (TILT.raf || lighter()) return;
     TILT.raf = requestAnimationFrame(tiltTick);
@@ -881,7 +904,11 @@
     if (!f || !TV.on) { TILT.x = TILT.y = 0; return; }
     let sx = 0, sy = 0;
     if (performance.now() - TILT.mouseAt < 1500) { sx = TILT.mx; sy = TILT.my; }
-    else if (navigator.getGamepads) {
+    else if (padsWindowOff) {
+      askRightStick();
+      [sx, sy] = TILT.stick;
+      if (Math.hypot(sx, sy) < 0.15) sx = sy = 0;
+    } else if (padsWindowOff === false && navigator.getGamepads) {
       for (const gp of navigator.getGamepads()) {
         if (!gp || gp.axes.length < 4) continue;
         const x = gp.axes[2] || 0, y = gp.axes[3] || 0;
@@ -1481,6 +1508,19 @@
     const side = r.current ? cur : r.incoming ? next : `<span class="tv-pill">${esc(t('Restore'))}</span>`;
     return `<button type="button" class="tv-item${r.current ? ' tv-svh-current' : ''}" data-f data-key="gc:${esc(r.name || r.v)}"${act}><span class="k">${esc(whenText(r.when))}<span class="tv-svh-marks">${marks}</span><small>${esc(historyDetails(r))}</small></span>${side}</button>`;
   }
+  // A save folder. A opens it, or, when the player may change it (Easy Setup skipped), asks
+  // whether to open it or pick another, as the desktop's Open and Change.
+  function savesSpotItem(id, p, i, sv) {
+    const from = esc(t(spotFrom(p, sv)));
+    const said = spotSet(p) ? `<span class="tv-svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${from}</span>` : from;
+    const act = sv.override ? 'gs-spot' : 'gs-open';
+    return `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="${act}" data-id="${esc(id)}"${p.exists ? ' data-exists="1"' : ''}>${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${said}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`;
+  }
+  // The folder its developer or RecompLauncher names, while the player's own is used: A goes back to it.
+  function savesNamedItem(id, o) {
+    const text = NAMED_UNUSED[o.by] || NAMED_UNUSED.developer;
+    return `<button type="button" class="tv-item tv-svp-unused" data-f data-key="gs:named" data-tvact="gs-named" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(o.path)}<small>${esc(t(text))}</small></span><span class="tv-pill">${esc(t(USE_NAMED))}</span></button>`;
+  }
   function pageGameSaves(id) {
     const a = libAppOf(id), g = S.library[id] || {};
     const s0 = TV.saves[id];
@@ -1510,7 +1550,8 @@
         ${shareTitle ? `<h3 class="tv-lh">${esc(t('Settings'))}</h3>` : ''}
         ${shareTitle ? `<button type="button" class="tv-item" data-f data-key="gs:share" data-tvact="gs-share" data-id="${esc(id)}" role="switch" aria-checked="${saveShareOn(shareTitle)}"><span class="k">${esc(t(SHARE_SAVES))}<small>${esc(t(SHARE_SAVES_HELP))}</small></span><span class="switch" aria-hidden="true" aria-checked="${saveShareOn(shareTitle)}"></span></button>` : ''}
         ${unknown ? '' : `<h3 class="tv-lh">${esc(t('Where it saves'))}</h3>`}
-        ${(sv.spots || []).map((p, i) => `<button type="button" class="tv-item" data-f data-key="gs:spot:${i}" data-tvact="gs-open" data-id="${esc(id)}">${svg('folder')}<span class="k tv-path">${esc(p.path)}<small>${spotSet(p) ? `<span class="tv-svp-set${p.from === 'catalog' ? ' ours' : ''}">${SET_ICON}${esc(t(FROM[p.from] || ''))}</span>` : esc(t(FROM[p.from] || ''))}${p.exists ? '' : ' · ' + esc(t('Not there yet'))}</small></span></button>`).join('')}
+        ${(sv.spots || []).map((p, i) => savesSpotItem(id, p, i, sv)).join('')}
+        ${overrideOn(sv) ? savesNamedItem(id, sv.override) : ''}
       </div>`;
     }
     return `${backdrop(a, 'game')}${gameBar()}
@@ -1643,7 +1684,7 @@
     const sbNote = sb && sb.note ? `<small>${esc(sb.note)}</small>` : '';
     const sbLine = sb ? `<p class="tv-sbadge sb-${sb.tone}" role="status" aria-label="${esc(t('Cloud saves'))}">${window.saveBadgeIcon(sb.mark, 26)}<b>${esc(sb.label)}</b>${sbNote}</p>` : '';
     const acts = [
-      mainButton(a, 'g-main'),
+      mainButton(a, 'g-main', true),
       needsSetup(a) ? btn('g-sreq', 'setupreq', esc(t('Setup Required')), { cls: 'warn-o', id, icon: 'wrench' }) : '',
       !g && !a.custom && !a.soon ? btn('g-have', 'haveit', esc(t('Locate Installed')), { id, icon: 'openfolder' }) : '',
       window.followLink(a) ? btn('g-xfollow', 'xfollow', esc(window.followLabel(window.followLink(a))), { id, icon: 'page' }) : '',
@@ -1657,7 +1698,7 @@
     ].filter(Boolean).join('');
     const ab = a.about && (a.about.summary || aboutFacts(a.about).length) ? a.about : null;
     const score = ab && ab.rating !== null && ab.rating !== undefined && ab.rating !== '' && Number.isFinite(Number(ab.rating)) ? Math.round(Number(ab.rating)) : null;
-    const about = ab ? `<section class="tv-block"><h3>${esc(t('About the game'))}${score !== null ? ` <small class="tv-score"><b>${score}</b>${esc(t('Critic and player score'))}</small>` : ''}</h3><div class="tv-panel tv-igdb" data-f data-key="g-about">${ab.summary ? `<p class="tv-about" dir="auto">${esc(String(ab.summary).split(/\n\s*\n/)[0])}</p>` : ''}${aboutFacts(ab).length ? `<dl>${aboutFacts(ab).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}<p class="tv-src">${esc(t('Game info from IGDB'))}</p></div></section>`
+    const about = ab ? `<section class="tv-block"><h3>${esc(t('About the game'))}${score !== null ? ` <small class="tv-score"><b>${score}</b>${esc(t('Critic and player score'))}</small>` : ''}</h3><div class="tv-panel tv-igdb" data-f data-key="g-about">${ab.summary ? `<p class="tv-about" dir="auto">${esc(String(ab.summary).split(/\n\s*\n/)[0])}</p>` : ''}${aboutFacts(ab).length ? `<dl>${aboutFacts(ab).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}${aboutSource(ab) ? `<p class="tv-src">${esc(aboutSource(ab).label)}</p>` : ''}</div></section>`
       : info ? `<section class="tv-block"><h3>${esc(tf('About {title}', { title: info.title }))}</h3><p class="tv-about">${esc(info.text.split('\n\n')[0])}</p><p class="tv-src">${esc(t('From Wikipedia'))}</p></section>`
       : a.blurb && g ? `<section class="tv-block"><h3>${esc(t('About it'))}</h3><p class="tv-about">${esc(a.blurb)}</p></section>` : '';
     // Not installed yet: what the recomp is and who makes it come first; what it needs comes after.
@@ -1675,11 +1716,12 @@
           ${titleOf(a)}
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
-          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
+          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.library[id] && setUpByYou(id) ? `<span class="tv-easy">${esc(t('Set Up by You'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${byLine}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           ${sbLine}
           <div class="tv-acts">${acts}</div>
+          ${a.soon && !a.custom ? `<p class="tv-soon-note" dir="auto">${esc(soonNoteText(a))}</p>` : ''}
           ${stNote}
           ${tagsOf(a).length ? `<div class="tv-acts tv-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tv-tag" data-f data-key="tag:${esc(tg)}" data-tvact="tag" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('')}</div>` : ''}
           ${ownAbout(a.id) ? `<section class="tv-block"><h3>${esc(t('Your Description'))}</h3><div class="tv-panel" data-f data-key="g-own"><p class="tv-about" dir="auto">${esc(ownAbout(a.id))}</p></div></section>` : ''}${about}${checkBlock}${shotRow}${achGameTV(id)}
@@ -1961,7 +2003,7 @@
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
         ...(!S.running.has(id) && window.hasOwnPlaytime(id) ? [{ label: t('Reset Play Time'), sub: t('Its play time on this PC starts again from zero'), icon: 'history', run: () => { closeSheet(); setTimeout(() => window.resetPlaytime(id), 250); } }] : []),
-        ...(!S.running.has(id) && !S.jobs[id] ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
+        ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
       ] : []),
     ];
     const st = S.running.has(id) ? t('Playing now') : g ? timeLine(g) : a.game ? tf('Based on {game}', { game: a.game }) : '';
@@ -2013,13 +2055,18 @@
   // Uninstall, from a controller: the same choices as on the desktop.
   function tvUninstall(id) {
     const g = S.library[id];
-    if (!g) return;
+    // Already on its way out: a second press would only fail once the first one is done.
+    if (!g || S.uninstalling.has(id)) return;
     if (S.running.has(id)) return toast(t('Close the game first.'), true);
     // keep: a copy of its saves first, as the desktop's tick does (on unless the player picks the
     // item that deletes them too).
     const run = (del, keep = true) => async () => {
+      if (S.uninstalling.has(id)) return;
+      S.uninstalling.add(id);
+      draw(true);
       let r = {};
-      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { await refreshState(); draw(true); return fail(e); }
+      try { r = (await invoke('uninstall', { id, deleteFiles: del, keepSaves: keep })) || {}; } catch (e) { S.uninstalling.delete(id); await refreshState(); draw(true); return fail(e); }
+      S.uninstalling.delete(id);
       if (window.usageUninstall) window.usageUninstall(id);
       if (window.keepOut) await window.keepOut(id);
       delete S.updates[id];
@@ -2380,7 +2427,18 @@
         <div class="two"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Use It Anyway'))}</span></button></div>`;
     } else {
       items = [{ run: () => { TS.stage = 'steps'; TS.named = Object.assign({}, TS.named, { copy: '', busy: false }); setTimeout(tsDraw, 0); } }];
-      body = `${med('ghost')}<div class="tt"><h2>${esc(t('That copy didn\'t work'))}</h2><p>${esc(t(TS.err))}</p></div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
+      // Copy and Open Full Log: items like the rest, so A presses them.
+      const runs = {
+        copy: () => setupFailAct('copy', id, TS.err),
+        open: () => setupFailAct('open', id, TS.err),
+      };
+      const button = (act, label) => {
+        items.push({ run: runs[act] });
+        const at = items.length - 1;
+        return `<button type="button" class="tv-btn" data-f data-key="ts:fail-${act}" data-sheet="${at}"><span>${esc(label)}</span></button>`;
+      };
+      const failHtml = setupFailHtml(TS.err, { p: 'err', row: 'tv-logb', tail: 'tv-tail', button });
+      body = `${med('ghost')}<div class="tt"><h2>${esc(setupFailTitle(TS.err))}</h2>${failHtml}</div><div class="two" style="grid-template-columns:1fr;width:520px"><button type="button" class="tv-btn main" data-f data-key="ts:0" data-sheet="0">${glyph('a', 'tv-keyg')}<span>${esc(t('Try another copy'))}</span></button></div>`;
     }
     el.dataset.stage = TS.stage;
     el.innerHTML = `${cov ? `<div class="glow" style="background-image:url('${cssUrl(cov)}')"></div>` : ''}${body}`;
@@ -2442,7 +2500,9 @@
     // The same control again after a redraw; on a new step, its main button (Next or Set Up).
     const same = TS.stage === 'steps' && prevKey ? $$('[data-sheet]', el).find((x) => x.dataset.key === prevKey) : null;
     const main = TS.stage === 'steps' ? $('.ss-foot .btn.main[data-sheet]', el) : null;
-    const f = same || main || $('[data-sheet]', el);
+    // A failed setup: Try Another Copy, not the log's Copy above it.
+    const retry = TS.stage === 'error' ? $('[data-key="ts:0"]', el) : null;
+    const f = same || main || retry || $('[data-sheet]', el);
     if (f) focus(f, true);
   }
   // A button of the steps, pressed with A: the same actions as the desktop window's (ssAct).
@@ -3035,6 +3095,16 @@
     draw();
   }
 
+  // The same pick as the desktop's Where it saves: the player's folder from now on, or in place
+  // of the named one for a game set up without Easy Setup.
+  async function pickSavesFolder(id) {
+    const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
+    if (!p) return;
+    try { S.library[id] = await invoke(placeCommand(TV.saves[id]), { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
+    toast(t('Saved. Backups and cloud saves use that folder now.'));
+    return loadGameSaves(id);
+  }
+
   async function activate(el) {
     if (!el || el.disabled) return;
     // With a sheet open, only what's on it can be picked.
@@ -3092,7 +3162,7 @@
       case 'shots': await loadAllShots(); return go('shots', id);
       case 'mods': return go('mods', id);
       case 'gsettings': return go('gsettings', id);
-      case 'notify': sfx('select'); return toggleNotify(id).then(() => draw(true));
+      case 'unsave': sfx('select'); await removeFromLibrary(id); TV.focusKey = 'g-main'; return draw(true);
       case 'notex': sfx('back'); return closeNote(el.dataset.n).then(() => draw(true));
       case 'noteurl': { const u = httpsOnly(el.dataset.url); return u ? invoke('open_url', { url: u }).catch(fail) : null; }
       // Home's info boxes and banners, from the website's list.
@@ -3148,7 +3218,7 @@
         if (!g) return;
         sfx('open');
         return sheet(g.name, [
-          ...(!S.running.has(id) && !S.jobs[id] ? [{ label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
+          ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
           { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
           { label: t('Game page'), icon: 'page', run: () => go('game', id) },
         ]);
@@ -3182,12 +3252,17 @@
         return loadGameSaves(id);
       }
       case 'gs-open': return invoke('saves_open', { id }).catch(fail);
-      case 'gs-place': {
-        // The same pick as the desktop's Where it saves: the player's folder from now on.
-        const p = await pickFile({ title: t('The folder where the game keeps its saves'), directory: true }).catch(fail);
-        if (!p) return;
-        try { S.library[id] = await invoke('saves_set_place', { id, path: typeof p === 'string' ? p : p.path }); } catch (e) { return fail(e); }
-        toast(t('Saved. Backups and cloud saves use that folder now.'));
+      case 'gs-place': return pickSavesFolder(id);
+      case 'gs-spot': {
+        sfx('open');
+        const open = { label: t('Open'), sub: t('Where the game keeps its saves'), icon: 'folder', run: () => invoke('saves_open', { id }).catch(fail) };
+        const change = { label: t('Change'), sub: t('The folder where the game keeps its saves'), icon: 'folder', run: () => pickSavesFolder(id) };
+        return sheet(t('Where it saves'), el.dataset.exists ? [open, change] : [change]);
+      }
+      case 'gs-named': {
+        sfx('select');
+        try { S.library[id] = await invoke('saves_set_override', { id, path: null }); } catch (e) { return fail(e); }
+        toast(t('Saved. Backups and cloud saves use that folder again.'));
         return loadGameSaves(id);
       }
       case 'gs-restore': {
@@ -3334,7 +3409,7 @@
   }
 
   // Controllers: from the core (Xbox through XInput, PlayStation read directly), with the
-  // window's own gamepad support as a fallback if the core never reports anything.
+  // window's own gamepad support as a fallback, except where it must leave them to the core (padsWindowOff).
   let nativeSeen = false;
   let lastPad = { b: '', t: 0 };
   const BORN = performance.now();
@@ -3419,7 +3494,7 @@
       held[k] = now;
     }
   }
-  pollPads();
+  padsAnswer.then((off) => { if (!off) pollPads(); });
 
   // F11 switches between the desktop view and Big Picture mode.
   document.addEventListener('keydown', (e) => {
