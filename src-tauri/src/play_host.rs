@@ -118,23 +118,26 @@ impl Request {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Reply {
     Started(u32),
-    Failed { code: Option<i32>, msg: String },
+    Failed { code: Option<i32>, not_found: bool, msg: String },
 }
 
 impl Reply {
     fn of(r: &std::io::Result<std::process::Child>) -> Reply {
         match r {
             Ok(c) => Reply::Started(c.id()),
-            Err(e) => Reply::Failed { code: e.raw_os_error(), msg: e.to_string() },
+            Err(e) => Reply::Failed { code: e.raw_os_error(), not_found: e.kind() == std::io::ErrorKind::NotFound, msg: e.to_string() },
         }
     }
 
     /// The same error a start in the launcher would have had, so it says the same to the player.
-    pub fn error(code: Option<i32>, msg: &str) -> std::io::Error {
-        match code {
-            Some(c) => std::io::Error::from_raw_os_error(c),
-            None => std::io::Error::other(msg.to_string()),
+    /// A missing program has no OS code on Windows (std looks the program up itself), so whether
+    /// it was "not found" travels on its own.
+    pub fn error(code: Option<i32>, not_found: bool, msg: &str) -> std::io::Error {
+        if let Some(c) = code {
+            return std::io::Error::from_raw_os_error(c);
         }
+        let kind = if not_found { std::io::ErrorKind::NotFound } else { std::io::ErrorKind::Other };
+        std::io::Error::new(kind, msg.to_string())
     }
 }
 
@@ -275,7 +278,7 @@ pub fn start_through(host: &Host, cmd: &std::process::Command, output: Option<&P
     let (reply, mut stream) = ask(host, &req).map_err(|_| None)?;
     let pid = match reply {
         Reply::Started(pid) => pid,
-        Reply::Failed { code, msg } => return Err(Some(Reply::error(code, &msg))),
+        Reply::Failed { code, not_found, msg } => return Err(Some(Reply::error(code, not_found, &msg))),
     };
     // The host holds the game's process open until "held", so this finds the game even when it
     // closed at once.
@@ -434,8 +437,8 @@ mod tests {
         std::thread::spawn(move || listening.serve());
         let cmd = std::process::Command::new("rl-no-such-program-424");
         let (reply, _) = ask(&host, &Request::of(&cmd, None, &host.token).unwrap()).unwrap();
-        let Reply::Failed { code, msg } = reply else { panic!("{reply:?}") };
-        assert_eq!(Reply::error(code, &msg).kind(), std::io::ErrorKind::NotFound);
+        let Reply::Failed { code, not_found, msg } = reply else { panic!("{reply:?}") };
+        assert_eq!(Reply::error(code, not_found, &msg).kind(), std::io::ErrorKind::NotFound);
     }
 
     #[cfg(windows)]
