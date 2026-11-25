@@ -934,6 +934,16 @@ pub fn state(app_dir: &Path, id: &str) -> State {
 }
 
 pub fn set_state(app_dir: &Path, id: &str, s: &State) {
+    write_state(app_dir, id, s, false);
+}
+
+/// After the saves here were replaced (a restore, a shared save): the copy queued to go up is
+/// superseded, whichever account it was queued for, so signing in to it again doesn't send it.
+fn set_state_saves_replaced(app_dir: &Path, id: &str, s: &State) {
+    write_state(app_dir, id, s, true);
+}
+
+fn write_state(app_dir: &Path, id: &str, s: &State, saves_replaced: bool) {
     let now = scope_now(app_dir);
     if s.read_under.as_ref().is_some_and(|r| *r != now) {
         crate::trail::note(format!("Saves: {id}'s sync note wasn't kept, the account changed meanwhile"));
@@ -948,6 +958,9 @@ pub fn set_state(app_dir: &Path, id: &str, s: &State) {
         if let Some((written, Some(owner))) = read_note(app_dir, id) {
             if owner != now && owned(&owner) {
                 keep.take_cloud_from(&written);
+                if saves_replaced {
+                    keep.pending = None;
+                }
                 scope = owner;
             }
         }
@@ -1224,7 +1237,7 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // A successful restore replaces the save that was queued for upload. Keep its archive in
     // local history, but do not let a retry send it over the player's restored selection.
     st.pending = None;
-    set_state(app_dir, id, &st);
+    set_state_saves_replaced(app_dir, id, &st);
     Ok(n)
 }
 
@@ -1478,7 +1491,7 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
 
     let mut s = state(app_dir, id);
     s.pending = None;
-    set_state(app_dir, id, &s);
+    set_state_saves_replaced(app_dir, id, &s);
     Ok(())
 }
 
@@ -2126,6 +2139,42 @@ mod tests {
         fs::remove_dir_all(d).unwrap();
     }
 
+    // Account A queues the newest copy; the older one is restored with `who` signed in (None:
+    // nobody); then A signs in again and looks at what's queued.
+    fn restored_while_away(name: &str, who: Option<&str>) -> Option<String> {
+        let d = tmp(name);
+        let app = d.join("app");
+        let inst = d.join("inst");
+        fs::create_dir_all(&inst).unwrap();
+        let g = game(&inst);
+        let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
+        fs::write(inst.join("slot.sav"), "older save").unwrap();
+        let older = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        fs::write(inst.join("slot.sav"), "newer save queued for A").unwrap();
+        let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
+        set_state(&app, "g", &State { last_hash: queued.hash, synced_hash: "a-cloud".into(), pending: Some(queued.name), ..Default::default() });
+        match who {
+            Some(uid) => crate::cloud::sign_in_for_tests(&app, uid),
+            None => crate::cloud::sign_out_for_tests(&app),
+        }
+        restore(&app, "g", &dir_of(&app, "g", &g).join(&older.name), &spots, &g).unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
+        let pending = state(&app, "g").pending;
+        fs::remove_dir_all(d).unwrap();
+        pending
+    }
+
+    #[test]
+    fn restoring_signed_out_cancels_the_accounts_queued_upload() {
+        assert_eq!(restored_while_away("restore-signed-out", None), None);
+    }
+
+    #[test]
+    fn restoring_as_another_account_cancels_the_first_accounts_queued_upload() {
+        assert_eq!(restored_while_away("restore-as-b", Some("B")), None);
+    }
+
     #[test]
     fn a_failed_restore_keeps_the_pending_upload() {
         let d = tmp("restore-pending-error");
@@ -2761,6 +2810,23 @@ mod account_scope_tests {
         sign_in(&d.0, "A");
         let s = state(&d.0, "g");
         assert_eq!((s.synced_hash.as_str(), s.last_hash.as_str()), ("a-cloud", "played signed out"));
+    }
+
+    #[test]
+    fn an_account_signed_in_without_an_id_keeps_its_queue() {
+        let d = AppDir::new("no-id");
+        sign_in(&d.0, "");
+        set_state(&d.0, "g", &State { pending: Some("200.zip".into()), ..Default::default() });
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("200.zip"));
+    }
+
+    #[test]
+    fn an_account_signed_in_without_an_id_is_not_nobody() {
+        let d = AppDir::new("no-id-vs-nobody");
+        sign_in(&d.0, "");
+        set_state(&d.0, "g", &State { pending: Some("200.zip".into()), ..Default::default() });
+        sign_out(&d.0);
+        assert_eq!(state(&d.0, "g").pending, None);
     }
 
     #[test]

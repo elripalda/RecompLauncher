@@ -114,6 +114,9 @@ pub fn signed_in(dir: &Path) -> bool {
     load(dir).is_some()
 }
 
+/// The id used for an account signed in without one (account_uid).
+const NO_UID: &str = "signed-in-without-id";
+
 /// The signed-in account's id, empty when nobody is. For the save notes (saves::state), which
 /// are read often: it reads account.json only, never the sealed token.
 pub(crate) fn account_uid(dir: &Path) -> String {
@@ -123,6 +126,11 @@ pub(crate) fn account_uid(dir: &Path) -> String {
     };
     if a.token.is_empty() && a.sealed.is_empty() {
         return String::new();
+    }
+    // Signed in, but the website gave no id: still somebody, so what this account syncs sticks.
+    // Its notes start fresh once an id comes, which is the safe first-sync path.
+    if a.user.uid.is_empty() {
+        return NO_UID.into();
     }
     a.user.uid
 }
@@ -538,6 +546,9 @@ pub async fn account_poll(app: AppHandle) -> Res<Value> {
         if token.is_empty() {
             return Err(Error::Msg("The website didn't answer properly. Try again in a moment.".into()));
         }
+        if user.uid.is_empty() {
+            crate::trail::note("Account: signed in, but the website gave no account id");
+        }
         let st = app.state::<App>();
         store(&st.dir, Some(&Account { token, user: user.clone(), ..Default::default() }));
         *LINK.lock().unwrap() = None;
@@ -574,7 +585,12 @@ pub async fn account_state(app: AppHandle, fresh: bool) -> Res<Value> {
     };
     match r {
         Ok(v) => {
-            let user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
+            let mut user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
+            // The id ties the save notes to this account (saves::state): an answer without one
+            // must not make them look like another account's.
+            if user.uid.is_empty() {
+                user.uid = a.user.uid.clone();
+            }
             store(&st.dir, Some(&Account { token: a.token, user: user.clone(), ..Default::default() }));
             Ok(json!({"signedIn": true, "user": user, "used": v.pointer("/saves/used"), "quota": v.pointer("/saves/quota")}))
         }
@@ -823,11 +839,19 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 
 async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
+    // One account from the note to the request: a switch meanwhile must not send this note's
+    // copy with the next account's token.
+    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let mut state = saves::state(&st.dir, id);
+    // Signed in to another account just now: this note isn't that account's to send (the log
+    // says so). The copy stays on this PC and goes up with the new account's own sync.
+    if !still_signed_in_as(&st.dir, &a, id) {
+        return Ok(());
+    }
     let copy = saves::manifest(&copies_dir(&st, id).join(name))
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
-    let Some(top) = list.first() else { return upload_copy(app, id, name, 0).await };
+    let Some(top) = list.first() else { return upload_copy(app, id, name, 0, &a).await };
     if top.hash == copy.hash {
         state.mark_synced(&copy.hash, top.made, &top.device);
         if state.pending.as_deref() == Some(name) {
@@ -841,10 +865,10 @@ async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         saves::set_state(&st.dir, id, &state);
         return Err(Error::Msg(SYNC_CONFLICT.into()));
     }
-    upload_copy(app, id, name, top.made.saturating_add(1)).await
+    upload_copy(app, id, name, top.made.saturating_add(1), &a).await
 }
 
-async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Res<()> {
+async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64, a: &Account) -> Res<()> {
     let st = app.state::<App>();
     let path = copies_dir(&st, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
@@ -875,7 +899,6 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
         crate::trail::note(format!("Cloud saves: {id}'s copy is {} MB, too big to send", body.len() / (1024 * 1024)));
         return Err(Error::Msg(why.into()));
     }
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let made_at = man.made.max(earliest);
     let (made, played) = (made_at.to_string(), man.played.to_string());
     let size = body.len() as u64;
@@ -1238,7 +1261,8 @@ async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot
             .ok_or_else(|| Error::Msg("The saves changed. Try syncing again.".into()))
     }).await??;
     // A player can choose a save that was backed up before the current cloud copy.
-    let r = upload_copy(app, id, &copy.name, after.saturating_add(1)).await;
+    let a = load(&app.state::<App>().dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    let r = upload_copy(app, id, &copy.name, after.saturating_add(1), &a).await;
     if let Err(e) = &r {
         note_failure(&app.state::<App>().dir, id, e);
     }
@@ -2370,6 +2394,17 @@ mod child_retry_tests {
         sign_in_for_tests(&st.dir, "B");
         let (_busy, copy) = pending_copy(&st.dir, "series", &st.lib).await;
         assert_eq!(copy, None);
+    }
+
+    #[test]
+    fn a_sync_that_finishes_after_an_account_switch_is_not_noted_for_the_new_one() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        let a = Account { token: "a-token".into(), user: User { uid: "A".into(), ..Default::default() }, ..Default::default() };
+        sign_in_for_tests(&st.dir, "A");
+        assert!(still_signed_in_as(&st.dir, &a, "series"));
+        sign_in_for_tests(&st.dir, "B");
+        assert!(!still_signed_in_as(&st.dir, &a, "series"));
     }
 
     #[test]
