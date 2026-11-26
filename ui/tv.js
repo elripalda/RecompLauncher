@@ -648,7 +648,7 @@
     if (!sp || !sp.id || !sp.img) return '';
     const id = String(Number(sp.id) || 0);
     const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
-    return `<section class="tv-sec tv-hban" data-sec="hbn:${id}"><button type="button" class="tv-spb" data-f data-key="hbn:${id}" data-tvact="spgo" data-id="${id}" data-sp="${id}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
+    return `<section class="tv-sec tv-hban" data-sec="hbn:${id}"><button type="button" class="tv-spb" data-f data-key="hbn:${id}" data-tvact="spgo" data-id="${id}" data-sp="${id}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" decoding="async">${sp.aff ? `<span class="sp-tag sp-aff">${esc(t('Affiliate'))}</span>` : `<span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span>`}</button></section>`;
   }
   // The box behind a button, looked up again in the list (the page's own copy of it is never trusted).
   const homeBoxOf = (id) => ((S.home && S.home.items) || []).find((x) => x && x.k === 'box' && String(Number(x.id) || 0) === String(id)) || null;

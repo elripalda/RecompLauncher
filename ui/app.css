@@ -3036,4 +3036,5 @@ body.light .set-row .k .svp-set{color:#127a45}
 .sp-tile{position:relative;display:block;width:100%;padding:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card);cursor:pointer;transition:border-color .15s}
 .sp-tile:hover,.sp-tile:focus-visible{border-color:rgba(244,248,252,.3)}
 .sp-tile img{display:block;width:100%;height:auto;max-height:180px;object-fit:cover}
+.sp-tile .sp-tag.sp-aff{right:6px;bottom:6px;font-size:8px;font-weight:500;letter-spacing:.03em;text-transform:none;padding:2px 4px;border-radius:4px;color:rgba(244,248,252,.6);background:rgba(11,18,32,.5)}
 .sp-tile .sp-tag{position:absolute;right:8px;bottom:8px;font:600 10px/1 inherit;letter-spacing:.04em;text-transform:uppercase;color:rgba(244,248,252,.85);background:rgba(11,18,32,.72);padding:4px 6px;border-radius:5px}

@@ -424,7 +424,7 @@ pub async fn playtime_reset(app: AppHandle, id: String) -> Res<Value> {
     Ok(json!({ "account": cleared }))
 }
 
-/// Sponsor spots for this account in the app ({s: [{id, slot, img, alt, house}]}). Quiet like play time:
+/// Sponsor spots for this account in the app ({s: [{id, slot, img, alt, house, aff}]}). Quiet like play time:
 /// signed out, offline or an older website all just give nothing.
 #[tauri::command]
 pub async fn spons_mine(app: AppHandle) -> Res<Value> {

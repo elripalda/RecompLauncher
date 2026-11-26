@@ -454,7 +454,7 @@ function sponsBand(slot) {
   const x = sponsFor(slot);
   if (!x) return '';
   const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
-  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
+  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async">${spTag(x)}</button></section>`;
 }
 // One view per spot per launch, once it's on screen (on Home, or Big Picture's Home).
 const SP_SEEN = new Set();
@@ -2004,11 +2004,16 @@ function homeBox(x) {
   return `<div class="callout home-box"><span class="ic">${homeIcon(x.icon)}</span><div class="k">${title ? `<b dir="auto">${esc(title)}</b>` : ''}${text ? `<span dir="auto">${esc(text)}</span>` : ''}</div>${btn}${close}</div>`;
 }
 // A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
+// The banner's corner tag. An affiliate link (the website's aff) gets a small "Affiliate" instead of "Sponsored".
+function spTag(sp) {
+  if (sp.aff) return `<span class="sp-tag sp-aff">${esc(t('Affiliate'))}</span>`;
+  return `<span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span>`;
+}
 function homeBanner(x) {
   const sp = x && x.sp;
   if (!sp || !sp.id || !sp.img) return '';
   const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
-  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(sp.id))}" data-sp="${esc(String(sp.id))}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
+  return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(sp.id))}" data-sp="${esc(String(sp.id))}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" loading="lazy" decoding="async">${spTag(sp)}</button></section>`;
 }
 
 // ---------- Trending This Week (the site's weekly chart of the most played recomps) ----------

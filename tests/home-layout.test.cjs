@@ -28,7 +28,7 @@ function ctx(S) {
   });
   vm.runInContext(line('const HOME_ROWS') + line('const HOME_GO') + line('const homeClosed') + line('const HOME_ICONS = {').replace('{', '{};'), c);
   vm.runInContext(line('const homeIcon') + line('const HOME_TR_BASE'), c);
-  vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBoxAct') + fn('homeBox') + fn('homeBanner'), c);
+  vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBoxAct') + fn('homeBox') + fn('spTag') + fn('homeBanner'), c);
   return c;
 }
 const ROWS = Object.fromEntries(['played', 'favs', 'ready', 'updated', 'follow', 'found', 'trend', 'new', 'easy', 'news'].map((k) => [k, `[${k}]`]));
@@ -88,6 +88,13 @@ test('A banner from the list is drawn with its booking, so its views and clicks 
   const html = page({ v: 1, items: [{ k: 'banner', id: 1, slot: 'app_home', sp: { id: 9, img: '/media/sponsors/a.png', alt: 'Ad', house: false } }], hide: Object.keys(ROWS) });
   assert.match(html, /data-act="sp-go" data-id="9" data-sp="9"/);
   assert.match(html, /src="https:\/\/site\/media\/sponsors\/a.png"/);
+});
+
+test('A banner says Sponsored, or a small Affiliate when the website marks it an affiliate link', () => {
+  const banner = (sp) => page({ v: 1, items: [{ k: 'banner', id: 1, slot: 'app_home', sp: Object.assign({ id: 9, img: '/a.png', alt: 'Ad' }, sp) }], hide: Object.keys(ROWS) });
+  assert.match(banner({}), /<span class="sp-tag">Sponsored<\/span>/);
+  assert.match(banner({ house: true }), /<span class="sp-tag">From us<\/span>/);
+  assert.match(banner({ aff: true }), /<span class="sp-tag sp-aff">Affiliate<\/span>/);
 });
 
 test('An info box shows its words in the player\'s language when the website translated them', () => {
