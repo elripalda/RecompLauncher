@@ -896,11 +896,11 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
         return None;
     }
     let runnable = |p: &Path| -> bool {
-        let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
         // Mac metadata sidecars can inherit run permission on an external drive.
-        if n.starts_with("._") {
+        if crate::install::mac_metadata(p) {
             return false;
         }
+        let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
         if [".dll", ".so", ".exe", ".txt", ".md", ".ini", ".cfg", ".json", ".pdb", ".zip", ".7z", ".dat", ".bin"].iter().any(|e| n.ends_with(e)) || n.contains(".so.") {
             return false;
         }

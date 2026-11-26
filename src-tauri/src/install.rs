@@ -840,7 +840,7 @@ pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathB
         return (exe, None);
     }
     let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-    let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+    let new_appimage = files.iter().find(|f| !mac_metadata(f) && f.to_string_lossy().to_lowercase().ends_with(".appimage"));
     if let (true, Some(n)) = (is_appimage, new_appimage) {
         if *n != old {
             return (Some(n.clone()), Some(old));
@@ -1141,7 +1141,7 @@ fn appimages_in(dir: &Path) -> Vec<PathBuf> {
                 continue;
             }
             let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
-            if ty.is_file() && named {
+            if ty.is_file() && named && !mac_metadata(&path) {
                 out.push(path);
             }
         }
@@ -1497,7 +1497,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
                 }
                 continue;
             }
-            if !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
+            if mac_metadata(&p) || !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
                 continue;
             }
             let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
@@ -1532,7 +1532,16 @@ pub fn looks_like_setup(p: &Path) -> bool {
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
 
+/// A Mac's metadata file ("._Game.exe"), which a Mac writes beside each file on a drive formatted
+/// for Windows, or into an archive it packs. It's never a program, whatever its name ends in.
+pub fn mac_metadata(p: &Path) -> bool {
+    p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))
+}
+
 pub fn is_program(p: &Path, os: &str) -> bool {
+    if mac_metadata(p) {
+        return false;
+    }
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     if os == "windows" {
         return n.ends_with(".exe");
@@ -1948,6 +1957,18 @@ mod tests {
     }
 
     #[test]
+    fn an_update_never_takes_a_macs_metadata_file_for_its_appimage() {
+        let target = tmp("update-appledouble-appimage");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let (got, _) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["._Game-v2.AppImage", "Game-v2.AppImage"]), true);
+
+        assert_eq!(got, Some("Game-v2.AppImage".into()));
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
     fn updating_follows_a_managed_program_into_its_new_folder() {
         let target = tmp("update-managed-exe");
         fs::create_dir_all(target.join("bin")).unwrap();
@@ -2072,6 +2093,31 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    /// What a Mac writes beside a file on a drive or in an archive: "._" and the file's name.
+    fn mac_metadata_beside(p: &Path) {
+        let name = format!("._{}", p.file_name().unwrap().to_string_lossy());
+        fs::write(p.with_file_name(name), b"\x00\x05\x16\x07AppleDouble").unwrap();
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_the_setup() {
+        let d = tmp("appledouble-setup");
+        put(&d.join("Game.exe"), 2_000_000);
+        put(&d.join("Game-setup.exe"), 1_000_000);
+        mac_metadata_beside(&d.join("Game-setup.exe"));
+        assert_eq!(find_setup(&d, "windows", Some(Path::new("Game.exe"))), Some(PathBuf::from("Game-setup.exe")));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_linux_program() {
+        assert!(!is_program(Path::new("/games/x/._game.x86_64"), "linux"));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_windows_program() {
+        assert!(!is_program(Path::new("/games/x/._Game.exe"), "windows"));
     }
 
     #[test]
