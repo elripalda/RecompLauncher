@@ -161,6 +161,8 @@
  "In Today's Format": "現在の形式",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "起動するプログラムがまだありません。「管理」メニューの「ゲームの実行ファイルを設定」で選んでください。",
  "Its setup step stopped answering: it printed nothing for an hour.": "セットアップ手順が応答しなくなりました: 1 時間何も出力していません。",
+ "Its setup step's program finished, but the files it was building never appeared.": "セットアップ手順のプログラムは終了しましたが、ビルド中のファイルが作成されませんでした。",
+ "Still building…": "まだビルド中…",
  "This game still needs your files, so they stay.": "このゲームはまだあなたのファイルが必要なので、そのまま残します。",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "このゲームのセットアップ手順は Windows のプログラムなので、Linux で動かすには Proton が必要です。「設定」→「一般」→「GE-Proton」でワンタッチでインストールできます。そのあと、ゲームをもう一度セットアップしてください。",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "game を inputs に移し、ランチャーが今は無視する項目を除いたファイルです。次のリリースで使ってください。",

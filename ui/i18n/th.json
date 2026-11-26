@@ -161,6 +161,8 @@
  "In Today's Format": "ในรูปแบบปัจจุบัน",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "ยังไม่มีโปรแกรมให้เปิด เลือกได้ด้วย “ตั้งไฟล์โปรแกรมของเกม” ในเมนูจัดการของเกม",
  "Its setup step stopped answering: it printed nothing for an hour.": "ขั้นตอนการตั้งค่าหยุดตอบสนอง: ไม่แสดงอะไรเลยเป็นเวลาหนึ่งชั่วโมง",
+ "Its setup step's program finished, but the files it was building never appeared.": "โปรแกรมของขั้นตอนการตั้งค่าทำงานเสร็จแล้ว แต่ไฟล์ที่กำลังสร้างไม่ปรากฏขึ้นเลย",
+ "Still building…": "ยังคงสร้างอยู่…",
  "This game still needs your files, so they stay.": "เกมนี้ยังต้องใช้ไฟล์ของคุณ จึงเก็บไฟล์ไว้",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "ขั้นตอนการตั้งค่าของเกมนี้เป็นโปรแกรม Windows และต้องใช้ Proton เพื่อทำงานบน Linux ไปที่ การตั้งค่า → ทั่วไป → GE-Proton เพื่อติดตั้งได้ในกดเดียว แล้วตั้งค่าเกมอีกครั้ง",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "ไฟล์ของคุณที่ย้าย game ไปไว้ใน inputs และตัดสิ่งที่ launcher ไม่ใช้แล้วออก ใช้ในรีลีสถัดไปของคุณ",

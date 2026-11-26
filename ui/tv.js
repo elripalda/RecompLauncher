@@ -2397,7 +2397,7 @@
       const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
-      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && t(s.extras.text)) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;

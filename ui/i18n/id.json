@@ -161,6 +161,8 @@
  "In Today's Format": "Dalam Format Sekarang",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Belum punya program untuk dijalankan. Pilih dengan “Atur file eksekusi game” di menu Kelola-nya.",
  "Its setup step stopped answering: it printed nothing for an hour.": "Langkah penyiapannya berhenti merespons: tidak mencetak apa pun selama satu jam.",
+ "Its setup step's program finished, but the files it was building never appeared.": "Program langkah penyiapannya selesai, tetapi file yang sedang dibuatnya tidak pernah muncul.",
+ "Still building…": "Masih membangun…",
  "This game still needs your files, so they stay.": "Game ini masih butuh file-mu, jadi file-nya tetap disimpan.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "Langkah penyiapan game ini adalah program Windows, dan butuh Proton untuk berjalan di Linux. Pengaturan → Umum → GE-Proton memasangnya dengan sekali tekan, lalu siapkan game-nya lagi.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "File-mu dengan game dipindahkan ke inputs, tanpa yang kini diabaikan launcher. Pakai di rilis berikutnya.",

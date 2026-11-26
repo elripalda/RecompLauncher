@@ -161,6 +161,8 @@
  "In Today's Format": "현재 형식",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "아직 실행할 프로그램이 없습니다. 관리 메뉴의 '게임 실행 파일 설정'으로 고르세요.",
  "Its setup step stopped answering: it printed nothing for an hour.": "설정 단계가 응답하지 않습니다: 한 시간 동안 아무것도 출력하지 않았습니다.",
+ "Its setup step's program finished, but the files it was building never appeared.": "설정 단계의 프로그램은 끝났지만, 빌드하던 파일이 나타나지 않았습니다.",
+ "Still building…": "아직 빌드 중…",
  "This game still needs your files, so they stay.": "이 게임은 아직 파일이 필요하므로 그대로 둡니다.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "이 게임의 설정 단계는 Windows 프로그램이라서 Linux에서 실행하려면 Proton이 필요합니다. 설정 → 일반 → GE-Proton에서 한 번만 누르면 설치되니, 그다음 게임을 다시 설정하세요.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "game을 inputs로 옮기고 런처가 이제 무시하는 항목을 뺀 파일입니다. 다음 릴리스에 사용하세요.",

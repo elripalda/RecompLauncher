@@ -161,6 +161,8 @@
  "In Today's Format": "目前格式",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "它還沒有可啟動的程式。請在它的「管理」選單中用「設定遊戲執行檔」選擇。",
  "Its setup step stopped answering: it printed nothing for an hour.": "它的設定步驟沒有回應：已經一小時沒有任何輸出。",
+ "Its setup step's program finished, but the files it was building never appeared.": "它的設定步驟程式已結束，但它正在建置的檔案始終沒有出現。",
+ "Still building…": "仍在建置…",
  "This game still needs your files, so they stay.": "此遊戲仍需要你的檔案，所以保留它們。",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "此遊戲的設定步驟是 Windows 程式，在 Linux 上需要 Proton 才能執行。在「設定」→「一般」→「GE-Proton」中按一下即可安裝，然後重新設定遊戲。",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "你的檔案：game 已移到 inputs 中，並去掉了啟動器現在忽略的內容。請在下一個版本中使用它。",
