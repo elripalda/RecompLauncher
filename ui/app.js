@@ -310,6 +310,12 @@ addEventListener('keydown', (e) => {
 });
 const saved = () => ((S.settings && S.settings.ui) || {}).saved || {};
 const isSaved = (id) => !!saved()[id];
+// Games only a scan of the player's folders put in the Library, not the player.
+const foundOnly = (id) => (((S.settings && S.settings.ui) || {}).found_saved || []).includes(id);
+// Whether a game stays in the Library, under Not Installed, once it's uninstalled: it does when the
+// player put it there (Add to Library, Save, their account or its setup). One a scan found leaves
+// with its files (keepOut). What Uninstall says it does comes from here, so it can't drift.
+const staysInLibrary = (id) => isSaved(id) && !!byId(id) && !foundOnly(id);
 const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 async function addToLibrary(id) {
   // Added by the player: it stays, whatever a scan finds later.
@@ -3273,7 +3279,7 @@ function manageTab(a) {
   const shotsCard = `<div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
       ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div>`;
   const leave = inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>`
-    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div>${S.uninstalling.has(id) ? `<button type="button" class="btn danger" disabled>${esc(t('Uninstalling…'))}</button>` : `<button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button>`}</div>`;
+    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(staysInLibrary(id) ? t('It stays in your Library under Not Installed. You choose whether its folder goes too.') : t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div>${S.uninstalling.has(id) ? `<button type="button" class="btn danger" disabled>${esc(t('Uninstalling…'))}</button>` : `<button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button>`}</div>`;
   return `<div class="stack">${card(t('Updates'), manageUpdateRows(id, inst))}${card(t('Starting the Game'), manageStartRows(id, inst))}${card(t('Files and Saves'), manageFileRows(id, inst))}${shotsCard}<div class="card">${leave}</div></div>`;
 }
 // Which version it has, and how it gets the next one.
@@ -7253,13 +7259,14 @@ function confirmUninstall(id) {
   if (!g || S.uninstalling.has(id)) return;
   // A recomp with several games: they all go with it.
   const many = hasGames(id) ? S.gameSets[id].games : null;
+  const stays = staysInLibrary(id);
   const s = document.createElement('div');
   s.className = 'scrim';
   s.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="u-h"><h2 id="u-h">${esc(tf('Uninstall {name}?', { name: g.name }))}</h2>
-    <p>${esc(t('It comes out of your Library. You can install it again from the Catalog any time.'))}</p>
+    <p>${esc(stays ? t('It stays in your Library under Not Installed, so you can install it again any time.') : t('It comes out of your Library. You can install it again from the Catalog any time.'))}</p>
     ${many ? `<p>${esc(tf('Its {n} games are uninstalled with it: {games}.', { n: many.length, games: many.map((x) => x.name).join(', ') }))}</p>` : ''}
     ${g.exe && /^([a-z]:[\\/]|\\\\|\/)/i.test(g.exe) && !String(g.exe).toLowerCase().startsWith(String(g.path).toLowerCase()) ? `<p class="muted">${esc(t('Its own installer put the game somewhere else. With the box ticked, its own uninstaller opens too.'))}</p>` : ''}
-    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label><label><input type="checkbox" id="u-keep" checked> ${esc(t('Keep a copy of its saves first, to put back if you install it again'))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
+    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(stays ? tf('Without it, its folder stays where it is: {path}', { path: g.path }) : tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label><label><input type="checkbox" id="u-keep" checked> ${esc(t('Keep a copy of its saves first, to put back if you install it again'))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep it'))}</button><button type="button" class="btn danger" data-x="yes">${esc(t('Uninstall'))}</button></div></div>`;
   document.body.append(s);
   $('[data-x="no"]', s).focus();
@@ -7286,7 +7293,7 @@ function confirmUninstall(id) {
     if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
     else if (del && r.kept && r.saves_stuck) toast(tf('{name} is uninstalled, but its folder stayed: a copy of its saves couldn\'t be made first. It\'s in {path}.', { name: g.name, path: r.path }), true);
     else if (del && r.kept && r.copy_stuck) toast(tf('{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn\'t be moved out. It\'s in {path}.', { name: g.name, path: r.path }), true);
-    else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
+    else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : stays ? tf('{name} is uninstalled. Its folder stays in {path}.', { name: g.name, path: r.path }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
     else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
     else toast(tf('{name} is uninstalled.', { name: g.name }));
     // The player's own files that were inside its folder: said apart, whatever else happened.
@@ -8534,10 +8541,20 @@ window.addOwned = addOwned;
 // Taken out of the Library by the player (removed, or uninstalled): a look at their games doesn't
 // put it back.
 async function keepOut(id) {
-  const skip = new Set(((S.settings.ui || {}).found_skip) || []);
-  if (skip.has(id)) return;
+  const ui = S.settings.ui || {};
+  const skip = new Set(ui.found_skip || []);
+  // One only a scan put in goes now, not at the next scan, as the Uninstall window said.
+  const found = foundOnly(id);
+  if (skip.has(id) && !found) return;
   skip.add(id);
-  await saveUi({ found_skip: [...skip] }, true);
+  const patch = { found_skip: [...skip] };
+  if (found) {
+    const s = Object.assign({}, saved());
+    delete s[id];
+    patch.saved = s;
+    patch.found_saved = (ui.found_saved || []).filter((x) => x !== id);
+  }
+  await saveUi(patch, true);
 }
 window.keepOut = keepOut;
 

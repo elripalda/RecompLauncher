@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "Bewaar het en we laten het je weten zodra het uit is.",
  "{name} is saved. We'll let you know when it comes out.": "{name} is bewaard. We laten het je weten zodra het uit is.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomps die eraan komen. Bewaar er een en we laten het je weten op de dag dat hij uitkomt.",
- "Game info from LaunchBox Games Database": "Game-info van LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "Game-info van LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "Hij blijft in je bibliotheek onder Niet geïnstalleerd, dus je kunt hem altijd opnieuw installeren.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Hij blijft in je bibliotheek onder Niet geïnstalleerd. Je kiest zelf of de map ook weg mag.",
+ "Its files stay, and it stays in your Library under Not Installed": "Zijn bestanden blijven, en hij blijft in je bibliotheek onder Niet geïnstalleerd",
+ "Without it, its folder stays where it is: {path}": "Zonder dat blijft de map waar hij is: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} is verwijderd. De map blijft in {path}."
 }

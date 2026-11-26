@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "保存すると、リリース時にお知らせします。",
  "{name} is saved. We'll let you know when it comes out.": "{name}を保存しました。リリース時にお知らせします。",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "近日登場のRecomp。保存すると、リリース当日にお知らせします。",
- "Game info from LaunchBox Games Database": "ゲーム情報: LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "ゲーム情報: LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "ライブラリの「未インストール」に残るので、いつでも再インストールできます。",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "ライブラリの「未インストール」に残ります。フォルダーも削除するかどうかを選べます。",
+ "Its files stay, and it stays in your Library under Not Installed": "ファイルは残り、ライブラリの「未インストール」にも残ります",
+ "Without it, its folder stays where it is: {path}": "実行しない場合、フォルダーは今の場所のままです：{path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} をアンインストールしました。フォルダーは {path} に残っています。"
 }

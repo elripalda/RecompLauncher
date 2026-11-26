@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "저장하면 출시될 때 알려 드려요.",
  "{name} is saved. We'll let you know when it comes out.": "{name}을(를) 저장했어요. 출시되면 알려 드려요.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "곧 나올 Recomp예요. 저장하면 출시 당일에 알려 드려요.",
- "Game info from LaunchBox Games Database": "게임 정보 출처: LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "게임 정보 출처: LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "라이브러리의 미설치 항목에 남아 있어서 언제든 다시 설치할 수 있습니다.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "라이브러리의 미설치 항목에 남습니다. 폴더도 삭제할지 고를 수 있습니다.",
+ "Its files stay, and it stays in your Library under Not Installed": "파일은 남고, 라이브러리의 미설치 항목에도 남습니다",
+ "Without it, its folder stays where it is: {path}": "실행하지 않으면 폴더는 지금 위치에 그대로 둡니다: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name}을(를) 제거했습니다. 폴더는 {path}에 그대로 있습니다."
 }
