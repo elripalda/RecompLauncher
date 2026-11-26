@@ -840,7 +840,7 @@ pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathB
         return (exe, None);
     }
     let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-    let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+    let new_appimage = files.iter().find(|f| !mac_metadata(f) && f.to_string_lossy().to_lowercase().ends_with(".appimage"));
     if let (true, Some(n)) = (is_appimage, new_appimage) {
         if *n != old {
             return (Some(n.clone()), Some(old));
@@ -1141,7 +1141,7 @@ fn appimages_in(dir: &Path) -> Vec<PathBuf> {
                 continue;
             }
             let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
-            if ty.is_file() && named {
+            if ty.is_file() && named && !mac_metadata(&path) {
                 out.push(path);
             }
         }
@@ -1953,6 +1953,18 @@ mod tests {
         assert_eq!(got, Some("Game-v2.AppImage".into()));
         assert_eq!(replaced, Some("Game-v1.AppImage".into()));
         assert_eq!(fs::read(target.join("Game-v2.AppImage")).unwrap(), b"new release");
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
+    fn an_update_never_takes_a_macs_metadata_file_for_its_appimage() {
+        let target = tmp("update-appledouble-appimage");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let (got, _) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["._Game-v2.AppImage", "Game-v2.AppImage"]), true);
+
+        assert_eq!(got, Some("Game-v2.AppImage".into()));
         fs::remove_dir_all(target).unwrap();
     }
 
