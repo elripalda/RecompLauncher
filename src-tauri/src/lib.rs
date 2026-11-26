@@ -4744,9 +4744,6 @@ fn spawn_just_written(c: &mut std::process::Command) -> std::io::Result<std::pro
     c.spawn()
 }
 
-/// Runs the recomp's setup step. `writing` is called once the step has started, when it can
-/// write over the last build; a step that can't start (its program missing, no room, no Proton)
-/// never calls it. `out` gets every line it prints (the full log the player can open or send).
 /// Whether a process is left in a process group: the setup step's (process_group(0) made the
 /// step's id the group's), after the step itself ended.
 #[cfg(unix)]
@@ -4759,6 +4756,9 @@ fn group_has_processes(group: u32) -> bool {
     unsafe { kill(-group, 0) == 0 }
 }
 
+/// Runs the recomp's setup step. `writing` is called once the step has started, when it can
+/// write over the last build; a step that can't start (its program missing, no room, no Proton)
+/// never calls it. `out` gets every line it prints (the full log the player can open or send).
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn(), out: Option<&std::fs::File>) -> Result<(), String> {
     use std::io::{BufRead, Write};
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
