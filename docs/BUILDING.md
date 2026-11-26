@@ -112,13 +112,20 @@ does not fix it. The launcher preserves the developer's game bundle and does not
 A build you make yourself won't be byte-for-byte the same file as a release (the compiler stamps
 times and paths into it), so its checksum won't match. The code it's built from is this code.
 
-### Building in a container
+### Building and running with a boundary around it
 
-`sandbox/build-in-container.sh` runs the same `npm ci`, `npm run build` and `cargo build` inside a
-container: the checkout is mounted read-only, everything the build writes lives in a volume of its
-own, and the pass that produces the artifacts runs with the network off. It is optional and
-Linux-only, and the commands above are still the normal way to build. See
-[sandbox/README.md](../sandbox/README.md), which also covers running the launcher in a sandbox.
+The Flatpak build already runs inside a sandbox with a fixed list of what it may reach. `sandbox/`
+is the same idea for the other builds — a `.deb`, an AppImage, or this checkout — with the list in
+a JSON file you can read:
+
+- `sandbox/build-in-container.sh` builds the Linux bundles in a container that sees this checkout
+  read-only, with the pass that produces the artifacts running with the network off;
+- `sandbox/rl-sandbox` starts the launcher under bubblewrap with only the folders named in a small
+  JSON config — the game library and disc images you list, and nothing else from your home.
+
+It is optional and Linux-only, and the commands above are still the normal way to build. See
+[sandbox/README.md](../sandbox/README.md), which includes scripts that check the boundary instead of
+assuming it.
 
 ### Testing against a copy of the site
 
