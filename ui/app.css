@@ -13,6 +13,7 @@
   --cyan:#34F2E8;--blue:#377BB6;--warn:#f5b83d;--bad:#ff7a7a;--ai:#c9b6ff;
   --line:rgba(244,248,252,.08);--line2:rgba(244,248,252,.14);--line3:rgba(244,248,252,.24);
   --fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065);--fill3:rgba(244,248,252,.11);
+  --switch-off:var(--fill3);--switch-knob:var(--ink);--switch-knob-shadow:none;
   --grad:linear-gradient(180deg,#34F2E8,#377BB6);
   /* A faint grain laid over big gradients and blurred art: it breaks up the colour steps an 8-bit
      screen shows in them (the webviews have no 10-bit or HDR output). One shared 256 px tile of
@@ -170,8 +171,11 @@ body.isl-on main::after{content:'';display:block;height:84px}
 .seg button:hover{color:var(--ink)}
 .seg button[aria-checked=true],.seg button.on{background:var(--ink);color:var(--bg)}
 .seg.big{border-radius:21px;padding:4px}.seg.big button{height:34px;border-radius:17px;padding:0 16px}
-.switch{position:relative;width:46px;height:26px;flex:none;border-radius:99px;background:var(--fill3);box-shadow:inset 0 0 0 1px var(--line3);transition:background .2s}
-.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--ink);transition:transform .25s var(--ease),background .2s}
+/* A switch's "off" look comes from --switch-off, --switch-knob and --switch-knob-shadow, so a theme
+   changes those values instead of restyling .switch: a theme rule like "body.light .switch" would be
+   more specific than ".switch[aria-checked=true]" and paint every switch as off. */
+.switch{position:relative;width:46px;height:26px;flex:none;border-radius:99px;background:var(--switch-off);box-shadow:inset 0 0 0 1px var(--line3);transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--switch-knob);box-shadow:var(--switch-knob-shadow);transition:transform .25s var(--ease),background .2s}
 .switch[aria-checked=true]{background:var(--cyan);box-shadow:none}
 .switch[aria-checked=true]::after{transform:translateX(20px);background:var(--bg)}
 .toggle{height:42px;padding:0 8px 0 16px;border-radius:21px;display:inline-flex;align-items:center;gap:10px;font:600 13.5px Figtree,sans-serif;background:var(--card);border:1px solid var(--line2);white-space:nowrap;color:var(--muted);transition:color .2s,border-color .2s}
@@ -1919,7 +1923,8 @@ body.light{--noise:url(img/noise-light.png);--paper:#F7F8FA;--bg:#ECEEF2;--bg2:#
   --ink:#0E1626;--muted:#465163;--dim:#5A6577;--cyan:#077570;--cyan-h:#055C58;--blue:#2A6AA5;
   --warn:#8A5A00;--bad:#B42318;--ai:#5B3FD1;--ok:#127A45;
   --line:rgba(14,22,38,.09);--line2:rgba(14,22,38,.15);--line3:rgba(14,22,38,.26);
-  --fill:rgba(14,22,38,.035);--fill2:rgba(14,22,38,.06);--fill3:rgba(14,22,38,.1);color-scheme:light}
+  --fill:rgba(14,22,38,.035);--fill2:rgba(14,22,38,.06);--fill3:rgba(14,22,38,.1);
+  --switch-off:rgba(14,22,38,.14);--switch-knob:var(--paper);--switch-knob-shadow:0 1px 3px rgba(14,22,38,.35);color-scheme:light}
 body.light .slide, body.light .gp-hero, body.light .sl-in, body.light .gp-amb, body.light .sl-arrows, body.light .badge{--ink:#F4F8FC;--muted:#C9D2DE;--dim:#AAB4C4;--cyan:#34F2E8;--cyan-h:#6ff7f0;--warn:#f5b83d;--bad:#ff7a7a;--ai:#c9b6ff;--ok:#3ee08f;--line2:rgba(244,248,252,.14);--fill:rgba(244,248,252,.035);--fill2:rgba(244,248,252,.065)}
 /* The dark theme's bright greens and cyans, written as fixed colours, as words or ticks on paper. */
 body.light :is(.tag.complete,.tag.ok,.known-fix b,.gp-note.complete b,.oob-pick .oob-rec,.ca-pick em,.sup-ok,.ach-verdict.yes,.ach-grp code.yes,.ach-rep.fixed,.pick-newer,.set-row .k .svp-set){color:var(--ok)}
@@ -1946,8 +1951,6 @@ body.light :is(.slide,.gp-hero) .btn.warn-o svg{color:#f5c518}
 body.light :is(.slide,.gp-hero) .btn.warn-o:hover{background:rgba(245,197,24,.12)}
 /* Switches: a paper knob on a grey track when off, as light themes do. The dark theme's ink-coloured
    knob read as "on" here. */
-body.light .switch{background:rgba(14,22,38,.14)}
-body.light .switch::after{background:var(--paper);box-shadow:0 1px 3px rgba(14,22,38,.35)}
 body.light .menu, body.light .modal, body.light .toast{box-shadow:0 12px 40px rgba(14,22,38,.18)}
 body.light .chip.on{color:var(--paper)}
 body.light .btn.main, body.light .chip.main{color:var(--paper)}
