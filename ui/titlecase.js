@@ -7,6 +7,14 @@
   // Where it applies, and where it never does (names, paths, logs, sentences).
   const SEL = 'h1, h2, h3, h4, .btn, .linkbtn, .toggle, .seg button, .tabs-in button, .chip, .tag, .badge, .pill-sel, .set-tab span, .side .lbl, .menu button, .set-row .k > b, .card-h h3, .shelf-h h2, .sec-h, .stats span, .slot-n, .dl-when, .upd-when, .count-line, .card-h > span, .tv-head h2, .tv-btn span, .tv-item .k, .tv-chip, .tv-pill, .tv-lh, .tv-sec h3, .tv-tab, .tv-cycle b, option';
   const SKIP = '.t, .ph, .pin, pre, code, textarea, input, small, p, .gp-title, .gp-name, .gp h1, .fb-path, .path, .tv-path, .dev-path, .logbox, [data-raw], .tv-title, .tv-game-title, .md';
+  // A word inside a path or web address ("/home/me/.local/share/game.log", "C:\Games\saves",
+  // "github.com/dev/game") belongs to the file system, not the launcher: capitalising it names a
+  // folder that doesn't exist. Its whole run of non-space text is left as it is.
+  const inPath = (s, start, end) => {
+    const head = s.slice(0, start).match(/\S*$/)[0];
+    const tail = s.slice(end).match(/^\S*/)[0];
+    return /[\/\\]/.test(head + tail);
+  };
   const fix = (s) => {
     const ws = [...s.matchAll(/[A-Za-z][A-Za-z'’]*/g)];
     if (!ws.length) return s;
@@ -15,7 +23,7 @@
       const w = m[0], lo = w.toLowerCase(), end = m.index + w.length;
       let r = w;
       const dotted = s[end] === '.' && /[A-Za-z]/.test(s[end + 1] || '') || s[m.index - 1] === '.';
-      if (w === lo && WORDS.has(lo) && !dotted && !(SMALL.has(lo) && i > 0 && i < ws.length - 1)) r = w[0].toUpperCase() + w.slice(1);
+      if (w === lo && WORDS.has(lo) && !dotted && !inPath(s, m.index, end) && !(SMALL.has(lo) && i > 0 && i < ws.length - 1)) r = w[0].toUpperCase() + w.slice(1);
       out += s.slice(at, m.index) + r;
       at = end;
     });
