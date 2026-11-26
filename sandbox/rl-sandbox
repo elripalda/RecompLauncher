@@ -47,6 +47,8 @@ DEFAULT_CONFIG = {
         "read_only  : visible, cannot be written (game folders, discs, ROM collections).",
         "read_write : visible and writable (where games are installed, save folders).",
         "Everything not listed here does not exist inside the sandbox.",
+        "nested_sandbox: programs inside may build their own sandbox (umu-run/Proton for Windows",
+        "  games, WebKit's render process). false forbids that; those games then won't start.",
     ],
     "binary": "",
     "args": [],
@@ -58,6 +60,7 @@ DEFAULT_CONFIG = {
     "x11": True,
     "wayland": True,
     "session_bus": True,
+    "nested_sandbox": True,
     "shared_memory_mb": 8192,
     "auto_dirs": True,
     "webkit_sandbox": False,
@@ -236,8 +239,11 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
     if network:
         args += ["--share-net"]
     args += ["--die-with-parent", "--new-session", "--hostname", "rl-sandbox"]
-    if bwrap_supports("--disable-userns"):
-        # No nested user namespace: a sandboxed program cannot build itself a wider one.
+    nested = bool(cfg.get("nested_sandbox", True))
+    if not nested and bwrap_supports("--disable-userns"):
+        # No nested user namespace: nothing inside can make one of its own. That also stops
+        # umu-run's pressure-vessel and WebKit's own bubblewrap, which is why it is a switch.
+        # Either way a nested namespace sees no more of the filesystem than this one does.
         args += ["--disable-userns"]
 
     # --- the system, read-only -------------------------------------------
@@ -267,7 +273,7 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
     xdg_run = runtime_dir(uid)
     rw_sockets = []
     if cfg["wayland"]:
-        rw_sockets += [f"{xdg_run}/wayland-0", f"{xdg_run}/wayland-1"]
+        rw_sockets.append(wayland_socket(xdg_run))
     if cfg["session_bus"]:
         rw_sockets.append(f"{xdg_run}/bus")
     if cfg["sound"]:
@@ -278,7 +284,7 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
             if os.path.exists(s):
                 parent = str(Path(s).parent)
                 if parent != xdg_run:
-                    args += ["--dir", parent]
+                    args += ["--dir", parent]  # bwrap makes the directories above it too
                 # Sockets are mounted read-write on purpose: connect() needs write permission.
                 args += ["--bind", s, s]
 
@@ -290,6 +296,13 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
                 args += ["--dir", "/tmp/.X11-unix", "--bind", socket, socket]
 
     args += ["--tmpfs", "/home", "--dir", str(home)]
+
+    # The X11 cookie, bound after the home tmpfs because it usually lives in the home
+    # (~/.Xauthority) and would be hidden under it. Without it an X server that checks cookies
+    # (an SDDM session on KDE) refuses the connection.
+    xauthority = x11_cookie(cfg)
+    if xauthority:
+        args += ["--dir", str(Path(xauthority).parent), "--ro-bind", xauthority, xauthority]
 
     # --- devices -----------------------------------------------------------
     size = int(cfg.get("shared_memory_mb", 8192))
@@ -337,6 +350,8 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
             env[var] = os.environ[var]
     if cfg["x11"] and os.environ.get("DISPLAY"):
         env["DISPLAY"] = os.environ["DISPLAY"]
+    if xauthority:
+        env["XAUTHORITY"] = xauthority
     if cfg["wayland"] and os.environ.get("WAYLAND_DISPLAY"):
         env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
     if cfg["session_bus"]:
@@ -345,9 +360,10 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
     if Path(cmd[0]).name.endswith(".AppImage"):
         # An AppImage wants FUSE; a sandbox has none, so it unpacks itself into /tmp instead.
         env["APPIMAGE_EXTRACT_AND_RUN"] = "1"
-    if is_launcher and not cfg.get("webkit_sandbox", False):
+    if is_launcher and not nested and not cfg.get("webkit_sandbox", False):
         # WebKitGTK sandboxes its own render process with bubblewrap, and cannot do that inside a
-        # namespace that already forbids nested ones. The outer sandbox is doing that job here.
+        # namespace that forbids nested ones. The outer sandbox is doing that job here. With
+        # nested_sandbox on, WebKit's own sandbox works, so it stays on.
         env["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
     for k, v in (cfg.get("extra_env") or {}).items():
         env[str(k)] = str(v)
@@ -358,6 +374,25 @@ def build_command(cfg, cmd, home, uid, repo_hint, create_missing=True, extra_arg
     args += ["--"]
     args += cmd
     return args
+
+
+def wayland_socket(xdg_run):
+    """The socket $WAYLAND_DISPLAY names: a name under $XDG_RUNTIME_DIR, or an absolute path.
+
+    wayland-0 only when the variable is unset, which is what a Wayland client assumes as well.
+    """
+    name = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
+    return name if name.startswith("/") else f"{xdg_run}/{name}"
+
+
+def x11_cookie(cfg):
+    """$XAUTHORITY as an absolute path, when X11 is on and the file exists; otherwise ''."""
+    if not cfg["x11"] or not os.environ.get("DISPLAY"):
+        return ""
+    path = os.environ.get("XAUTHORITY", "")
+    if not path.startswith("/") or not os.path.isfile(path):
+        return ""
+    return os.path.normpath(path)
 
 
 def dev_bind(path):
@@ -425,7 +460,7 @@ def main():
     parser.add_argument("--print", action="store_true", dest="print_only", help="show the bwrap command")
     parser.add_argument("--list", action="store_true", help="show which paths the sandbox exposes")
     parser.add_argument("--no-preflight", action="store_true", help="skip the bubblewrap capability check")
-    parser.add_argument("command", nargs=argparse.REMAINDER, help="command to run instead of the launcher")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="arguments for the launcher, or -- and a command to run instead of it")
     opts = parser.parse_args()
 
     path = config_path(opts.config)
@@ -477,6 +512,8 @@ def main():
                 continue
             i += 1
         print(f"{'network':>8}  {'yes (host)' if cfg['network'] else 'no'}")
+        nested = "allowed" if cfg.get("nested_sandbox", True) else "no"
+        print(f"{'nested':>8}  {nested} (user namespaces made inside the sandbox)")
         return 0
 
     rw = sum(1 for a in args if a == "--bind")

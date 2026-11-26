@@ -94,6 +94,10 @@ sandbox/rl-sandbox                                # run the launcher
 * `read_write` — folders the launcher may change (where games go).
 * `read_only` — folders it may read (game libraries, disc images, `/run/media`).
 * Nothing else exists inside. `~/.ssh`, other projects, `~/Documents`, `/var`: not there.
+* The home inside is a throwaway tmpfs. A write outside the listed paths succeeds and is gone when
+  the launcher exits, so a desktop shortcut, a menu entry, a "Start with your PC" entry or a
+  screenshot only lasts if its folder (`~/Desktop`, `~/.local/share/applications`,
+  `~/.config/autostart`, `~/Pictures/RecompLauncher`) is in `read_write`.
 * The launcher's own data folder (`~/.local/share/com.recomplauncher.app`, what `app_data_dir()`
   resolves to) is added automatically (`auto_dirs`), and a writable path is created if it is
   missing. The runner's config is deliberately not among them: a sandboxed launcher should not be
@@ -103,8 +107,18 @@ sandbox/rl-sandbox                                # run the launcher
   raw HID nodes exist, and `hidraw: false` keeps only the event devices — an Xbox pad is read
   through `/dev/hidraw`, so turning that off is how a controller goes missing. With
   `network: false` the sandbox has no network at all.
+* `x11` binds the socket `$DISPLAY` names and, when `$XAUTHORITY` is set, that cookie file
+  read-only, since an X server that checks cookies refuses a client without it. `wayland` binds
+  the socket `$WAYLAND_DISPLAY` names (`wayland-0` when it is unset).
+* `nested_sandbox` (on by default) lets programs inside make their own user namespace. umu-run's
+  pressure-vessel needs that to start Windows games through Proton, and WebKit needs it to
+  sandbox its own render process. What they make sees no more of the filesystem than this
+  sandbox does; the cost is more kernel surface. With it off (`--disable-userns`), Windows games
+  started through umu-run fail, and WebKit's own sandbox is turned off unless `webkit_sandbox`
+  is true, which only makes sense once WebKit can nest again. `--list` shows which it is.
 * Anything after `--` runs in the same sandbox instead of the launcher, which is how you look
-  around inside it: `sandbox/rl-sandbox -- /bin/sh`.
+  around inside it: `sandbox/rl-sandbox -- /bin/sh`. Without `--`, the rest of the command line
+  goes to the launcher (a `recomplauncher://` link from a desktop file, say).
 
 Two things to know about actually starting it:
 
