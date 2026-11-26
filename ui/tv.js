@@ -2101,7 +2101,7 @@
       ...(own
         ? [{ label: t('Uninstall and delete its folder'), sub: tf('{path}. A copy of its saves is kept first.', { path: g.path }), icon: 'bin', cls: 'danger', run: run(true) },
           { label: t('Delete its folder and its saves'), sub: tf('{path}, with the saves and settings inside it', { path: g.path }), icon: 'bin', cls: 'danger', run: run(true, false) },
-          { label: t('Uninstall, keep its folder'), sub: t('It comes out of your Library and its files stay'), icon: 'folder', run: run(false) }]
+          { label: t('Uninstall, keep its folder'), sub: staysInLibrary(id) ? t('Its files stay, and it stays in your Library under Not Installed') : t('It comes out of your Library and its files stay'), icon: 'folder', run: run(false) }]
         : [{ label: t('Uninstall'), sub: tf('Its folder stays where it is: {path}', { path: g.path }), icon: 'bin', cls: 'danger', run: run(false) }]),
     ]);
   }

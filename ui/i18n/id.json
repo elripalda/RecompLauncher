@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "Simpan dan kami akan memberi tahu saat rilis.",
  "{name} is saved. We'll let you know when it comes out.": "{name} tersimpan. Kami akan memberi tahu saat rilis.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomp yang akan datang. Simpan salah satunya dan kami akan memberi tahu di hari rilisnya.",
- "Game info from LaunchBox Games Database": "Info game dari LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "Info game dari LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "Game tetap ada di Pustaka, di Belum terpasang, jadi kamu bisa memasangnya lagi kapan saja.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Game tetap ada di Pustaka, di Belum terpasang. Kamu pilih apakah folder-nya ikut dihapus.",
+ "Its files stay, and it stays in your Library under Not Installed": "File-nya tetap ada, dan game tetap di Pustaka-mu, di Belum terpasang",
+ "Without it, its folder stays where it is: {path}": "Tanpa itu, folder-nya tetap di tempatnya: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} sudah dicopot. Folder-nya tetap di {path}."
 }

@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "Kaydet, çıktığında haber verelim.",
  "{name} is saved. We'll let you know when it comes out.": "{name} kaydedildi. Çıktığında haber vereceğiz.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "Yoldaki recomp'lar. Birini kaydet, çıktığı gün haber verelim.",
- "Game info from LaunchBox Games Database": "Oyun bilgileri LaunchBox Games Database'den"
+ "Game info from LaunchBox Games Database": "Oyun bilgileri LaunchBox Games Database'den",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "Kitaplığınızda Yüklü Değil altında kalır, istediğiniz zaman yeniden yükleyebilirsiniz.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Kitaplığınızda Yüklü Değil altında kalır. Klasörünün de gidip gitmeyeceğine siz karar verirsiniz.",
+ "Its files stay, and it stays in your Library under Not Installed": "Dosyaları kalır ve Kitaplığınızda Yüklü Değil altında kalır",
+ "Without it, its folder stays where it is: {path}": "Aksi halde klasörü olduğu yerde kalır: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} kaldırıldı. Klasörü {path} konumunda kalır."
 }

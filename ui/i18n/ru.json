@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "Сохраните, и мы сообщим, когда она выйдет.",
  "{name} is saved. We'll let you know when it comes out.": "{name} сохранена. Мы сообщим, когда она выйдет.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "Скоро выйдут. Сохраните рекомп, и мы сообщим в день выхода.",
- "Game info from LaunchBox Games Database": "Информация об игре из LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "Информация об игре из LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "Она останется в библиотеке, в разделе «Не установлены», так что установить её снова можно в любой момент.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Она останется в библиотеке, в разделе «Не установлены». Удалять ли её папку, решаете вы.",
+ "Its files stay, and it stays in your Library under Not Installed": "Её файлы останутся, а сама она останется в библиотеке, в разделе «Не установлены»",
+ "Without it, its folder stays where it is: {path}": "Без этого её папка останется на месте: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name}: удалено. Папка остаётся в {path}."
 }

@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "儲存後，推出時我們會通知你。",
  "{name} is saved. We'll let you know when it comes out.": "已儲存 {name}。推出時我們會通知你。",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "即將推出的 Recomp。儲存一個，推出當天我們會通知你。",
- "Game info from LaunchBox Games Database": "遊戲資訊來自 LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "遊戲資訊來自 LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "它會留在收藏庫的「未安裝」中，您隨時都能重新安裝。",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "它會留在收藏庫的「未安裝」中。您可以決定是否一併刪除它的資料夾。",
+ "Its files stay, and it stays in your Library under Not Installed": "檔案保留，它也會留在收藏庫的「未安裝」中",
+ "Without it, its folder stays where it is: {path}": "不執行的話，它的資料夾會留在原處：{path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} 已解除安裝。它的資料夾仍在 {path}。"
 }

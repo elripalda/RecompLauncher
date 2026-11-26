@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "Salvalo e ti avviseremo quando esce.",
  "{name} is saved. We'll let you know when it comes out.": "{name} è salvato. Ti avviseremo quando esce.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "Recomp in arrivo. Salvane uno e ti avviseremo il giorno dell'uscita.",
- "Game info from LaunchBox Games Database": "Informazioni sul gioco da LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "Informazioni sul gioco da LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "Resta nella tua libreria, in Non installati, così puoi reinstallarlo quando vuoi.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Resta nella tua libreria, in Non installati. Scegli tu se eliminare anche la sua cartella.",
+ "Its files stay, and it stays in your Library under Not Installed": "I suoi file restano, e il gioco resta nella tua libreria, in Non installati",
+ "Without it, its folder stays where it is: {path}": "Altrimenti la sua cartella resta dov'è: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} è stato disinstallato. La sua cartella resta in {path}."
 }

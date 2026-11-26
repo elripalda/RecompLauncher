@@ -3445,5 +3445,10 @@
  "Save it and we'll let you know when it comes out.": "احفظها وسنُعلمك عند صدورها.",
  "{name} is saved. We'll let you know when it comes out.": "تم حفظ {name}. سنُعلمك عند صدورها.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "ريكومبات في الطريق. احفظ واحدة وسنُعلمك يوم صدورها.",
- "Game info from LaunchBox Games Database": "معلومات اللعبة من LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "معلومات اللعبة من LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "تبقى في مكتبتك ضمن «غير مثبتة»، فيمكنك تثبيتها مجددًا في أي وقت.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "تبقى في مكتبتك ضمن «غير مثبتة». أنت تختار ما إذا كان مجلدها سيحذف أيضًا.",
+ "Its files stay, and it stays in your Library under Not Installed": "تبقى ملفاتها، وتبقى في مكتبتك ضمن «غير مثبتة»",
+ "Without it, its folder stays where it is: {path}": "بدونه، يبقى مجلدها في مكانه: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "تم إلغاء تثبيت {name}. يبقى مجلدها في {path}."
 }

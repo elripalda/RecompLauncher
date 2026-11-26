@@ -3566,5 +3566,10 @@
  "Save it and we'll let you know when it comes out.": "Lưu lại và chúng tôi sẽ báo khi phát hành.",
  "{name} is saved. We'll let you know when it comes out.": "Đã lưu {name}. Chúng tôi sẽ báo khi phát hành.",
  "Recomps on the way. Save one and we'll let you know the day it comes out.": "Các recomp sắp ra mắt. Lưu một cái và chúng tôi sẽ báo vào ngày phát hành.",
- "Game info from LaunchBox Games Database": "Thông tin trò chơi từ LaunchBox Games Database"
+ "Game info from LaunchBox Games Database": "Thông tin trò chơi từ LaunchBox Games Database",
+ "It stays in your Library under Not Installed, so you can install it again any time.": "Trò chơi vẫn ở trong Thư viện, mục Chưa cài đặt, nên bạn có thể cài lại bất cứ lúc nào.",
+ "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Trò chơi vẫn ở trong Thư viện, mục Chưa cài đặt. Bạn chọn có xóa luôn thư mục hay không.",
+ "Its files stay, and it stays in your Library under Not Installed": "Các tệp vẫn được giữ, và trò chơi vẫn ở trong Thư viện, mục Chưa cài đặt",
+ "Without it, its folder stays where it is: {path}": "Nếu không, thư mục của nó vẫn ở nguyên chỗ cũ: {path}",
+ "{name} is uninstalled. Its folder stays in {path}.": "Đã gỡ cài đặt {name}. Thư mục của nó vẫn ở {path}."
 }
