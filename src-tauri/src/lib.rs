@@ -7223,18 +7223,29 @@ fn old_inside(p: &Path, since: u64) -> bool {
     day * 86400 + 86400 < since as i64
 }
 
-/// The newest date (days since 1970) written in a log's first 400 bytes or its last 4 KB.
+/// The newest date (days since 1970) written in a log's first 400 bytes or near its end. The end
+/// is read back in 4 KB steps until a step holds a date, up to 256 KB, so a crash that ends in a
+/// long undated backtrace or register dump still finds the dated line before it.
 fn newest_day_in(p: &Path) -> Option<i64> {
     use std::io::{Read, Seek, SeekFrom};
     let mut f = std::fs::File::open(p).ok()?;
     let mut head = [0u8; 400];
     let n = f.read(&mut head).unwrap_or(0);
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let mut tail = Vec::new();
-    if f.seek(SeekFrom::Start(len.saturating_sub(4096))).is_ok() {
-        let _ = f.read_to_end(&mut tail);
+    let floor = len.saturating_sub(256 * 1024);
+    let mut end = len;
+    let mut tail = None;
+    while tail.is_none() && end > floor {
+        let start = end.saturating_sub(4096).max(floor);
+        // Each step also reads 9 bytes past its end, so a date cut by the step's edge is still whole.
+        let mut step = vec![0u8; ((end + 9).min(len) - start) as usize];
+        if f.seek(SeekFrom::Start(start)).is_err() || f.read_exact(&mut step).is_err() {
+            break;
+        }
+        tail = days_in(&step).into_iter().max();
+        end = start;
     }
-    days_in(&head[..n]).into_iter().chain(days_in(&tail)).max()
+    days_in(&head[..n]).into_iter().chain(tail).max()
 }
 
 /// Every date like 2026-11-25 in some bytes, as days since 1970.
@@ -12279,7 +12290,7 @@ mod tests {
         p
     }
 
-    fn noon_today() -> u64 {
+    fn noon_on_the_test_day() -> u64 {
         released_secs("2026-11-25T12:00:00Z").unwrap() as u64
     }
 
@@ -12288,7 +12299,18 @@ mod tests {
         let filler = "[2020-01-01 10:00:05] loading\n".repeat(40);
         let text = format!("[2020-01-01 10:00:00] first start\n{filler}[2026-11-25 12:00:01] fatal: out of memory\n");
         let p = log_with("appended", &text);
-        let old = old_inside(&p, noon_today());
+        let old = old_inside(&p, noon_on_the_test_day());
+        let _ = std::fs::remove_file(&p);
+        assert!(!old);
+    }
+
+    #[test]
+    fn a_log_that_ends_in_a_long_undated_trace_is_this_starts_log() {
+        let trace = "    at 0x00007ff6a1b2c3d4 in game.exe+0x1234 rax=0000000000000000\n".repeat(200);
+        let text = format!("[2020-01-01 10:00:00] first start\n[2026-11-25 12:00:01] fatal: access violation\n{trace}");
+        assert!(trace.len() > 10 * 1024);
+        let p = log_with("long-trace", &text);
+        let old = old_inside(&p, noon_on_the_test_day());
         let _ = std::fs::remove_file(&p);
         assert!(!old);
     }
@@ -12296,7 +12318,7 @@ mod tests {
     #[test]
     fn a_log_with_only_old_dates_is_still_old() {
         let p = log_with("rotated", "[2020-01-01 10:00:00] first start\n[2020-01-01 10:05:00] quit\n");
-        let old = old_inside(&p, noon_today());
+        let old = old_inside(&p, noon_on_the_test_day());
         let _ = std::fs::remove_file(&p);
         assert!(old);
     }
