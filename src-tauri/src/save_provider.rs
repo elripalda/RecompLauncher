@@ -33,7 +33,7 @@ pub fn ready(dir: &Path) -> bool {
 
 pub fn scope(dir: &Path) -> String {
     match current(dir) {
-        Provider::Recompstore => format!("recompstore:{}", cloud::account_scope(dir)),
+        Provider::Recompstore => format!("recompstore:{}", cloud::account_uid(dir)),
         Provider::GoogleDrive => format!("google_drive:{}", drive::identity(dir)),
         Provider::Disabled => "disabled".into(),
     }
@@ -55,7 +55,9 @@ pub fn state(app: &AppHandle) -> Value {
 #[tauri::command]
 pub fn save_provider_state(app: AppHandle) -> Value {
     let st = app.state::<App>();
-    json!({"state": state(&app), "installed": st.lib.lock().unwrap().installed})
+    let state = state(&app);
+    let library = st.lib.lock().unwrap();
+    json!({"state": state, "installed": library.installed, "cloudAll": library.settings.ui.get("cloud_all")})
 }
 
 pub fn emit(app: &AppHandle) {
@@ -76,6 +78,7 @@ pub fn clear_consent(st: &App) -> Result<(), Error> {
     for game in next.installed.values_mut() {
         game.cloud = None;
     }
+    next.settings.ui["cloud_all"] = false.into();
     next.save(&st.dir)?;
     *library = next;
     cloud::reset_provider_status();

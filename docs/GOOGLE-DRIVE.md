@@ -2,7 +2,8 @@
 
 Open **Settings → Account → Save destination → Connect Google Drive**. Choose your Google
 account in the browser and approve access. Then choose **Use Google Drive** and enable cloud
-saves on each game's **Saves** tab. A RecompStore account is not required for Drive saves.
+saves in each game's **Manage** tab, or use **Back Up Every Game** in the save destination
+settings. A RecompStore account is not required for Drive saves.
 
 The launcher creates a visible **RecompLauncher/Saves** folder in My Drive. Copies are ZIP
 archives using the same `rlsave.json` format as local backups. The launcher requests only
@@ -24,11 +25,13 @@ Choosing the cloud copy resolves from that snapshot, even when restoring into th
 install folder retains extra local save slots. Those extra slots stay on this PC.
 The other copies remain available in the Saves tab. The newest five ordinary cloud copies
 are kept; unresolved branches retain their history until resolved. Removed old copies go
-to Drive's Trash, which still uses Google storage until emptied. Local backups retain their
+to Drive's Trash, which still uses Google storage until emptied. The launcher manages Drive
+history automatically; individual cloud-copy deletion in the Saves tab is for RecompStore. Local backups retain their
 existing limit of ten copies per game. The upload limit remains 95 MiB per archive, along
 with the existing save discovery and file limits.
 
-Switching providers or connecting a different Google account requires enabling games again.
+Switching providers or connecting a different Google account turns off **Back Up Every Game**
+and requires enabling games again.
 Existing copies are not moved between providers. **Disconnect** stops this PC's Drive sync
 and removes its Google credentials; local saves and remote copies remain. You can separately
 remove RecompLauncher's access in your Google account's connected-app settings. Google's

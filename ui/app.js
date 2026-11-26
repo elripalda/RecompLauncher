@@ -3311,7 +3311,8 @@ function manageFileRows(id, inst) {
   const rows = [`<div class="set-row"><div class="k"><b>${esc(t('Folder'))}</b><span>${esc(inst.path)}</span></div><div class="acts"><button type="button" class="btn" data-act="folder" data-id="${esc(id)}">${esc(t('Open'))}</button>${inst.local ? '' : `<button type="button" class="btn" data-act="move" data-id="${esc(id)}">${esc(t('Move'))}</button>`}</div></div>`];
   if (!inst.local) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Backups of your saves'))}</b><span>${esc(t('Taken before every update: the saves in its folder.'))}</span></div><button type="button" class="btn" data-act="backups" data-id="${esc(id)}">${esc(t('Backups'))}</button></div>`);
   // Cloud saves is switched here only; the Saves tab just offers to turn it on.
-  if (S.account && S.account.signedIn) {
+  const ready = S.saveProvider ? S.saveProvider.connected : S.account && S.account.signedIn;
+  if (ready) {
     const on = cloudOn(inst);
     rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Cloud saves'))}</b><span>${esc(on ? t('On. Saves for this game are synced to the cloud.') : t('Off. Saves for this game are not synced to the cloud.'))}</span></div><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(t('Cloud saves'))}" data-act="saves-cloud" data-id="${esc(id)}"></button></div>`);
   }

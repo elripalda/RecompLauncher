@@ -18,7 +18,7 @@ function providerSetup(picked) {
       return { state: { provider: args.provider, connected: true }, installed: { game: { cloud: null } } };
     },
     renderAccountBits() {},
-    expandLib() {},
+    expandLib() {}, forgetSaveStatus() {},
   });
   return { S, calls, ...helpers };
 }
@@ -48,11 +48,19 @@ test('selecting the current provider does not reset consent', async () => {
 test('refreshing the provider keeps individual games from a shared installation', () => {
   const games = readFileSync(join(__dirname, '../ui/games.js'), 'utf8');
   const S = { gameSets: { series: { games: [{ id: 'first', name: 'First' }] } }, library: {}, saves: {} };
-  const apply = runInNewContext(games + '\n' + providerHelpers + '\napplySaveProvider', { S, window: {} });
+  const apply = runInNewContext(games + '\n' + providerHelpers + '\napplySaveProvider', { S, window: {}, forgetSaveStatus() {} });
   apply({ state: { provider: 'google_drive' }, installed: { series: { id: 'series', cloud: null, games: { first: { played_secs: 60 } } } } });
   assert.equal(S.library['series--first'].name, 'First');
   assert.equal(S.library['series--first'].cloud, null);
   assert.equal(S.library['series--first'].played_secs, 60);
+});
+
+test('provider refresh applies the reset global consent from the backend', () => {
+  const S = { settings: { ui: { cloud_all: true } }, library: {}, saves: {} };
+  const apply = runInNewContext(providerHelpers + '\napplySaveProvider', { S, window: {}, expandLib() {}, forgetSaveStatus() {} });
+  apply({ state: { provider: 'google_drive', connected: true }, cloudAll: false, installed: { game: { cloud: null } } });
+  assert.equal(S.settings.ui.cloud_all, false);
+  assert.equal(S.library.game.cloud, null);
 });
 
 test('Drive sync before play does not need a RecompStore sign-in', async () => {
@@ -61,6 +69,7 @@ test('Drive sync before play does not need a RecompStore sign-in', async () => {
   const play = runInNewContext(source + '\nbeforeCloudPlay', {
     S: { account: { signedIn: false }, library: { game: { cloud: true } } },
     cloudReady: () => true,
+    cloudOn: (g) => g.cloud === true,
     invoke: async (command, args) => { calls.push([command, { ...args }]); return { action: 'play' }; },
     savesChanged() {}, toast() {}, fail: assert.fail,
   });
@@ -74,6 +83,7 @@ test('Drive conflict choices submit the revision the player reviewed', async () 
   const pick = runInNewContext(source + '\npickCloudSave', {
     invoke: async (command, args) => calls.push([command, { ...args }]),
     ask: async () => 'local',
+    chooseSave: async () => 'local',
     t: String, tf: String, esc: String, whenText: String, fmtTime: String, toast() {},
   });
   await pick('game', { local: { hash: 'local', when: 100 }, cloud: { v: 'file', revision: 'both-heads', made: 200 } });

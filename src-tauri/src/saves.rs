@@ -868,8 +868,7 @@ fn state_file(app_dir: &Path, id: &str) -> PathBuf {
     app_dir.join("saves").join(id).join("state.json")
 }
 
-/// The key in state.json naming the sign-in its cloud fields belong to. Same name and form as the
-/// Google Drive draft (PR #228) uses, "<provider>:<account id>", so the two read each other's notes.
+/// The key in state.json naming the provider and account its cloud fields belong to.
 const SCOPE_KEY: &str = "cloud_scope";
 
 /// The sign-in a note's cloud fields are written under now. Read from account.json without
@@ -923,7 +922,7 @@ pub fn state(app_dir: &Path, id: &str) -> State {
     };
     s.read_under = Some(now.clone());
     let Some(written) = written else {
-        if !owned(&now) {
+        if !owned(&now) || !now.starts_with("recompstore:") {
             s.forget_cloud();
         }
         write_note(app_dir, id, &s, &now);
@@ -1154,10 +1153,8 @@ pub fn validate_cloud_copy(path: &Path, id: &str, hash: &str, spots: &[Spot], g:
         return Err(invalid());
     }
     if !cloud_files_within_limits(&man.files, spots.len()) { return Err(invalid()); }
-    let release = crate::inputs::release_files(g);
-    let manual_exe = g.manual.as_ref().and_then(|m| m.exe.as_ref());
     let mut protected = HashSet::new();
-    for file in release.iter().chain(g.exe.iter()).chain(manual_exe) {
+    for file in g.files.iter().chain(g.exe.iter()) {
         let path = g.path.join(file);
         protected.insert(lower(&path));
         if let Ok(real) = path.canonicalize() { protected.insert(lower(&real)); }
@@ -1729,12 +1726,11 @@ mod tests {
     }
 
     #[test]
-    fn cloud_restore_rejects_a_program_named_by_manual_setup() {
+    fn cloud_restore_rejects_an_absolute_selected_program() {
         let dir = tmp("cloud-manual-program");
         let program = dir.join("launch-game");
         fs::write(&program, b"manual program").unwrap();
-        let manual = crate::library::ManualSetup { exe: Some(program.clone()), ..Default::default() };
-        let g = Installed { manual: Some(manual), files: vec![], ..game(&dir) };
+        let g = Installed { exe: Some(program.clone()), files: vec![], ..game(&dir) };
         let spots = vec![Spot { template: "{install}".into(), from: "game" }];
         let (path, hash) = cloud_archive_named(&dir, "{install}", "launch-game", b"replacement", b"replacement");
         assert!(restore_cloud_copy(&dir.join("app"), "g", &path, &hash, &spots, &g).is_err());
@@ -1881,7 +1877,7 @@ mod tests {
         }
         let copy = backup(&dir, "g", &spots, &g).unwrap().unwrap();
         assert_eq!(copy.files, count);
-        let archive = dir_of(&dir, "g").join(copy.name);
+        let archive = dir_of(&dir, "g", &g).join(copy.name);
         let mut zip = zip::ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();
         assert!(zip.by_name("rlsave.json").unwrap().size() > 8 * 1024 * 1024);
         drop(zip);
@@ -1993,6 +1989,7 @@ mod tests {
     #[test]
     fn provider_changes_discard_the_sync_baseline_and_queue() {
         let dir = tmp("cloud-provider");
+        crate::cloud::sign_in_for_tests(&dir, "A");
         let state = State { last_hash: "local".into(), synced_hash: "cloud".into(), pending: Some("123.zip".into()), ..Default::default() };
         set_state(&dir, "g", &state);
         fs::write(dir.join("save-provider.json"), b"\"google_drive\"").unwrap();
@@ -2005,6 +2002,7 @@ mod tests {
     #[test]
     fn provider_changes_forget_the_old_clouds_conflict_and_problem() {
         let dir = tmp("cloud-provider-status");
+        crate::cloud::sign_in_for_tests(&dir, "A");
         let problem = Some(Problem { kind: "full".into(), text: String::new(), at: 1 });
         let state = State { synced_hash: "cloud".into(), synced_at: 5, conflict: Some("v1".into()), problem, ..Default::default() };
         set_state(&dir, "g", &state);
@@ -2028,6 +2026,7 @@ mod tests {
     #[test]
     fn legacy_website_sync_state_is_migrated() {
         let dir = tmp("cloud-legacy");
+        crate::cloud::sign_in_for_tests(&dir, "legacy");
         let value = serde_json::json!({"last_hash": "local", "synced_hash": "cloud", "pending": "123.zip"});
         fs::create_dir_all(dir.join("saves/g")).unwrap();
         fs::write(state_file(&dir, "g"), serde_json::to_vec(&value).unwrap()).unwrap();

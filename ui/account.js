@@ -20,7 +20,10 @@ S.saveProvider = { provider: 'recompstore', name: 'RecompStore', connected: fals
 const cloudReady = () => !!S.saveProvider?.connected;
 
 function applySaveProvider(result) {
+  const previous = S.saveProvider;
   S.saveProvider = result.state || result;
+  if (Object.hasOwn(result, 'cloudAll')) { S.settings.ui = S.settings.ui || {}; S.settings.ui.cloud_all = result.cloudAll; }
+  if (previous.provider !== S.saveProvider.provider || previous.connected !== S.saveProvider.connected || previous.google?.email !== S.saveProvider.google?.email) forgetSaveStatus();
   if (result.installed) { S.library = result.installed; expandLib(); }
   S.saves = {}; S.savesAll = null;
   if (window.tvSavesReset) window.tvSavesReset();
@@ -109,7 +112,7 @@ function saveProviderSection(group, row) {
   return group(t('Save Destination'), `<p class="set-note">${esc(info)}</p>`
     + row('RecompStore', t('Use your RecompStore account for game saves.'), button(p.provider === 'recompstore' ? 'Selected' : 'Use RecompStore', 'provider-recompstore', p.provider === 'recompstore'))
     + row('Google Drive', googleHelp, `<span class="acts">${google.connected ? button('Reconnect', 'drive-connect') + button('Disconnect', 'drive-disconnect') + button(p.provider === 'google_drive' ? 'Selected' : 'Use Google Drive', 'provider-google', p.provider === 'google_drive') : button('Connect Google Drive', 'drive-connect', !google.configured)}</span>`)
-    + row(t('Ask for Each New Game'), t('Ask before enabling cloud saves for a game.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}" aria-label="${esc(t('Ask for Each New Game'))}" data-act="acc-cloud-ask"></button>`)
+    + (p.connected ? row(t('Back Up Every Game'), t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'), `<button type="button" class="switch" role="switch" aria-checked="${(S.settings.ui || {}).cloud_all === true}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`) : '')
     + deviceNameRow());
 }
 
@@ -244,15 +247,10 @@ function recompAccountSection(group, row) {
       + group(t('Save backups'), row(t('On this PC'), t('After every session the launcher keeps a copy of each game\'s saves, the newest ten. They\'re on each game\'s Saves tab.'), ''));
   }
   const used = a.used || 0, quota = a.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
-  // Back Up Every Game says what it does now, like a game's own switch in its Manage tab.
-  const all = (S.settings.ui || {}).cloud_all === true;
-  const allNow = all ? t('On. Cloud saves are activated for all games. Turning it off disables cloud saves for every game. Saves stay intact.') : t('Off. Cloud saves are only active for the games you turn on in their Manage tab. Turning it on activates them for every game.');
   return group(t('Account'), `<div class="acc-me">${avatar(a.user, 48)}<div><b>${esc(a.user.username)}</b><span>${esc(a.offline ? t('Signed in on this PC. The website can\'t be reached right now.') : t('Signed in on this PC'))}${a.offline && a.why ? `<small class="muted" style="display:block">${esc(a.why)}</small>` : ''}</span></div>${a.offline ? `<button type="button" class="btn sm" data-act="acc-retry">${esc(t('Try again'))}</button>` : ''}</div>
       <div class="acts grid2 acc-acts"><button type="button" class="btn" data-act="url" data-url="${SITE}/account">${esc(t('Your account'))}</button><button type="button" class="btn" data-act="acc-signout">${esc(t('Sign out'))}</button></div>`)
     + group(t('Cloud saves'), `<div class="acc-space"><div class="acc-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
-      <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`
-      + row(t('Back Up Every Game'), allNow, `<button type="button" class="switch" role="switch" aria-checked="${all}" aria-label="${esc(t('Back Up Every Game'))}" data-act="acc-cloud-all"></button>`)
-      + deviceNameRow())
+      <p class="set-note" style="margin:12px 0 0">${esc(t('Turn them on or off for one game in its Manage tab. The newest five copies of each game are kept.'))}</p>`)
     + (window.betasGroup ? window.betasGroup(group, row) : '');
 }
 // ---------- Settings > Reviews ----------
@@ -460,7 +458,7 @@ function saveStatusCard(id, s) {
   const text = statusCardText(st, b, picked);
   const offline = st.problem && st.problem.kind === 'offline' && s.status;
   const help = offline ? `<p class="set-note">${esc(t('Still no answer. Check whether the website is having trouble:'))} <button type="button" class="linkish" data-act="url" data-url="${esc(s.status)}">${esc(s.status.replace(/^https:\/\//, ''))}</button></p>` : '';
-  const space = s.signedIn && s.cloudOn === true ? cloudSpace() : '';
+  const space = s.signedIn && s.cloudOn === true && st.provider !== 'google_drive' ? cloudSpace() : '';
   const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
   const url = step && step.url ? ` data-url="${esc(step.url)}"` : '';
   const btn = step ? `<button type="button" class="btn sm main" data-act="${step.act}" data-id="${esc(id)}"${url}${s.busy ? ' disabled' : ''}>${esc(t(step.label))}</button>` : '';
@@ -504,10 +502,12 @@ function statusCardText(st, b, picked) {
 function saveNextStep(st, phase, running, picked) {
   if (phase || running) return null;
   if (st.known === false) return { act: 'saves-place', label: N_('Pick a Folder') };
+  if (st.state === 'signed-out' && st.provider === 'google_drive') return { act: 'acc-drive-connect', label: N_('Connect Google Drive') };
   if (st.state === 'signed-out') return { act: 'acc-signin', label: N_('Sign in') };
   // saves-cloud turns them on when the button has no switch state to read.
   if (st.state === 'off') return { act: 'saves-cloud', label: N_('Turn On') };
   if (st.state === 'conflict') return { act: 'saves-sync', label: N_('Choose a Save') };
+  if (st.state === 'problem' && st.provider === 'google_drive' && st.problem?.kind === 'full') return { act: 'url', label: N_('Free Up Space'), url: 'https://drive.google.com/drive/quota' };
   if (st.state === 'problem') return problemStep((st.problem && st.problem.kind) || 'error', picked);
   if (st.state === 'waiting' || st.state === 'up-to-date') return { act: 'saves-sync', label: N_('Sync Now') };
   return null;
@@ -557,7 +557,7 @@ function saveHistory(s) {
   for (const r of rows) r.incoming = !r.current && !!next && r.v === next;
   // Any cloud save but the newest can be deleted (saves_cloud_delete says why not that one).
   const newestCloud = Array.isArray(s.cloud) && s.cloud.length ? s.cloud.reduce((p, q) => (q.made > p.made ? q : p)).v : '';
-  for (const r of rows) r.deletable = !!r.v && r.v !== newestCloud;
+  for (const r of rows) r.deletable = s.provider !== 'Google Drive' && !!r.v && r.v !== newestCloud;
   return rows;
 }
 
@@ -776,6 +776,7 @@ function saveBadgeInfo(st, phase, running) {
   if (st.known === false) return { tone: 'dim', mark: 'off', label: t('Saves not backed up'), note: '', head: t('The launcher doesn\'t know where this game saves'), text: t('Nothing of it is backed up or sent to the cloud. Pick its save folder on its Saves tab.'), rows: [] };
   const synced = st.syncedAt ? [[t('Last synced'), whenText(st.syncedAt)], [t('Saved on'), st.syncedDevice || t('this PC')]] : [];
   const newest = st.newest ? [[t('Last backup'), `${whenText(st.newest.when)}${st.newest.device ? ' · ' + st.newest.device : ''}`]] : [];
+  if (st.state === 'signed-out' && st.provider === 'google_drive') return { tone: 'dim', mark: 'dash', label: t('Connect Google Drive'), note: '', head: t('Keep this save on any PC'), text: t('Google Drive needs you to connect again.'), rows: newest };
   if (st.state === 'signed-out') return { tone: 'dim', mark: 'dash', label: t('Not signed in'), note: '', head: t('Keep this save on any PC'), text: t('Sign in to RecompStore and your saves go to the cloud after you play. It\'s free.'), rows: newest };
   if (st.state === 'off') return { tone: 'dim', mark: 'off', label: t('Cloud saves off'), note: '', head: t('Saves stay on this PC'), text: t('The launcher still keeps a copy after every session. Turn cloud saves on in its Saves tab.'), rows: newest };
   if (st.state === 'conflict') return { tone: 'warn', mark: 'conflict', label: t('Choose a save'), note: t('press Play to pick'), head: t('Both saves changed'), text: t('This PC and the cloud both changed since they last synced. Press Play, or Sync Now in its Saves tab, to pick the one to keep; the other stays as a backup on this PC.'), rows: synced };

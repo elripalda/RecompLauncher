@@ -168,3 +168,11 @@ test('the cloud copy saved after this PC: the cloud one is newer', () => {
 test('saved at the same second: neither is marked', () => {
   assert.equal(newerSave({ when: 100 }, { made: 100 }), '');
 });
+
+
+test('a disconnected Drive badge offers Google connection and retains backup details', () => {
+  const b = info.saveBadgeInfo(status('signed-out', { provider: 'google_drive', newest: { when: 100, device: 'PC' } }), undefined, false);
+  assert.equal(b.label, 'Connect Google Drive');
+  assert.equal(b.tone, 'dim');
+  assert.equal(b.rows.length, 1);
+});

@@ -93,6 +93,7 @@ test('Play asks nothing about cloud saves for a game never switched', async () =
   const invoked = [];
   const S = { library: { g: { name: 'Game', cloud: null } }, account: { signedIn: true }, settings: { ui: {} } };
   const context = { S, invoke: async (c) => { invoked.push(c); return { action: 'play' }; }, toast() {}, savesChanged() {}, fail: assert.fail, t: String, tf: String };
+  context.cloudReady = () => S.account.signedIn;
   context.cloudOn = runInNewContext(cloudOnSrc + '\ncloudOn', context);
   const play = runInNewContext(playSrc + '\nbeforeCloudPlay', context);
   assert.equal(await play('g'), true);

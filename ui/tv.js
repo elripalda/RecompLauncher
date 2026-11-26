@@ -1400,7 +1400,7 @@
           <button type="button" class="tv-item" data-f data-key="s:provider" data-tvact="save-provider"><span class="k">${esc(t('Save Destination'))}<small>${esc(S.saveProvider?.name || 'RecompStore')}</small></span><span class="tv-pill">${esc(t('Change'))}</span></button>
           <button type="button" class="tv-item" data-f data-key="s:drive" data-tvact="drive-connect"${!S.saveProvider?.google?.configured && !S.saveProvider?.google?.deviceConfigured ? ' disabled' : ''}><span class="k">${esc(t(S.saveProvider?.google?.connected ? 'Reconnect Google Drive' : 'Connect Google Drive'))}<small>${esc(S.saveProvider?.google?.email || t('Save copies go directly to your Google Drive'))}</small></span></button>
           ${S.saveProvider?.google?.connected ? `<button type="button" class="tv-item" data-f data-key="s:drive-off" data-tvact="drive-disconnect"><span class="k">${esc(t('Disconnect Google Drive'))}<small>${esc(t('Copies already in Drive are kept'))}</small></span></button>` : ''}
-          <button type="button" class="tv-item" data-f data-key="s:cloud-ask" data-tvact="cloud-ask"><span class="k">${esc(t('Ask for Each New Game'))}</span><span class="switch" aria-checked="${(S.settings.ui || {}).cloud_ask !== false}"></span></button>
+          ${S.saveProvider?.connected ? `<button type="button" class="tv-item" data-f data-key="s:cloud-all" data-tvact="cloud-all"><span class="k">${esc(t('Back Up Every Game'))}</span><span class="switch" aria-checked="${(S.settings.ui || {}).cloud_all === true}"></span></button>` : ''}
           ${head(t('Display'))}
           ${(() => {
             const m = window.monitorPicked(S.monitors, S.settings.tv_monitor);
@@ -1490,7 +1490,7 @@
     if (TV.on && TV.view === 'gsaves' && TV.arg === id) draw(true);
   }
   // The desktop's next steps as this page's actions. Reporting a problem stays in the desktop view.
-  const TV_STEP = { 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
+  const TV_STEP = { 'acc-drive-connect': 'drive-connect', 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
   // The status, as the item that leads the page.
   function savesStatusItem(id, sv) {
     const b = window.saveBadgeFor(id);
@@ -1504,7 +1504,8 @@
     const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
     const act = step && !sv.busy && TV_STEP[step.act];
     // Reporting stays in the desktop view, and the account page needs a browser: said instead.
-    const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
+    const storageHelp = st.provider === 'google_drive' ? st.problem?.text || '' : t('Free up space on your account page at recomplauncher.com.');
+    const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${storageHelp}` : '';
     const tvact = act ? ` data-tvact="${act}" data-id="${esc(id)}"` : '';
     const pill = act ? `<span class="tv-pill on">${esc(t(step.label))}</span>` : '';
     const note = b.note ? ` <i>· ${esc(b.note)}</i>` : '';
@@ -2015,7 +2016,7 @@
         // No Add to desktop on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
         ...(S.steam || S.os !== 'macos' ? [{ gap: true, ...(S.steam ? { label: t('Add to Steam'), sub: t('With its art'), icon: 'steam', run: () => addToSteam(id, false) } : { label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }) }] : []),
         ...(S.steam && S.os !== 'macos' ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
-        ...(S.account && S.account.signedIn ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
+        ...(cloudReady() ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
         // The same switch as the game's Manage tab on the desktop, and the same skip list under Settings.
         ...(!g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
@@ -3172,7 +3173,7 @@
       case 'lang': sfx('open'); return pickLang();
       case 'drive-connect': return window.connectDrive().catch(fail);
       case 'drive-disconnect': return window.disconnectDrive().catch(fail);
-      case 'cloud-ask': await saveUi({ cloud_ask: (S.settings.ui || {}).cloud_ask === false }); return draw(true);
+      case 'cloud-all': await window.setCloudAll((S.settings.ui || {}).cloud_all !== true); return draw(true);
       case 'save-provider': return sheet(t('Save Destination'), [
         { label: 'RecompStore', sub: t('Enable each game again after changing providers'), run: () => window.chooseSaveProvider('recompstore').catch(fail) },
         { label: 'Google Drive', sub: t('Connect Google Drive first; enable each game again after changing providers'), run: () => S.saveProvider?.google?.connected ? window.chooseSaveProvider('google_drive').catch(fail) : window.connectDrive().catch(fail) },
