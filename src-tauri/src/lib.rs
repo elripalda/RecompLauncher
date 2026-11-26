@@ -6572,6 +6572,11 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
             if !(n.ends_with(".log") || n.ends_with("log.txt")) {
                 continue;
             }
+            // An empty log (made at start, nothing written before it closed) says nothing, and it
+            // would hide what the game printed.
+            if m.len() == 0 {
+                continue;
+            }
             let Ok(t) = m.modified() else { continue };
             let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
             if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) {
@@ -6590,9 +6595,10 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
     // Nor that: ReShade's, when it ran with a look.
     let best = best.or_else(|| {
         let p = st.dir.join("looks").join(&id).join("ReShade.log");
-        let t = std::fs::metadata(&p).ok()?.modified().ok()?;
+        let m = std::fs::metadata(&p).ok()?;
+        let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (secs + 5 >= since).then_some((t, p))
+        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
     });
     best.map(|(_, p)| p)
 }
@@ -11636,6 +11642,42 @@ mod tests {
         let own: profile::GameCopy = serde_json::from_value(json!({ "kind": "folder", "label": "x", "check": { "file": "SLUS_203.12" } })).unwrap();
         assert!(own.identifies_by_contents());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A game in `<d>/game` whose logs folder holds `game.log` with `log` in it, and that printed
+    /// `printed` while it ran. The app's own folder is `d`.
+    fn game_with_logs(d: &Path, log: &str, printed: &str) -> App {
+        let _ = std::fs::remove_dir_all(d);
+        std::fs::create_dir_all(d.join("game/logs")).unwrap();
+        std::fs::write(d.join("game/logs/game.log"), log).unwrap();
+        let output = game_output_path(d, "g");
+        std::fs::create_dir_all(output.parent().unwrap()).unwrap();
+        std::fs::write(&output, printed).unwrap();
+        let mut lib = Library::default();
+        lib.installed.insert("g".into(), Installed { id: "g".into(), path: d.join("game"), local: true, ..Default::default() });
+        app_in(d, lib)
+    }
+
+    fn a_minute_ago() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 60
+    }
+
+    #[test]
+    fn an_empty_game_log_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-empty-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_game_log_with_lines_in_it_is_still_the_crash_log() {
+        let d = std::env::temp_dir().join(format!("rl-full-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "loading level 3\nerror: out of memory\n", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(d.join("game/logs/game.log")));
     }
 
     pub(crate) fn app_in(dir: &Path, lib: Library) -> App {
