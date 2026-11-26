@@ -287,7 +287,7 @@ test('every button a status can show does something in Big Picture, or says to u
     assert.ok(tv.includes(`case '${tvAct[1]}'`), tvAct[1]);
   }
   assert.match(tv, /step\.act === 'report' \? ` \$\{t\('Report problems from the desktop view'\)\}\.`/);
-  assert.match(tv, /step\.act === 'url' \? ` \$\{t\('Free up space on your account page at recomplauncher\.com\.'\)\}`/);
+  assert.match(tv, /step\.act === 'url' \? ` \$\{storageHelp\}`/);
 });
 
 test('any cloud save but the newest can be deleted', () => {
@@ -378,4 +378,20 @@ test('the newer save can be synced now with Sync Now, on the desktop and in Big 
 
 test('Big Picture gives the save coming in no Restore either', () => {
   assert.match(tv, /const act = r\.current \|\| r\.incoming \? '' :/);
+});
+
+
+test('a full Drive points to Google storage instead of RecompStore', () => {
+  const st = { ...problem('full'), provider: 'google_drive' };
+  assert.equal(steps(st, undefined, false, false).url, 'https://drive.google.com/drive/quota');
+});
+
+test('a disconnected Drive offers to reconnect Google', () => {
+  const st = { state: 'signed-out', provider: 'google_drive' };
+  assert.equal(steps(st, undefined, false, false).act, 'acc-drive-connect');
+});
+
+test('Drive history uses automatic cleanup without the RecompStore delete command', () => {
+  const rows = tab(fresh()).saveHistory({ provider: 'Google Drive', local: [], cloud: [cloud(200, 'b', 'v2'), cloud(100, 'a', 'v1')] });
+  assert.deepEqual(rows.map((r) => r.deletable), [false, false]);
 });

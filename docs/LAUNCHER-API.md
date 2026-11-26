@@ -20,6 +20,10 @@ was signed out (from the account page, or the account is gone): the launcher for
 
 ## Cloud saves
 
+This section describes RecompStore storage. Players can instead choose their own Google Drive
+in Settings → Account; those saves go directly to Google and do not use the endpoints below.
+See [Google Drive saves](GOOGLE-DRIVE.md) for connection, storage and release configuration.
+
 | Call | |
 | --- | --- |
 | `GET ?a=me` | The account, and `saves: {used, quota}` |

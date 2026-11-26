@@ -1396,6 +1396,11 @@
           ${S.account && S.account.signedIn
             ? `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account" data-val="${esc(S.account.user.username)}"><span class="k">${esc(tf('Signed in as {name}', { name: S.account.user.username }))}<small>${esc(t('Cloud saves keep each game\'s saves on your account'))}</small></span><span class="tv-pill on">${esc(t('Account'))}</span></button>`
             : `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account"><span class="k">${esc(t('Sign in'))}<small>${esc(t('Back your saves up to a RecompStore account, and play on with them on any PC'))}</small></span><span class="tv-pill on">${esc(t('Sign in'))}</span></button>`}
+          ${head(t('Save Destination'))}
+          <button type="button" class="tv-item" data-f data-key="s:provider" data-tvact="save-provider"><span class="k">${esc(t('Save Destination'))}<small>${esc(S.saveProvider?.name || 'RecompStore')}</small></span><span class="tv-pill">${esc(t('Change'))}</span></button>
+          <button type="button" class="tv-item" data-f data-key="s:drive" data-tvact="drive-connect"${!S.saveProvider?.google?.configured && !S.saveProvider?.google?.deviceConfigured ? ' disabled' : ''}><span class="k">${esc(t(S.saveProvider?.google?.connected ? 'Reconnect Google Drive' : 'Connect Google Drive'))}<small>${esc(S.saveProvider?.google?.email || t('Save copies go directly to your Google Drive'))}</small></span></button>
+          ${S.saveProvider?.google?.connected ? `<button type="button" class="tv-item" data-f data-key="s:drive-off" data-tvact="drive-disconnect"><span class="k">${esc(t('Disconnect Google Drive'))}<small>${esc(t('Copies already in Drive are kept'))}</small></span></button>` : ''}
+          ${S.saveProvider?.connected ? `<button type="button" class="tv-item" data-f data-key="s:cloud-all" data-tvact="cloud-all"><span class="k">${esc(t('Back Up Every Game'))}</span><span class="switch" aria-checked="${(S.settings.ui || {}).cloud_all === true}"></span></button>` : ''}
           ${head(t('Display'))}
           ${(() => {
             const m = window.monitorPicked(S.monitors, S.settings.tv_monitor);
@@ -1485,7 +1490,7 @@
     if (TV.on && TV.view === 'gsaves' && TV.arg === id) draw(true);
   }
   // The desktop's next steps as this page's actions. Reporting a problem stays in the desktop view.
-  const TV_STEP = { 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
+  const TV_STEP = { 'acc-drive-connect': 'drive-connect', 'acc-signin': 'account', 'saves-cloud': 'gs-cloud', 'saves-sync': 'gs-sync', 'saves-place': 'gs-place' };
   // The status, as the item that leads the page.
   function savesStatusItem(id, sv) {
     const b = window.saveBadgeFor(id);
@@ -1499,7 +1504,8 @@
     const step = next ? INCOMING_STEP : saveNextStep(st, phase, running, picked);
     const act = step && !sv.busy && TV_STEP[step.act];
     // Reporting stays in the desktop view, and the account page needs a browser: said instead.
-    const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${t('Free up space on your account page at recomplauncher.com.')}` : '';
+    const storageHelp = st.provider === 'google_drive' ? st.problem?.text || '' : t('Free up space on your account page at recomplauncher.com.');
+    const desk = !step ? '' : step.act === 'report' ? ` ${t('Report problems from the desktop view')}.` : step.act === 'url' ? ` ${storageHelp}` : '';
     const tvact = act ? ` data-tvact="${act}" data-id="${esc(id)}"` : '';
     const pill = act ? `<span class="tv-pill on">${esc(t(step.label))}</span>` : '';
     const note = b.note ? ` <i>· ${esc(b.note)}</i>` : '';
@@ -2010,7 +2016,7 @@
         // No Add to desktop on a Mac: the shortcut the launcher makes is Linux's .desktop file, which a Mac ignores.
         ...(S.steam || S.os !== 'macos' ? [{ gap: true, ...(S.steam ? { label: t('Add to Steam'), sub: t('With its art'), icon: 'steam', run: () => addToSteam(id, false) } : { label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }) }] : []),
         ...(S.steam && S.os !== 'macos' ? [{ label: t('Add to desktop'), sub: t('A shortcut that starts it'), icon: 'desk', run: async () => { try { await invoke('desktop_shortcut', { id }); toast(tf('{name} is on your desktop.', { name: g.name })); } catch (e) { fail(e); } } }] : []),
-        ...(S.account && S.account.signedIn ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
+        ...(cloudReady() ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
         // The same switch as the game's Manage tab on the desktop, and the same skip list under Settings.
         ...(!g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
@@ -2148,7 +2154,7 @@
     TV.sheet = { items: [{ label: t('Cancel') }], prev: (focused() || {}).dataset?.key, onClose: () => s.onClose && s.onClose() };
     const el = document.createElement('div');
     el.className = 'tv-sheet tv-signin';
-    el.innerHTML = `<div class="tv-sheet-in"><h3>${esc(t('Sign in with your phone'))}</h3><div class="tv-signin-two"><div class="tv-qr">${s.qr}</div><div><p>${esc(t('Scan the code with your phone, or go to recomplauncher.com/activate and type:'))}</p><div class="tv-code">${esc(s.code)}</div><p class="tv-wait" data-st>${esc(t('Waiting for you to sign in…'))}</p></div></div>
+    el.innerHTML = `<div class="tv-sheet-in"><h3>${esc(s.title || t('Sign in with your phone'))}</h3><div class="tv-signin-two">${s.qr ? `<div class="tv-qr">${s.qr}</div>` : ''}<div><p>${esc(s.hint || t('Scan the code with your phone, or go to recomplauncher.com/activate and type:'))}</p><div class="tv-code">${esc(s.code)}</div><p class="tv-wait" data-st>${esc(t('Waiting for you to sign in…'))}</p></div></div>
       <button type="button" class="tv-item" data-f data-key="sheet:0" data-sheet="0"><span class="k">${esc(t('Cancel'))}</span></button></div>`;
     stage().append(el);
     focus($('[data-sheet="0"]', el), true);
@@ -2682,6 +2688,7 @@
     const cls = `tv-ambient m-${m}`;
     if (el.className !== cls) { el.className = cls; el.innerHTML = m === 'grid' ? '<i class="sky"></i><i class="sun"></i><i class="floor"></i>' : m === 'drift' ? '<i class="d1"></i><i class="d2"></i><i class="d3"></i>' : '<i class="a1"></i><i class="a2"></i><i class="a3"></i>'; }
   }
+  window.tvSavesReset = () => { TV.saves = {}; TV.savesAll = null; };
   window.tvRefresh = () => soon();
   // A game moved to another id (one added by link, now on the official list): the page on and
   // the pages behind it follow.
@@ -3164,6 +3171,13 @@
       // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
       case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);
       case 'lang': sfx('open'); return pickLang();
+      case 'drive-connect': return window.connectDrive().catch(fail);
+      case 'drive-disconnect': return window.disconnectDrive().catch(fail);
+      case 'cloud-all': await window.setCloudAll((S.settings.ui || {}).cloud_all !== true); return draw(true);
+      case 'save-provider': return sheet(t('Save Destination'), [
+        { label: 'RecompStore', sub: t('Enable each game again after changing providers'), run: () => window.chooseSaveProvider('recompstore').catch(fail) },
+        { label: 'Google Drive', sub: t('Connect Google Drive first; enable each game again after changing providers'), run: () => S.saveProvider?.google?.connected ? window.chooseSaveProvider('google_drive').catch(fail) : window.connectDrive().catch(fail) },
+      ]);
       case 'account':
         sfx('open');
         if (!(S.account && S.account.signedIn)) return window.signIn && window.signIn(false);

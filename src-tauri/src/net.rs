@@ -658,6 +658,8 @@ pub enum Proxy {
 }
 
 static PROXY: std::sync::RwLock<Option<Proxy>> = std::sync::RwLock::new(None);
+#[cfg(test)]
+pub(crate) static PROXY_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// Applies the player's setting: "off", "system" (or empty) or "custom" with its address and
 /// optional user and password (put into the address, which is how proxies are told).
@@ -921,6 +923,7 @@ mod proxy_tests {
 
     #[test]
     fn a_dead_proxy_fails_fast_with_its_address() {
+        let _guard = PROXY_TEST_LOCK.lock().unwrap();
         // Nothing listens on this port: the request through it fails at once (not a hang), and
         // the error names the proxy.
         let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

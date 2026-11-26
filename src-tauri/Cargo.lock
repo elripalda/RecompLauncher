@@ -4712,6 +4712,7 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
+ "getrandom 0.2.17",
  "hex",
  "image",
  "lz4_flex",
