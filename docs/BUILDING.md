@@ -140,7 +140,7 @@ Start the launcher with `RECOMPLAUNCHER_TEST_CONTROL` set to a token of your own
 
 ## Android (test builds)
 
-The Android app is in early testing and isn't released. It's the same Rust core and window as
+The Android app is in early testing and isn't released. It needs Android 8.0 or newer (the RAR unpacker and installing other apps both need it). It's the same Rust core and window as
 the PC launcher, built with Tauri's Android support; the Android Studio project is
 `src-tauri/gen/android`.
 
