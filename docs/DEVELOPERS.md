@@ -198,8 +198,12 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
   do. Anything else your `AppRun` sets up, it doesn't get: set it in `start.env`, or link your
   program with an rpath of `$ORIGIN/lib`. Naming the AppImage is safer: name a program inside it
   only when that program runs on its own, and developer tools warn when you do.
-- Links inside your AppImage are kept when they stay inside it. A link to an absolute path or out
-  of the AppImage (`../../`) is left out, and the launcher's log names it.
+- Links inside your AppImage are kept as links, with their targets exactly as you packed them,
+  the way `unsquashfs` and `--appimage-extract` keep them. That includes a link to an absolute path
+  or out of the AppImage (`../../`), for example a Nix-built AppImage's `entrypoint` into the
+  `/nix/store` its `AppRun` mounts. The launcher's log names them. A link like that only works if
+  your `AppRun` brings along what it points at. The launcher never writes, deletes or counts
+  anything through a link: uninstalling, moving or updating the game takes the link itself.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
   release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.
