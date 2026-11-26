@@ -190,7 +190,12 @@ impl Prepare {
         if self.done.is_empty() {
             return None;
         }
-        Some(self.done.iter().all(|d| Path::new(&fill(d, install, None)).exists()))
+        Some(self.done_paths(install).iter().all(|d| d.exists()))
+    }
+
+    /// Its finished files (`done`), filled in.
+    pub fn done_paths(&self, install: &Path) -> Vec<PathBuf> {
+        self.done.iter().map(|d| PathBuf::from(fill(d, install, None))).collect()
     }
 
     /// The options this PC is offered.

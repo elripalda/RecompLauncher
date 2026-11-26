@@ -4771,6 +4771,29 @@ fn with_said(head: &str, said: &str) -> String {
     format!("{head}\n{said}")
 }
 
+/// A setup step's `done` files as they were before it started: when each was last written, or
+/// None when it wasn't there.
+struct DoneBefore(Vec<(PathBuf, Option<std::time::SystemTime>)>);
+
+impl DoneBefore {
+    fn note(pr: &profile::Prepare, install: &Path) -> Self {
+        let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        DoneBefore(pr.done_paths(install).into_iter().map(|p| (p.clone(), written(&p))).collect())
+    }
+
+    /// Whether this run finished the build: every `done` file there and written since it started
+    /// (the last build's files don't count: they're there before an update's build has begun), or
+    /// all there and the step said it was already built (`progress 1`). None: the step lists none.
+    fn finished(&self, already_built: bool) -> Option<bool> {
+        if self.0.is_empty() {
+            return None;
+        }
+        let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        let all_there = self.0.iter().all(|(p, _)| p.exists());
+        let all_new = self.0.iter().all(|(p, before)| written(p).is_some_and(|w| before.is_none_or(|b| w != b)));
+        Some(all_new || (all_there && already_built))
+    }
+}
 
 /// Start a program that may have only just been written (unpacked with the game). On Linux,
 /// another thread starting a program at that moment holds the new file open for a few
@@ -4936,6 +4959,8 @@ fn run_prepare_idle(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, 
     // The launcher killed or crashing (no Exit to stop it): on Linux the step goes with it.
     #[cfg(target_os = "linux")]
     die_with_launcher(&mut c);
+    // The last build's `done` files as they are now: only ones written again count as this run's.
+    let done_before = DoneBefore::note(pr, install);
     let mut child = spawn_just_written(&mut c).map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
     // Started: from here it can write over the last build. (Not before: a step Windows Security
     // blocked never ran.)
@@ -5012,12 +5037,14 @@ fn run_prepare_idle(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, 
         kill_process_tree(child);
     };
     // Set once the step's own program has ended well but left its build running (handed off to
-    // another program) with its `done` files still missing: the setup waits for them.
+    // another program) with its `done` files not written yet: the setup waits for them.
     let mut handoff: Option<Handoff> = None;
+    // Whether this run has built it: its `done` files written again, or it said it was already built.
+    let built = || done_before.finished(pct_said.get() >= 1.0);
     loop {
         read(&mut said, &mut too_long, &mut heard);
         if let Some(h) = handoff.as_mut() {
-            if pr.done_in(install) == Some(true) {
+            if built() == Some(true) {
                 // Built. Anything still running (a helper that stays) keeps its temp folder.
                 if left_running() {
                     temp.leave();
@@ -5028,7 +5055,7 @@ fn run_prepare_idle(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, 
             h.look(&cpu_time, heard);
             let idle = h.idle_for() > idle_for;
             // Its last program ended right after writing the last of them.
-            if gone && pr.done_in(install) == Some(true) {
+            if gone && built() == Some(true) {
                 return Ok(());
             }
             if gone || idle {
@@ -5046,9 +5073,9 @@ fn run_prepare_idle(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, 
         } else if let Ok(Some(s)) = child.try_wait() {
             let left = left_running();
             // A step that hands its build off (starts the builder and ends) is waited for, until its
-            // `done` files are there. A step with no `done` list can't be told finished: it's done
+            // `done` files are written again. A step with no `done` list can't be told finished: it's done
             // when its program is, as before.
-            if s.success() && left && pr.done_in(install) == Some(false) {
+            if s.success() && left && built() == Some(false) {
                 trail::note("Setup step's program ended and left its build running: waiting for its done files.");
                 handoff = Some(Handoff::new(cpu_time()));
                 continue;
@@ -12658,10 +12685,15 @@ mod prepare_env_tests {
     /// `built.txt` as its `done` file. `win`: the program and its arguments for `start /b`; `sh`:
     /// the shell commands run in the background.
     fn hands_off(dir: &Path, win: &str, sh: &str) -> profile::Prepare {
+        hands_off_saying(dir, "handing off", win, sh)
+    }
+
+    /// The same, with the step printing `line` before it ends.
+    fn hands_off_saying(dir: &Path, line: &str, win: &str, sh: &str) -> profile::Prepare {
         #[cfg(windows)]
-        let mut pr = step_named(dir, "handoff.bat", &format!("@echo off\r\nstart \"\" /b {win}\r\nexit /b 0\r\n"));
+        let mut pr = step_named(dir, "handoff.bat", &format!("@echo off\r\necho {line}\r\nstart \"\" /b {win}\r\nexit /b 0\r\n"));
         #[cfg(not(windows))]
-        let mut pr = step_named(dir, "handoff.sh", &format!("#!/bin/sh\n( {sh} ) &\nexit 0\n"));
+        let mut pr = step_named(dir, "handoff.sh", &format!("#!/bin/sh\necho \"{line}\"\n( {sh} ) &\nexit 0\n"));
         let _ = (win, sh);
         pr.done = vec![dir.join("built.txt").to_string_lossy().to_string()];
         pr
@@ -12702,9 +12734,9 @@ mod prepare_env_tests {
     }
 
     #[test]
-    fn a_step_whose_done_file_is_there_returns_at_once_while_its_helper_idles() {
+    fn a_step_that_says_it_is_already_built_returns_at_once_while_its_helper_idles() {
         let dir = fresh_dir("helper");
-        let pr = hands_off(&dir, "cmd /c \"ping -n 8 127.0.0.1 >nul\"", "sleep 8");
+        let pr = hands_off_saying(&dir, "progress 1 Already built", "cmd /c \"ping -n 8 127.0.0.1 >nul\"", "sleep 8");
         std::fs::write(dir.join("built.txt"), b"built").unwrap();
         let began = Instant::now();
         let res = run_waiting(&dir, &pr, 30, &|| false, &|_, _| {});
@@ -12712,6 +12744,21 @@ mod prepare_env_tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(res, Ok(()));
         assert!(took < std::time::Duration::from_secs(4), "didn't wait for the helper: {took:?}");
+    }
+
+    #[test]
+    fn the_last_builds_done_file_does_not_count_for_a_hand_off() {
+        let dir = fresh_dir("rebuild");
+        let pr = hands_off(&dir, "cmd /c \"ping -n 3 127.0.0.1 >nul & echo again>built.txt\"", "sleep 2; echo again > built.txt");
+        std::fs::write(dir.join("built.txt"), b"last build").unwrap();
+        let began = Instant::now();
+        let res = run_waiting(&dir, &pr, 30, &|| false, &|_, _| {});
+        let took = began.elapsed();
+        let now = std::fs::read_to_string(dir.join("built.txt")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
+        assert!(took >= std::time::Duration::from_millis(1500), "waited for it to be written again: {took:?}");
+        assert_eq!(now.trim(), "again");
     }
 
     #[test]
