@@ -202,8 +202,8 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
   the way `unsquashfs` and `--appimage-extract` keep them. That includes a link to an absolute path
   or out of the AppImage (`../../`), for example a Nix-built AppImage's `entrypoint` into the
   `/nix/store` its `AppRun` mounts. The launcher's log names them. A link like that only works if
-  your `AppRun` brings along what it points at. The launcher never writes, deletes or counts
-  anything through a link: uninstalling, moving or updating the game takes the link itself.
+  your `AppRun` brings along what it points at. Unpacking never writes through a link, and
+  uninstalling, moving, updating or sizing the game takes the link itself, never what it points at.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
   release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.
