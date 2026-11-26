@@ -4,8 +4,8 @@
 # that the allowed paths are there and everything else is not.
 #
 # Needs bwrap to be able to make a namespace, so run it from a normal terminal (not from inside
-# another sandbox or container). Everything it creates lives under sandbox/out/test and is
-# removed afterwards.
+# another sandbox or container). Everything it creates lives in a temporary folder outside the
+# checkout (or an empty one named by RL_SANDBOX_TEST_ROOT) and is removed afterwards.
 #
 #   sandbox/test-sandbox.sh
 #
@@ -15,14 +15,30 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$HERE/rl-sandbox"
 # Outside the checkout on purpose: if the test directories lived inside it, their parent
 # directories would have to exist in the sandbox and the "not visible" checks would be meaningless.
-ROOT="${RL_SANDBOX_TEST_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/rl-sandbox-test.XXXXXX")}"
 WORKSPACE="$(cd "$HERE/.." && pwd)"
+# RL_SANDBOX_TEST_ROOT picks the folder instead. It has to be empty or missing: everything in it
+# is removed afterwards, so a folder with anything in it is refused rather than emptied.
+if [ -n "${RL_SANDBOX_TEST_ROOT:-}" ]; then
+    ROOT="$RL_SANDBOX_TEST_ROOT"
+    if [ -e "$ROOT" ] && { [ ! -d "$ROOT" ] || [ -n "$(ls -A "$ROOT")" ]; }; then
+        echo "RL_SANDBOX_TEST_ROOT=$ROOT exists and is not an empty folder; not touching it" >&2
+        exit 1
+    fi
+    if [ -d "$ROOT" ]; then
+        # Made by someone else: leave the folder, take out what this script put in it.
+        trap 'find "$ROOT" -mindepth 1 -delete' EXIT
+    else
+        mkdir -p "$ROOT"
+        trap 'rm -rf "$ROOT"' EXIT
+    fi
+else
+    ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rl-sandbox-test.XXXXXX")"
+    trap 'rm -rf "$ROOT"' EXIT
+fi
 
-rm -rf "$ROOT"
 mkdir -p "$ROOT/rw" "$ROOT/ro"
 echo "host only" > "$ROOT/ro/read-only-file"
 echo "host only" > "$ROOT/rw/before"
-trap 'rm -rf "$ROOT"' EXIT
 
 # A file inside the checkout: the sandbox must not see it unless the config says so.
 readonly SECRET="$WORKSPACE/README.md"
@@ -219,6 +235,37 @@ else
     status=1
 fi
 set -e
+
+# nested_sandbox: umu-run (Proton) and WebKit make a user namespace of their own, so with the
+# switch on that has to work, and with it off it has to be refused.
+echo
+echo "=== nested_sandbox: a user namespace made inside the sandbox ==="
+if command -v unshare >/dev/null && unshare --user true 2>/dev/null; then
+    for nested in true false; do
+        python3 - "$CONFIG" "$ROOT/ro/sandbox-nested-$nested.json" "$nested" >/dev/null <<'PY'
+import json, sys
+config, out, nested = sys.argv[1:4]
+cfg = json.load(open(config))
+cfg["nested_sandbox"] = nested == "true"
+json.dump(cfg, open(out, "w"), indent=2)
+PY
+        set +e
+        "$RUNNER" --config "$ROOT/ro/sandbox-nested-$nested.json" -- unshare --user true 2>/dev/null
+        got=$?
+        set -e
+        if [ "$nested" = true ] && [ $got -eq 0 ]; then
+            echo "PASS nested_sandbox: true lets a program make its own user namespace"
+        elif [ "$nested" = false ] && [ $got -ne 0 ]; then
+            echo "PASS nested_sandbox: false refuses a nested user namespace"
+        elif [ "$nested" = false ] && ! bwrap --help 2>&1 | grep -q -- --disable-userns; then
+            echo "INFO this bwrap has no --disable-userns; nested_sandbox: false cannot be enforced"
+        else
+            echo "FAIL nested_sandbox: $nested (unshare --user exited with $got)"; status=1
+        fi
+    done
+else
+    echo "INFO this machine cannot make a user namespace with unshare; skipping the nested check"
+fi
 
 echo
 echo "=== host side ==="
