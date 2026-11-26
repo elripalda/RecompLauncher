@@ -847,6 +847,16 @@ settings are written. It runs again whenever the player changes their copy.
   echo "Install them, then press Set Up again: https://example.com/dkb-recomp#linux"
   exit 1
   ```
+- **A step may hand off.** Your step can start the build in another program and exit with 0
+  before that program is done, like a setup window that starts its builder and closes. When
+  something the step started still runs and a file of `done` is missing, the launcher keeps
+  waiting, with "Still building…" and the last line printed under the step, for as long as
+  what's left prints a line or uses the CPU at least once every 10 minutes. The game is set up
+  once every file of `done` is there, even if a helper of yours keeps running. If what it started
+  ends, or does nothing for 10 minutes, first, the player sees "Its setup step's program finished,
+  but the files it was building never appeared." with the last lines it printed. Cancel ends
+  everything the step started. Without `done` the launcher can't tell when the build is over, so
+  the step counts as finished as soon as its own program exits: list `done` if you hand off.
 - Write what you make to `{data}` (pass it in `args`, or read `RECOMPLAUNCHER_DATA`), and have your
   own launcher use the same place when it's given that path, so both stay in step.
 - It gets `RECOMPLAUNCHER=1`, `RECOMPLAUNCHER_VERSION` and `RECOMPLAUNCHER_DATA`, like the game.
@@ -860,8 +870,9 @@ settings are written. It runs again whenever the player changes their copy.
   }
   ```
 - `TMPDIR`, `TEMP` and `TMP` point to `{install}/.recomplauncher-tmp`, a folder the launcher makes
-  empty for each run, on the game's drive, and takes away when the step ends, however it ends. Put
-  only scratch files there. The game itself, when Play starts it, gets the system's own temp folder.
+  empty for each run, on the game's drive, and takes away when the step ends, however it ends
+  (when something it started still runs, the folder stays for it until the next run). Put only
+  scratch files there. The game itself, when Play starts it, gets the system's own temp folder.
 - The step starts only with at least 1 GB free on the game's drive; otherwise the player is asked
   to free some up first.
 - On Linux and the Steam Deck, a Windows program (`.exe`, `.bat`) runs through the same Proton the
