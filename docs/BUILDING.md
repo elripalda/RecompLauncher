@@ -138,6 +138,29 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 Start the launcher with `RECOMPLAUNCHER_TEST_CONTROL` set to a token of your own, and an MCP client
 (an AI agent, or a script) can drive it: see [TEST-CONTROL.md](TEST-CONTROL.md). It's off otherwise.
 
+## Android (test builds)
+
+The Android app is in early testing and isn't released. It's the same Rust core and window as
+the PC launcher, built with Tauri's Android support; the Android Studio project is
+`src-tauri/gen/android`.
+
+The Android build leaves out what only a PC has: the tray icon, global shortcuts, a second copy
+handing over to the first, Discord status and the picture clipboard. Controllers are read by the
+window (`navigator.getGamepads`) instead of SDL. Window calls a phone doesn't have (minimise,
+full screen, frameless windows) do nothing there; `src-tauri/src/mobile.rs` keeps the shared code
+the same for both. `pads_mobile.rs` and `tray_mobile.rs` stand in for `pads.rs` and `tray.rs`.
+
+To build it yourself you need Android Studio (its SDK and NDK), Java 17 and the Rust target:
+
+```
+rustup target add aarch64-linux-android
+export ANDROID_HOME=<your Android SDK>   NDK_HOME=$ANDROID_HOME/ndk/<version>
+npx tauri android build --debug --apk --target aarch64
+```
+
+The Android workflow (`.github/workflows/android.yml`) builds the same APK on GitHub when the
+Android parts change, or when run by hand, and keeps it for a day.
+
 ## Pull request builds
 
 The `PR checks` GitHub Actions workflow runs the Rust and UI tests and builds installers on

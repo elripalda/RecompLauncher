@@ -11,6 +11,10 @@
 //! all the same, so its tests run on every system.
 #![cfg_attr(not(windows), allow(dead_code))]
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};

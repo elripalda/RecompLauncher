@@ -1,6 +1,8 @@
 node_modules/
 src-tauri/target/
-src-tauri/gen/
+# Made by each build (schemas); the Android project in gen/android is kept.
+src-tauri/gen/*
+!src-tauri/gen/android/
 *.log
 .DS_Store
 dist/arch/

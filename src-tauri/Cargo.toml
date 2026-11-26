@@ -49,19 +49,23 @@ backhand = { version = "0.21", default-features = false, features = ["gzip", "xz
 dwarfs = { version = "0.2", default-features = false, features = ["zstd"] }
 dirs = "5"
 thiserror = "1"
-tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-global-shortcut = "2"
 fs2 = "0.4"
 crc32fast = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-arboard = { version = "3", default-features = false, features = ["image-data"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-discord-rich-presence = "1"
 regex-lite = "0.1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 plist = "1"
 tauri-plugin-deep-link = "2"
+
+# Desktop only: Android and iOS have no tray, global shortcuts, second copies, Discord client or
+# desktop clipboard, and read controllers through the window (navigator.getGamepads).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+discord-rich-presence = "1"
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 # Controllers. SDL 3 is built from source and linked in, with only its joystick and HIDAPI parts:
 # no SDL library to ship, and nothing needed on the player's system.
 sdl3-sys = { version = "=0.7.2", default-features = false, features = ["build-from-source-static", "no-default-subsystems", "sdl-joystick", "sdl-hidapi", "sdl-unix-console-build"] }
