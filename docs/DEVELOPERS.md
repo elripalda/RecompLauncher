@@ -849,14 +849,17 @@ settings are written. It runs again whenever the player changes their copy.
   ```
 - **A step may hand off.** Your step can start the build in another program and exit with 0
   before that program is done, like a setup window that starts its builder and closes. When
-  something the step started still runs and a file of `done` is missing, the launcher keeps
-  waiting, with "Still building…" and the last line printed under the step, for as long as
-  what's left prints a line or uses the CPU at least once every 10 minutes. The game is set up
-  once every file of `done` is there, even if a helper of yours keeps running. If what it started
-  ends, or does nothing for 10 minutes, first, the player sees "Its setup step's program finished,
-  but the files it was building never appeared." with the last lines it printed. Cancel ends
-  everything the step started. Without `done` the launcher can't tell when the build is over, so
-  the step counts as finished as soon as its own program exits: list `done` if you hand off.
+  something the step started still runs and the files of `done` haven't all been written again
+  on this run (the last build's files, still there before an update's build, don't count), the
+  launcher keeps waiting, with "Still building…" and the last line printed under the step, for as
+  long as what's left prints a line or uses the CPU at least once every 10 minutes. The game is
+  set up once every file of `done` is written again, even if a helper of yours keeps running. A
+  step that finds the game already built and prints `progress 1 Already built` isn't waited for.
+  If what it started ends, or does nothing for 10 minutes, first, the player sees "Its setup
+  step's program finished, but the files it was building never appeared." with the last lines it
+  printed. Cancel ends everything the step started. Without `done` the launcher can't tell when
+  the build is over, so the step counts as finished as soon as its own program exits: list `done`
+  if you hand off.
 - Write what you make to `{data}` (pass it in `args`, or read `RECOMPLAUNCHER_DATA`), and have your
   own launcher use the same place when it's given that path, so both stay in step.
 - It gets `RECOMPLAUNCHER=1`, `RECOMPLAUNCHER_VERSION` and `RECOMPLAUNCHER_DATA`, like the game.
