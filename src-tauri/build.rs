@@ -43,6 +43,9 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         clang_runtime();
     }
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        empty_pthread();
+    }
     tauri_build::build()
 }
 
@@ -56,6 +59,17 @@ fn clang_runtime() {
     match dir.map(|d| std::path::Path::new(&d).join("lib/darwin/libclang_rt.osx.a")).filter(|p| p.is_file()) {
         Some(lib) => println!("cargo:rustc-link-arg={}", lib.display()),
         None => println!("cargo:warning=clang's runtime library (libclang_rt.osx.a) wasn't found; linking may fail"),
+    }
+}
+
+/// unrar_sys always links libpthread, but Android has its threads in libc and no libpthread at
+/// all, so the link fails. An empty libpthread.a lets it through; the real calls come from libc.
+fn empty_pthread() {
+    let Ok(out) = std::env::var("OUT_DIR") else { return };
+    let dir = std::path::Path::new(&out).join("android-pthread");
+    let _ = std::fs::create_dir_all(&dir);
+    if std::fs::write(dir.join("libpthread.a"), b"!<arch>\n").is_ok() {
+        println!("cargo:rustc-link-search=native={}", dir.display());
     }
 }
 

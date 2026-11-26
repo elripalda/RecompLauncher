@@ -104,11 +104,18 @@ pub async fn prefetch(http: reqwest::Client, dir: PathBuf, urls: Vec<String>) {
 }
 
 /// Put a PNG on the clipboard, to paste into Discord, X or anywhere.
+#[cfg(desktop)]
 pub fn copy_image(path: &Path) -> Result<(), String> {
     let img = image::open(path).map_err(|e| e.to_string())?.to_rgba8();
     let (w, h) = img.dimensions();
     let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: std::borrow::Cow::Owned(img.into_raw()) }).map_err(|e| e.to_string())
+}
+
+/// Android has no picture clipboard the launcher can reach yet.
+#[cfg(mobile)]
+pub fn copy_image(_path: &Path) -> Result<(), String> {
+    Err("Copying pictures isn't on Android yet.".into())
 }
 
 #[cfg(test)]

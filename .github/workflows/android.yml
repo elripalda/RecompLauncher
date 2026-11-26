@@ -1,0 +1,65 @@
+name: Android
+
+# Builds the Android test app (an APK for arm64 phones, handhelds and TVs). It runs when the
+# Android parts change, or by hand. The APK is kept for one day only: it's a test build.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/android.yml
+      - src-tauri/gen/android/**
+      - src-tauri/src/mobile.rs
+      - src-tauri/src/*_mobile.rs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Android test APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android
+          save-if: false
+
+      - name: Install
+        run: npm ci
+
+      # The runner has the Android SDK and NDK already (ANDROID_HOME, ANDROID_NDK_LATEST_HOME).
+      - name: Build the APK
+        run: |
+          export NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          echo "NDK: $NDK_HOME"
+          npx tauri android build --debug --apk --target aarch64
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: recomplauncher-android-test
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          retention-days: 1
+          if-no-files-found: error

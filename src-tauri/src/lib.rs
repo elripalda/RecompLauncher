@@ -3,6 +3,8 @@
 //! The window (ui/) asks for things through the commands at the bottom; long jobs (downloads,
 //! games running) report back through events: `install` with a Progress, `game` when one starts
 //! or closes.
+// Android builds leave out the Windows, Linux and macOS ways of unpacking and setting up games.
+#![cfg_attr(mobile, allow(dead_code, unused_assignments))]
 
 pub mod ach;
 pub mod adopt;
@@ -43,7 +45,16 @@ pub mod media;
 pub mod mods;
 pub mod net;
 pub mod nup;
+#[cfg(desktop)]
 pub mod pads;
+#[cfg(mobile)]
+#[path = "pads_mobile.rs"]
+pub mod pads;
+#[cfg(mobile)]
+pub mod mobile;
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use mobile::*;
 #[cfg(target_os = "linux")]
 pub mod plain;
 pub mod own_setup;
@@ -68,6 +79,10 @@ pub mod shortcuts;
 pub mod steam_sync;
 pub mod swap;
 pub mod trail;
+#[cfg(desktop)]
+pub mod tray;
+#[cfg(mobile)]
+#[path = "tray_mobile.rs"]
 pub mod tray;
 mod update_download;
 mod update_launch;
@@ -9585,6 +9600,10 @@ const SPLASH_MIN: std::time::Duration = std::time::Duration::from_millis(900);
 
 /// The small start window: the logo in the middle of the screen while the launcher gets ready.
 fn open_splash(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    // Android shows its own start screen, and the app is one window.
+    if cfg!(mobile) {
+        return None;
+    }
     tauri::WebviewWindowBuilder::new(app, "splash", tauri::WebviewUrl::App("splash.html".into()))
         .title("RecompLauncher")
         .inner_size(420.0, 280.0)
@@ -10217,8 +10236,8 @@ fn wait_for_play(args: &[String]) -> bool {
     true
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// The single-instance plugin, on the Flatpak's own D-Bus name when the launcher runs as one.
+#[cfg(desktop)]
 fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder<R> {
     let b = tauri_plugin_single_instance::Builder::new();
     #[cfg(target_os = "linux")]
@@ -10230,6 +10249,7 @@ fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder
     b
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // First, before any thread starts: the test control token leaves the environment here, so
     // games and tools the launcher starts never see it.
@@ -10245,7 +10265,10 @@ pub fn run() {
     }
     // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
     sysenv::tune_allocator();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Desktop only: a phone never starts a second copy of the launcher.
+    #[cfg(desktop)]
+    let builder = builder
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
         // On D-Bus as the app id, not the Tauri identifier: a Flatpak may only own names under its
@@ -10284,6 +10307,9 @@ pub fn run() {
                 }
             }
         }).build())
+        // F12 screenshots and the quick menu while a game runs (ingame.rs).
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    builder
         .on_window_event(|w, ev| {
             if w.label() != "main" {
                 return;
@@ -10348,7 +10374,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // Pictures through the disk cache: rlimg://<address>.
         .register_asynchronous_uri_scheme_protocol("rlimg", |ctx, req, responder| {
             let app = ctx.app_handle().clone();

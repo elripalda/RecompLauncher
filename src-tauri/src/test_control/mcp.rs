@@ -6,6 +6,9 @@
 //! bridge.js), so they do exactly what a click or the window's own code would. The others read
 //! the launcher's state and files, or press controller buttons the way pads.rs does.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use super::{page, Ctx};
 use serde_json::{json, Value};
 use std::time::Duration;
