@@ -32,6 +32,15 @@ pub fn dir_size(p: &Path) -> u64 {
     total
 }
 
+/// Size of a file, a folder, or a link: a link's own, never what it points at.
+pub fn size_of(p: &Path) -> u64 {
+    let Ok(meta) = fs::symlink_metadata(p) else { return 0 };
+    if meta.is_dir() {
+        return dir_size(p);
+    }
+    meta.len()
+}
+
 /// How much room a game takes, as the player sees it: its folder without the old files an update
 /// set aside and couldn't remove yet (they go at the next start). Moving or removing the game
 /// still takes the whole folder (`dir_size`).
@@ -107,15 +116,18 @@ fn copy_folder(from: &Path, to: &Path, roots: &Roots, done: &mut u64, total: u64
 /// A link copied as a link, the way a move on the same drive keeps it: a Mac app's frameworks are
 /// links its signature checks, and a Linux game's libraries often are too. Copied as files, a link
 /// to a folder stopped the move. false when the drive can't hold links (FAT32, exFAT): a link to a
-/// file is then copied as that file, as before.
+/// file of the game's is then copied as that file, as before. One out of the game's folder is never
+/// followed (a Nix AppImage's /nix/store links): the move stops instead.
 #[cfg(unix)]
 fn copy_link(src: &Path, dst: &Path, roots: &Roots) -> io::Result<bool> {
     let target = moved_target(src, fs::read_link(src)?, roots);
-    match std::os::unix::fs::symlink(&target, dst) {
-        Ok(()) => Ok(true),
-        Err(_) if src.is_file() => Ok(false),
-        Err(e) => Err(e),
+    let made = std::os::unix::fs::symlink(&target, dst);
+    let Err(e) = made else { return Ok(true) };
+    let in_the_game = fs::canonicalize(src).is_ok_and(|real| real.starts_with(&roots.real_from));
+    if in_the_game && src.is_file() {
+        return Ok(false);
     }
+    Err(e)
 }
 
 /// Where the link at `src` points once the game moves, so it reaches what it reached before. One
@@ -337,6 +349,44 @@ mod tests {
         fs::write(game.join(crate::swap::FOLDER).join("old/Game.exe"), [0u8; 40]).unwrap();
         assert_eq!(game_size(&game), 100);
         assert_eq!(dir_size(&game), 140, "moving the game still counts all of it");
+    }
+
+    /// A link out of the game's folder (a Nix AppImage's /nix/store ones) counts as the link, never
+    /// as what it points at.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_out_of_the_game_counts_as_itself() {
+        let d = tmp("size-link");
+        let (game, store) = (d.join("game"), d.join("store"));
+        fs::create_dir_all(&game).unwrap();
+        fs::create_dir_all(&store).unwrap();
+        fs::write(store.join("big.bin"), [0u8; 5000]).unwrap();
+        std::os::unix::fs::symlink(&store, game.join("lib")).unwrap();
+        std::os::unix::fs::symlink(store.join("big.bin"), game.join("entrypoint")).unwrap();
+        let own = fs::symlink_metadata(game.join("lib")).unwrap().len() + fs::symlink_metadata(game.join("entrypoint")).unwrap().len();
+        assert_eq!(dir_size(&game), own);
+        assert_eq!(size_of(&game.join("entrypoint")), fs::symlink_metadata(game.join("entrypoint")).unwrap().len());
+        assert_eq!(size_of(&game.join("lib")), fs::symlink_metadata(game.join("lib")).unwrap().len());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn moving_a_game_keeps_its_links_out_of_it_and_leaves_what_they_point_at() {
+        let d = tmp("move-outside-link");
+        let (game, store) = (d.join("game"), d.join("store"));
+        fs::create_dir_all(&game).unwrap();
+        fs::create_dir_all(&store).unwrap();
+        fs::write(store.join("game.bin"), "the store's").unwrap();
+        std::os::unix::fs::symlink(store.join("game.bin"), game.join("entrypoint")).unwrap();
+        std::os::unix::fs::symlink("/nix/store/0000-rl-test/bin/game", game.join("dangling")).unwrap();
+        let mut done = 0;
+        copy_tree(&game, &d.join("moved"), &mut done, 0, &|_, _| {}).unwrap();
+        fs::remove_dir_all(&game).unwrap();
+        assert_eq!(fs::read_link(d.join("moved/entrypoint")).unwrap(), store.join("game.bin"));
+        assert_eq!(fs::read_link(d.join("moved/dangling")).unwrap(), Path::new("/nix/store/0000-rl-test/bin/game"));
+        assert_eq!(fs::read_to_string(store.join("game.bin")).unwrap(), "the store's");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
