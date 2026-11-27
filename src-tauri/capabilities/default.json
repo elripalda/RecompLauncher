@@ -26,6 +26,7 @@
     "core:window:allow-show",
     "core:window:allow-set-focus",
     "core:app:allow-register-listener",
-    "core:app:allow-remove-listener"
+    "core:app:allow-remove-listener",
+    "notification:default"
   ]
 }
