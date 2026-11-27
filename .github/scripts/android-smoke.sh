@@ -12,6 +12,8 @@ a install -r "$apk"
 # also closes apps that use its fonts.
 sleep 60
 a logcat -c
+# Android's one-time "Viewing full screen" hint would cover the screenshots.
+a shell settings put secure immersive_mode_confirmations confirmed
 # The log is kept on this machine as it comes, so it's there even if the emulator stops.
 adb logcat -v time > logcat.txt 2>&1 &
 # Shut any system dialog left from the emulator's start ("isn't responding").
