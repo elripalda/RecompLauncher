@@ -1,0 +1,115 @@
+/* The phone layout (phone.js): Android without a controller. Made for a phone held upright (about
+   360 px wide) or sideways (about 360 px tall): pages scroll with a finger, rows swipe sideways, the
+   tabs sit at the bottom upright and down the side sideways. */
+body.phone-on #app{visibility:hidden}
+#phone{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+:where(#phone) button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+:where(#phone) h1,:where(#phone) h2,:where(#phone) p{margin:0}
+
+/* The top: the page's name, or a back button over the game's picture. */
+.ph-top{flex:none;display:flex;align-items:center;min-height:60px;padding:12px 20px 6px}
+.ph-top h1{font:800 28px/1.15 Archivo,Figtree,system-ui,sans-serif;letter-spacing:-.01em}
+.ph-top.over{position:absolute;top:0;left:0;right:0;z-index:2;padding:12px;pointer-events:none}
+.ph-backbtn{pointer-events:auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(8,16,28,.6);backdrop-filter:blur(14px);color:#F4F8FC}
+
+/* The page: scrolls up and down. */
+.ph-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:2px 0 28px;scrollbar-width:none}
+.ph-main::-webkit-scrollbar{display:none}
+.ph-main.ph-game{padding-top:0}
+.ph-sec{margin:12px 0 10px}
+.ph-sec h2,.ph-set h2{margin:0 20px 10px;font:700 18px/1.25 Figtree,system-ui,sans-serif}
+.ph-empty{margin:48px 28px;text-align:center;color:var(--muted);font-size:15px}
+
+/* Covers: a row that swipes sideways and stops on a cover, or a grid. */
+.ph-row{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:0 20px;padding:0 20px 2px;scrollbar-width:none}
+.ph-row::-webkit-scrollbar{display:none}
+.ph-row .ph-card{flex:none;width:124px;scroll-snap-align:start}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:16px 12px;padding:0 20px}
+.ph-card{display:flex;flex-direction:column;gap:7px;min-width:0}
+.ph-cover{position:relative;display:block;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:var(--card2);transition:transform .14s var(--ease)}
+.ph-card:active .ph-cover{transform:scale(.96)}
+.ph-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ph-ph{position:absolute;inset:0;display:flex;align-items:flex-end;padding:10px;font:700 13px/1.25 Figtree,system-ui,sans-serif;color:var(--muted)}
+.ph-badge{position:absolute;top:7px;left:7px;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:800;background:var(--cyan);color:#08101C}
+.ph-bar{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:2px;background:rgba(0,0,0,.55);overflow:hidden}
+.ph-bar i{display:block;height:100%;background:var(--cyan)}
+.ph-name{font-size:13px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Buttons: big enough for a thumb. */
+.ph-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:24px;background:var(--fill3);font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;transition:transform .12s var(--ease)}
+.ph-btn:active:not(:disabled){transform:scale(.97)}
+.ph-btn.main{background:var(--grad);color:#08101C}
+.ph-btn.sm{flex:none;min-height:38px;padding:0 16px;border-radius:19px;font-size:13.5px}
+.ph-btn:disabled{opacity:.55;cursor:default}
+.ph-btn.prog{background:var(--fill2)}
+.ph-btn.prog i{position:absolute;left:0;top:0;bottom:0;background:rgba(52,242,232,.3);transition:width .3s}
+.ph-btn.prog span{position:relative}
+
+/* A note across the page (Android for testers only). */
+.ph-box{margin:6px 20px 14px;padding:16px;border-radius:18px;background:var(--card2);border:1px solid var(--line2)}
+.ph-box b{display:block;font-size:16px;margin-bottom:4px}
+.ph-box p{margin-bottom:14px;color:var(--muted);font-size:14px;line-height:1.5}
+.ph-box p:last-child{margin-bottom:0}
+
+/* Catalog: the search field. */
+.ph-search{display:flex;align-items:center;gap:10px;margin:4px 20px 16px;padding:0 16px;height:48px;border-radius:24px;background:var(--fill2);border:1px solid var(--line2);color:var(--muted)}
+.ph-search input{flex:1;min-width:0;height:100%;border:0;outline:0;background:none;color:var(--ink);font:inherit;font-size:16px}
+.ph-search input::-webkit-search-cancel-button{display:none}
+
+/* Library: one line per game. */
+.ph-list{display:flex;flex-direction:column;padding:0 14px}
+.ph-item{display:flex;align-items:center;gap:12px;padding:9px 6px;border-bottom:1px solid var(--line)}
+.ph-thumb{flex:none;width:46px;aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:var(--card2)}
+.ph-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.ph-itemk{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ph-itemk b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-itemk span{font-size:12.5px;color:var(--muted)}
+
+/* Settings. */
+.ph-set section{margin:6px 0 18px}
+.ph-setrow{display:flex;align-items:center;gap:14px;margin:0 14px;padding:14px 16px;border-radius:16px;background:var(--card)}
+.ph-setrow span{flex:1;min-width:0;color:var(--muted);font-size:14px;line-height:1.45}
+
+/* A game: its picture across the top, then what to do with it. */
+.ph-hero{position:relative;width:100%;aspect-ratio:16/9;max-height:46vh;overflow:hidden;background:var(--card)}
+.ph-hero img{display:block;width:100%;height:100%;object-fit:cover}
+.ph-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,var(--bg))}
+.ph-game{position:relative;margin-top:-24px;padding:0 20px}
+.ph-game h1{margin-bottom:6px;font:800 26px/1.15 Archivo,Figtree,system-ui,sans-serif}
+.ph-facts{margin-bottom:16px;color:var(--muted);font-size:13.5px}
+.ph-acts{display:flex;gap:10px;margin-bottom:8px}
+.ph-acts .ph-btn{flex:1}
+.ph-game section{margin-top:20px}
+.ph-game h2{margin-bottom:8px;font:700 17px/1.25 Figtree,system-ui,sans-serif}
+.ph-about{color:var(--muted);font-size:14.5px;line-height:1.55;user-select:text}
+
+/* The tabs. */
+.ph-tabs{flex:none;display:flex;padding:6px 8px 10px;background:var(--bg2);border-top:1px solid var(--line)}
+.ph-tab{flex:1;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:14px;color:var(--dim);font-size:11.5px;font-weight:700}
+.ph-tab.on{color:var(--cyan)}
+
+/* What's said for a moment sits above the tabs; downloads show on their own buttons. */
+body.phone-on .island{bottom:86px}
+body.phone-on .modal{max-height:86vh}
+body.phone-on .signin-two{grid-template-columns:1fr}
+body.phone-on .signin-qr{display:none}
+
+/* Sideways: the tabs go down the left side, and the page keeps the height. */
+@media (orientation:landscape){
+  #phone{display:grid;grid-template-columns:84px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .ph-tabs{grid-column:1;grid-row:1/3;flex-direction:column;justify-content:center;gap:6px;padding:10px 8px;border-top:0;border-right:1px solid var(--line)}
+  .ph-tab{flex:none;min-height:60px}
+  .ph-top{grid-column:2;grid-row:1;min-height:48px;padding:10px 24px 2px}
+  .ph-top h1{font-size:22px}
+  .ph-top.over{grid-column:auto;grid-row:auto;left:84px}
+  .ph-main{grid-column:2;grid-row:1/3}
+  .ph-top:not(.over)+.ph-main{grid-row:2}
+  .ph-sec h2,.ph-set h2{margin-left:24px;margin-right:24px}
+  .ph-row,.ph-grid{padding-left:24px;padding-right:24px}
+  .ph-row{scroll-padding:0 24px}
+  .ph-row .ph-card{width:112px}
+  .ph-hero{max-height:44vh}
+  .ph-game{padding:0 24px}
+  .ph-acts{max-width:520px}
+  body.phone-on .island{bottom:16px;left:calc(50% + 42px)}
+}

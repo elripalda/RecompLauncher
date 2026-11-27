@@ -10,10 +10,11 @@ const fn = (src, name) => src.match(new RegExp(`^  (?:async )?function ${name}\\
 
 // The desktop view (Big Picture closed), with every handler a controller press could reach noting
 // that it got it.
-function desktop(padDesktop) {
+function desktop(padDesktop, os = 'windows') {
   const got = [];
   const c = vm.createContext({
-    S: { settings: { pad_desktop: padDesktop } },
+    S: { os, settings: { pad_desktop: padDesktop } },
+    android: () => os === 'android',
     TV: { on: false, hinted: true },
     lastPad: { b: '', t: 0 },
     performance: { now: () => 10000 },
@@ -104,4 +105,12 @@ test('turning Controller as a Mouse on leaves nothing highlighted or focused on 
   assert.equal(d.button.classList.contains('pad-focus'), false);
   assert.equal(d.body.classList.contains('pad-nav'), false);
   assert.equal(d.document.activeElement, d.body);
+});
+
+test('on Android any controller button switches from the phone layout to Big Picture mode', () => {
+  for (const b of ['a', 'down', 'rb', 'menu-hold']) {
+    const c = desktop(undefined, 'android');
+    c.pad(b);
+    assert.deepEqual(c.got, ['big-picture'], b);
+  }
 });

@@ -206,6 +206,11 @@
     TV.on = true;
     TV.booting = true;
     hookAndroidBack();
+    // On Android it takes over from the phone layout, and is drawn sideways: a phone held upright turns.
+    if (android()) {
+      if (window.phoneLeave) window.phoneLeave();
+      invoke('android_orientation', { landscape: true }).catch(() => {});
+    }
     TV.enteredAt = performance.now();
     root.innerHTML = '';
     root.hidden = false;
@@ -224,7 +229,16 @@
     boot();
   }
   async function leave() {
-    if (android()) return;
+    // Android has no desktop view: out of Big Picture is the phone layout (phone.js), on a touch screen.
+    if (android()) {
+      if (!touchHere()) return;
+      TV.on = false;
+      root.innerHTML = '';
+      root.hidden = true;
+      document.body.classList.remove('tv-on');
+      if (window.startPhone) window.startPhone();
+      return;
+    }
     root.classList.add('tv-cover', 'out');
     await wait(still() ? 0 : 220);
     TV.on = false;
@@ -1452,8 +1466,8 @@
           ${head(t('Controller'))}
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
-          ${droid ? '' : `${head(t('Big Picture mode'))}
-          <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>`}
+          ${droid && !touchHere() ? '' : `${head(t('Big Picture mode'))}
+          <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(droid ? t('The phone layout, for playing with your fingers') : t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>`}
           ${head(t('About'))}
           <button type="button" class="tv-item" data-f data-key="s:support" data-tvact="support">${HEART}<span class="k">${esc(t('Support RecompLauncher'))}<small>${esc(t('Help keep it running and growing, on Ko-fi'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:about" data-tvact="about"><span class="k">${esc(t('About RecompLauncher'))}<small>${esc(t('Who makes it, and where to find the Discord'))}</small></span>${svg('chevR', 30)}</button>
@@ -3098,8 +3112,9 @@
     if (!b) {
       if (TV.view !== 'home') { TV.view = 'home'; TV.enter = 'back'; draw(); return; }
       // Back on Home: offer the way out, like Steam (B or Esc, then A).
-      return sheet(android() ? t('Quit RecompLauncher') : t('Leave Big Picture mode'), [
-        ...(android() ? [] : [{ label: t('Leave Big Picture mode'), sub: t('Back to the desktop view, for mouse and keyboard'), icon: 'chevL', run: () => leave() }]),
+      const out = !android() || touchHere();
+      return sheet(out ? t('Leave Big Picture mode') : t('Quit RecompLauncher'), [
+        ...(out ? [{ label: t('Leave Big Picture mode'), sub: android() ? t('The phone layout, for playing with your fingers') : t('Back to the desktop view, for mouse and keyboard'), icon: 'chevL', run: () => leave() }] : []),
         { label: t('Quit RecompLauncher'), icon: 'close', run: () => invoke('quit_launcher').catch(fail) },
         { label: t('Cancel'), icon: 'check', run: () => {} },
       ]);
@@ -3464,6 +3479,8 @@
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
     }
     if (!TV.on) {
+      // Android: a controller in use is Big Picture mode. Any button switches from the phone layout.
+      if (android()) { enter(); return; }
       // Settings → Controllers, Controller as a Mouse on (pad_desktop false): the desktop view leaves
       // the controller alone (a player using it as a mouse, its RB a click, would also change the
       // page), apart from holding Menu for Big Picture mode.
@@ -3618,8 +3635,17 @@
     const app = window.__TAURI__ && window.__TAURI__.app;
     if (backHooked || !android() || !app || !app.onBackButtonPress) return;
     backHooked = true;
-    app.onBackButtonPress(() => { if (TV.on) press('b'); }).catch(() => { backHooked = false; });
+    // Big Picture: B. The phone layout: back a page, and from Home, out of the way like any app.
+    app.onBackButtonPress(() => {
+      if (TV.on) return press('b');
+      if (window.phoneOn && window.phoneOn() && !window.phoneBack()) invoke('android_to_back').catch(() => {});
+    }).catch(() => { backHooked = false; });
   }
+  window.hookAndroidBack = hookAndroidBack;
+  // Android tells the page about a controller once a button on it is pressed: that press switches to
+  // Big Picture mode. With the last controller gone, a phone goes back to the phone layout.
+  addEventListener('gamepadconnected', () => { if (android() && !TV.on && window.phoneOn && window.phoneOn()) enter(); });
+  addEventListener('gamepaddisconnected', () => { if (android() && TV.on && !padHere()) leave(); });
 
   // Keep the pages current while things happen elsewhere.
   let redraw = 0;

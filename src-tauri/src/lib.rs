@@ -1377,6 +1377,27 @@ fn android_sync(st: State<'_, App>) -> bool {
     }
 }
 
+/// Android: which way the window turns (Big Picture mode sideways, the phone layout either way).
+#[tauri::command(async)]
+fn android_orientation(landscape: bool) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::orientation(landscape);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = landscape;
+        Ok(())
+    }
+}
+
+/// Android: the launcher to the background, as the back button does in other apps.
+#[tauri::command(async)]
+fn android_to_back() -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::to_back();
+    #[cfg(not(target_os = "android"))]
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
     uninstall_game(&st, id, delete_files, run_uninstaller, keep_saves)
@@ -10296,9 +10317,9 @@ pub fn run() {
     // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
     sysenv::tune_allocator();
     let builder = tauri::Builder::default();
-    // Android: installing, opening and uninstalling the games through Android (android.rs).
+    // Android: installing, opening and uninstalling the games through Android, and the window (android.rs).
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(android::plugin());
+    let builder = builder.plugin(android::plugin()).plugin(android::screen_plugin());
     // Desktop only: a phone never starts a second copy of the launcher.
     #[cfg(desktop)]
     let builder = builder
@@ -10804,7 +10825,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, android_sync, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, android_orientation, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,

@@ -11,6 +11,7 @@ on:
       - src-tauri/gen/android/**
       - src-tauri/src/mobile.rs
       - src-tauri/src/android.rs
+      - ui/phone.*
       - src-tauri/src/*_mobile.rs
       - .github/scripts/android-smoke.sh
 
