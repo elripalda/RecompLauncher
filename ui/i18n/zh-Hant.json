@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{consoles}上的{games}",
  "{n} consoles": "{n} 個平台",
  "{n} results": "{n} 個結果",
- "{size} on this device": "此裝置上 {size}"
+ "{size} on this device": "此裝置上 {size}",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "每次遊玩後，啟動器都會保留一份副本。隨時可以還原更早的。",
+ "After you play, a copy goes to your account": "玩完後，副本會上傳到你的帳號",
+ "Allow All files access": "允許存取所有檔案",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "請允許 RecompLauncher 存取所有檔案，這樣它才能讀取這款遊戲的存檔。",
+ "Back up to the cloud": "備份到雲端",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "把存檔放在手機共用儲存空間的遊戲，安裝後會顯示在這裡。",
+ "On this phone": "在這支手機上",
+ "Only on this phone": "僅在這支手機上",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 款遊戲把存檔放在 Android 不讓啟動器進入的地方。",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} 款遊戲把存檔放在 Android 不讓啟動器進入的地方。",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android 會先詢問。允許一次，啟動器就能複製你的遊戲存檔。",
+ "Sign in to keep your saves in the cloud.": "登入後即可把存檔保存在雲端。"
 }

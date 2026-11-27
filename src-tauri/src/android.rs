@@ -189,17 +189,42 @@ pub async fn install(app: &AppHandle, st: &App, id: &str, cancel: Arc<AtomicBool
     Ok(())
 }
 
-/// Opens the installed game.
+/// Opens the installed game. A game with save places in shared storage gets a session, finished
+/// (its saves copied, and sent with cloud saves on) when the launcher comes back to the front:
+/// Android doesn't say when another app closes.
 pub fn open(st: &App, id: &str) -> Res<()> {
     let pkg = package_of(st, id)?;
     call::<Value>("open", json!({ "pkg": pkg }))?;
     let mut l = st.lib.lock().unwrap();
-    if let Some(g) = l.installed.get_mut(id) {
+    let g = l.installed.get_mut(id).map(|g| {
         g.last_played = library::now();
-    }
+        g.clone()
+    });
     drop(l);
     st.save();
+    if let Some(g) = g {
+        if !crate::cloud::spots_of(st, id, &g).is_empty() {
+            crate::cloud::set_after_play(&st.dir, id, true);
+        }
+    }
     Ok(())
+}
+
+/// Whether the player has allowed All files access, which cloud saves need for a game's folders in
+/// shared storage: `{granted, root, device}`. Keeps the shared storage folder for the save code
+/// (`saves::set_storage`) and the phone's name for its copies.
+pub fn files_access() -> Res<Value> {
+    let v: Value = call("filesAccess", json!({}))?;
+    let granted = v.get("granted").and_then(Value::as_bool).unwrap_or(false);
+    let root = v.get("root").and_then(Value::as_str).unwrap_or("");
+    crate::saves::set_storage(if granted && !root.is_empty() { Some(root.into()) } else { None });
+    crate::saves::set_phone_name(v.get("device").and_then(Value::as_str).unwrap_or(""));
+    Ok(json!({ "granted": granted }))
+}
+
+/// Opens Android's All files access page for the launcher.
+pub fn ask_files_access() -> Res<Value> {
+    call("askFilesAccess", json!({}))
 }
 
 /// Android's own Uninstall question. The game leaves the Library now; if the player said no, the

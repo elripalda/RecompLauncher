@@ -6237,6 +6237,9 @@ async function androidSync() {
   let changed = false;
   try { changed = await invoke('android_sync'); } catch (e) { return false; }
   if (changed) { try { await refreshState(); } catch (e) { /* shown on the next look */ } render(true); androidRedraw(); }
+  // Android doesn't say when a game closes: coming back to the launcher is when the saves of the
+  // games it opened are copied (and sent with cloud saves on). Each one says so with a 'saves' event.
+  invoke('android_back').catch(() => {});
   return changed;
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) androidSync(); });
@@ -10034,6 +10037,9 @@ async function act(el, e) {
 }
 
 document.addEventListener('click', (e) => {
+  // The phone layout answers its own taps (phone.js). Its buttons share names with these (play,
+  // install, back), so a tap there would also run the desktop's action.
+  if (e.target.closest && e.target.closest('#phone')) return;
   if (!e.target.closest('.menu')) closeMenu();
   if (!e.target.closest('.ds-more-w') && !e.target.closest('.dropmenu') && $('#dstick .ds-panel:not([hidden])')) stickPanel(false);
   const link = e.target.closest('[data-url]:not([data-act])');

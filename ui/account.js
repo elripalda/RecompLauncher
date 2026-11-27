@@ -999,6 +999,7 @@ async function beforeCloudPlay(id) {
   try { r = await invoke('saves_check', { id }); } catch (e) { fail(e); return false; }
   if (r.action === 'restored') toast(tf('Your newer save from {device} is in place.', { device: r.cloud.device || t('another PC') }));
   else if (r.action === 'offline') toast(t('Cloud saves can\'t be reached right now. Playing with this PC\'s save.'), true);
+  else if (r.action === 'no-access') toast(t('Allow All files access for RecompLauncher so it can reach this game\'s saves.'), true);
   // Its cloud save couldn't be written here (a read-only folder, say): the player says whether to
   // play with this PC's save instead. Nothing about the sync changes unless they do.
   else if (r.action === 'not-restored') {

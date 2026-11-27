@@ -1377,6 +1377,40 @@ fn android_sync(st: State<'_, App>) -> bool {
     }
 }
 
+/// Android: whether All files access is allowed, which cloud saves need for games that keep their
+/// saves in shared storage: `{granted}`. Never on a PC, which needs no such thing.
+#[tauri::command(async)]
+fn android_files_access() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::files_access();
+    #[cfg(not(target_os = "android"))]
+    Ok(json!({ "granted": true }))
+}
+
+/// Android: opens Android's All files access page for the launcher.
+#[tauri::command(async)]
+fn android_ask_files_access() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::ask_files_access();
+    #[cfg(not(target_os = "android"))]
+    Ok(json!({ "granted": true }))
+}
+
+/// Android: the launcher is back in front, maybe after a game. Android doesn't say when another app
+/// closes, so this is when the sessions of the games it opened are finished: their saves copied,
+/// and sent with cloud saves on. Nothing on a PC, where the launcher sees each game end.
+#[tauri::command]
+async fn android_back(app: AppHandle) -> Res<()> {
+    #[cfg(target_os = "android")]
+    {
+        let _ = tokio::task::spawn_blocking(android::files_access).await;
+        cloud::finish_open_sessions(&app).await;
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = app;
+    Ok(())
+}
+
 /// Android: which way the window turns (Big Picture mode sideways, the phone layout either way).
 #[tauri::command(async)]
 fn android_orientation(landscape: bool) -> Res<()> {
@@ -10860,7 +10894,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, android_sync, android_orientation, android_edges, android_insets, android_haptic, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, android_files_access, android_ask_files_access, android_back, android_orientation, android_edges, android_insets, android_haptic, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,

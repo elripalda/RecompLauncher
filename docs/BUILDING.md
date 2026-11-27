@@ -186,8 +186,20 @@ On Android there's no desktop view. There are two layouts instead:
 A device without a touch screen (an Android TV) always uses Big Picture mode. Which way the window
 turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
 as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
-(`MainActivity.kt`). Cloud saves aren't offered: a phone's games are Android apps, and their saves
-are out of the launcher's reach.
+(`MainActivity.kt`).
+
+Cloud saves on Android: a phone's games are Android apps, and Android keeps each app's own folders
+(`Android/data`, its private storage) away from every other app. The launcher can copy only saves a
+game keeps in the phone's shared storage, and only after the player allows All files access
+(`MANAGE_EXTERNAL_STORAGE`; read and write storage on Android 10 and older), asked for from the
+Saves tab (`filesAccess` and `askFilesAccess` in `ApkPlugin.kt`). Where a game keeps them comes
+from the catalog's `android_saves` (set per game on the website), each starting `{storage}/`, which
+`saves.rs` fills with the shared storage folder once access is allowed (`storage_place_ok` turns
+away anything else). Android doesn't say when a game closes, so Play marks the session open and the
+copy is made when the launcher is back in front (`android_back`, which finishes open sessions the
+way the PC's play watcher does). Phone copies go to the account under the cloud id `<id>.android`,
+apart from a PC's copies of the same game, since the two keep different files. Before Play the
+cloud check works as on a PC; without All files access the game just plays with the phone's save.
 
 The desktop view isn't drawn at all on Android: `ui/droid.js` marks the page from `<head>` so it
 never shows at start-up, and `render()` builds nothing for it. Android also draws lighter by default

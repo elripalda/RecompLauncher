@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} di {consoles}",
  "{n} consoles": "{n} konsol",
  "{n} results": "{n} hasil",
- "{size} on this device": "{size} di perangkat ini"
+ "{size} on this device": "{size} di perangkat ini",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "Setelah setiap sesi, launcher menyimpan satu salinan. Pulihkan yang lebih lama kapan saja.",
+ "After you play, a copy goes to your account": "Setelah bermain, salinannya dikirim ke akunmu",
+ "Allow All files access": "Izinkan akses semua file",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Izinkan akses semua file untuk RecompLauncher agar bisa menjangkau simpanan game ini.",
+ "Back up to the cloud": "Cadangkan ke cloud",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Game yang menyimpan datanya di penyimpanan bersama ponsel akan muncul di sini setelah kamu memasangnya.",
+ "On this phone": "Di ponsel ini",
+ "Only on this phone": "Hanya di ponsel ini",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 game menyimpan datanya di tempat yang tidak bisa dimasuki launcher karena Android.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} game menyimpan datanya di tempat yang tidak bisa dimasuki launcher karena Android.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android akan bertanya dulu. Izinkan sekali agar launcher bisa menyalin simpanan game-mu.",
+ "Sign in to keep your saves in the cloud.": "Masuk untuk menyimpan data game-mu di cloud."
 }

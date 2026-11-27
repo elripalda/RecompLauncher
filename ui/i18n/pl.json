@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} na {consoles}",
  "{n} consoles": "{n} konsola|{n} konsole|{n} konsol",
  "{n} results": "{n} wynik|{n} wyniki|{n} wyników",
- "{size} on this device": "{size} na tym urządzeniu"
+ "{size} on this device": "{size} na tym urządzeniu",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "Po każdej sesji launcher zachowuje kopię. Przywróć starszą, kiedy chcesz.",
+ "After you play, a copy goes to your account": "Po grze kopia trafia na twoje konto",
+ "Allow All files access": "Zezwól na dostęp do wszystkich plików",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Zezwól RecompLauncher na dostęp do wszystkich plików, aby mógł dotrzeć do zapisów tej gry.",
+ "Back up to the cloud": "Kopia w chmurze",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Gry, które trzymają zapisy we wspólnej pamięci telefonu, pojawią się tu, gdy którąś zainstalujesz.",
+ "On this phone": "Na tym telefonie",
+ "Only on this phone": "Tylko na tym telefonie",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 gra trzyma zapisy tam, gdzie Android nie wpuszcza launchera.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} gra trzyma zapisy tam, gdzie Android nie wpuszcza launchera.|{n} gry trzymają zapisy tam, gdzie Android nie wpuszcza launchera.|{n} gier trzyma zapisy tam, gdzie Android nie wpuszcza launchera.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android najpierw pyta. Zezwól raz, a launcher będzie mógł kopiować zapisy twoich gier.",
+ "Sign in to keep your saves in the cloud.": "Zaloguj się, aby trzymać zapisy w chmurze."
 }

@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} на {consoles}",
  "{n} consoles": "{n} консоль|{n} консоли|{n} консолей",
  "{n} results": "{n} результат|{n} результата|{n} результатов",
- "{size} on this device": "{size} на этом устройстве"
+ "{size} on this device": "{size} на этом устройстве",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "После каждой сессии лаунчер сохраняет копию. Восстановите более старую в любой момент.",
+ "After you play, a copy goes to your account": "После игры копия отправляется в ваш аккаунт",
+ "Allow All files access": "Разрешить доступ ко всем файлам",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Разрешите RecompLauncher доступ ко всем файлам, чтобы он мог добраться до сохранений этой игры.",
+ "Back up to the cloud": "Резервная копия в облаке",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Игры, которые хранят сохранения в общей памяти телефона, появятся здесь, когда вы установите одну из них.",
+ "On this phone": "На этом телефоне",
+ "Only on this phone": "Только на этом телефоне",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 игра хранит сохранения там, куда Android не пускает лаунчер.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} игра хранит сохранения там, куда Android не пускает лаунчер.|{n} игры хранят сохранения там, куда Android не пускает лаунчер.|{n} игр хранят сохранения там, куда Android не пускает лаунчер.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android сначала спрашивает. Разрешите один раз, и лаунчер сможет копировать сохранения ваших игр.",
+ "Sign in to keep your saves in the cloud.": "Войдите, чтобы хранить сохранения в облаке."
 }

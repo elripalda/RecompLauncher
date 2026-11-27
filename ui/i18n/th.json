@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} บน {consoles}",
  "{n} consoles": "{n} เครื่อง",
  "{n} results": "{n} ผลลัพธ์",
- "{size} on this device": "{size} บนอุปกรณ์นี้"
+ "{size} on this device": "{size} บนอุปกรณ์นี้",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "หลังเล่นแต่ละครั้ง ตัวเปิดเกมจะเก็บสำเนาไว้ กู้คืนสำเนาที่เก่ากว่าได้ทุกเมื่อ",
+ "After you play, a copy goes to your account": "หลังเล่นจบ สำเนาจะถูกส่งไปที่บัญชีของคุณ",
+ "Allow All files access": "อนุญาตการเข้าถึงไฟล์ทั้งหมด",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "อนุญาตให้ RecompLauncher เข้าถึงไฟล์ทั้งหมด เพื่อให้เข้าถึงเซฟของเกมนี้ได้",
+ "Back up to the cloud": "สำรองข้อมูลขึ้นคลาวด์",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "เกมที่เก็บเซฟไว้ในพื้นที่จัดเก็บที่ใช้ร่วมกันของโทรศัพท์จะแสดงที่นี่เมื่อคุณติดตั้ง",
+ "On this phone": "ในโทรศัพท์เครื่องนี้",
+ "Only on this phone": "เฉพาะในโทรศัพท์เครื่องนี้",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 เกมเก็บเซฟไว้ในที่ที่ Android ไม่ให้ตัวเปิดเกมเข้าถึง",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} เกมเก็บเซฟไว้ในที่ที่ Android ไม่ให้ตัวเปิดเกมเข้าถึง",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android จะถามก่อน อนุญาตครั้งเดียวแล้วตัวเปิดเกมจะคัดลอกเซฟของเกมคุณได้",
+ "Sign in to keep your saves in the cloud.": "ลงชื่อเข้าใช้เพื่อเก็บเซฟไว้บนคลาวด์"
 }

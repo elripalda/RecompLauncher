@@ -12,9 +12,9 @@
   if (!root) return;
 
   // ---------- what the player chose (kept with the settings) ----------
-  const TABS = { home: N_('Home'), catalog: N_('Catalog'), library: N_('Library'), downloads: N_('Downloads'), soon: N_('Coming Soon'), settings: N_('Settings') };
+  const TABS = { home: N_('Home'), catalog: N_('Catalog'), library: N_('Library'), downloads: N_('Downloads'), saves: N_('Saves'), soon: N_('Coming Soon'), settings: N_('Settings') };
   const TAB_SHORT = { soon: N_('Soon') };
-  const TABS_FIRST = ['home', 'catalog', 'library', 'settings'];
+  const TABS_FIRST = ['home', 'catalog', 'library', 'saves', 'settings'];
   // Home and Settings can't be taken off the menu: one is the way in, the other the way to put tabs back.
   const TABS_FIXED = ['home', 'settings'];
   const SIZES = { s: 0.82 / 0.9, m: 1, l: 1 / 0.9 };
@@ -57,6 +57,11 @@
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     chev: '<path d="m9 5 7 7-7 7"/>',
     chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    saves: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7"/>',
+    cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>',
+    up: '<path d="M12 20V9m0 0-4.5 4.5M12 9l4.5 4.5M5 4h14"/>',
+    phone: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-4 4 3 3"/>',
   };
   const ic = (k, cls = '') => `<svg class="ph-ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
   const MARK = '<svg width="W" height="W" viewBox="0 0 256 256" role="img" aria-label="RecompLauncher"><defs><linearGradient id="ph-mg" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#ph-mg)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
@@ -304,6 +309,76 @@
     const save = (a) => `<button type="button" class="ph-gb${isSaved(a.id) ? ' op' : ''} ph-press" data-act="save" data-id="${esc(a.id)}">${esc(isSaved(a.id) ? t('Saved') : t('Save'))}</button>`;
     return head + list.map((a) => lrow(a, { right: save(a) })).join('');
   }
+  // ---------- Saves: the copies kept after each game, and cloud saves ----------
+  // Android keeps every app's own folders to itself: only games that keep their saves in the phone's
+  // shared storage (the catalog's android_saves) can be copied, and only once the player allows All
+  // files access. A phone's cloud copies are its own, apart from a PC's (cloud.rs, cloud_id).
+  const savesLoad = () => { if (window.loadSavesAll) window.loadSavesAll().then(soon); };
+  async function filesCheck() {
+    if (S.os !== 'android') { P.files = true; return; }
+    let now = P.files;
+    try { now = !!(await invoke('android_files_access')).granted; } catch (e) { /* asked again next time */ }
+    if (now !== P.files) { P.files = now; S.savesAll = null; soon(); }
+  }
+  function svBadge(x) {
+    if (x.state === 'conflict') return `<span class="ph-svb warn">${esc(t('Sync Now'))}</span>`;
+    if (x.cloudOn === true && x.pending && (S.account || {}).signedIn) return `<span class="ph-svb">${esc(t('Going up'))}</span>`;
+    if (x.cloudOn === true && (S.account || {}).signedIn) return `<span class="ph-svb ok">${ic('cloud', 'xs')}${esc(t('In the cloud'))}</span>`;
+    return `<span class="ph-svb">${esc(t('Only on this phone'))}</span>`;
+  }
+  function viewSaves() {
+    const head = `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">${esc(t('Saves'))}</h1><p class="ph-vs">${esc(t('After every session the launcher keeps a copy. Restore an older one any time.'))}</p></header>`;
+    const o = S.savesAll;
+    if (!o) { savesLoad(); return head + `<div class="ph-row ph-padx" style="gap:12px;padding-top:26px"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading…'))}</span></div>`; }
+    const acc = S.account || {};
+    const games = (o.games || []).map((x) => ({ ...x, a: appOf(x.id) })).filter((x) => x.a);
+    const known = games.filter((x) => x.known !== false);
+    const out = games.length - known.length;
+    const withSaves = known.filter((x) => x.copies).sort((x, y) => ((y.newest || {}).when || 0) - ((x.newest || {}).when || 0));
+    const rest = known.filter((x) => !x.copies);
+    const copies = withSaves.reduce((n, x) => n + x.copies, 0), size = withSaves.reduce((n, x) => n + x.size, 0);
+    const inCloud = known.filter((x) => x.cloudOn === true).length;
+    const used = acc.used || 0, quota = acc.quota || 150 * 1024 * 1024;
+    const meter = (frac, cls) => { const on = frac > 0 ? Math.max(1, Math.round(Math.min(1, frac) * 16)) : 0; return `<div class="ph-meter ${cls}">${Array.from({ length: 16 }, (_, i) => `<i${i < on ? ' class="on"' : ''} style="animation-delay:${i * 25}ms"></i>`).join('')}</div>`; };
+    const access = known.length && P.files === false
+      ? `<div class="ph-panel ph-svacc" data-key="acc"><span class="ph-svi">${ic('key', 's')}</span><div class="ph-col ph-grow"><b>${esc(t('Allow All files access'))}</b><span class="ph-mut">${esc(t('Android asks first. Allow it once and the launcher can copy your games\' saves.'))}</span><button type="button" class="ph-btn pri sm ph-press" data-act="files">${esc(t('Open Settings'))}</button></div></div>` : '';
+    const phoneCard = `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('phone', 's')}</span><div class="ph-col"><b>${esc(t('On this phone'))}</b><small>${esc(tn(withSaves.length, '1 game with saves', '{n} games with saves'))}</small></div></div>${meter(known.length ? withSaves.length / known.length : 0, 'a')}<div class="ph-row ph-svn"><b>${esc(fmtB(size) || '0 KB')}</b><small>${esc(tn(copies, '1 copy kept', '{n} copies kept'))}</small></div></div>`;
+    const cloudCard = acc.signedIn
+      ? `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('cloud', 's')}</span><div class="ph-col"><b>${esc(t('Cloud saves'))}</b><small>${esc(tn(inCloud, '1 game backs up to your account', '{n} games back up to your account'))}</small></div></div>${meter(used / quota, 'b')}<div class="ph-row ph-svn"><b class="ph-svq">${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</b></div></div>`
+      : `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('cloud', 's')}</span><div class="ph-col"><b>${esc(t('Cloud saves'))}</b><small>${esc(t('Sign in to keep your saves in the cloud.'))}</small></div></div><button type="button" class="ph-btn pri sm wide ph-press" data-act="signin" style="margin-top:14px">${esc(t('Sign in'))}</button></div>`;
+    const auto = acc.signedIn ? `<div class="ph-panel ph-set" data-key="auto"><div class="ph-srow"><div class="t"><b>${esc(t('Back up to the cloud'))}</b><span>${esc(t('After you play, a copy goes to your account'))}</span></div>${sw('cloudall', ui().cloud_all === true)}</div></div>` : '';
+    const row = (x) => { const n = x.newest || {}; return `<div class="ph-panel ph-svrow" data-key="sv:${esc(x.id)}"><button type="button" class="ph-press" data-act="copies" data-id="${esc(x.id)}">${coverBox(x.a)}<span class="ph-col ph-grow" style="gap:4px;min-width:0"><span class="ph-gname">${esc(x.a.name)}</span><span class="ph-gsub">${esc(tf('Last saved {when}', { when: ago(n.when) }))}</span>${svBadge(x)}</span><span class="ph-col ph-svm"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button><button type="button" class="ph-ibtn solid ph-press" data-act="backup" data-id="${esc(x.id)}" aria-label="${esc(t('Back up now'))}"${S.running && S.running.has && S.running.has(x.id) ? ' disabled' : ''}>${ic('up', 's')}</button></div>`; };
+    const quiet = (x) => `<div class="ph-lrow" data-key="sq:${esc(x.id)}"><button type="button" class="ph-lmain ph-press" data-open="${esc(x.id)}">${coverBox(x.a)}<span class="ph-col ph-grow"><span class="ph-gname">${esc(x.a.name)}</span><span class="ph-gsub">${esc(x.found ? t('Saves found, copied after you play') : t('Not played yet'))}</span></span></button></div>`;
+    const list = withSaves.length ? `<section class="ph-sec ph-svsec" data-key="svh">${secHead(t('Games'))}${withSaves.map(row).join('')}</section>` : '';
+    const later = rest.length ? `<section class="ph-sec ph-svsec" data-key="svq">${secHead(t('No saves yet'))}${rest.map(quiet).join('')}</section>` : '';
+    const none = !known.length ? empty('saves', esc(t('Games that keep their saves in the phone\'s shared storage show up here once you install one.'))) : '';
+    const away = out ? `<p class="ph-mut ph-padx ph-svout" data-key="out">${esc(tn(out, '1 game keeps its saves where Android doesn\'t let the launcher in.', '{n} games keep their saves where Android doesn\'t let the launcher in.'))}</p>` : '';
+    return head + access + `<div class="ph-svcards ph-padx" data-key="cards">${phoneCard}${cloudCard}</div>` + auto + list + later + none + away;
+  }
+  // A game's copies, on this phone and in the cloud; one tapped asks before it's put back.
+  async function copiesSheet(id, pick) {
+    const a = appOf(id);
+    if (!a) return;
+    P.copies = id;
+    if (!pick) sheet(sheetHead(a) + `<div class="ph-row" style="gap:12px;padding:20px 0"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading…'))}</span></div>`);
+    let info;
+    try { info = await invoke('saves_info', { id }); } catch (e) { closeSheet(); return fail(e); }
+    if (P.copies !== id || !P.sheet) return;
+    const line = (c, cloud) => `<button type="button" class="ph-step ph-press" data-act="restore" data-id="${esc(id)}" ${cloud ? `data-v="${esc(c.v)}"` : `data-name="${esc(c.name)}"`}>${ic(cloud ? 'cloud' : 'saves', 's')}<span class="ph-col ph-grow" style="gap:2px"><b>${esc(agoCap(cloud ? c.made : c.when))}</b><small class="ph-mut">${esc([c.device, fmtB(c.size)].filter(Boolean).join(' · '))}</small></span><span class="ph-mut" style="font-size:12.5px">${esc(t('Restore'))}</span></button>`;
+    const local = info.local || [], cloud = (info.cloud || []).filter(() => (S.account || {}).signedIn);
+    const body = (local.length ? `<p class="ph-eyebrow">${esc(t('On this phone'))}</p>${local.map((c) => line(c, false)).join('')}` : '')
+      + (cloud.length ? `<p class="ph-eyebrow" style="margin-top:14px">${esc(t('Cloud saves'))}</p>${cloud.map((c) => line(c, true)).join('')}` : '')
+      + (!local.length && !cloud.length ? `<p class="ph-mut">${esc(t('Not played yet'))}</p>` : '');
+    paint(el.sheet, '<div class="ph-grab"></div>' + sheetHead(a) + body);
+  }
+  function restoreAsk(b) {
+    const a = appOf(b.dataset.id);
+    if (!a) return;
+    const attr = b.dataset.v ? `data-v="${esc(b.dataset.v)}"` : `data-name="${esc(b.dataset.name)}"`;
+    paint(el.sheet, `<div class="ph-grab"></div>${sheetHead(a)}<h2 class="ph-disp ph-svh">${esc(t('Restore this save?'))}</h2><p class="ph-mut ph-svp">${esc(t('The game goes back to this save. What\'s there now is kept as a copy first, so you can switch back.'))}</p>
+      <button type="button" class="ph-btn pri wide ph-press" data-act="restore-go" data-id="${esc(a.id)}" ${attr} style="margin-top:16px">${esc(t('Restore'))}</button><button type="button" class="ph-btn sec wide ph-press" data-close="1" style="margin-top:10px">${esc(t('Cancel'))}</button>`);
+  }
+
   const viewDownloads = () => `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">${esc(t('Downloads'))}</h1><p class="ph-vs">${esc(t('Downloads keep going while you browse.'))}</p></header>${paneDownloads()}`;
 
   // ---------- Settings ----------
@@ -343,7 +418,7 @@
         ${srow(tf('RecompLauncher {v}', { v: S.version || '' }), engine(), '')}</div>`;
   }
 
-  const VIEW = { home: viewHome, catalog: viewCatalog, library: viewLibrary, downloads: viewDownloads, soon: viewSoon, settings: viewSettings };
+  const VIEW = { home: viewHome, catalog: viewCatalog, library: viewLibrary, downloads: viewDownloads, saves: viewSaves, soon: viewSoon, settings: viewSettings };
 
   // ---------- a game's page ----------
   // The main button for a game: Install, the download's progress, Update, Play.
@@ -886,6 +961,21 @@
       case 'site': return invoke('open_url', { url: SITE }).catch(fail);
       case 'lang': return langSheet();
       case 'tv': return toTV();
+      case 'files': buzz(); try { await invoke('android_ask_files_access'); } catch (err) { fail(err); } return filesCheck();
+      case 'copies': return copiesSheet(id);
+      case 'restore': return restoreAsk(b);
+      case 'restore-go':
+        buzz('ok');
+        closeSheet();
+        try { await invoke('saves_restore', { id, name: b.dataset.name || null, v: b.dataset.v || null }); toast(t('That save is back in place.')); } catch (err) { fail(err); }
+        S.savesAll = null;
+        return refresh();
+      case 'backup':
+        buzz();
+        b.disabled = true;
+        try { const c = await invoke('saves_backup', { id }); toast(c ? t('Backed up.') : t('Nothing changed since the last copy.')); } catch (err) { fail(err); }
+        S.savesAll = null;
+        return refresh();
     }
   }
   // A switch flips at once under the finger; what it changes follows.
@@ -910,6 +1000,7 @@
     if (key === 'haptics') return save('phone_haptics', on);
     if (key === 'padtv') return save('pad_tv', on);
     if (key === 'hideai') { await saveSettings({ hide_ai: on }, true); return refresh(); }
+    if (key === 'cloudall') { await setCloudAll(on); return refresh(); }
   }
   async function pick(b) {
     const box = b.parentNode, key = box.dataset.sg, i = Number(b.dataset.sgi);
@@ -1143,6 +1234,7 @@
     buildPager();
     drawNav();
     drawMini();
+    filesCheck();
     if (!P.booted) boot();
   }
   function leave() {
@@ -1177,5 +1269,9 @@
     soon();
   });
   T.event.listen('game', () => soon());
+  // A copy made or sent after a game: the Saves tab reads the numbers again.
+  for (const ev of ['saves', 'save-sync']) T.event.listen(ev, () => { S.savesAll = null; soon(); });
+  // Back from Android's settings page: All files access may have just been allowed.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && P.on) filesCheck(); });
   window.phoneRefresh = soon;
 })();

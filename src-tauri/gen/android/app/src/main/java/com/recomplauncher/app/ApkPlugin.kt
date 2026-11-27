@@ -9,8 +9,10 @@ import android.content.IntentFilter
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.Manifest
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.Settings
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -110,6 +112,41 @@ class ApkPlugin(private val activity: Activity) : Plugin(activity) {
     }
     val out = JSObject()
     out.put("ok", ok)
+    invoke.resolve(out)
+  }
+
+  // Cloud saves: a game that keeps its saves in the phone's shared storage can be backed up once
+  // the player allows All files access (Android 11 and newer; storage access before that). The
+  // games' private folders and Android/data stay out of reach either way. Also tells the phone's
+  // name, shown beside each save copy.
+  private fun filesGranted(): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
+    else activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+
+  @Command
+  fun filesAccess(invoke: Invoke) {
+    val out = JSObject()
+    out.put("granted", filesGranted())
+    @Suppress("DEPRECATION")
+    out.put("root", Environment.getExternalStorageDirectory().absolutePath)
+    out.put("device", listOf(Build.MANUFACTURER, Build.MODEL).filter { !it.isNullOrBlank() }.joinToString(" "))
+    invoke.resolve(out)
+  }
+
+  // Opens Android's All files access page for the launcher (or asks for storage access on Android
+  // 10 and older). The window checks again when the player comes back.
+  @Command
+  fun askFilesAccess(invoke: Invoke) {
+    if (!filesGranted()) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val i = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + activity.packageName))
+        try { activity.startActivity(i) } catch (e: Exception) { activity.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+      } else {
+        activity.requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE), 4711)
+      }
+    }
+    val out = JSObject()
+    out.put("granted", filesGranted())
     invoke.resolve(out)
   }
 

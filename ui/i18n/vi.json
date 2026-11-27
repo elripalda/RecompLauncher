@@ -3632,5 +3632,17 @@
  "{games} across {consoles}": "{games} trên {consoles}",
  "{n} consoles": "{n} hệ máy",
  "{n} results": "{n} kết quả",
- "{size} on this device": "{size} trên thiết bị này"
+ "{size} on this device": "{size} trên thiết bị này",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "Sau mỗi phiên chơi, launcher giữ một bản sao. Khôi phục bản cũ hơn bất cứ lúc nào.",
+ "After you play, a copy goes to your account": "Sau khi chơi, một bản sao được gửi lên tài khoản của bạn",
+ "Allow All files access": "Cho phép truy cập mọi tệp",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Hãy cho phép RecompLauncher truy cập mọi tệp để nó có thể đến được bản lưu của trò chơi này.",
+ "Back up to the cloud": "Sao lưu lên đám mây",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Các trò chơi lưu dữ liệu trong bộ nhớ dùng chung của điện thoại sẽ hiện ở đây khi bạn cài một trò.",
+ "On this phone": "Trên điện thoại này",
+ "Only on this phone": "Chỉ trên điện thoại này",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 trò chơi giữ bản lưu ở nơi Android không cho launcher vào.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} trò chơi giữ bản lưu ở nơi Android không cho launcher vào.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android sẽ hỏi trước. Cho phép một lần để launcher có thể sao chép bản lưu trò chơi của bạn.",
+ "Sign in to keep your saves in the cloud.": "Đăng nhập để giữ bản lưu trên đám mây."
 }
