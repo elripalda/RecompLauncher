@@ -285,8 +285,9 @@ const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
 // A game of a multi-game recomp is set up as its recomp is.
 // The launcher hands the player's copy to the game (Easy Setup, or a boot profile that puts it where
 // the game reads it). Otherwise the game asks for it itself on its first start.
-const feedsCopy = (a) => S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || ''));
-const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
+// (Never on Android: a game there is an app that keeps its own files, out of the launcher's reach.)
+const feedsCopy = (a) => S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
@@ -1684,6 +1685,9 @@ function readyRows(a) {
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
   if (su && su.needs && askCopy) rows.push(...otherFileRows(id, su));
   if (st && st.detail === 'cut' && askCopy) rows.push(cutRow(id));
+  // Android: what a PC needs for a game (its graphics driver, processor, runtimes, drive) says
+  // nothing about a phone. Android itself refuses an app the device can't run.
+  if (S.os === 'android') return rows;
   rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
@@ -5658,6 +5662,10 @@ function scrollAnchor(main) {
 function render(keepScroll) {
   // Records set from an answer about one of a recomp's games go back on the recomp, and its games' records follow.
   expandLib();
+  // Android never shows the desktop view (it's Big Picture mode or the phone layout, see phone.css):
+  // its pages aren't built, measured or their pictures fetched. The theme is kept, and the phone
+  // layout follows whatever changed, as the desktop view would have.
+  if (S.os === 'android') { paintTheme(); paintIsland(); if (window.phoneRefresh) window.phoneRefresh(); return; }
   const main = $('#main'), top = main.scrollTop;
   const v = S.view;
   // Typing in a search: it keeps its text, caret and focus across a redraw.
@@ -5747,6 +5755,12 @@ function sideRows() {
 }
 
 // The sidebar: which page is on, counts, and the pinned games.
+// The theme (dark, OLED black or light), as every layout reads it.
+function paintTheme() {
+  const ui = S.settings.ui || {};
+  document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
+  document.body.classList.toggle('light', ui.theme === 'light');
+}
 function renderSide() {
   const v = S.view, ui = S.settings.ui || {};
   applySide();
@@ -5764,10 +5778,9 @@ function renderSide() {
   // A new launcher: the Update pill in the title bar, on every page.
   { const pill = $('#upd-pill'); if (pill) pill.hidden = !S.launcherUpd; }
   if (window.achSide) window.achSide();
-  document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
+  paintTheme();
   document.body.classList.toggle('nonames', !!ui.hide_names);
   document.body.classList.toggle('no-tv-btn', !!ui.hide_tv_btn);
-  document.body.classList.toggle('light', ui.theme === 'light');
   { const wm = $('#brand .wm'); const want = ui.theme === 'light' ? 'img/wordmark-dark.svg' : 'img/wordmark.svg'; if (wm && wm.getAttribute('src') !== want) wm.setAttribute('src', want); }
   const auto = innerWidth < 1180;
   $('#side').classList.toggle('auto', auto);
@@ -6604,7 +6617,9 @@ function fbCrumbs(path) {
 // Lighter Launcher: no animations or moving pictures (CSS does the rest).
 function applyLighter() {
   const st = S.settings || {};
-  document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld : !!st.lighter);
+  // A phone or TV box draws lighter by default too, as a handheld PC does: their graphics chips are
+  // small next to a PC's, and the moving backdrop and blurs are what cost the most.
+  document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld || S.os === 'android' : !!st.lighter);
   // Nothing animates: Lighter Launcher turned on by the player, or the system asking for less
   // motion. Not on Linux, where game-mode sessions on handhelds ask for that by default and the
   // menus would stop moving; Lighter Launcher still turns it off there. A handheld that's lighter

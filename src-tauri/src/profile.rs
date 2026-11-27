@@ -822,6 +822,13 @@ const BUILT_IN: &[&str] = &[
 /// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
+    // On Android a game is an app of its own: Android keeps its files out of every other app's
+    // reach, so the launcher can't put the player's copy or any settings where the game reads
+    // them. No game has a profile there (no Easy Setup, no Game Settings): Play opens the game,
+    // and the game asks for what it needs itself.
+    if cfg!(target_os = "android") {
+        return None;
+    }
     let mut p = find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))?;
     p.lift_game();
     to_apprun(&mut p, game_dir);

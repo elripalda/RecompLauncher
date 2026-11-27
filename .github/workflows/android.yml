@@ -12,6 +12,7 @@ on:
       - src-tauri/src/mobile.rs
       - src-tauri/src/android.rs
       - ui/phone.*
+      - ui/droid.js
       - src-tauri/src/*_mobile.rs
       - .github/scripts/android-smoke.sh
       - .github/scripts/maven-mirror.gradle
