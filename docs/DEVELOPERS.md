@@ -119,6 +119,21 @@ goes along; what it writes anywhere else is left behind. So:
   game's folder, so the other one goes stale.
 - **Don't depend on `$APPIMAGE`.** On Linux the launcher always unpacks your AppImage and runs it
   from a plain folder, so `APPIMAGE` is never set (see [AppImages](#appimages)).
+- **Beside your program is `{install}/usr/bin`.** A game that finds its folder from its own
+  program's path (`SDL_GetBasePath()`, `/proc/self/exe`, `argv[0]`, or `dirname $APPIMAGE` falling
+  back to the program's folder) gets `{install}/usr/bin` under the launcher, and every update
+  replaces it. Write to `RECOMPLAUNCHER_DATA` when it's set, otherwise to your game's usual
+  per-user place. Not to `APPDIR` either: that's `{install}`, which your release owns too. The same
+  goes for a portable mode marker (`portable.txt` beside the program): when `RECOMPLAUNCHER_DATA`
+  is set, it wins over portable mode.
+
+  ```c
+  const char *data = SDL_getenv("RECOMPLAUNCHER_DATA");  /* set by the launcher */
+  char *dir;
+  if (data && *data) dir = SDL_strdup(data);             /* wins over portable.txt */
+  else if (portable) dir = portable_dir();               /* your own portable folder */
+  else dir = SDL_GetPrefPath("MyStudio", "MyRecomp");    /* the usual per-user place */
+  ```
 - **Never update yourself when `RECOMPLAUNCHER=1`.** Your game and your setup step both get it,
   and the launcher brings players every release you publish, by itself once they turn on
   automatic updates. If only a flag turns your updater off, put it in `start.args`, like
@@ -188,9 +203,11 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
   `recomplauncher.json`) become the game's folder.
 - The game starts from `AppRun`, with `APPDIR` set to the game's folder, `OWD` to the folder it
   starts in and `ARGV0` to `AppRun`, as the AppImage runtime would set them. **`APPIMAGE` is not
-  set**, since there's no AppImage file. Find your files from `APPDIR` or your own program's path
-  (`/proc/self/exe`), never from `APPIMAGE` or a mount point, and don't update yourself through
-  `APPIMAGE`: updates come from your releases through the launcher.
+  set**, since there's no AppImage file. Read your release's own files from `APPDIR` or your own
+  program's path (`/proc/self/exe`), never from `APPIMAGE` or a mount point, but write nothing
+  there: beside your program is `{install}/usr/bin`, and every update replaces it (see
+  [Where your game writes](#where-your-game-writes)). Don't update yourself through `APPIMAGE`:
+  updates come from your releases through the launcher.
 - A `start.program` or `prepare.program` that names a program inside the AppImage instead (`mkw`,
   `usr/bin/game`) starts without your `AppRun`. It gets `APPDIR` and `OWD` the same way, and the
   library folders your AppImage brings (`lib`, `lib64`, `usr/lib`, `usr/lib64` and
