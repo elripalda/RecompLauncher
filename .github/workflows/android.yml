@@ -10,6 +10,7 @@ on:
       - .github/workflows/android.yml
       - src-tauri/gen/android/**
       - src-tauri/src/mobile.rs
+      - src-tauri/src/android.rs
       - src-tauri/src/*_mobile.rs
       - .github/scripts/android-smoke.sh
 
