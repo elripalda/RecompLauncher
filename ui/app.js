@@ -1904,7 +1904,7 @@ function pageHome() {
   const ready = oneEach(games.filter(projectEasy).sort(byNew), true);
   const played = jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = foundInFolders();
-  const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
+  const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && projectEasy(a) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
   // Settings → Appearance can turn the banner off, so Home starts with the player's own games.
   const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;

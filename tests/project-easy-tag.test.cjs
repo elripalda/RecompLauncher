@@ -60,6 +60,16 @@ test('a game of a recomp of several follows its recomp', () => {
   assert.equal(c.projectEasy(a), true);
 });
 
+test('Big Picture\'s game page pill, Discover chip and both Drop in Your Copy rows go by the tag', () => {
+  const tvPage = tv.match(/  function pageGame\(id\) \{[^]*?\n  \}/)[0];
+  assert.match(tvPage, /: projectEasy\(a\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>`/);
+  assert.doesNotMatch(tvPage, /S\.easy\.has\(id\) \? `<span class="tv-easy">/);
+  assert.match(tv, /apps\.some\(projectEasy\) \? \[\['easy', N_\('Easy Setup'\)\]\]/);
+  const dropIn = 'games.filter((a) => S.easy.has(a.parent || a.id) && projectEasy(a) && !haveAny(a))';
+  assert.ok(fn('pageHome').includes(dropIn));
+  assert.ok(tv.includes(dropIn));
+});
+
 test('what Install and Play do still goes by turnkey, not the tag', () => {
   assert.match(app, /turnkey\(a\) \? b\('main easy', 'install', esc\(t\('Easy Setup'\)\)/);
   assert.match(app, /const askCopy = !selfRun && !building && feedsCopy\(a\);/);

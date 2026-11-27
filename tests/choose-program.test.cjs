@@ -123,7 +123,7 @@ test('a picked executable counts as Set Up by You even while Easy Setup is still
 
 test('Big Picture asks Set Up by You first, as the desktop does, then Easy Setup', () => {
   const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
-  assert.match(tv, /: S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : S\.easy\.has\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : ''/);
+  assert.match(tv, /: S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : projectEasy\(a\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : ''/);
 });
 
 test('Use Default lets the pick go in the core', () => {
