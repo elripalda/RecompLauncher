@@ -1102,7 +1102,8 @@ Things that make a recomp feel finished in the launcher. None are required; each
 - **Support `portable.txt`.** If a `portable.txt` next to your program makes your recomp keep
   everything in its own folder, mod installs from the launcher follow it. Under the launcher on
   Linux that folder is `{install}/usr/bin`, so `RECOMPLAUNCHER_DATA` wins over portable mode
-  when it's set (see [Where your game writes](#where-your-game-writes)).
+  when it's set (see [Where your game writes](#where-your-game-writes)). Mod installs from the
+  launcher don't follow `RECOMPLAUNCHER_DATA` yet.
 - **Check the copy, then trust it.** With `check` (and `dumps`), the launcher has already checked the
   player's copy before your program starts, so your own check can be quick.
 - **Ship a `recomplauncher.json` in every release**, and keep it in step with your settings when
