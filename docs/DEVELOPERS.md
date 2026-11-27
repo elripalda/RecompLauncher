@@ -125,8 +125,9 @@ goes along; what it writes anywhere else is left behind. So:
   replaces it. Write to `RECOMPLAUNCHER_DATA` when it's set, otherwise to your game's usual
   per-user place. Not to `APPDIR` either: that's `{install}` itself, next to your release's own
   files. What your game makes goes in `{data}` (`RECOMPLAUNCHER_DATA`), the one data path the
-  launcher moves, backs up and keeps through updates. The same goes for a portable mode marker (`portable.txt` beside the program): when `RECOMPLAUNCHER_DATA`
-  is set, it wins over portable mode.
+  launcher moves, backs up and keeps through updates. The same goes for a portable mode marker
+  (`portable.txt` beside the program): when `RECOMPLAUNCHER_DATA` is set, it wins over portable
+  mode.
 
   ```c
   const char *data = SDL_getenv("RECOMPLAUNCHER_DATA");  /* set by the launcher */
