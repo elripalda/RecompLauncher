@@ -6166,7 +6166,7 @@ function paintSetupProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   S.removedPlayHistory = st.removedPlayHistory || {};
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound, home: st.home || {} });
   setClock((S.settings.ui || {}).clock);
   // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
   applyEasySkip();
@@ -8729,11 +8729,24 @@ function evenActs(btns) {
 }
 // A new issue on RecompLauncher's GitHub for a crash, filled in: the versions, the PC, the game and
 // the end of its log. Home folders become "~" and the excerpt loses lines from the top until the
-// address fits in 8 KB, which is about what GitHub and browsers take. A path's whole start up to
-// its home folder becomes "~" (/var/home/me on Bazzite and Silverblue, /mnt/c/Users/me from WSL),
-// so no part of a user's name is left.
+// address fits in 8 KB, which is about what GitHub and browsers take. This PC's home folder comes
+// from Rust in every form a log shows it (c.home: /var/home/me on Bazzite and Silverblue, Z:\home\me
+// in Wine, \\?\C:\Users\Me on Windows) and goes wherever it is, file:// and -I included, and so does
+// the user name. A path from another PC, guessed from its shape, has its whole start up to its home
+// folder become "~". Web addresses stay as they are.
 const ghCrashUrl = (c) => {
-  const home = (s) => String(s || '').replace(/(^|[^\w.\/\\-])(?:[A-Za-z]:\\Users\\|(?:\/[^\/\s"']+)*?\/(?:home|Users)\/)[^\\/\s"']+/gm, '$1~');
+  const me = c.home || {};
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Either slash, and a Windows path in any case.
+  const forms = (me.forms || []).filter((f) => f && f.length > 1).map((f) => new RegExp(`${f.split(/[\\/]/).map(esc).join('[\\\\/]')}(?![\\w.-])`, /^([A-Za-z]:|\\)/.test(f) ? 'gi' : 'g'));
+  // A short name or a common word would change ordinary words in the log.
+  const common = ['user', 'users', 'admin', 'administrator', 'deck', 'steam', 'steamuser', 'home', 'root', 'guest', 'public', 'default'];
+  const names = (me.names || []).filter((n) => n && n.length >= 3 && !common.includes(n.toLowerCase())).map((n) => new RegExp(`(?<![\\p{L}\\p{N}_])${esc(n)}(?![\\p{L}\\p{N}_])`, 'giu'));
+  const media = /([\\/]run[\\/]media[\\/])[^\\/\s"'~]+(?=[\\/])/gi;
+  const other = /(^|[^\w.\/\\-]|file:\/\/|\\\\\?\\|-I)(?:[A-Za-z]:)?(?:[\\/][^\\/\s"']+)*?[\\/](?:home|users)[\\/][^\\/\s"']+/gmi;
+  const hide = (s) => names.reduce((t, r) => t.replace(r, '~'), forms.reduce((t, r) => t.replace(r, '~'), s).replace(media, '$1~').replace(other, '$1~'));
+  const url = /((?<![\w+.-])(?!file:)[A-Za-z][\w+.-]*:\/\/[^\/\s"'<>]+[^\s"'<>]*)/i;
+  const home = (s) => String(s || '').split(url).map((p, i) => (i % 2 ? p : hide(p))).join('');
   const reason = String(c.reason || '').replace(/\s+/g, ' ').trim();
   const title = `Crash: ${reason.length > 80 ? `${reason.slice(0, 79)}…` : reason}`;
   const head = [c.note ? `**What happened:** ${c.note}` : '**What happened:** ', '',
@@ -9004,7 +9017,7 @@ async function crashModal(p) {
       const url = ghCrashUrl({ reason: `${g.name} closed with code ${codeShown}`, note, version: S.version,
         os: `${OS_NAME[S.os] || S.os}${pc && pc.osver ? ` ${pc.osver}` : ''}${S.arch ? ` (${S.arch})` : ''}`, gpu: pc && pc.gpu,
         game: `${g.name} ${g.tag || ''} (${p.id})`.replace(/\s+/g, ' '), exit: `Closed with code ${codeShown} after ${p.secs} s`,
-        file: log && log[0], text: log && log[1] });
+        file: log && log[0], text: log && log[1], home: S.home });
       invoke('open_url', { url }).then(() => toast(t('The report is filled in. Attach the full log, then submit it on the page.'))).catch(fail);
     }
     if (x.dataset.x === 'report' && a) {
