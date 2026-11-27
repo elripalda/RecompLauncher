@@ -194,7 +194,7 @@ On Android there's no desktop view. There are two layouts instead:
   sentence case. About has Support Us (Ko-fi).
   The launcher's window opens before the core has finished starting, so the first `get_state` can
   come too early on a slow phone or emulator: app.js asks again for a few seconds. Settings that
-  never came in are never written back (`settingsWrite`): a half-empty copy would be refused.
+  never came in are never written back (`S.settingsMissing`): a half-empty copy would be refused.
   Home's top left shows the RecompLauncher mark and name. Held sideways, the search and profile
   buttons sit right above the side bar, and on a wide screen Settings lays its boxes out in two
   columns and the account page puts the profile beside its settings (cloud space, Back Up Every

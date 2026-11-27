@@ -170,7 +170,7 @@
 
   async function save(patch) {
     const next = Object.assign({}, S.settings, patch);
-    try { await settingsWrite(next); S.settings = next; } catch (e) { fail(e); }
+    try { if (!S.settingsMissing) await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { fail(e); }
   }
 
   async function scan() {

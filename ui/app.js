@@ -33,7 +33,9 @@ const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N
 
 const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
-  library: {}, arts: {}, settings: {}, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
+  // settingsMissing: the settings haven't come in from the core yet, so they're changed here but never
+  // written back (a half-empty copy would be refused, or lose the real ones).
+  library: {}, arts: {}, settings: {}, settingsMissing: true, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), easyAll: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
@@ -6183,7 +6185,7 @@ function paintSetupProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   S.removedPlayHistory = st.removedPlayHistory || {};
-  if (st.settings) S.settingsIn = true;
+  if (st.settings) S.settingsMissing = false;
   Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || S.settings, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
   // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
@@ -6466,7 +6468,7 @@ async function checkUpdates(loud) {
 async function setLanguage(code) {
   const ui = Object.assign({}, S.settings.ui || {}, { lang: code });
   const next = Object.assign({}, S.settings, { ui });
-  try { await settingsWrite(next); S.settings = next; } catch (e) { return fail(e); }
+  try { if (!S.settingsMissing) await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { return fail(e); }
   await loadLang(code === 'auto' ? systemLang() : code);
   tDom();
   render(true);
@@ -6528,14 +6530,11 @@ function startAtLoginNote() {
   return t('RecompLauncher starts when you sign in and waits by the clock. It also shows in your system\'s startup apps.');
 }
 
-// Settings that never came in from the core (it couldn't be read when the launcher opened) are
-// only changed here, never written: a half-empty copy would be refused, or lose the real ones.
-const settingsWrite = (next) => (S.settingsIn ? invoke('save_settings', { settings: next }) : Promise.resolve());
 function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   applyEasySkip();
   setClock((S.settings.ui || {}).clock);
-  settingsSaving = settingsSaving.then(() => settingsWrite(S.settings)).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
+  settingsSaving = settingsSaving.then(() => (S.settingsMissing ? null : invoke('save_settings', { settings: S.settings }))).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
   return settingsSaving;
 }
 
