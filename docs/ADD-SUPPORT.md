@@ -34,7 +34,8 @@ For raw copies, put the file name after
    - Easy Setup (`start`, and `game` or named inputs of role `game` or `disc`): the player picks
      their copy, the launcher checks it, sets it up and starts the game. In DEVELOPERS.md:
      "Launch: plays from RecompLauncher". If it needs more than one file from the player:
-     SETUP-INPUTS.md.
+     SETUP-INPUTS.md. Only Easy Setup from your own file gets the Easy Setup tag and filter in the
+     store: a recomp the launcher sets up from its own profile still sets up, without the tag.
    - Settings in the launcher (`config` and `settings`): the project's settings file or
      command-line options, shown in the launcher. In DEVELOPERS.md: "Settings: in the launcher".
    - Setup step and verification (`prepare` and `game.dumps`): a windowless setup step with
