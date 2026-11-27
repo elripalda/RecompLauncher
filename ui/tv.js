@@ -624,12 +624,19 @@
       },
     };
     const plan = S.home ? homePlan(S.home) : TV_HOME_ROWS.map((id) => ({ k: 'row', id }));
+    // Android while it's for testers only: why the list is empty, and Sign In when that's the fix.
+    if (S.listGate) plan.unshift({ k: 'gate' });
     return plan.map((x) => {
+      if (x.k === 'gate') return tvGateBox();
       if (x.k === 'row') return byRow[x.id] ? byRow[x.id]() : '';
       if (x.k === 'banner') return tvHomeBanner(x);
       if (x.k === 'box') return tvHomeBox(x);
       return '';
     });
+  }
+  function tvGateBox() {
+    const add = S.account && S.account.signedIn ? '' : `<div class="tv-acts"><button type="button" class="tv-btn sm" data-f data-key="gate:in" data-tvact="signin"><span>${esc(t('Sign in'))}</span></button></div>`;
+    return `<section class="tv-sec tv-hbox" data-sec="gate"><div class="tv-hbox-in"><span class="ic">${DISC_L}</span><div class="k"><b dir="auto">${esc(t('Android games'))}</b><p dir="auto">${esc(t(S.listGate))}</p></div>${add}</div></section>`;
   }
   // The desktop's "It finds the games you already have" box (foundCallout), as an info box.
   function tvFoundBox() {

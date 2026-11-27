@@ -106,8 +106,12 @@ fn touch(file: &Path) {
 
 /// Asks the site for a JSON file. With `file` (the copy on disk), only if it changed: None means
 /// it didn't (304), and the copy on disk is still right.
-async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool, file: Option<&Path>) -> Result<Option<(Value, reqwest::header::HeaderMap)>, Error> {
+/// `token`: the player's sign-in, for a list only some accounts may see.
+async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool, file: Option<&Path>, token: Option<&str>) -> Result<Option<(Value, reqwest::header::HeaderMap)>, Error> {
     let mut rb = http.get(url).timeout(wait);
+    if let Some(t) = token {
+        rb = rb.bearer_auth(t).header("X-RL-Token", t);
+    }
     if let Some(f) = file.filter(|f| f.is_file()) {
         let (etag, modified) = load_tag(f);
         if let Some(e) = etag {
@@ -117,9 +121,14 @@ async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: boo
             rb = rb.header(reqwest::header::IF_MODIFIED_SINCE, m);
         }
     }
-    let r = crate::net::send(rb, url, player).await?;
+    let normal: &[u16] = if url.contains(ANDROID_LIST) { &[403] } else { &[] };
+    let r = crate::net::send_allowing(rb, url, player, normal).await?;
     if r.status() == reqwest::StatusCode::NOT_MODIFIED && file.map(|f| f.is_file()).unwrap_or(false) {
         return Ok(None);
+    }
+    // The Android list while Android is hidden on the website: only testers get it.
+    if r.status() == reqwest::StatusCode::FORBIDDEN && url.contains(ANDROID_LIST) {
+        return Err(Error::Msg(if token.is_some() { NOT_TESTER } else { SIGN_IN_TESTER }.into()));
     }
     if !r.status().is_success() {
         return Err(Error::Net(format!("{} answered {}", host_of(url), r.status().as_u16())));
@@ -158,13 +167,19 @@ fn on_disk(file: &Path, check: fn(&Value) -> bool) -> Option<Fetched> {
 /// The copy on disk when it's younger than `fresh` seconds; otherwise the site is asked, and the
 /// copy on disk (any age) is used when it can't be reached. A site that's resting isn't asked.
 async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wait: Duration, player: bool, check: fn(&Value) -> bool) -> Result<Fetched, Error> {
+    cached_as(http, url, file, fresh, wait, player, check, None).await
+}
+
+/// `cached`, signed in as the player (`token`).
+#[allow(clippy::too_many_arguments)]
+async fn cached_as(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wait: Duration, player: bool, check: fn(&Value) -> bool, token: Option<&str>) -> Result<Fetched, Error> {
     let have = on_disk(&file, check);
     if let Some(h) = &have {
         if h.age < fresh || crate::net::resting(url, player) {
             return Ok(Fetched { archived: h.archived, data: h.data.clone(), offline: h.age >= fresh, age: h.age });
         }
     }
-    match get_json(http, url, wait, player, have.as_ref().map(|_| file.as_path())).await {
+    match get_json(http, url, wait, player, have.as_ref().map(|_| file.as_path()), token).await {
         // Unchanged since the copy on disk: a 304 of a few bytes instead of the whole file.
         Ok(None) => {
             touch(&file);
@@ -189,8 +204,33 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
     }
 }
 
+// The list on disk keeps the same name on Android: a launcher only ever reads one of the two.
 fn list_file(dir: &Path) -> PathBuf {
     dir.join("cache/pc-catalog.json")
+}
+
+/// The website's Android list: the same shape as `pc-catalog.json`, with each game's Android
+/// download (`assets.android`, `android_tag` and the rest; see the site's docs/backend/18-android.md).
+const ANDROID_LIST: &str = "/api/pc.php?a=android";
+const SIGN_IN_TESTER: &str = "Android games are only open to testers for now. Sign in with your tester account.";
+const NOT_TESTER: &str = "Android games are only open to testers for now, and this account isn't one.";
+
+/// Where the list comes from: Android reads its own.
+fn list_url() -> String {
+    if cfg!(target_os = "android") {
+        format!("{}{ANDROID_LIST}", base())
+    } else {
+        format!("{}/pc-catalog.json", base())
+    }
+}
+
+/// The sign-in sent with the list: only Android's needs it (testers only while Android is hidden).
+fn list_token(dir: &Path) -> Option<String> {
+    if cfg!(target_os = "android") {
+        crate::cloud::token(dir)
+    } else {
+        None
+    }
 }
 
 fn list_ok(v: &Value) -> bool {
@@ -207,7 +247,7 @@ pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<
     }
     LIST_ASKED.store(true, Ordering::Relaxed);
     let fresh = if force { 0 } else { LIST_FRESH };
-    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), list_file(dir), fresh, crate::net::LONGER, force, list_ok).await?;
+    let mut f = cached_as(http, &list_url(), list_file(dir), fresh, crate::net::LONGER, force, list_ok, list_token(dir).as_deref()).await?;
     f.data = with_mine(dir, f.data);
     Ok(f)
 }
@@ -224,7 +264,7 @@ pub fn catalog_now(dir: &Path) -> Option<(Fetched, bool)> {
 /// The list asked for again in the background (not the player's doing).
 pub async fn catalog_refresh(http: &reqwest::Client, dir: &Path) -> Result<Fetched, Error> {
     LIST_ASKED.store(true, Ordering::Relaxed);
-    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), list_file(dir), 0, crate::net::LONGER, false, list_ok).await?;
+    let mut f = cached_as(http, &list_url(), list_file(dir), 0, crate::net::LONGER, false, list_ok, list_token(dir).as_deref()).await?;
     f.data = with_mine(dir, f.data);
     Ok(f)
 }
@@ -1856,6 +1896,44 @@ mod tests {
         assert_eq!(again.data["apps"][0]["id"], "a");
         assert!(!again.offline);
         assert_eq!(full.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn android_list_for_testers_only() {
+        use std::io::{Read, Write};
+        // A site that keeps the Android list from anyone without a tester's sign-in.
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let site = format!("http://{}", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for c in l.incoming().flatten().take(3) {
+                let mut c = c;
+                let mut buf = [0u8; 4096];
+                let n = c.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+                let resp = if req.contains("x-rl-token: tester") {
+                    let body = r#"{"apps":[{"id":"a","assets":{"android":"a.apk"}}],"platform":"android"}"#;
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+                } else {
+                    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                };
+                let _ = c.write_all(resp.as_bytes());
+            }
+        });
+        let dir = std::env::temp_dir().join(format!("rl-android-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let http = reqwest::Client::new();
+        let url = format!("{site}{ANDROID_LIST}");
+        let ask = |token: Option<&str>| rt.block_on(cached_as(&http, &url, dir.join("list.json"), 0, Duration::from_secs(5), true, list_ok, token));
+        let msg = |r: Result<Fetched, Error>| match r { Err(Error::Msg(m)) => m, other => panic!("expected a message, got {:?}", other.map(|f| f.data)) };
+        assert_eq!(msg(ask(None)), SIGN_IN_TESTER);
+        assert_eq!(msg(ask(Some("someone"))), NOT_TESTER);
+        let ok = ask(Some("tester")).unwrap();
+        assert_eq!(ok.data["apps"][0]["assets"]["android"], "a.apk");
+        // The PC launcher reads the PC list, with no sign-in sent.
+        assert!(list_url().ends_with("/pc-catalog.json"));
+        assert!(list_token(&dir).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
