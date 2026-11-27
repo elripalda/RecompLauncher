@@ -56,18 +56,42 @@ test('Android draws lighter by default, a PC only when it is a handheld', () => 
   assert.equal(run('linux', undefined, true), true);
 });
 
-test('The phone layout patches the page showing and keeps each page\'s place', () => {
-  // The same page is patched (covers stay, nothing blinks); only another page is drawn fresh.
-  assert.match(phone, /if \(was === key\) \{ morph\(root, markup\(\)\); return; \}/);
-  assert.match(phone, /P\.tops\[was\] = old\.scrollTop/);
+test('The phone layout patches a page that is already drawn, so covers stay and its place is kept', () => {
+  // Each tab keeps its own page: once drawn, a change patches it (nothing blinks or jumps).
+  assert.match(phone, /if \(node\.childNodes\.length\) morph\(node, html\); else node\.innerHTML = html;/);
+  // A download ticking changes only its bars, rings and words.
+  assert.match(phone, /if \(same && p\.phase === 'download'\) return setTimeout\(\(\) => tick\(p\.id\), 0\);/);
   // A game's size is text from the list ("24 MB"), shown as it is.
   assert.ok(!/fmtB\(a\.android_size\)/.test(phone));
 });
 
 test('A cover\'s height comes from its own width', () => {
   // Not from a flex column around it: older Android web engines draw no cover at all that way.
-  assert.match(phoneCss, /\.ph-card\{display:block;/);
   assert.match(phoneCss, /\.ph-cover\{position:relative;display:block;width:100%;aspect-ratio:2\/3;/);
+  assert.match(phoneCss, /\.ph-gcard\{display:block;/);
+});
+
+test('Web engines without aspect-ratio still give covers their shape', () => {
+  const old = phoneCss.slice(phoneCss.indexOf('@supports not (aspect-ratio:1){'));
+  assert.match(old, /\.ph-cover\{height:0;padding-top:150%\}/);
+});
+
+test('The phone layout mixes no colours, so older Android web engines draw all of it', () => {
+  assert.ok(!phoneCss.includes('color-mix('));
+});
+
+test('The phone layout keeps between 3 and 5 tabs, with Home and Settings always on', () => {
+  assert.match(phone, /const TABS_FIXED = \['home', 'settings'\];/);
+  assert.match(phone, /if \(!on && tabs\.length <= 3\)/);
+  assert.match(phone, /if \(on && tabs\.length >= 5\)/);
+});
+
+test('The window commands the phone layout uses are registered', () => {
+  const lib = fs.readFileSync(path.join(__dirname, '../src-tauri/src/lib.rs'), 'utf8');
+  for (const cmd of ['android_edges', 'android_insets', 'android_haptic']) {
+    assert.match(lib, new RegExp(`fn ${cmd}\\(`));
+    assert.match(lib, new RegExp(`android_orientation, [^\\n]*${cmd}`));
+  }
 });
 
 test('Every colour-mixing rule in Big Picture has a plain one for web engines that cannot mix', () => {

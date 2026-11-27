@@ -1,137 +1,466 @@
-/* The phone layout (phone.js): Android without a controller. Made for a phone held upright (about
-   360 px wide) or sideways (about 360 px tall): pages scroll with a finger, rows swipe sideways, the
-   tabs sit at the bottom upright and down the side sideways. */
+/* The phone app (phone.js): Android without a controller. An app made for fingers: tabs that swipe,
+   a floating menu, pages that push in, sheets that pull down. Everything is drawn at one design
+   size and scaled to the screen (--z), so a small phone, a big phone and a tablet all get the
+   same proportions. Class names start with ph- so the desktop view's styles never reach in. */
 /* Android never shows the desktop view (droid.js marks the page before anything is drawn): it isn't
    laid out or painted at all, at start-up or behind this layout and Big Picture mode. */
 html.droid #app{display:none}
-#phone{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-:where(#phone) button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
-:where(#phone) h1,:where(#phone) h2,:where(#phone) p{margin:0}
 
-/* The top: the page's name, or a back button over the game's picture. */
-.ph-top{flex:none;display:flex;align-items:center;min-height:60px;padding:12px 20px 6px}
-.ph-top h1{font:800 28px/1.15 Archivo,Figtree,system-ui,sans-serif;letter-spacing:-.01em}
-.ph-top.over{position:absolute;top:0;left:0;right:0;z-index:2;padding:12px;pointer-events:none}
-.ph-backbtn{pointer-events:auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(8,16,28,.72);color:#F4F8FC;transition:transform .12s var(--ease)}
-.ph-backbtn:active{transform:scale(.92)}
+/* ---------- colours, sizes and the system's edges ---------- */
+/* --pt: the clock bar's height. --pnl/--pnr: the camera hole's side when held sideways. --sb: the
+   system's strip at the bottom. --nvl/--nvr: room for the menu when it sits down a side. All are
+   in the design's own pixels (phone.js divides the real ones by --z). */
+#phone{--z:1;--pt:0px;--pnl:0px;--pnr:0px;--sb:0px;--nvl:0px;--nvr:0px;
+  --nb:max(19px,calc(var(--sb) + 3px));--pb:calc(115px + var(--nb));
+  --gl:calc(16px + var(--pnl) + var(--nvl));--gr:calc(16px + var(--pnr) + var(--nvr));--ol:calc(20px + var(--pnl));--or:calc(20px + var(--pnr));
+  --bg:#0B1220;--bgc:11,18,32;--p1:#0f1829;--p2:#141f33;--p3:#1b2942;--fg:#F4F8FC;--mut:#a7b3c4;--dim:#7d8aa0;--acc:#34F2E8;--accbg:rgba(52,242,232,.15);
+  --edge:rgba(244,248,252,.09);--edge2:rgba(244,248,252,.17);--glass:rgba(22,33,54,.58);--glass2:rgba(18,27,45,.94);--glasshi:rgba(255,255,255,.16);--indic:rgba(255,255,255,.13);--shadow:rgba(0,0,0,.6);
+  --ease:cubic-bezier(.22,1,.36,1);--spring:cubic-bezier(.34,1.56,.64,1);--soft:cubic-bezier(.3,1.22,.4,1);
+  position:fixed;inset:0;z-index:100;overflow:hidden;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
+#phone[data-theme="oled"]{--bg:#000;--bgc:0,0,0;--p1:#07090d;--p2:#0e1118;--p3:#171c27;--glass:rgba(20,22,28,.6);--glass2:rgba(12,13,17,.95);--edge:rgba(244,248,252,.11)}
+#phone[data-theme="light"]{--bg:#F3F6FA;--bgc:243,246,250;--p1:#fff;--p2:#fff;--p3:#e6ecf5;--fg:#0B1220;--mut:#52607a;--dim:#6c7a92;--acc:#087f8c;--accbg:rgba(8,127,140,.13);--edge:rgba(11,18,32,.09);--edge2:rgba(11,18,32,.18);--glass:rgba(255,255,255,.62);--glass2:rgba(255,255,255,.95);--glasshi:rgba(255,255,255,.9);--indic:rgba(11,18,32,.09);--shadow:rgba(30,50,90,.25)}
+/* Sideways: the clock bar is hidden, and the menu goes down the side away from the camera. */
+#phone.ph-land{--pb:28px;--nvr:92px}
+#phone.ph-land.ph-flip{--nvr:0px;--nvl:92px}
 
-/* The page: scrolls up and down. */
-.ph-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:2px 0 28px;scrollbar-width:none}
-.ph-main::-webkit-scrollbar{display:none}
-.ph-main.ph-page-game{padding-top:0}
-/* Another page comes in with a short fade (a game's page rises a little); the same page never blinks. */
-.ph-main.ph-in{animation:ph-in .16s ease-out both}
-.ph-main.ph-in-up{animation:ph-in-up .2s var(--ease) both}
-@keyframes ph-in{from{opacity:0}}
-@keyframes ph-in-up{from{opacity:0;transform:translateY(14px)}}
-@media (prefers-reduced-motion:reduce){.ph-main.ph-in,.ph-main.ph-in-up{animation:none}}
-.ph-sec{margin:12px 0 10px}
-.ph-sec h2,.ph-set h2{margin:0 20px 10px;font:700 18px/1.25 Figtree,system-ui,sans-serif}
-.ph-empty{margin:48px 28px;text-align:center;color:var(--muted);font-size:15px}
+.ph-ui{position:absolute;left:0;top:0;width:calc(100% / var(--z));height:calc(100% / var(--z));transform:scale(var(--z));transform-origin:0 0;overflow:hidden;font:500 14px Figtree,system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:pan-y}
+.ph-ui *{box-sizing:border-box}
+:where(.ph-ui) button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+:where(.ph-ui) h1,:where(.ph-ui) h2,:where(.ph-ui) h3,:where(.ph-ui) p{margin:0}
+.ph-ui button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.ph-ui [hidden]{display:none !important}
+/* A picture shows once it has loaded (a soft fade, not a pop). */
+.ph-ui img{-webkit-user-drag:none;opacity:0;transition:opacity .22s ease-out}
+.ph-ui img.ld{opacity:1}
+.ph-disp{font-family:Archivo,Figtree,system-ui,sans-serif;font-stretch:116%;font-weight:800;letter-spacing:-.01em}
+.ph-ic{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ph-ic.s{width:18px;height:18px}
+.ph-ic.xs{width:14px;height:14px}
+.ph-row{display:flex;align-items:center}
+.ph-col{display:flex;flex-direction:column;min-width:0}
+.ph-grow{flex:1;min-width:0}
+.ph-mut{color:var(--mut)}
+.ph-press{transition:transform 260ms var(--spring)}
+.ph-press:active{transform:scale(.955);transition-duration:90ms}
+/* Frosted glass, for the floating menu and the download pill only: small enough to blur every
+   frame on a mid-range phone. The launcher's lighter drawing turns blur off everywhere else. */
+.ph-glassy{background:var(--glass);border:1px solid var(--edge2);box-shadow:inset 0 1px 0 var(--glasshi),0 18px 40px -14px var(--shadow)}
+body .ph-glassy{-webkit-backdrop-filter:blur(22px) saturate(1.7) !important;backdrop-filter:blur(22px) saturate(1.7) !important}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.ph-glassy{background:var(--glass2)}}
 
-/* Covers: a row that swipes sideways and stops on a cover, or a grid. A cover's height comes from
-   its own width (never from the row around it, which older Android web engines get wrong and draw
-   no cover at all), and its picture fades in once it has loaded. */
-.ph-row{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:0 20px;padding:0 20px 2px;scrollbar-width:none}
-.ph-row::-webkit-scrollbar{display:none}
-.ph-row .ph-card{flex:none;width:124px;scroll-snap-align:start}
-.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:16px 12px;padding:0 20px}
-.ph-card{display:block;min-width:0}
-/* A big grid's covers out of view aren't drawn until they scroll in. */
-.ph-grid .ph-card{content-visibility:auto;contain-intrinsic-size:auto 220px}
-.ph-cover{position:relative;display:block;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:var(--card2);transition:transform .14s var(--ease)}
-.ph-card:active .ph-cover{transform:scale(.96)}
+/* ---------- the tabs' pages ---------- */
+.ph-base{position:absolute;inset:0;overflow:hidden;transform-origin:50% 40%;transition:transform 520ms var(--ease),opacity 320ms,border-radius 320ms}
+.ph-deep .ph-base{transform:scale(.94);opacity:.35;border-radius:28px}
+.ph-side .ph-base{transform:translateX(-22%);opacity:.4}
+.ph-pager{position:absolute;inset:0;display:flex;will-change:transform}
+.ph-pager.anim{transition:transform 520ms var(--soft)}
+.ph-view{flex:none;width:100%;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:0 0 var(--pb);scrollbar-width:none;position:relative}
+.ph-ui ::-webkit-scrollbar{display:none}
+.ph-view.enter>*{animation:ph-rise 520ms var(--ease) both}
+.ph-view.enter>*:nth-child(2){animation-delay:40ms}
+.ph-view.enter>*:nth-child(3){animation-delay:80ms}
+.ph-view.enter>*:nth-child(4){animation-delay:120ms}
+.ph-view.enter>*:nth-child(5){animation-delay:160ms}
+.ph-view.enter>*:nth-child(n+6){animation-delay:200ms}
+@keyframes ph-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+/* A page's heading scrolls away with the page: nothing sticks under the clock. */
+.ph-vhd{position:relative;padding:calc(var(--pt) + 14px) var(--gr) 10px var(--gl)}
+.ph-vt{font-size:32px;line-height:1.15}
+.ph-vs{font-size:13px;color:var(--mut);margin-top:3px}
+.ph-sec{margin-top:26px}
+.ph-dots+.ph-sec{margin-top:4px}
+.ph-sech{display:flex;align-items:baseline;justify-content:space-between;margin:0 var(--gr) 12px var(--gl)}
+.ph-sech h2{font:700 18px Figtree,system-ui,sans-serif}
+.ph-sech button{font:600 13px Figtree,system-ui,sans-serif;color:var(--acc);min-height:32px}
+/* A row that swipes sideways. */
+.ph-hs{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding:0 var(--gr) 6px var(--gl);scroll-snap-type:x proximity;scroll-padding-left:var(--gl);scrollbar-width:none;touch-action:pan-x pan-y}
+.ph-hs>*{flex:none;scroll-snap-align:start}
+.ph-padx{padding-left:var(--gl);padding-right:var(--gr)}
+/* Inside a pushed page there's no menu down the side, so its gutters are the plain ones. */
+.ph-in{--gl:var(--ol);--gr:var(--or);position:relative}
+
+/* ---------- the floating menu ---------- */
+.ph-nav{position:absolute;left:50%;bottom:var(--nb);z-index:20;display:flex;padding:6px;border-radius:999px;transform:translateX(-50%);transition:transform 520ms var(--soft),opacity 260ms}
+.ph-nav button{position:relative;z-index:1;width:66px;height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--mut);font:600 10.5px Figtree,system-ui,sans-serif;border-radius:999px;transition:color 240ms}
+.ph-nav.nolab button{width:70px;height:50px}
+.ph-nav.nolab .ph-ic{width:23px;height:23px}
+.ph-land .ph-nav.nolab .ph-ic{width:25px;height:25px}
+.ph-nav.nolab button span{display:none}
+.ph-nav button.on{color:var(--fg)}
+.ph-nav button .ph-ic{transition:transform 420ms var(--spring)}
+.ph-nav button.on .ph-ic{transform:scale(1.1);color:var(--acc)}
+.ph-ind{position:absolute;left:6px;top:6px;width:66px;height:54px;border-radius:999px;background:var(--indic);box-shadow:inset 0 1px 0 var(--glasshi);transition:transform 520ms var(--soft)}
+.ph-nav.nolab .ph-ind{width:70px;height:50px}
+.ph-nav.drag .ph-ind{transition:none}
+.ph-deep .ph-nav,.ph-side .ph-nav{transform:translateX(-50%) translateY(170%);opacity:0;pointer-events:none}
+.ph-land .ph-nav{left:auto;right:calc(14px + var(--pnr));bottom:auto;top:50%;flex-direction:column;transform:translateY(-50%)}
+.ph-land.ph-flip .ph-nav{right:auto;left:calc(14px + var(--pnl))}
+.ph-land .ph-nav button,.ph-land .ph-nav.nolab button,.ph-land .ph-ind,.ph-land .ph-nav.nolab .ph-ind{width:60px;height:56px}
+.ph-land .ph-deep .ph-nav,.ph-land .ph-side .ph-nav{transform:translateY(-50%) translateX(160%)}
+.ph-land.ph-flip .ph-deep .ph-nav,.ph-land.ph-flip .ph-side .ph-nav{transform:translateY(-50%) translateX(-160%)}
+
+/* ---------- covers, tags, buttons ---------- */
+/* A cover's height comes from its own width (never from a row around it, which older Android web
+   engines get wrong and draw no cover at all). */
+.ph-cover{position:relative;display:block;width:100%;aspect-ratio:2/3;border-radius:14px;overflow:hidden;background:var(--p3);box-shadow:0 10px 22px -14px var(--shadow),0 0 0 1px var(--edge)}
 .ph-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.ph-cover img,.ph-thumb img,.ph-hero img{opacity:0;transition:opacity .2s ease-out}
-.ph-cover img.ld,.ph-thumb img.ld,.ph-hero img.ld{opacity:1}
-.ph-ph{position:absolute;inset:0;display:flex;align-items:flex-end;padding:10px;font:700 13px/1.25 Figtree,system-ui,sans-serif;color:var(--muted)}
-.ph-badge{position:absolute;top:7px;left:7px;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:800;background:var(--cyan);color:#08101C}
-.ph-bar{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:2px;background:rgba(0,0,0,.55);overflow:hidden}
-.ph-bar i{display:block;height:100%;background:var(--cyan)}
-.ph-name{margin-top:7px;font-size:13px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-
-/* Buttons: big enough for a thumb. */
-.ph-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:24px;background:var(--fill3);font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;transition:transform .12s var(--ease)}
-.ph-btn:active:not(:disabled){transform:scale(.97)}
-.ph-btn.main{background:var(--grad);color:#08101C}
-.ph-btn.sm{flex:none;min-height:38px;padding:0 16px;border-radius:19px;font-size:13.5px}
+/* A game with no picture (or one that can't be fetched) shows its name. */
+.ph-cover i{position:absolute;inset:0;display:flex;align-items:flex-end;padding:9px;font:700 12px/1.25 Figtree,system-ui,sans-serif;font-style:normal;color:var(--mut)}
+.ph-cover.dim img{filter:brightness(.45)}
+.ph-gcard{display:block;width:108px;min-width:0}
+.ph-gcard .ph-gname{margin-top:7px}
+.ph-gname{display:block;font:600 13px/1.25 Figtree,system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.ph-gsub{display:block;margin-top:2px;font:500 10.5px/1.3 Figtree,system-ui,sans-serif;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-dot{width:6px;height:6px;border-radius:99px;flex:none;display:inline-block;background:var(--c,var(--mut))}
+.ph-dot.b{width:10px;height:10px}
+.ph-tag{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font:700 11px Figtree,system-ui,sans-serif;background:var(--p3);color:var(--fg);white-space:nowrap}
+.ph-tag.dark{background:rgba(11,18,32,.72);color:#F4F8FC}
+.ph-chip{height:34px;border-radius:999px;padding:0 14px;display:inline-flex;align-items:center;gap:7px;font:600 13px Figtree,system-ui,sans-serif;color:var(--fg);background:var(--p2);border:1px solid var(--edge2);white-space:nowrap;flex:none}
+.ph-btn{height:50px;border-radius:999px;padding:0 22px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font:700 15.5px Figtree,system-ui,sans-serif;white-space:nowrap;position:relative;overflow:hidden}
+.ph-btn.pri{background:linear-gradient(180deg,#34F2E8,#377BB6);color:#06202a;box-shadow:0 10px 26px -12px rgba(52,242,232,.6)}
+.ph-btn.sec{background:var(--p2);border:1px solid var(--edge2)}
+.ph-btn.sm{height:38px;font-size:13.5px;padding:0 16px}
+.ph-btn.wide{width:100%}
+.ph-btn.red{color:#e5484d}
 .ph-btn:disabled{opacity:.55;cursor:default}
-.ph-btn.prog{background:var(--fill2)}
-.ph-btn.prog i{position:absolute;left:0;top:0;bottom:0;background:rgba(52,242,232,.3);transition:width .3s}
-.ph-btn.prog span{position:relative}
-
-/* A note across the page (Android for testers only). */
-.ph-box{margin:6px 20px 14px;padding:16px;border-radius:18px;background:var(--card2);border:1px solid var(--line2)}
+.ph-ibtn{width:44px;height:44px;border-radius:999px;display:grid;place-items:center;flex:none}
+.ph-ibtn.glass{background:rgba(11,18,32,.62);color:#F4F8FC;border:1px solid rgba(255,255,255,.14)}
+.ph-ibtn.solid{background:var(--p2);border:1px solid var(--edge2)}
+.ph-ibtn.on{color:var(--acc)}
+.ph-panel{background:var(--p2);border:1px solid var(--edge);border-radius:22px}
+.ph-bar{display:block;height:5px;border-radius:99px;background:var(--p3);overflow:hidden}
+.ph-bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#34F2E8,#377BB6);transition:width 220ms linear}
+.ph-badge{position:absolute;left:6px;bottom:6px;display:inline-flex;align-items:center;gap:5px;font:700 10.5px Figtree,system-ui,sans-serif;padding:4px 7px;border-radius:8px;background:rgba(11,18,32,.88);color:#F4F8FC}
+.ph-burst{animation:ph-burst 800ms var(--ease)}
+@keyframes ph-burst{0%{box-shadow:0 0 0 0 rgba(52,242,232,.7);transform:scale(.94)}40%{transform:scale(1.03)}100%{box-shadow:0 0 0 26px rgba(52,242,232,0);transform:none}}
+.ph-spin{width:22px;height:22px;border-radius:99px;border:3px solid var(--edge2);border-top-color:var(--acc);animation:ph-spin 800ms linear infinite;flex:none}
+.ph-spin.s{width:16px;height:16px;border-width:2px}
+@keyframes ph-spin{to{transform:rotate(360deg)}}
+/* The small button beside a game in a list: Get, Open, Update, or the download's ring. */
+.ph-gb{width:68px;height:34px;border-radius:999px;display:grid;place-items:center;font:700 13.5px Figtree,system-ui,sans-serif;background:var(--p2);border:1px solid var(--edge2);flex:none}
+.ph-gb.op{background:var(--accbg);color:var(--acc);border-color:transparent}
+.ph-gb .ph-ringbox{position:relative;width:26px;height:26px;display:grid;place-items:center}
+.ph-ringp{position:absolute;inset:0;display:grid;place-items:center}
+.ph-ring circle{fill:none;stroke-width:4}
+.ph-ring .tr{stroke:rgba(255,255,255,.22)}
+#phone[data-theme="light"] .ph-gb .ph-ring .tr,#phone[data-theme="light"] .ph-rbtn .ph-ring .tr{stroke:rgba(11,18,32,.16)}
+.ph-ring .pr{stroke:#34F2E8;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 220ms linear}
+.ph-empty{margin:24px var(--gr) 0 var(--gl);padding:30px 20px;border-radius:22px;border:1px dashed var(--edge2);text-align:center;color:var(--mut);line-height:1.5;display:flex;flex-direction:column;align-items:center;gap:10px}
+.ph-ei{width:52px;height:52px;border-radius:99px;display:grid;place-items:center;background:var(--accbg);color:var(--acc)}
+.ph-box{margin:14px var(--gr) 0 var(--gl);padding:16px}
 .ph-box b{display:block;font-size:16px;margin-bottom:4px}
-.ph-box p{margin-bottom:14px;color:var(--muted);font-size:14px;line-height:1.5}
-.ph-box p:last-child{margin-bottom:0}
+.ph-box p{color:var(--mut);font-size:14px;line-height:1.5}
+.ph-box .ph-btn{margin-top:14px}
 
-/* Catalog: the search field. */
-.ph-search{display:flex;align-items:center;gap:10px;margin:4px 20px 16px;padding:0 16px;height:48px;border-radius:24px;background:var(--fill2);border:1px solid var(--line2);color:var(--muted)}
-.ph-search input{flex:1;min-width:0;height:100%;border:0;outline:0;background:none;color:var(--ink);font:inherit;font-size:16px}
-.ph-search input::-webkit-search-cancel-button{display:none}
+/* ---------- Home ---------- */
+/* The greeting sits over the banner and scrolls away with it. */
+.ph-hhd{position:relative;z-index:6;height:0}
+.ph-hhd>div{display:flex;align-items:center;gap:12px;padding:calc(var(--pt) + 10px) var(--gr) 10px var(--gl);text-shadow:0 1px 14px rgba(var(--bgc),.9)}
+.ph-hhd small{display:block;font-size:12.5px;font-weight:600;opacity:.8}
+.ph-hhd b{display:block;font-size:19px;font-weight:800}
+.ph-avatar{background:linear-gradient(135deg,#34F2E8,#377BB6);color:#06202a;font-weight:800;font-size:16px;overflow:hidden;text-shadow:none}
+.ph-avatar img{width:100%;height:100%;object-fit:cover}
+.ph-avatar.big{width:52px;height:52px;font-size:20px}
+.ph-avatar.huge{width:76px;height:76px;font-size:30px}
+.ph-hero{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;touch-action:pan-x pan-y;animation:none !important}
+.ph-hero>button{flex:none;width:100%;height:494px;position:relative;scroll-snap-align:center;overflow:hidden}
+.ph-land .ph-hero>button{height:360px}
+.ph-hero img.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;-webkit-mask-image:linear-gradient(#000 46%,transparent 97%);mask-image:linear-gradient(#000 46%,transparent 97%);will-change:transform}
+.ph-hero .tint{position:absolute;inset:0;background:linear-gradient(180deg,rgba(var(--bgc),.97) 0%,rgba(var(--bgc),.85) 9%,rgba(var(--bgc),.6) 19%,rgba(var(--bgc),.3) 31%,rgba(var(--bgc),0) 47%,rgba(var(--bgc),0) 50%,rgba(var(--bgc),.82) 86%,rgb(var(--bgc)) 100%)}
+.ph-hero .info{position:absolute;left:var(--gl);right:var(--gr);bottom:56px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.ph-land .ph-hero .info{bottom:50px;gap:8px}
+.ph-hero .hl{width:170px;height:auto;max-height:96px;object-fit:contain;object-position:0 100%;filter:drop-shadow(0 6px 16px rgba(0,0,0,.5))}
+.ph-land .ph-hero .hl{width:132px;max-height:70px}
+.ph-hero .ht{font-size:27px;line-height:1.05}
+.ph-hero .hb{font-size:13.5px;line-height:1.4;max-width:420px;color:var(--mut);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ph-hero .acts{display:flex;gap:10px;margin-top:2px}
+.ph-hero .ph-btn{height:46px}
+.ph-dots{display:flex;justify-content:center;gap:6px;margin-top:-28px;margin-bottom:22px;position:relative;z-index:2}
+.ph-dots i{width:6px;height:6px;border-radius:9px;background:var(--edge2);transition:width 380ms var(--soft),background 250ms}
+.ph-dots i.on{width:20px;background:var(--acc)}
+.ph-wide{width:236px;height:128px;border-radius:20px;position:relative;overflow:hidden;box-shadow:0 0 0 1px var(--edge);background:var(--p3);color:#F4F8FC}
+.ph-wide img.bg,.ph-jump img.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ph-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,18,32,0) 25%,rgba(11,18,32,.93) 100%)}
+.ph-wide .foot{position:absolute;left:14px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px}
+.ph-wide .ph-gname{font-size:15px;font-weight:700}
+.ph-wide .ph-gsub{color:rgba(244,248,252,.78);font-size:11.5px}
+.ph-playdot{width:38px;height:38px;border-radius:99px;display:grid;place-items:center;background:#F4F8FC;color:#0B1220;flex:none}
+.ph-rk{display:flex;align-items:flex-end}
+.ph-rk .num{font:900 92px/0.74 Archivo,Figtree,sans-serif;font-stretch:90%;color:transparent;-webkit-text-stroke:2px var(--dim);margin-right:-14px;letter-spacing:-.06em;min-width:44px;text-align:right}
+.ph-rk:nth-child(1) .num{-webkit-text-stroke-color:var(--acc)}
+.ph-rk .ph-cover{width:98px}
+/* The download in progress, floating above the menu: a tap opens Downloads. */
+.ph-mini{position:absolute;left:50%;bottom:calc(var(--nb) + 85px);width:300px;margin-left:-150px;height:54px;padding:0 14px 0 8px;display:flex;align-items:center;gap:12px;border-radius:999px;z-index:19;transform:translateY(220%) scale(.9);opacity:0;pointer-events:none;transition:transform 560ms var(--soft),opacity 240ms}
+.ph-mini.on{transform:none;opacity:1;pointer-events:auto}
+.ph-land .ph-mini{bottom:16px}
+.ph-deep .ph-mini{transform:translateY(220%);opacity:0;pointer-events:none}
+.ph-side .ph-mini{bottom:calc(var(--sb) + 26px)}
+.ph-mini .pic{position:relative;flex:none;width:40px;height:40px;border-radius:99px;overflow:hidden;background:var(--p3)}
+.ph-mini .pic img{width:100%;height:100%;object-fit:cover;filter:brightness(.6)}
+.ph-mini b{font-size:13px}
+.ph-mini small{font-size:11.5px;color:var(--mut)}
 
-/* Library: one line per game. */
-.ph-list{display:flex;flex-direction:column;padding:0 14px}
-.ph-item{display:flex;align-items:center;gap:12px;padding:9px 6px;border-bottom:1px solid var(--line)}
-.ph-thumb{flex:none;width:46px;aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:var(--card2)}
-.ph-thumb img{display:block;width:100%;height:100%;object-fit:cover}
-.ph-itemk{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.ph-itemk b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ph-itemk span{font-size:12.5px;color:var(--muted)}
+/* ---------- fields and switches ---------- */
+.ph-sfield{display:flex;align-items:center;gap:12px;height:50px;border-radius:999px;background:var(--p2);border:1px solid var(--edge2);padding:0 18px;color:var(--mut);width:100%;font:500 15px Figtree,system-ui,sans-serif}
+.ph-sfield.live{border-color:var(--acc)}
+.ph-sfield input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:var(--fg);font:500 15px Figtree,system-ui,sans-serif;outline:none;user-select:text;-webkit-user-select:text}
+.ph-sfield input::-webkit-search-cancel-button{display:none}
+.ph-sg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:4px;border-radius:999px;background:var(--p3)}
+.ph-sg .th{position:absolute;left:4px;top:4px;bottom:4px;width:calc((100% - 8px) / var(--n));border-radius:999px;background:var(--fg);transform:translateX(calc(var(--i) * 100%));transition:transform 480ms var(--soft);box-shadow:0 4px 12px -4px var(--shadow)}
+.ph-sg button{position:relative;z-index:1;height:34px;padding:0 12px;font:600 13px Figtree,system-ui,sans-serif;color:var(--mut);transition:color 260ms;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.ph-sg button.on{color:var(--bg)}
+.ph-sg.big{background:var(--p2);border:1px solid var(--edge)}
+.ph-sg.big button{height:40px;font-size:13.5px}
+.ph-cnt{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--acc);color:var(--bg);font:800 10.5px Figtree,system-ui,sans-serif;display:inline-grid;place-items:center}
+.ph-sw{width:50px;height:30px;border-radius:99px;background:var(--p3);border:1px solid var(--edge2);position:relative;flex:none;transition:background 320ms,box-shadow 320ms}
+.ph-sw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:99px;background:var(--mut);transition:transform 520ms var(--spring),background 260ms,width 200ms var(--ease);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.ph-sw:active i{width:28px}
+.ph-sw[aria-checked="true"]{background:linear-gradient(90deg,#34F2E8,#377BB6);box-shadow:0 0 18px -4px rgba(52,242,232,.6)}
+.ph-sw[aria-checked="true"] i{transform:translateX(20px);background:#fff}
+.ph-sw[aria-checked="true"]:active i{transform:translateX(14px)}
+.ph-sw:disabled{opacity:.45}
 
-/* Settings. */
-.ph-set section{margin:6px 0 18px}
-.ph-setrow{display:flex;align-items:center;gap:14px;margin:0 14px;padding:14px 16px;border-radius:16px;background:var(--card)}
-.ph-setrow span{flex:1;min-width:0;color:var(--muted);font-size:14px;line-height:1.45}
+/* ---------- Catalog ---------- */
+.ph-cons{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;padding:0 var(--gr) 0 var(--gl)}
+.ph-con{position:relative;height:88px;border-radius:20px;overflow:hidden;background:var(--p2);border:1px solid var(--edge)}
+.ph-con .glow{position:absolute;inset:0;opacity:.5;background:radial-gradient(120% 120% at 0% 100%,var(--c),transparent 60%)}
+.ph-con img{position:absolute;right:-6px;top:10px;width:58px;aspect-ratio:2/3;object-fit:cover;border-radius:8px;transform:rotate(10deg);box-shadow:0 10px 20px var(--shadow)}
+.ph-con .k{position:absolute;left:14px;right:62px;bottom:12px;display:flex;flex-direction:column;gap:5px}
+.ph-con b{display:block;font-size:15px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-con small{font-size:12.5px;color:var(--mut)}
+/* All the consoles, one to a row: the row nearest the middle stands out as the list scrolls. */
+.ph-cons.list{grid-template-columns:1fr;gap:12px;padding-top:6px;padding-bottom:140px}
+.ph-cons.list .ph-con{height:108px;border-radius:26px;will-change:transform;transition:transform 420ms var(--soft),opacity 300ms}
+.ph-cons.list .ph-con img{width:62px;top:13px}
+.ph-cons.list .ph-con img:nth-of-type(1){right:16px;transform:rotate(9deg);z-index:3}
+.ph-cons.list .ph-con img:nth-of-type(2){right:66px;transform:rotate(3deg);z-index:2;filter:brightness(.82)}
+.ph-cons.list .ph-con img:nth-of-type(3){right:116px;transform:rotate(-3deg);z-index:1;filter:brightness(.66)}
+.ph-cons.list .ph-con .k{left:20px;right:190px;bottom:auto;top:50%;transform:translateY(-50%)}
+.ph-cons.list .ph-con b{font-size:18px}
+.ph-lrow{display:flex;align-items:center;gap:14px;padding:8px var(--gr) 8px var(--gl);width:100%}
+.ph-lmain{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
+.ph-lrow .ph-cover{width:46px;border-radius:10px;flex:none}
+.ph-lrow .ph-gname{font-size:15px}
+.ph-lrow .ph-gsub{font-size:11.5px;margin-top:3px}
+.ph-rank{width:26px;font:900 22px Archivo,Figtree,sans-serif;color:var(--dim);text-align:center;flex:none}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:18px 12px;padding:4px var(--gr) 16px var(--gl)}
+.ph-grid .ph-gcard{width:auto}
+/* A long grid's covers out of view aren't drawn until they scroll in. */
+.ph-grid.long .ph-gcard{content-visibility:auto;contain-intrinsic-size:auto 200px}
 
-/* A game: its picture across the top, then what to do with it. */
-.ph-hero{position:relative;width:100%;aspect-ratio:16/9;max-height:46vh;overflow:hidden;background:var(--card)}
-.ph-hero img{display:block;width:100%;height:100%;object-fit:cover}
-.ph-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,var(--bg))}
-.ph-game{position:relative;margin-top:-24px;padding:0 20px}
-.ph-game h1{margin-bottom:6px;font:800 26px/1.15 Archivo,Figtree,system-ui,sans-serif}
-.ph-facts{margin-bottom:16px;color:var(--muted);font-size:13.5px}
-.ph-acts{display:flex;gap:10px;margin-bottom:8px}
-.ph-acts .ph-btn{flex:1}
-.ph-game section{margin-top:20px}
-.ph-game h2{margin-bottom:8px;font:700 17px/1.25 Figtree,system-ui,sans-serif}
-.ph-about{color:var(--muted);font-size:14.5px;line-height:1.55;user-select:text}
+/* ---------- Library ---------- */
+.ph-lpw{overflow:hidden}
+.ph-lp{display:flex;align-items:flex-start;will-change:transform}
+.ph-lp.anim{transition:transform 520ms var(--soft)}
+.ph-lp>div{flex:none;width:100%;min-height:300px}
+.ph-jump{display:block;width:calc(100% - var(--gl) - var(--gr));margin:16px var(--gr) 0 var(--gl);height:160px;border-radius:24px;position:relative;overflow:hidden;box-shadow:0 0 0 1px var(--edge);background:var(--p3);color:#F4F8FC}
+.ph-jump .foot{position:absolute;left:18px;right:16px;bottom:16px;display:flex;align-items:center;gap:12px}
+.ph-jump .eye{font:700 11px Figtree,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#34F2E8}
+.ph-jump .ph-disp{font-size:21px;margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-jump small{font-size:12.5px;opacity:.8}
+.ph-jump .ph-btn{height:44px}
+.ph-libh{display:flex;align-items:center;justify-content:space-between;margin:20px var(--gr) 10px var(--gl)}
+.ph-libh b{font-size:16px}
+.ph-libh b span{color:var(--mut);font-weight:500}
+.ph-libh .ph-ibtn{width:38px;height:38px}
+.ph-dlrow{margin-top:8px}
+.ph-dlrow .pic{position:relative;flex:none;width:46px}
+.ph-dlrow .ph-bar{margin:7px 0 5px}
 
-/* The tabs. */
-.ph-tabs{flex:none;display:flex;padding:6px 8px 10px;background:var(--bg2);border-top:1px solid var(--line)}
-.ph-tab{flex:1;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:14px;color:var(--dim);font-size:11.5px;font-weight:700}
-.ph-tab.on{color:var(--cyan)}
+/* ---------- Settings ---------- */
+.ph-set{display:block;width:calc(100% - var(--gl) - var(--gr));margin:14px var(--gr) 0 var(--gl);padding:4px 16px}
+.ph-set h3{font:700 12px Figtree,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--acc);margin:14px 0 4px}
+.ph-set.link{display:flex;align-items:center;gap:14px;padding:14px 16px}
+.ph-set.link b{display:block;font-size:16px}
+.ph-set.link small{font-size:12.5px;color:var(--mut)}
+.ph-srow{display:flex;align-items:center;gap:12px;min-height:54px;padding:8px 0;width:100%}
+.ph-srow+.ph-srow{border-top:1px solid var(--edge)}
+.ph-srow>.ph-ic{color:var(--mut)}
+.ph-srow .t{flex:1;min-width:0}
+.ph-srow .t b{display:block;font:600 14.5px Figtree,system-ui,sans-serif}
+.ph-srow .t span{display:block;font-size:12.5px;color:var(--mut)}
+.ph-srow .ph-pick{flex:none}
+.ph-srow .ph-pick .ph-sg button{padding:0 8px}
+.ph-srow .thumb{width:30px;height:45px;border-radius:6px;overflow:hidden;background:var(--p3);flex:none}
+.ph-srow .thumb img{width:100%;height:100%;object-fit:cover}
+.ph-stor{display:flex;height:12px;border-radius:99px;overflow:hidden;gap:2px;margin:10px 0 6px}
+.ph-stor i{display:block;height:100%;border-radius:3px;background:var(--c);animation:ph-grow 700ms var(--ease) both;transform-origin:0 50%}
+@keyframes ph-grow{from{transform:scaleX(0)}to{transform:none}}
+.ph-storh{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}
+.ph-storh b{font-size:20px}
+.ph-storh span{font-size:12.5px;color:var(--mut)}
 
-/* What's said for a moment sits above the tabs; downloads show on their own buttons. */
-body.phone-on .island{bottom:86px}
-body.phone-on .modal{max-height:86vh}
+/* ---------- pushed pages: a game, and a page inside a tab ---------- */
+.ph-gp,.ph-sp{position:absolute;inset:0;background:var(--bg);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:none;scrollbar-width:none;will-change:transform}
+.ph-gp{z-index:40}
+.ph-sp{z-index:30;box-shadow:-30px 0 60px -20px var(--shadow)}
+.ph-gp.on,.ph-sp.on{display:block}
+/* The back button floats over the page's top; it takes no room, so the picture starts at the very top. */
+.ph-ptop{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:8px;padding:0 var(--or) 0 calc(var(--ol) - 8px);height:0}
+.ph-ptop>*{margin-top:calc(var(--pt) + 12px)}
+.ph-gph{position:relative;height:400px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 40%,transparent 96%);mask-image:linear-gradient(#000 40%,transparent 96%)}
+.ph-gph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform}
+/* No wide picture: the cover, blurred, stands in. */
+.ph-gph img.blur{filter:blur(22px) saturate(1.3);transform:scale(1.3)}
+.ph-gph img.blur.ld{opacity:.8}
+.ph-gph .tint{position:absolute;inset:0;background:linear-gradient(180deg,rgba(var(--bgc),.3) 0%,rgba(var(--bgc),0) 30%)}
+.ph-land .ph-gph{height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent 96%),linear-gradient(90deg,transparent 4%,#000 55%);-webkit-mask-composite:source-in;mask-image:linear-gradient(#000 30%,transparent 96%),linear-gradient(90deg,transparent 4%,#000 55%);mask-composite:intersect}
+.ph-gpb{position:relative;margin-top:-150px;padding:0 var(--or) calc(60px + var(--sb)) var(--ol);display:flex;flex-direction:column;gap:16px}
+.ph-land .ph-gpb{margin-top:-210px;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px 28px;align-items:start}
+.ph-land .ph-gpb>*{grid-column:1}
+.ph-land .ph-gpb>.full{grid-column:1/-1}
+.ph-land .ph-gpb>.aside{grid-column:2;grid-row:2/span 5}
+.ph-gpb>*{animation:ph-rise 560ms var(--ease) both}
+.ph-gpb>*:nth-child(2){animation-delay:50ms}
+.ph-gpb>*:nth-child(3){animation-delay:100ms}
+.ph-gpb>*:nth-child(4){animation-delay:140ms}
+.ph-gpb>*:nth-child(n+5){animation-delay:180ms}
+.ph-gpt{display:flex;gap:16px;align-items:flex-end;animation:none}
+.ph-gpt .ph-cover{width:104px;flex:none;border-radius:16px}
+.ph-gpt .tags{display:flex;gap:6px;flex-wrap:wrap}
+.ph-gpt h1{font-size:23px;line-height:1.12;margin:7px 0}
+.ph-gpt p{font-size:13px;line-height:1.35;color:var(--mut)}
+.ph-gpt p b{color:var(--fg)}
+.ph-stats{display:flex;padding:12px 0;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
+.ph-stats>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.ph-stats>div+div{border-left:1px solid var(--edge2)}
+.ph-stats b{font-size:16px;line-height:1.35;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-stats b.long{font-size:12px}
+.ph-stats span{font-size:11.5px;color:var(--mut)}
+.ph-cta{display:flex;gap:10px;align-items:center}
+.ph-cta .ph-btn.pri{flex:1;min-width:0}
+.ph-dl{flex:1;min-width:0;height:50px;border-radius:999px;background:var(--p2);border:1px solid var(--edge2);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 20px;font:700 14.5px Figtree,system-ui,sans-serif;animation:ph-dlin 420ms var(--soft)}
+.ph-dl.mid{justify-content:center}
+@keyframes ph-dlin{from{transform:scaleX(.9);opacity:.5}to{transform:none;opacity:1}}
+.ph-dl i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#34F2E8,#377BB6);transition:width 240ms linear;opacity:.85}
+.ph-dl i::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.5) 50%,transparent 70%);background-size:200% 100%;animation:ph-shine 1.5s linear infinite}
+@keyframes ph-shine{from{background-position:120% 0}to{background-position:-80% 0}}
+.ph-dl span{position:relative;z-index:1;white-space:nowrap;text-shadow:0 1px 6px rgba(var(--bgc),.5)}
+.ph-rbtn{position:relative;width:50px;height:50px;border-radius:99px;display:grid;place-items:center;flex:none;background:var(--p2)}
+.ph-rbtn .ph-ring{position:absolute;inset:0}
+.ph-note{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;width:100%}
+.ph-note .ib{width:36px;height:36px;border-radius:99px;display:grid;place-items:center;background:var(--accbg);color:var(--acc);flex:none}
+.ph-note b{display:block;font-size:13.5px}
+.ph-note small{display:block;font-size:12.5px;line-height:1.4;color:var(--mut)}
+.ph-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.ph-about h2{font-size:17px;margin-bottom:6px}
+.ph-about p{font-size:14px;line-height:1.55;color:var(--mut);user-select:text;-webkit-user-select:text}
+.ph-about p+p{margin-top:10px}
+.ph-facts{display:grid;grid-template-columns:1fr 1fr;column-gap:16px;padding:4px 16px}
+.ph-facts>div{padding:11px 0;display:flex;flex-direction:column;gap:3px;min-width:0}
+.ph-facts>div:nth-child(n+3){border-top:1px solid var(--edge)}
+.ph-facts span{font-size:11.5px;color:var(--mut)}
+.ph-facts b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-more{margin:0 calc(-1 * var(--or)) 0 calc(-1 * var(--ol))}
+.ph-more .ph-sech{margin:0 var(--or) 12px var(--ol)}
+.ph-more .ph-hs{padding:0 var(--or) 6px var(--ol);scroll-padding-left:var(--ol)}
+/* A cover on its way between a list and the game's page. */
+.ph-fly{position:absolute;left:0;top:0;z-index:48;object-fit:cover;transform-origin:0 0;pointer-events:none;box-shadow:0 24px 50px -16px rgba(0,0,0,.7);will-change:transform;opacity:1 !important}
+.ph-edgehint{position:absolute;left:var(--pnl);top:50%;width:40px;height:110px;margin-top:-55px;border-radius:0 60px 60px 0;background:var(--accbg);color:var(--acc);display:grid;place-items:center;z-index:60;opacity:0;transform:translateX(-100%);pointer-events:none}
+/* A page inside a tab: its heading scrolls away too. */
+.ph-sbh{position:relative;display:flex;align-items:center;min-height:calc(var(--pt) + 66px);padding:calc(var(--pt) + 12px) var(--or) 8px calc(var(--ol) + 50px)}
+.ph-sbh h1{font-size:22px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-sbh .ph-dot{margin-right:8px;vertical-align:middle}
+.ph-sbh small{font-size:12.5px;color:var(--mut)}
+.ph-spglow{position:absolute;left:0;right:0;top:0;height:230px;opacity:.38;pointer-events:none;background:radial-gradient(80% 100% at 15% 0%,var(--c),transparent 70%)}
+.ph-acct{padding:20px 16px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.ph-acct>b{font-size:19px;margin-top:4px}
+.ph-acct .ph-stats{width:100%;margin-top:10px;border-bottom:0}
+
+/* ---------- search ---------- */
+/* Over everything, nearly solid: a full-screen blur costs too much on a phone. */
+.ph-so{position:absolute;inset:0;z-index:35;background:rgba(var(--bgc),.97);overflow-y:auto;overscroll-behavior:contain;padding:calc(var(--pt) + 12px) 0 calc(40px + var(--sb));opacity:0;pointer-events:none;transition:opacity 260ms;scrollbar-width:none}
+.ph-so.on{opacity:1;pointer-events:auto}
+.ph-sobar{display:flex;gap:10px;align-items:center;padding:0 var(--or) 0 var(--ol);transform:translateY(-14px) scale(.94);transform-origin:80% 0;transition:transform 520ms var(--soft)}
+.ph-so.on .ph-sobar{transform:none}
+.ph-sobar>button{font:600 14px Figtree,system-ui,sans-serif;color:var(--acc);min-height:44px;padding:0 4px}
+.ph-sores>*{animation:ph-rise 420ms var(--ease) both}
+.ph-sores h2{font-size:15px;margin:22px var(--or) 10px var(--ol)}
+.ph-sores .ph-chips{padding:0 var(--or) 0 var(--ol)}
+.ph-sores .n{margin:18px var(--or) 4px var(--ol);font-size:13px;color:var(--mut)}
+
+/* ---------- sheets and toasts ---------- */
+.ph-scrim{position:absolute;inset:0;z-index:50;background:rgba(3,6,12,.6);opacity:0;pointer-events:none;transition:opacity 300ms}
+.ph-scrim.on{opacity:1;pointer-events:auto}
+.ph-sheet{position:absolute;left:0;right:0;bottom:0;z-index:51;max-height:86%;overflow-y:auto;overscroll-behavior:contain;background:var(--p1);border-radius:30px 30px 0 0;border-top:1px solid var(--edge2);box-shadow:0 -24px 60px var(--shadow);padding:0 20px calc(30px + var(--sb));transform:translateY(105%);transition:transform 560ms var(--soft);scrollbar-width:none}
+.ph-sheet.on{transform:none}
+.ph-sheet.drag{transition:none}
+.ph-land .ph-sheet{left:50%;right:auto;width:470px;margin-left:-235px}
+.ph-sheet>*{animation:ph-rise 480ms var(--ease) both}
+.ph-grab{width:40px;height:5px;border-radius:9px;background:var(--edge2);margin:10px auto 0;animation:none !important}
+.ph-eyebrow{font:700 11px Figtree,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);margin-top:18px}
+.ph-sheet h2.ph-disp{font-size:22px;margin-top:6px}
+.ph-shead{display:flex;align-items:center;gap:12px;padding:16px 0 10px;border-bottom:1px solid var(--edge)}
+.ph-shead .thumb{width:40px;height:60px;border-radius:8px;overflow:hidden;background:var(--p3);flex:none}
+.ph-shead .thumb img{width:100%;height:100%;object-fit:cover}
+.ph-shead b{display:block;font-size:16px}
+.ph-shead small{font-size:12.5px;color:var(--mut)}
+.ph-step{display:flex;align-items:center;gap:14px;min-height:48px;width:100%}
+.ph-step>.ph-ic{color:var(--mut)}
+.ph-step.red,.ph-step.red>.ph-ic{color:#e5484d}
+.ph-step.on,.ph-step.on>.ph-ic{color:var(--acc)}
+/* A README as its developer wrote it. */
+.ph-md{margin-top:12px;font-size:14px;line-height:1.55;color:var(--mut);user-select:text;-webkit-user-select:text;overflow-wrap:anywhere}
+.ph-md h1,.ph-md h2,.ph-md h3,.ph-md h4{color:var(--fg);font:700 15px/1.3 Figtree,system-ui,sans-serif;margin:18px 0 6px}
+.ph-md p,.ph-md ul,.ph-md ol{margin:0 0 10px}
+.ph-md ul,.ph-md ol{padding-left:20px}
+.ph-md img{max-width:100%;height:auto;border-radius:10px}
+.ph-md a,.ph-md .linkish{color:var(--acc)}
+.ph-md pre,.ph-md code{font-size:12.5px;background:var(--p3);border-radius:8px;padding:2px 5px}
+.ph-md pre{padding:10px;overflow-x:auto}
+.ph-md table{display:block;overflow-x:auto;border-collapse:collapse}
+.ph-md td,.ph-md th{border:1px solid var(--edge2);padding:4px 8px}
+/* The launcher's own short messages, as a pill above the menu. */
+body.phone-on #toasts{position:fixed;left:0;right:0;top:auto;bottom:calc(var(--ph-toast,120) * 1px);z-index:170;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 16px}
+body.phone-on #toasts .toast{max-width:100%;padding:11px 18px;border-radius:22px;border:0;background:#F4F8FC;color:#0B1220;font:600 13.5px/1.35 Figtree,system-ui,sans-serif;box-shadow:0 14px 34px rgba(0,0,0,.45);text-align:center;animation:ph-toast 420ms cubic-bezier(.34,1.56,.64,1) both}
+body.phone-on #toasts .toast.bad{background:#ffe1e1;color:#7a1218}
+body.phone-on #toasts .toast.out{opacity:0;transition:opacity 220ms}
+@keyframes ph-toast{from{opacity:0;transform:translateY(30px) scale(.9)}to{opacity:1;transform:none}}
+/* The launcher's own windows (signing in, a question) fit a phone. */
+body.phone-on .island{display:none}
+body.phone-on .scrim{z-index:160}
+body.phone-on .modal{max-height:86vh;max-width:calc(100vw - 32px);border-radius:28px}
 body.phone-on .signin-two{grid-template-columns:1fr}
 body.phone-on .signin-qr{display:none}
 
-/* Sideways: the tabs go down the left side, and the page keeps the height. */
-@media (orientation:landscape){
-  #phone{display:grid;grid-template-columns:84px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
-  .ph-tabs{grid-column:1;grid-row:1/3;flex-direction:column;justify-content:center;gap:6px;padding:10px 8px;border-top:0;border-right:1px solid var(--line)}
-  .ph-tab{flex:none;min-height:60px}
-  .ph-top{grid-column:2;grid-row:1;min-height:48px;padding:10px 24px 2px}
-  .ph-top h1{font-size:22px}
-  .ph-top.over{grid-column:auto;grid-row:auto;left:84px}
-  .ph-main{grid-column:2;grid-row:1/3}
-  .ph-top:not(.over)+.ph-main{grid-row:2}
-  .ph-sec h2,.ph-set h2{margin-left:24px;margin-right:24px}
-  .ph-row,.ph-grid{padding-left:24px;padding-right:24px}
-  .ph-row{scroll-padding:0 24px}
-  .ph-row .ph-card{width:112px}
-  .ph-hero{max-height:44vh}
-  .ph-game{padding:0 24px}
-  .ph-acts{max-width:520px}
-  body.phone-on .island{bottom:16px;left:calc(50% + 42px)}
-}
+/* ---------- the system's edges: nothing readable sits under the clock or the camera ---------- */
+/* A soft shadow only as tall as the clock bar, so it never covers a heading, the search bar or a button. */
+.ph-safe-t{position:absolute;left:0;right:0;top:0;height:calc(var(--pt) + 10px);z-index:90;pointer-events:none;background:linear-gradient(rgba(var(--bgc),.97) 0%,rgba(var(--bgc),.94) 58%,rgba(var(--bgc),.6) 80%,rgba(var(--bgc),0) 100%)}
+.ph-land .ph-safe-t{height:calc(var(--pt) + 12px);background:linear-gradient(rgba(var(--bgc),.7) 0%,rgba(var(--bgc),0) 100%)}
+.ph-safe-s{display:none;position:absolute;top:0;bottom:0;left:0;width:calc(var(--pnl) + var(--pnr) + 14px);z-index:90;pointer-events:none;background:linear-gradient(90deg,rgb(var(--bgc)) 0%,rgba(var(--bgc),.92) 62%,rgba(var(--bgc),0) 100%)}
+.ph-land.ph-cam .ph-safe-s{display:block}
+.ph-land.ph-flip .ph-safe-s{left:auto;right:0;transform:scaleX(-1)}
 
+/* ---------- starting up ---------- */
+.ph-boot{position:absolute;inset:0;z-index:100;background:#0B1220;color:#F4F8FC;overflow:hidden;transition:opacity 520ms,transform 620ms var(--ease)}
+.ph-boot.out{opacity:0;transform:scale(1.08);pointer-events:none}
+.ph-wall{position:absolute;inset:-35% -45%;display:flex;gap:14px;justify-content:center;transform:rotate(-12deg);opacity:0;transition:opacity 900ms ease}
+.ph-wall.on{opacity:.34}
+.ph-wall .c{flex:none;width:118px;display:flex;flex-direction:column;gap:14px;animation:ph-up 26s linear infinite;will-change:transform}
+.ph-wall .c:nth-child(even){animation-name:ph-down}
+.ph-wall .c img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:#141f33}
+@keyframes ph-up{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+@keyframes ph-down{from{transform:translateY(-50%)}to{transform:translateY(0)}}
+.ph-boot .veil{position:absolute;inset:0;background:radial-gradient(60% 42% at 50% 47%,rgba(11,18,32,.5) 0%,rgba(11,18,32,.82) 60%,#0B1220 100%)}
+.ph-boot .glow{position:absolute;left:50%;top:44%;width:300px;height:300px;margin:-150px 0 0 -150px;border-radius:50%;background:radial-gradient(circle,rgba(52,242,232,.36) 0%,rgba(55,123,182,.18) 45%,rgba(11,18,32,0) 70%);animation:ph-glow 2.4s ease-in-out infinite}
+@keyframes ph-glow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:.9;transform:scale(1.1)}}
+.ph-boot .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding-bottom:40px}
+.ph-boot svg{animation:ph-mark 900ms 250ms var(--spring) both}
+@keyframes ph-mark{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+.ph-boot .w{font-size:27px;animation:ph-word 900ms 550ms cubic-bezier(.2,.8,.2,1) both}
+@keyframes ph-word{from{opacity:0;letter-spacing:.3em}to{opacity:1;letter-spacing:.01em}}
+.ph-boot .ld{position:absolute;left:50%;bottom:calc(80px + var(--sb));width:140px;height:4px;margin-left:-70px;border-radius:99px;background:rgba(244,248,252,.12);overflow:hidden}
+.ph-land .ph-boot .ld{bottom:36px}
+.ph-boot .ld i{position:absolute;top:0;bottom:0;left:0;width:40%;border-radius:99px;background:linear-gradient(90deg,rgba(52,242,232,0),#34F2E8,rgba(55,123,182,0));animation:ph-sweep 1.2s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes ph-sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+
+@media (prefers-reduced-motion:reduce){
+  .ph-wall .c,.ph-boot .glow,.ph-dl i::before{animation:none}
+}
 /* Web engines from before 2021 don't know aspect-ratio: the same shapes, the older way. */
 @supports not (aspect-ratio:1){
   .ph-cover{height:0;padding-top:150%}
-  .ph-thumb{height:69px}
-  .ph-hero{height:56.25vw;max-height:46vh}
+  .ph-con img{height:87px}
+  .ph-cons.list .ph-con img{height:93px}
+  .ph-wall .c img{height:177px}
 }

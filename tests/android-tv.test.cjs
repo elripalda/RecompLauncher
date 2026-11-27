@@ -65,3 +65,11 @@ test('An Android TV (no touch screen) always starts in Big Picture mode', () => 
 test('A PC starts where its settings say, whatever is plugged in', () => {
   assert.equal(startContext('windows', { touch: 10, pads: [{ id: 'pad' }] }).startsInTV(), false);
 });
+
+test('a controller leaves the phone layout alone when Open with a controller is off', () => {
+  // Both ways a controller opens Big Picture mode on Android ask the phone layout first.
+  const press = tv.slice(tv.indexOf('if (!TV.on) {'), tv.indexOf('if (S.settings.pad_desktop === false)'));
+  assert.match(press, /android\(\)\) \{ if \(!window\.phonePadTv \|\| window\.phonePadTv\(\)\) enter\(\); return; \}/);
+  const plug = tv.split('\n').find((l) => l.includes("addEventListener('gamepadconnected'"));
+  assert.match(plug, /window\.phonePadTv\(\)/);
+});

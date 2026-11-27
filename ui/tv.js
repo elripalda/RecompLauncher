@@ -3480,7 +3480,8 @@
     }
     if (!TV.on) {
       // Android: a controller in use is Big Picture mode. Any button switches from the phone layout.
-      if (android()) { enter(); return; }
+      // Settings, Open with a controller off: the phone layout stays, the controller is left alone.
+      if (android()) { if (!window.phonePadTv || window.phonePadTv()) enter(); return; }
       // Settings → Controllers, Controller as a Mouse on (pad_desktop false): the desktop view leaves
       // the controller alone (a player using it as a mouse, its RB a click, would also change the
       // page), apart from holding Menu for Big Picture mode.
@@ -3644,7 +3645,7 @@
   window.hookAndroidBack = hookAndroidBack;
   // Android tells the page about a controller once a button on it is pressed: that press switches to
   // Big Picture mode. With the last controller gone, a phone goes back to the phone layout.
-  addEventListener('gamepadconnected', () => { if (android() && !TV.on && window.phoneOn && window.phoneOn()) enter(); });
+  addEventListener('gamepadconnected', () => { if (android() && !TV.on && window.phoneOn && window.phoneOn() && (!window.phonePadTv || window.phonePadTv())) enter(); });
   addEventListener('gamepaddisconnected', () => { if (android() && TV.on && !padHere()) leave(); });
 
   // Keep the pages current while things happen elsewhere.

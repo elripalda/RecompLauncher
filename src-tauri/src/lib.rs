@@ -1389,6 +1389,41 @@ fn android_orientation(landscape: bool) -> Res<()> {
     }
 }
 
+/// Android: the phone layout draws under the clock bar and beside the camera hole itself, with
+/// dark or light icons on the bar; Big Picture mode hides the bars and keeps clear of the hole.
+#[tauri::command(async)]
+fn android_edges(phone: bool, light: bool) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::edges(phone, light);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (phone, light);
+        Ok(())
+    }
+}
+
+/// Android: how much room the clock bar, the camera hole and the system's bottom strip take at
+/// each edge of the window: `{top, right, bottom, left}`. All zero on a PC.
+#[tauri::command(async)]
+fn android_insets() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::insets();
+    #[cfg(not(target_os = "android"))]
+    Ok(json!({ "top": 0, "right": 0, "bottom": 0, "left": 0 }))
+}
+
+/// Android: a light tick under the finger ("tick" for scrolling past something, "tap", "ok").
+#[tauri::command(async)]
+fn android_haptic(kind: String) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::haptic(&kind);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = kind;
+        Ok(())
+    }
+}
+
 /// Android: the launcher to the background, as the back button does in other apps.
 #[tauri::command(async)]
 fn android_to_back() -> Res<()> {
@@ -10825,7 +10860,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, android_sync, android_orientation, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, android_orientation, android_edges, android_insets, android_haptic, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,

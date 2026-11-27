@@ -161,12 +161,23 @@ npx tauri android build --debug --apk --target aarch64
 On Android there's no desktop view. There are two layouts instead:
 
 - **The phone layout** (`ui/phone.js`, `ui/phone.css`) when no controller is in use: an app made for
-  fingers, upright or sideways. Home, Catalog, Library and Settings are tabs (at the bottom upright,
-  down the left side sideways); pages scroll with a finger and rows of games swipe sideways. No
-  button hints. Android's Back goes back a page, and from Home puts the launcher in the background.
+  fingers, upright or sideways. Home, Catalog, Library and Settings are tabs on a floating menu (at
+  the bottom upright, down the side away from the camera sideways); the player picks 3 to 5 of them
+  in Settings, and can add Downloads or Coming Soon. A swipe moves between tabs, a cover grows into
+  its game page, and pages inside pages slide in from the right (a swipe from the left edge goes
+  back). Get installs in place, like an app store, and turns into Open. No button hints. Android's
+  Back closes the topmost thing (a sheet, search, the game page, a page inside a page), then goes
+  to Home, and from Home puts the launcher in the background.
+  The design is drawn 433 points wide and scaled to the screen (Settings, Display size: small,
+  medium or large), so a tablet or a handheld gets the same layout, bigger. Android tells the page
+  how tall the status bar and gesture line are (`android_insets`, and again whenever they change),
+  the page draws behind them, and nothing readable sits under the clock or the camera. The bars'
+  icons follow the theme (`android_edges`), and taps can buzz (`android_haptic`, Settings, Vibrate
+  on taps). The player's choices are kept in settings.ui (`phone_tabs`, `phone_labels`,
+  `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`).
 - **Big Picture mode** (`ui/tv.js`) with a controller, held sideways. Any button pressed on a
-  controller switches to it (Android tells the page about a controller only once a button is
-  pressed), and when the last controller is unplugged it goes back to the phone layout. It's also
+  controller switches to it, unless Settings, Open with a controller is off (Android tells the
+  page about a controller only once a button is pressed), and when the last controller is unplugged it goes back to the phone layout. It's also
   in the phone layout's Settings. Settings leaves out what only a PC has (monitor, tray, start with
   your PC, Discord, controller as a mouse), and Leave Big Picture mode goes to the phone layout. A
   finger drags a page or a row of games, a tap opens, and Android's Back is B. On a phone, Auto size

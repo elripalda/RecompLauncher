@@ -45,6 +45,22 @@ pub fn orientation(landscape: bool) -> Res<()> {
     screen_call("orientation", json!({ "landscape": landscape }))
 }
 
+/// The phone layout draws under the clock bar and beside the camera hole; Big Picture mode doesn't.
+pub fn edges(phone: bool, light: bool) -> Res<()> {
+    screen_call("edges", json!({ "phone": phone, "light": light }))
+}
+
+/// The room the system takes at each edge of the window, as the page measures: `{top, right, bottom, left}`.
+pub fn insets() -> Res<Value> {
+    let h = SCREEN.get().ok_or_else(|| Error::Msg("The window isn't ready yet.".into()))?;
+    h.run_mobile_plugin::<Value>("insets", json!({})).map_err(|e| Error::Msg(e.to_string()))
+}
+
+/// A light tick under the finger.
+pub fn haptic(kind: &str) -> Res<()> {
+    screen_call("haptic", json!({ "kind": kind }))
+}
+
 /// Back on the phone layout's Home: the launcher goes to the background, as other apps do.
 pub fn to_back() -> Res<()> {
     screen_call("toBack", json!({}))
