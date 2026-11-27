@@ -1,7 +1,7 @@
 name: Android
 
 # Builds the Android test app (an APK for arm64 phones, handhelds and TVs). It runs when the
-# Android parts change, or by hand. The APK is kept for one day only: it's a test build.
+# Android parts change, or by hand. The APK is kept for a week (time to put it on a phone): it's a test build.
 
 on:
   workflow_dispatch:
@@ -11,6 +11,7 @@ on:
       - src-tauri/gen/android/**
       - src-tauri/src/mobile.rs
       - src-tauri/src/android.rs
+      - ui/phone.*
       - src-tauri/src/*_mobile.rs
       - .github/scripts/android-smoke.sh
 
@@ -34,10 +35,16 @@ jobs:
           node-version: 24
           cache: npm
 
+      # Gradle's downloads are kept between runs: fetching them all from Maven Central on every run
+      # gets the shared runners turned away (429 Too Many Requests).
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle.kts
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -54,6 +61,9 @@ jobs:
 
       # The runner has the Android SDK and NDK already (ANDROID_HOME, ANDROID_NDK_LATEST_HOME).
       - name: Build the APK
+        # When Maven Central still says "too many requests", Gradle waits longer between its tries.
+        env:
+          GRADLE_OPTS: -Dorg.gradle.internal.repository.max.retries=6 -Dorg.gradle.internal.repository.initial.backoff=2000
         run: |
           export NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           echo "NDK: $NDK_HOME"
@@ -63,7 +73,7 @@ jobs:
         with:
           name: recomplauncher-android-test
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
       # Opens the APK on an Android emulator and prints two small screenshots and the app's log into

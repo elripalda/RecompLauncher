@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the test APK on the emulator, opens it, and prints small screenshots (base64 JPEG
-# between markers) and the app's log lines, so the run's log shows how it started.
+# between markers, upright then sideways) and the app's log lines, so the run's log shows how it started.
 set -u
 # Every adb call has a time limit, so a stuck emulator ends the check instead of the whole job.
 a() { timeout 60 adb "$@"; }
@@ -27,7 +27,13 @@ shot() {
   echo
   echo "=====SHOT $1 END====="
 }
+# Upright first (the phone layout, as the emulator has no controller), then sideways: with the
+# rotation locked, Android turns the app the way the lock says.
 for n in 1 2 3 4; do
+  if [ "$n" = 3 ]; then
+    a shell settings put system accelerometer_rotation 0
+    a shell settings put system user_rotation 1
+  fi
   sleep 15
   shot "$n" || { echo "Emulator stopped answering after shot $((n - 1))."; break; }
 done

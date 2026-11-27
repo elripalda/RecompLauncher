@@ -8,7 +8,7 @@ const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
 
-function settingsContext(os) {
+function settingsContext(os, touch = false) {
   const c = vm.createContext({
     S: { os, settings: {}, libs: [], library: {}, owned: {}, steam: false },
     t: (s) => s, N_: (s) => s, tc: (s) => s, esc: String,
@@ -19,6 +19,7 @@ function settingsContext(os) {
   });
   c.window = c;
   c.monitorPicked = () => ''; c.monitorName = () => '';
+  c.touchHere = () => touch;
   vm.runInContext(fn(tv, 'pageSettings', '  '), c);
   return c;
 }
@@ -31,6 +32,13 @@ test('Big Picture on Android leaves out the PC-only settings', () => {
   assert.match(html, /Auto-Install/);
 });
 
+test('Big Picture on an Android phone leaves to the phone layout', () => {
+  const html = settingsContext('android', true).pageSettings();
+  assert.match(html, /Leave Big Picture mode/);
+  assert.match(html, /The phone layout, for playing with your fingers/);
+  assert.doesNotMatch(html, /Back to the desktop view/);
+});
+
 test('Big Picture on a PC keeps them', () => {
   const html = settingsContext('windows').pageSettings();
   for (const kept of ['Leave Big Picture mode', 'Start in Big Picture mode', 'Close to tray', 'Discord status', 'Controller as a Mouse', 'Monitor']) {
@@ -38,10 +46,22 @@ test('Big Picture on a PC keeps them', () => {
   }
 });
 
-test('Android always starts in Big Picture mode', () => {
-  const c = vm.createContext({ S: { os: 'android', settings: {}, desktopArg: true } });
-  vm.runInContext(fn(app, 'startsInTV'), c);
-  assert.equal(c.startsInTV(), true);
-  c.S.os = 'windows';
-  assert.equal(c.startsInTV(), false);
+function startContext(os, { pads = [], touch = 0 } = {}) {
+  const c = vm.createContext({ S: { os, settings: {}, desktopArg: true }, navigator: { getGamepads: () => pads, maxTouchPoints: touch } });
+  for (const name of ['startsInTV', 'padHere', 'touchHere']) vm.runInContext(fn(app, name), c);
+  return c;
+}
+
+test('An Android phone starts in the phone layout, and in Big Picture mode with a controller', () => {
+  assert.equal(startContext('android', { touch: 5 }).startsInTV(), false);
+  assert.equal(startContext('android', { touch: 5, pads: [null, { id: 'Xbox Wireless Controller' }] }).startsInTV(), true);
+  assert.equal(startContext('android', { touch: 5, pads: [null, null] }).startsInTV(), false);
+});
+
+test('An Android TV (no touch screen) always starts in Big Picture mode', () => {
+  assert.equal(startContext('android').startsInTV(), true);
+});
+
+test('A PC starts where its settings say, whatever is plugged in', () => {
+  assert.equal(startContext('windows', { touch: 10, pads: [{ id: 'pad' }] }).startsInTV(), false);
 });

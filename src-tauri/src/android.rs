@@ -13,7 +13,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Emitter};
 
-static APK: OnceLock<tauri::plugin::PluginHandle<tauri::Wry>> = OnceLock::new();
+type Handle = tauri::plugin::PluginHandle<tauri::Wry>;
+static APK: OnceLock<Handle> = OnceLock::new();
+static SCREEN: OnceLock<Handle> = OnceLock::new();
 
 /// The plugin that holds `ApkPlugin.kt`.
 pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
@@ -24,6 +26,33 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             Ok(())
         })
         .build()
+}
+
+/// The plugin that holds `ScreenPlugin.kt`: the launcher's own window.
+pub fn screen_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("screen")
+        .setup(|_app, api| {
+            let h = api.register_android_plugin("com.recomplauncher.app", "ScreenPlugin")?;
+            let _ = SCREEN.set(h);
+            Ok(())
+        })
+        .build()
+}
+
+/// Which way the window turns: Big Picture mode only sideways, the phone layout as the phone is
+/// held (and as its rotation lock says).
+pub fn orientation(landscape: bool) -> Res<()> {
+    screen_call("orientation", json!({ "landscape": landscape }))
+}
+
+/// Back on the phone layout's Home: the launcher goes to the background, as other apps do.
+pub fn to_back() -> Res<()> {
+    screen_call("toBack", json!({}))
+}
+
+fn screen_call(cmd: &str, args: Value) -> Res<()> {
+    let h = SCREEN.get().ok_or_else(|| Error::Msg("The window isn't ready yet.".into()))?;
+    h.run_mobile_plugin::<Value>(cmd, args).map(|_| ()).map_err(|e| Error::Msg(e.to_string()))
 }
 
 /// One of `ApkPlugin`'s commands. It waits for Android's answer, so never on the async threads.

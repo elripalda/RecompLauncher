@@ -158,10 +158,25 @@ export ANDROID_HOME=<your Android SDK>   NDK_HOME=$ANDROID_HOME/ndk/<version>
 npx tauri android build --debug --apk --target aarch64
 ```
 
-On Android the launcher is always in Big Picture mode, held sideways: there's no desktop view to
-leave for, and Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord,
-controller as a mouse). A finger drags a page or a row of games, a tap opens, and Android's Back is
-B. On a phone, Auto size draws the stage a little bigger (1600×900) so words stay readable.
+On Android there's no desktop view. There are two layouts instead:
+
+- **The phone layout** (`ui/phone.js`, `ui/phone.css`) when no controller is in use: an app made for
+  fingers, upright or sideways. Home, Catalog, Library and Settings are tabs (at the bottom upright,
+  down the left side sideways); pages scroll with a finger and rows of games swipe sideways. No
+  button hints. Android's Back goes back a page, and from Home puts the launcher in the background.
+- **Big Picture mode** (`ui/tv.js`) with a controller, held sideways. Any button pressed on a
+  controller switches to it (Android tells the page about a controller only once a button is
+  pressed), and when the last controller is unplugged it goes back to the phone layout. It's also
+  in the phone layout's Settings. Settings leaves out what only a PC has (monitor, tray, start with
+  your PC, Discord, controller as a mouse), and Leave Big Picture mode goes to the phone layout. A
+  finger drags a page or a row of games, a tap opens, and Android's Back is B. On a phone, Auto size
+  draws the stage a little bigger (1600×900) so words stay readable.
+
+A device without a touch screen (an Android TV) always uses Big Picture mode. Which way the window
+turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
+as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
+(`MainActivity.kt`). Cloud saves aren't offered: a phone's games are Android apps, and their saves
+are out of the launcher's reach.
 
 Its game list is the website's Android list (`/api/pc.php?a=android`: the same shape as
 `pc-catalog.json`, with each game's Android download), not `pc-catalog.json`. While Android is
@@ -178,7 +193,7 @@ the launcher comes back to the front, so a game installed or removed outside the
 right. The first install asks the player to let RecompLauncher install apps.
 
 The Android workflow (`.github/workflows/android.yml`) builds the same APK on GitHub when the
-Android parts change, or when run by hand, and keeps it for a day. It also opens the APK on an
+Android parts change, or when run by hand, and keeps it for a week (time to put it on a phone). It also opens the APK on an
 Android emulator and prints a few small screenshots (base64 JPEG between `=====SHOT` lines) and
 the app's log into the job's log (`.github/scripts/android-smoke.sh`).
 

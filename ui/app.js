@@ -5872,7 +5872,7 @@ function paintIsland() {
   const el = $('#isl');
   if (!el) return;
   const ids = Object.keys(S.jobs);
-  const off = !ids.length || S.view === 'downloads' || document.body.classList.contains('tv-on');
+  const off = !ids.length || S.view === 'downloads' || document.body.classList.contains('tv-on') || document.body.classList.contains('phone-on');
   document.body.classList.toggle('isl-on', !off);
   if (off) { el.hidden = true; el.dataset.id = ''; return; }
   const id = ids[0], j = S.jobs[id], a = (j && j.plug && { name: j.name }) || byId(id) || { name: (S.library[id] || {}).name || id };
@@ -6223,10 +6223,15 @@ async function androidSync() {
   if (S.os !== 'android') return false;
   let changed = false;
   try { changed = await invoke('android_sync'); } catch (e) { return false; }
-  if (changed) { try { await refreshState(); } catch (e) { /* shown on the next look */ } render(true); if (window.tvRefresh) window.tvRefresh(); }
+  if (changed) { try { await refreshState(); } catch (e) { /* shown on the next look */ } render(true); androidRedraw(); }
   return changed;
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) androidSync(); });
+// Whichever Android layout is on screen, drawn again with what changed.
+function androidRedraw() {
+  if (window.tvRefresh) window.tvRefresh();
+  if (window.phoneRefresh) window.phoneRefresh();
+}
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
 const approvedReleases = () => JSON.stringify(Object.keys(S.library).sort().map((id) => {
   const a = byId(id) || {};
@@ -8306,8 +8311,13 @@ const selfAuto = () => !S.flatpak && !!(S.settings.ui || {}).self_auto_update;
 const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>';
 
 // An update restart returns to the mode that was on screen.
-// Android has no desktop view: it's always Big Picture mode.
-function startsInTV() { return S.os === 'android' || (!S.desktopArg && !!(S.settings.start_in_tv || S.bigArg)); }
+// Android has no desktop view: Big Picture mode with a controller or on a TV (no touch screen),
+// else the phone layout (phone.js).
+function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() : !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+// A controller the page already knows about (Android tells it once a button is pressed).
+function padHere() { return typeof navigator !== 'undefined' && !!navigator.getGamepads && [...navigator.getGamepads()].some(Boolean); }
+// A touch screen: a phone or a tablet, not a TV box.
+function touchHere() { return typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0; }
 
 // The update window at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
@@ -10787,15 +10797,20 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The Library's sort, as the player left it.
   if (['played', 'time', 'az', 'game'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
-  // Android is always Big Picture mode: it opens straight away, without first-time setup (folders,
-  // the PC's own options), and fills in as the list comes.
+  // Android opens Big Picture mode or the phone layout straight away, without first-time setup
+  // (folders, the PC's own options), and fills in as the list comes.
   const droid = loaded && S.os === 'android';
   if (droid && !S.settings.setup_done) await saveSettings({ setup_done: true, asked_location: true }, true);
-  if (droid && window.startTV) window.startTV();
+  if (droid) {
+    // Big Picture (tv.js) and the phone layout (phone.js) load after this file: both are in once the page is.
+    if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
+    const open = startsInTV() ? window.startTV : window.startPhone;
+    if (open) open();
+  }
   trayWords();
   await loadCatalog(false, catAsk);
   if (droid) await androidSync();
-  if (droid && window.tvRefresh) window.tvRefresh();
+  if (droid) androidRedraw();
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
   homeSync();
@@ -10816,7 +10831,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (S.view === 'discover' && S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   S.anim = 'enter';
   render(true);
-  if (droid && window.tvRefresh) window.tvRefresh();
+  if (droid) androidRedraw();
   // Update check first (it keeps the release info on disk current), then the news reads from it.
   const upd = afterCatalog();
   applyLighter();
@@ -10832,7 +10847,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && startsInTV()) window.startTV();
-  else setTimeout(askData, 800);
+  else if (!droid) setTimeout(askData, 800);
   // Signed in before cloud saves were asked about once for every game: asked now (account.js; the
   // account may have come in before the settings did, so its own call could not ask yet).
   setTimeout(() => { if (window.askCloudAll) window.askCloudAll(); }, 900);
