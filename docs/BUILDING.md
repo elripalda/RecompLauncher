@@ -183,6 +183,14 @@ On Android there's no desktop view. There are two layouts instead:
   icons follow the theme (`android_edges`), and taps can buzz (`android_haptic`, Settings, Vibrate
   on taps). The player's choices are kept in settings.ui (`phone_tabs`, `phone_labels`,
   `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`, and the Accessibility switches below).
+  Pictures are fetched at the size they show on this screen (`sharpOf` in app.js: the width in CSS
+  pixels times the screen's pixel density). Up to 960 pixels the site's smaller copy is used
+  (`thumb.php`); bigger than that, the original, so backdrops and banners stay sharp on a phone's
+  dense screen and on tablets.
+  Home's top left shows the RecompLauncher mark and name. Held sideways, the search and profile
+  buttons sit right above the side bar, and on a wide screen Settings lays its boxes out in two
+  columns and the account page puts the profile beside its settings (cloud space, Back Up Every
+  Game, this phone's name for its save copies, and shortcuts).
   Catalog's All games comes in 30 at a time as the page scrolls, and Trending is the week's top 10
   (filled from the most played when the chart is short).
   Only the tab on screen is redrawn when something changes; the others are marked stale and drawn
@@ -256,7 +264,13 @@ On Android there's no desktop view. There are two layouts instead:
   under the cover, and the cover fades away. tv.js uses the same wait (`window.screenSettle`).
 
 In the desktop's Big Picture mode on Android, Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord, controller as
-a mouse), and on Auto size draws the stage a little bigger (1600×900) so words stay readable. Which way the window
+a mouse), and on Auto size draws the stage a little bigger (1600×900) so words stay readable.
+Below a 1800-wide stage (that phone size, or a small tablet) the bar tightens (`narrow` on the
+stage): shorter side gaps, tighter tabs, every section name on one line. On Android the bar shows
+just the mark, not the name. The tab highlight is measured again whenever the bar changes size
+(a `ResizeObserver` on it, and once the font has loaded), so it always sits under the open
+section. Dragging a page or a row measures its size once when the finger lands, draws the move once
+a frame, gives a little past either end and springs back, and a flick carries on and slows down. Which way the window
 turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
 as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
 (`MainActivity.kt`).

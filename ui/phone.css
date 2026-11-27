@@ -177,6 +177,11 @@ body #phone.ph-solid .ph-glassy{-webkit-backdrop-filter:none !important;backdrop
 .ph-hhd>div{display:flex;align-items:center;gap:12px;padding:calc(var(--pt) + 10px) var(--gr) 10px var(--gl);text-shadow:0 1px 14px rgba(var(--bgc),.9)}
 .ph-hhd small{display:block;font-size:12.5px;font-weight:600;opacity:.8}
 .ph-hhd b{display:block;font-size:19px;font-weight:800}
+.ph-hhd .ph-wm{height:18px;width:auto;margin-left:-2px;filter:drop-shadow(0 1px 8px rgba(var(--bgc),.75))}
+/* Sideways, the search and profile buttons sit right above the side bar, the picture centred on it, and the bar a
+   little lower to make room. */
+.ph-land:not(.ph-flip) .ph-hhd>div{padding-right:calc(30px + var(--pnr))}
+.ph-land:not(.ph-flip) .ph-nav{top:calc(50% + 26px)}
 .ph-avatar{background:linear-gradient(135deg,#34F2E8,#377BB6);color:#06202a;font-weight:800;font-size:16px;overflow:hidden;text-shadow:none}
 .ph-avatar img{width:100%;height:100%;object-fit:cover}
 .ph-avatar.big{width:52px;height:52px;font-size:20px}
@@ -405,6 +410,29 @@ body #phone.ph-solid .ph-glassy{-webkit-backdrop-filter:none !important;backdrop
 .ph-acct{padding:20px 16px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
 .ph-acct>b{font-size:19px;margin-top:4px}
 .ph-acct .ph-stats{width:100%;margin-top:10px;border-bottom:0}
+.ph-acct>small{font-size:12.5px;margin-top:-2px}
+.ph-stats>button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;padding:4px 0;border-radius:12px;color:inherit}
+.ph-stats>button+button{border-left:1px solid var(--edge2);border-radius:0}
+/* The account page: the profile beside its settings when sideways on a wide screen, stacked otherwise. */
+.ph-accgrid{display:flex;flex-direction:column;padding:0 0 30px}
+.ph-accside{padding:0 var(--gr) 0 var(--gl)}
+.ph-accout{padding:4px var(--gr) 0 var(--gl)}
+.ph-space{padding:10px 0 6px}
+.ph-bar{height:8px;border-radius:99px;background:var(--edge2);overflow:hidden}
+.ph-bar>i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--acc),#377bb6)}
+.ph-space>span{display:block;margin-top:7px;font-size:12.5px;color:var(--mut)}
+.ph-devname{border-bottom:0!important;padding-bottom:4px}
+.ph-devin{display:flex;gap:8px;padding:0 0 14px}
+.ph-devin input{flex:1;min-width:0;height:44px;padding:0 14px;border-radius:14px;border:1px solid var(--edge);background:var(--p1,rgba(255,255,255,.04));color:var(--fg);font:500 14px var(--ff);outline:none}
+.ph-devin input:focus{border-color:var(--acc)}
+.ph-devin .ph-btn{height:44px;padding:0 18px}
+@media (min-width:760px){
+  .ph-land .ph-accgrid{display:grid;grid-template-columns:minmax(260px,340px) 1fr;grid-template-rows:auto 1fr;grid-template-areas:'me main' 'out main';column-gap:14px;align-items:start;padding:0 var(--gr) 30px var(--gl)}
+  .ph-land .ph-accside{grid-area:me;padding:0}
+  .ph-land .ph-accmain{grid-area:main}
+  .ph-land .ph-accout{grid-area:out;padding:6px 0 0}
+  .ph-land .ph-accmain>.ph-set{width:100%;margin:0 0 14px}
+}
 
 /* ---------- search ---------- */
 /* Over everything, nearly solid: a full-screen blur costs too much on a phone. */
@@ -878,3 +906,10 @@ body #phone.ph-lite .ph-glassy{-webkit-backdrop-filter:none !important;backdrop-
 .ph-myrev .ph-cover i{display:none}
 .ph-myrev .top{display:flex;align-items:center;gap:8px;margin-top:4px}
 .ph-repk{justify-content:flex-start}
+
+/* Sideways on a wide screen, Settings' boxes sit in two columns instead of stretching across, each box whole. */
+@media (min-width:760px){
+  .ph-land .ph-setcols{columns:2;column-gap:14px;padding:0 var(--gr) 0 var(--gl)}
+  .ph-land .ph-setcols>.ph-set{width:100%;margin:0 0 14px;break-inside:avoid;display:inline-block}
+  .ph-land .ph-setcols{margin-top:14px}
+}

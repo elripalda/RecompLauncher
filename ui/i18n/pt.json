@@ -3616,5 +3616,14 @@
  "You have {v}": "Tem a {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "O modelo do seu telemóvel, que jogos joga e durante quanto tempo, e o que correu mal quando um não instala. Sem nomes, sem ficheiros.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Os seus jogos guardados e análises acompanham-no, e as gravações na nuvem guardam o seu progresso. Abre no seu navegador.",
- "{n} recomps are in your Library.": "{n} recomps estão na sua Biblioteca."
+ "{n} recomps are in your Library.": "{n} recomps estão na sua Biblioteca.",
+ "Back to the phone's own name.": "De volta ao nome do próprio telemóvel.",
+ "Opens recomplauncher.com in your browser": "Abre recomplauncher.com no seu navegador",
+ "Phone name": "Nome do telemóvel",
+ "Saved. New saves from this phone carry that name.": "Guardado. As novas gravações deste telemóvel levam esse nome.",
+ "Shortcuts": "Atalhos",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Mostrado junto às gravações deste telemóvel, para distinguir os seus dispositivos. Deixe vazio para usar o nome do próprio telemóvel.",
+ "Signed in on this phone": "Sessão iniciada neste telemóvel",
+ "Signed in. The website can't be reached right now.": "Sessão iniciada. Não é possível aceder ao site agora.",
+ "This Phone's Name": "Nome deste telemóvel"
 }

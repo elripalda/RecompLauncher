@@ -3616,5 +3616,14 @@
  "You have {v}": "คุณมี {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "รุ่นโทรศัพท์ของคุณ เกมที่คุณเล่นและนานแค่ไหน และสิ่งที่ผิดพลาดเมื่อเกมติดตั้งไม่ได้ ไม่มีชื่อ ไม่มีไฟล์",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "เกมที่บันทึกไว้และรีวิวของคุณตามคุณไป และเซฟบนคลาวด์เก็บความคืบหน้าไว้ เปิดในเบราว์เซอร์ของคุณ",
- "{n} recomps are in your Library.": "มี Recomp {n} รายการในคลังของคุณ"
+ "{n} recomps are in your Library.": "มี Recomp {n} รายการในคลังของคุณ",
+ "Back to the phone's own name.": "กลับไปใช้ชื่อเดิมของโทรศัพท์แล้ว",
+ "Opens recomplauncher.com in your browser": "เปิด recomplauncher.com ในเบราว์เซอร์",
+ "Phone name": "ชื่อโทรศัพท์",
+ "Saved. New saves from this phone carry that name.": "บันทึกแล้ว เซฟใหม่จากโทรศัพท์นี้จะใช้ชื่อนั้น",
+ "Shortcuts": "ทางลัด",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "แสดงข้างเซฟที่โทรศัพท์นี้สร้าง เพื่อให้แยกอุปกรณ์ได้ ปล่อยว่างไว้เพื่อใช้ชื่อเดิมของโทรศัพท์",
+ "Signed in on this phone": "ลงชื่อเข้าใช้บนโทรศัพท์นี้",
+ "Signed in. The website can't be reached right now.": "ลงชื่อเข้าใช้แล้ว ตอนนี้เข้าเว็บไซต์ไม่ได้",
+ "This Phone's Name": "ชื่อโทรศัพท์นี้"
 }

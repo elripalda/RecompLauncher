@@ -57,6 +57,9 @@ const THUMB_RE = /^https:\/\/(?:www\.)?recomp(?:store|launcher)\.com\/media\/([A
 const THUMB_W = [160, 256, 320, 400, 640, 960];
 const thumbW = (w) => THUMB_W.find((x) => x >= (Number(w) || 400)) || 960;
 const thumbOf = (u, w = 400) => { if (!u || !S.thumbs) return u; const m = THUMB_RE.exec(webUrl(u)); return m ? `${S.thumbs}?f=${encodeURIComponent(m[1])}&w=${thumbW(w)}` : u; };
+// A picture shown `css` pixels wide, sharp on this screen: the site's copy when one is big enough for
+// the screen's pixel density (a phone has about three pixels per CSS pixel), otherwise the original.
+const sharpOf = (u, css) => { const px = Math.ceil((Number(css) || 400) * Math.min(window.devicePixelRatio || 1, 3)); return px > THUMB_W[THUMB_W.length - 1] ? u : thumbOf(u, px); };
 // The site makes covers 160, 400 or 640 pixels wide. A tile shows about 160: the smallest copy
 // is exact on a normal screen and a sixth of the pixels of the 400 one; high-DPI screens keep 400.
 const tileThumb = () => (devicePixelRatio || 1) > 1.1 ? 400 : 160;

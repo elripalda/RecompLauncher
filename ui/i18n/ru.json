@@ -3616,5 +3616,14 @@
  "You have {v}": "У вас {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "Модель телефона, в какие игры вы играете и сколько, и что пошло не так, если игра не устанавливается. Без имён и файлов.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Ваши сохранённые игры и отзывы всегда с вами, а облачные сохранения хранят прогресс. Откроется в браузере.",
- "{n} recomps are in your Library.": "{n} рекомпиляция в вашей Библиотеке.|{n} рекомпиляции в вашей Библиотеке.|{n} рекомпиляций в вашей Библиотеке."
+ "{n} recomps are in your Library.": "{n} рекомпиляция в вашей Библиотеке.|{n} рекомпиляции в вашей Библиотеке.|{n} рекомпиляций в вашей Библиотеке.",
+ "Back to the phone's own name.": "Снова собственное имя телефона.",
+ "Opens recomplauncher.com in your browser": "Открывает recomplauncher.com в браузере",
+ "Phone name": "Имя телефона",
+ "Saved. New saves from this phone carry that name.": "Сохранено. Новые сохранения с этого телефона будут с этим именем.",
+ "Shortcuts": "Быстрые ссылки",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Показывается рядом с сохранениями этого телефона, чтобы различать устройства. Оставьте пустым, чтобы использовать имя телефона.",
+ "Signed in on this phone": "Вход выполнен на этом телефоне",
+ "Signed in. The website can't be reached right now.": "Вход выполнен. Сайт сейчас недоступен.",
+ "This Phone's Name": "Имя этого телефона"
 }

@@ -3616,5 +3616,14 @@
  "You have {v}": "{v} を使用中",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "スマホの機種、遊んだゲームと時間、インストールできなかったときの原因。名前やファイルは含みません。",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "保存したゲームとレビューはどこでも一緒で、クラウドセーブが進行状況を守ります。ブラウザで開きます。",
- "{n} recomps are in your Library.": "リコンパイル版が{n}本ライブラリにあります。"
+ "{n} recomps are in your Library.": "リコンパイル版が{n}本ライブラリにあります。",
+ "Back to the phone's own name.": "スマホ本来の名前に戻しました。",
+ "Opens recomplauncher.com in your browser": "ブラウザで recomplauncher.com を開きます",
+ "Phone name": "スマホの名前",
+ "Saved. New saves from this phone carry that name.": "保存しました。このスマホの新しいセーブにはその名前が付きます。",
+ "Shortcuts": "ショートカット",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "このスマホのセーブの横に表示され、端末を見分けられます。空欄にするとスマホ本来の名前を使います。",
+ "Signed in on this phone": "このスマホでサインイン中",
+ "Signed in. The website can't be reached right now.": "サインイン中。今はウェブサイトに接続できません。",
+ "This Phone's Name": "このスマホの名前"
 }

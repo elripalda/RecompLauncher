@@ -146,6 +146,9 @@
     st.style.width = W + 'px';
     st.style.height = H + 'px';
     st.style.setProperty('--H', H + 'px');
+    // Under the full 1920 width (a phone or small tablet held sideways) the bar tightens up so every
+    // section's name stays on one line.
+    st.classList.toggle('narrow', W < 1800);
     st.style.transform = `translate(-50%, -50%) scale(${k})`;
     TV.k = k;
     TV.w = W;
@@ -3009,6 +3012,7 @@
   function moveTabPill(slide) {
     const p = $('.tv-tab-pill', stage()), on = $('.tv-tab.on', stage());
     if (!p) return;
+    watchNav();
     if (!on) { p.style.opacity = '0'; TV.tabPill = null; return; }
     const to = { x: on.offsetLeft, w: on.offsetWidth };
     const from = TV.tabPill;
@@ -3018,6 +3022,18 @@
     p.style.width = to.w + 'px';
     TV.tabPill = to;
   }
+  // The pill is measured from the tabs, which change size when the font arrives or the bar tightens:
+  // measured again then, so it never sits beside the open section.
+  let navSeen = null;
+  const navRO = window.ResizeObserver ? new ResizeObserver(() => moveTabPill(false)) : null;
+  function watchNav() {
+    const nav = $('.tv-nav', stage());
+    if (!navRO || !nav || nav === navSeen) return;
+    navRO.disconnect();
+    navRO.observe(nav);
+    navSeen = nav;
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => moveTabPill(false)).catch(() => {});
 
   // Up, down, left and right: the nearest thing in that direction, rows first.
   function move(dir) {
@@ -3613,13 +3629,35 @@
 
   // Touch screens (Android): drag a page up and down, or a row of games sideways, as the d-pad
   // moves them. A tap is a click, so it picks and opens like a mouse; a drag never counts as one.
-  const touch = { at: null, dragEnd: 0 };
+  // Sizes are measured once when the finger lands and moves are drawn once a frame, so a drag never
+  // lays the page out again; past either end it gives a little and springs back, and a flick carries
+  // on and slows down, as a phone's own lists do.
+  const touch = { at: null, dragEnd: 0, frame: 0 };
   const rowX = (r) => -new DOMMatrixReadOnly(getComputedStyle(r).transform).m41 || 0;
+  const FLING = 'transform .8s cubic-bezier(.16,1,.3,1)';
+  // How far past an end the page goes for a pull: less and less the further it's pulled.
+  const give = (over, room) => room * 0.22 * (1 - 1 / (over / room * 0.5 + 1));
+  const drawDrag = () => {
+    touch.frame = 0;
+    const at = touch.at;
+    if (!at || !at.axis) return;
+    const want = at.axis === 'y' ? at.y0 - at.dy : at.x0 - at.dx;
+    const max = at.max, room = at.room;
+    const v = want < 0 ? -give(-want, room) : want > max ? max + give(want - max, room) : want;
+    at.now = v;
+    if (at.axis === 'y') {
+      if (v >= 0 && v <= max) return setScroll(v, true);
+      at.sc.style.transition = 'none';
+      at.sc.style.transform = `translateY(${-v}px)`;
+      return;
+    }
+    at.row.style.transform = `translateX(${-v}px)`;
+  };
   root.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1 || TV.sheet) { touch.at = null; return; }
     const p = e.touches[0];
     const row = e.target.closest('.tv-row');
-    touch.at = { x: p.clientX, y: p.clientY, y0: TV.scrollY || 0, row, x0: row ? rowX(row) : 0, axis: '' };
+    touch.at = { x: p.clientX, y: p.clientY, row, axis: '', dx: 0, dy: 0, trail: [[performance.now(), p.clientX, p.clientY]] };
     root.classList.remove('mouse-off');
   }, { passive: true });
   root.addEventListener('touchmove', (e) => {
@@ -3627,25 +3665,53 @@
     if (!at || TV.sheet) return;
     const p = e.touches[0];
     const k = TV.k || 1;
-    const dx = (p.clientX - at.x) / k, dy = (p.clientY - at.y) / k;
+    at.dx = (p.clientX - at.x) / k;
+    at.dy = (p.clientY - at.y) / k;
+    const now = performance.now();
+    at.trail.push([now, p.clientX, p.clientY]);
+    while (at.trail.length > 2 && now - at.trail[0][0] > 100) at.trail.shift();
     if (!at.axis) {
-      if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
-      at.axis = at.row && Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (Math.abs(at.dx) < 14 && Math.abs(at.dy) < 14) return;
+      at.axis = at.row && Math.abs(at.dx) > Math.abs(at.dy) ? 'x' : 'y';
+      // Measured once for the whole drag.
+      if (at.axis === 'y') {
+        at.sc = $('#tv-scroll', root);
+        if (!at.sc) { touch.at = null; return; }
+        const reg = at.sc.parentElement;
+        at.y0 = TV.scrollY || 0;
+        at.max = Math.max(0, at.sc.scrollHeight - reg.clientHeight + 40);
+        at.room = reg.clientHeight;
+      } else {
+        const view = at.row.parentElement;
+        at.x0 = rowX(at.row);
+        at.max = Math.max(0, at.row.scrollWidth - (view.clientWidth - SX * 2));
+        at.room = view.clientWidth;
+        at.row.style.transition = 'none';
+      }
     }
-    if (at.axis === 'y') { setScroll(at.y0 - dy, true); return; }
-    const view = at.row.parentElement;
-    const maxX = Math.max(0, at.row.scrollWidth - (view.clientWidth - SX * 2));
-    at.row.style.transition = 'none';
-    at.row.style.transform = `translateX(${-Math.max(0, Math.min(maxX, at.x0 - dx))}px)`;
+    if (!touch.frame) touch.frame = requestAnimationFrame(drawDrag);
   }, { passive: true });
   const touchDone = () => {
     const at = touch.at;
     touch.at = null;
+    if (touch.frame) { cancelAnimationFrame(touch.frame); touch.frame = 0; }
     if (!at || !at.axis) return;
     touch.dragEnd = performance.now();
-    const sc = $('#tv-scroll', root);
-    if (sc) sc.style.transition = '';
-    if (at.row) at.row.style.transition = '';
+    // The flick's speed over its last tenth of a second, carried on for about a third of a second.
+    const tr = at.trail, a = tr[0], b = tr[tr.length - 1], dt = Math.max(16, b[0] - a[0]), k = TV.k || 1;
+    const speed = ((at.axis === 'y' ? b[2] - a[2] : b[1] - a[1]) / k) / dt;
+    const fresh = performance.now() - b[0] < 80;
+    const from = at.now == null ? (at.axis === 'y' ? at.y0 : at.x0) : at.now;
+    const to = Math.max(0, Math.min(at.max, from - (fresh ? speed * 320 : 0)));
+    if (at.axis === 'y') {
+      at.sc.style.transition = FLING;
+      setScroll(to);
+      setTimeout(() => { if (!touch.at && at.sc.style.transition === FLING) at.sc.style.transition = ''; }, 820);
+    } else {
+      at.row.style.transition = FLING;
+      at.row.style.transform = `translateX(${-to}px)`;
+      setTimeout(() => { if (at.row.style.transition === FLING) at.row.style.transition = ''; }, 820);
+    }
   };
   root.addEventListener('touchend', touchDone, { passive: true });
   root.addEventListener('touchcancel', touchDone, { passive: true });

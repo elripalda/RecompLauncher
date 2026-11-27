@@ -3616,5 +3616,14 @@
  "You have {v}": "У вас {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "Модель телефона, у які ігри ви граєте й скільки, і що пішло не так, коли гра не встановлюється. Без імен і файлів.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Ваші збережені ігри й відгуки завжди з вами, а хмарні збереження тримають прогрес. Відкриється в браузері.",
- "{n} recomps are in your Library.": "{n} рекомпіляція у вашій Бібліотеці.|{n} рекомпіляції у вашій Бібліотеці.|{n} рекомпіляцій у вашій Бібліотеці."
+ "{n} recomps are in your Library.": "{n} рекомпіляція у вашій Бібліотеці.|{n} рекомпіляції у вашій Бібліотеці.|{n} рекомпіляцій у вашій Бібліотеці.",
+ "Back to the phone's own name.": "Знову власне ім'я телефона.",
+ "Opens recomplauncher.com in your browser": "Відкриває recomplauncher.com у браузері",
+ "Phone name": "Ім'я телефона",
+ "Saved. New saves from this phone carry that name.": "Збережено. Нові збереження з цього телефона матимуть це ім'я.",
+ "Shortcuts": "Швидкі посилання",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Показується поруч зі збереженнями цього телефона, щоб розрізняти пристрої. Залиште порожнім, щоб використати ім'я телефона.",
+ "Signed in on this phone": "Вхід виконано на цьому телефоні",
+ "Signed in. The website can't be reached right now.": "Вхід виконано. Сайт зараз недоступний.",
+ "This Phone's Name": "Ім'я цього телефона"
 }

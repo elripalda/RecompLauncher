@@ -116,13 +116,17 @@
     const c = [cls, SEEN.has(url) ? 'ld' : ''].filter(Boolean).join(' ');
     return `<img src="${esc(url)}" alt=""${c ? ` class="${c}"` : ''} loading="lazy" decoding="async" draggable="false"${more ? ' ' + more : ''}>`;
   }
-  const coverUrl = (a, w = 320) => (a && a.cover ? media(thumbOf(a.cover, w)) : '');
-  // Wide art at about the size it's shown (the site keeps copies up to 960 pixels wide), else the cover.
-  const heroUrl = (a, w = 960) => (!a ? '' : a.hero ? media(thumbOf(a.hero, w)) : a.cover ? media(thumbOf(a.cover, Math.min(w, 400))) : '');
+  const coverUrl = (a, css = 130) => (a && a.cover ? media(sharpOf(a.cover, css)) : '');
+  // Art sized for how wide it shows, at this screen's sharpness (sharpOf). A backdrop fills the screen's long side when it's
+  // cropped to fit, and a wide card is at most about 440 wide.
+  const screenW = () => Math.max(window.innerWidth || 0, window.innerHeight || 0, 360);
+  const cardW = () => Math.min(window.innerWidth || 440, 440);
+  // Wide art, else the cover.
+  const heroUrl = (a, css = screenW()) => (!a ? '' : a.hero ? media(sharpOf(a.hero, css)) : a.cover ? media(sharpOf(a.cover, Math.min(css, 300))) : '');
   // A page's backdrop: the wide art, or the cover blurred, where a small copy looks the same and decodes far quicker.
-  const pageArt = (a) => heroUrl(a, a && a.hero ? 960 : 160);
+  const pageArt = (a) => heroUrl(a, a && a.hero ? screenW() : 60);
   // With Console Labels on Covers, the console's band across the top, as on a real game box.
-  const coverBox = (a, cls = '', id = '') => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(coverUrl(a))}${coverLabel(a)}</span>`;
+  const coverBox = (a, cls = '', id = '', css = 130) => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(coverUrl(a, css))}${coverLabel(a)}</span>`;
 
   // ---------- the games ----------
   // Each game once, as on the desktop: a game with several versions (the website's Versions) shows
@@ -250,7 +254,7 @@
   function continueRow() {
     const mine = Object.values(S.library).sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map(libApp).filter(Boolean).slice(0, 14);
     if (!mine.length) return '';
-    const one = (a) => `<button type="button" class="ph-wide ph-press" data-open="${esc(a.id)}" data-soft="1" data-key="w:${esc(a.id)}">${img(heroUrl(a, 640), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${esc(playedFor(S.library[a.id]))}</span></span><span class="ph-playdot">${ic('play', 's')}</span></span></button>`;
+    const one = (a) => `<button type="button" class="ph-wide ph-press" data-open="${esc(a.id)}" data-soft="1" data-key="w:${esc(a.id)}">${img(heroUrl(a, cardW()), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${esc(playedFor(S.library[a.id]))}</span></span><span class="ph-playdot">${ic('play', 's')}</span></span></button>`;
     return `<section class="ph-sec" data-key="continue">${secHead(t('Continue playing'), `<button type="button" data-tab="library">${esc(t('Library'))}</button>`)}<div class="ph-hs">${mine.map(one).join('')}</div></section>`;
   }
   function row(key, title, list, sub, more) {
@@ -266,7 +270,7 @@
     const feats = featured(), top = ranked();
     const seeAll = `<button type="button" data-tab="catalog">${esc(t('See all'))}</button>`;
     const chart = top.slice(0, 10).map((a, i) => `<button type="button" class="ph-rk ph-press" data-open="${esc(a.id)}" data-key="k:${esc(a.id)}" aria-label="${esc(a.name)}"><span class="num">${i + 1}</span>${coverBox(a)}</button>`).join('');
-    return `<div class="ph-hhd" data-key="hd"><div>${mark(30)}<div class="ph-grow"><small>${esc(t('Welcome back'))}</small><b>${esc(t('Ready to play'))}</b></div>
+    return `<div class="ph-hhd" data-key="hd"><div>${mark(30)}<img class="ph-wm" src="img/${pref.theme() === 'light' ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher" draggable="false"><span class="ph-grow"></span>
       <button type="button" class="ph-ibtn glass ph-press" data-act="search" aria-label="${esc(t('Search'))}">${ic('search', 's')}</button>${avatarBtn()}</div></div>
       <div class="ph-hero" data-key="hero">${feats.map(heroSlide).join('')}</div>
       <div class="ph-dots" data-key="dots">${feats.map((a, i) => `<i class="${i === (P.slide || 0) ? 'on' : ''}"></i>`).join('')}</div>
@@ -279,7 +283,7 @@
 
   // ---------- Catalog ----------
   function conTile(c, wide) {
-    const pics = c.list.slice(0, wide ? 3 : 1).map((a) => img(coverUrl(a, 160))).join('');
+    const pics = c.list.slice(0, wide ? 3 : 1).map((a) => img(coverUrl(a, 60))).join('');
     const count = wide ? `<small>${esc(tn(c.list.length, '1 game', '{n} games'))}</small>` : '';
     return `<button type="button" class="ph-con ph-press" data-con="${esc(c.k)}" data-key="c:${esc(c.k)}" style="--c:${conColor(c.k)}"><span class="glow"></span>${pics}<span class="k">${conDot(c.k, true)}<b>${esc(c.name)}</b>${count}</span></button>`;
   }
@@ -342,9 +346,9 @@
     const savedList = savedItems().map((x) => x.a).filter((a) => !a.soon && forOS(a));
     if (!mine.length && !savedList.length) return gate() + empty('library', esc(t('Your games show up here once you install one.')));
     const last = mine.find((a) => S.library[a.id] && S.library[a.id].last_played && a.hero && !isBusy(a));
-    const jump = last ? `<button type="button" class="ph-jump ph-press" data-open="${esc(last.id)}" data-soft="1" data-key="jump">${img(heroUrl(last, 640), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="eye">${esc(t('Jump back in'))}</span><span class="ph-disp">${esc(last.name)}</span><small>${esc(playedFor(S.library[last.id]))}</small></span><span class="ph-btn pri sm">${ic('play', 's')}${esc(t('Play'))}</span></span></button>` : '';
+    const jump = last ? `<button type="button" class="ph-jump ph-press" data-open="${esc(last.id)}" data-soft="1" data-key="jump">${img(heroUrl(last), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="eye">${esc(t('Jump back in'))}</span><span class="ph-disp">${esc(last.name)}</span><small>${esc(playedFor(S.library[last.id]))}</small></span><span class="ph-btn pri sm">${ic('play', 's')}${esc(t('Play'))}</span></span></button>` : '';
     const grid = pref.libview() === 'grid';
-    const tile = (a) => `<button type="button" class="ph-gcard ph-press" data-open="${esc(a.id)}" data-key="g:${esc(a.id)}"><span style="position:relative;display:block">${coverBox(a, isBusy(a) ? 'dim' : '')}${libOver(a)}</span><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${libLine(a)}</span></button>`;
+    const tile = (a) => `<button type="button" class="ph-gcard ph-press" data-open="${esc(a.id)}" data-key="g:${esc(a.id)}"><span style="position:relative;display:block">${coverBox(a, isBusy(a) ? 'dim' : '', '', 180)}${libOver(a)}</span><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${libLine(a)}</span></button>`;
     const line = (a) => lrow(a, { sub: libLine(a) });
     const games = mine.length ? `<div class="ph-libh" data-key="lh"><b>${esc(t('All games'))} <span>${mine.length}</span></b><button type="button" class="ph-ibtn solid ph-press" data-act="libview" aria-label="${esc(t('Change view'))}">${ic(grid ? 'list' : 'library', 's')}</button></div>${grid ? `<div class="ph-grid" data-key="lg">${mine.map(tile).join('')}</div>` : mine.map(line).join('')}` : '';
     const later = savedList.length ? `<div class="ph-libh" data-key="sh"><b>${esc(t('Saved for later'))} <span>${savedList.length}</span></b></div>${savedList.map((a) => lrow(a)).join('')}` : '';
@@ -377,7 +381,7 @@
   async function filesCheck() {
     if (S.os !== 'android') { P.files = true; return; }
     let now = P.files;
-    try { now = !!(await invoke('android_files_access')).granted; } catch (e) { /* asked again next time */ }
+    try { const r = await invoke('android_files_access'); now = !!r.granted; if (r.device) P.model = r.device; } catch (e) { /* asked again next time */ }
     if (now !== P.files) { P.files = now; S.savesAll = null; soon(); }
   }
   function svBadge(x) {
@@ -453,9 +457,10 @@
     const link = (icon, title, sub, attr) => `<button type="button" class="ph-srow ph-press" ${attr}>${ic(icon, 's')}<div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div><span class="ph-mut">${ic('chev', 's')}</span></button>`;
     const tabs = pref.tabs();
     const tabRow = (k) => `<div class="ph-srow">${ic(k, 's')}<div class="t"><b>${esc(t(TABS[k]))}</b></div>${sw('tab:' + k, tabs.includes(k), TABS_FIXED.includes(k))}</div>`;
-    const stor = (a, i) => `<div class="ph-srow" data-key="st:${esc(a.id)}"><span class="thumb">${img(coverUrl(a, 160))}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(sizeOf(a))}</span></div><button type="button" class="ph-ibtn ph-press ph-mut" data-act="uninstall" data-id="${esc(a.id)}" aria-label="${esc(tf('Uninstall {name}', { name: a.name }))}">${ic('trash', 's')}</button></div>`;
+    const stor = (a, i) => `<div class="ph-srow" data-key="st:${esc(a.id)}"><span class="thumb">${img(coverUrl(a, 60))}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(sizeOf(a))}</span></div><button type="button" class="ph-ibtn ph-press ph-mut" data-act="uninstall" data-id="${esc(a.id)}" aria-label="${esc(tf('Uninstall {name}', { name: a.name }))}">${ic('trash', 's')}</button></div>`;
     return `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">${esc(t('Settings'))}</h1></header>
       <button type="button" class="ph-panel ph-set link ph-press" data-sub="account" data-key="acc"><span class="ph-ibtn ph-avatar big">${face}</span><span class="ph-col ph-grow"><b>${esc(user ? user.username : t('Sign in'))}</b><small>${esc(user ? t('Signed in. Your saved games follow you.') : t('Keep your saved games with your account.'))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>
+      <div class="ph-setcols" data-key="cols">
       <div class="ph-panel ph-set" data-key="look"><h3>${esc(t('Appearance'))}</h3>
         ${srow(t('Theme'), t('OLED is pure black to save battery'), `<div class="ph-pick" style="width:188px">${seg('theme', [esc(tc('Dark|theme')), 'OLED', esc(tc('Light|theme'))], THEMES.indexOf(pref.theme()))}</div>`)}
         ${srow(t('Display size'), t('Bigger or smaller text, buttons and covers'), `<div class="ph-pick" style="width:190px">${seg('size', SIZE_LABELS, SIZE_KEYS.indexOf(pref.size()))}</div>`)}
@@ -503,7 +508,7 @@
         ${link('lang', t('Language'), lang, 'data-act="lang"')}
         ${link('discord', 'Discord', t('Help, news and other players'), 'data-act="discord"')}
         ${link('globe', 'recomplauncher.com', '', 'data-act="site"')}
-        ${srow(tf('RecompLauncher {v}', { v: S.version || '' }), engine(), '')}</div>`;
+        ${srow(tf('RecompLauncher {v}', { v: S.version || '' }), engine(), '')}</div></div>`;
   }
 
   const VIEW = { home: viewHome, catalog: viewCatalog, library: viewLibrary, downloads: viewDownloads, saves: viewSaves, soon: viewSoon, settings: viewSettings };
@@ -540,7 +545,7 @@
     return `<div class="ph-ptop"><button type="button" class="ph-ibtn glass ph-press" data-act="back" aria-label="${esc(t('Back'))}">${ic('back')}</button><button type="button" class="ph-ibtn glass ph-press" data-menu="${id}" aria-label="${esc(t('More options'))}">${ic('more', 's')}</button></div>
       <div class="ph-gph">${img(pageArt(a), wide ? '' : 'blur', 'id="ph-gphimg"')}<div class="tint"></div></div>
       <div class="ph-gpb">
-        <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover')}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p>${verPillPh(a)}</div></div>
+        <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover', 180)}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p>${verPillPh(a)}</div></div>
         ${stats.length ? `<div class="ph-stats">${stats.map(([v, k]) => `<div><b class="${v.length > 7 ? 'long' : ''}">${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>` : ''}
         <div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>
         ${a.soon ? `<p class="ph-mut" style="font-size:13px;line-height:1.45">${esc(soonNoteText(a))}</p>` : ''}
@@ -694,11 +699,25 @@
         <button type="button" class="ph-btn sec wide ph-press" data-act="signup" style="margin-top:10px">${esc(t('Create your account'))}</button></div></div>`;
     }
     const face = user.avatar ? img(user.avatar) : esc((user.username || '?').slice(0, 1).toUpperCase());
-    const reviews = Array.isArray(S.myReports) ? S.myReports.length : 0;
-    const stats = [[Object.keys(S.library).length, t('games')], [Object.keys(saved()).length, t('saved')], [reviews, t('reviews')]];
-    return subHead(t('Account'), t('Signed in')) + `<div class="ph-in"><div class="ph-padx"><div class="ph-panel ph-acct"><span class="ph-ibtn ph-avatar huge">${face}</span><b>${esc(user.username)}</b><div class="ph-stats">${stats.map(([v, k]) => `<div><b>${fmtNum(v)}</b><span>${esc(k)}</span></div>`).join('')}</div></div>
-      <button type="button" class="ph-btn sec wide ph-press" data-act="account-site" style="margin-top:14px">${ic('globe', 's')}${esc(t('Manage account on the website'))}</button>
-      <button type="button" class="ph-btn wide red ph-press" data-act="signout" style="margin-top:4px">${esc(t('Sign out'))}</button></div></div>`;
+    const mr = S.myReports, reviews = mr && Array.isArray(mr.list) ? mr.list.length : Array.isArray(mr) ? mr.length : 0;
+    // Each number opens what it counts.
+    const stats = [[Object.keys(S.library).length, t('games'), 'data-tab="library"'], [Object.keys(saved()).length, t('saved'), 'data-tab="library"'], [reviews, t('reviews'), 'data-act="my-revs"']];
+    const used = acc.used || 0, quota = acc.quota || 150 * 1024 * 1024, pct = Math.min(100, Math.round((used / quota) * 100));
+    const all = ui().cloud_all === true;
+    const link = (icon, title, sub, attr) => `<button type="button" class="ph-srow ph-press" ${attr}>${ic(icon, 's')}<div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div><span class="ph-mut">${ic('chev', 's')}</span></button>`;
+    const me = `<div class="ph-panel ph-acct"><span class="ph-ibtn ph-avatar huge">${face}</span><b>${esc(user.username)}</b><small class="ph-mut">${esc(acc.offline ? t('Signed in. The website can\'t be reached right now.') : t('Signed in on this phone'))}</small>
+      <div class="ph-stats">${stats.map(([v, k, attr]) => `<button type="button" class="ph-press" ${attr}><b>${fmtNum(v)}</b><span>${esc(k)}</span></button>`).join('')}</div></div>`;
+    const cloud = `<div class="ph-panel ph-set"><h3>${esc(t('Cloud saves'))}</h3>
+      <div class="ph-space"><div class="ph-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
+      <div class="ph-srow"><div class="t"><b>${esc(t('Back Up Every Game'))}</b><span>${esc(all ? t('On. Cloud saves are activated for all games. Turning it off disables cloud saves for every game. Saves stay intact.') : t('Off. Cloud saves are only active for the games you turn on in their Manage tab. Turning it on activates them for every game.'))}</span></div>${sw('cloudall', all)}</div>
+      <div class="ph-srow ph-devname"><div class="t"><b>${esc(t('This Phone\'s Name'))}</b><span>${esc(t('Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone\'s own name.'))}</span></div></div>
+      <div class="ph-devin"><input id="ph-devname" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(ui().device_name || '')}" placeholder="${esc(P.model || t('Phone name'))}" aria-label="${esc(t('This Phone\'s Name'))}"><button type="button" class="ph-btn sec ph-press" data-act="dev-save">${esc(t('Save'))}</button></div></div>`;
+    const more = `<div class="ph-panel ph-set"><h3>${esc(t('Shortcuts'))}</h3>
+      ${link('star', t('Your Reviews'), t('Every review you wrote, with any answer from its developer'), 'data-act="my-revs"')}
+      ${link('saves', t('Saves'), t('Back them up, or restore an older one'), 'data-tab="saves"')}
+      ${link('bug', t('Report a Problem'), t('Something broke, an idea, or what you think so far. It goes straight to the developer.'), 'data-act="report"')}
+      ${link('globe', t('Manage account on the website'), t('Opens recomplauncher.com in your browser'), 'data-act="account-site"')}</div>`;
+    return subHead(t('Account'), '') + `<div class="ph-in"><div class="ph-accgrid"><div class="ph-accside">${me}</div><div class="ph-accmain">${cloud}${more}</div><div class="ph-accout"><button type="button" class="ph-btn wide red ph-press" data-act="signout">${esc(t('Sign out'))}</button></div></div></div>`;
   }
   function subHTML(s) {
     if (s.t === 'con') {
@@ -829,7 +848,7 @@
     el.sheet.style.transform = '';
     el.scrim.classList.remove('on');
   }
-  const sheetHead = (a) => `<div class="ph-shead"><span class="thumb">${img(coverUrl(a, 160))}</span><div class="ph-col ph-grow"><b>${esc(a.name)}</b><small>${esc([a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '', sizeOf(a)].filter(Boolean).join(' · '))}</small></div></div>`;
+  const sheetHead = (a) => `<div class="ph-shead"><span class="thumb">${img(coverUrl(a, 60))}</span><div class="ph-col ph-grow"><b>${esc(a.name)}</b><small>${esc([a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '', sizeOf(a)].filter(Boolean).join(' · '))}</small></div></div>`;
   // A game's quick menu: from its page's dots, or a long press on its cover anywhere.
   function menuSheet(id) {
     const a = appOf(id);
@@ -939,7 +958,7 @@
     const pick = (k, n) => `<button type="button" class="ph-rvpick ph-press v-${k}" data-act="rv-v" data-v="${k}" role="radio" aria-checked="false"><span class="ic">${ic(k === 'runs' ? 'check' : k === 'issues' ? 'warn' : 'x')}</span><span class="ph-col"><b>${esc(t(n))}</b><small>${esc(t(window.VERDICT_SUB[k]))}</small></span></button>`;
     const when = o.secs >= 60 ? tf('{time} this session', { time: fmtTime(o.secs) }) : o.prev ? t('Edit Your Review') : t('Write a Review');
     const extra = [o.specsLine ? `${t('This goes with your review')}: ${o.specsLine}` : '', t('Your name isn\'t shown with your review.')].filter(Boolean);
-    sheet(`<div class="ph-shead"><span class="thumb">${img(coverUrl(a, 160))}</span><div class="ph-col ph-grow"><small>${esc(when)}</small><b>${esc(tf('How did {name} run?', { name: o.name || a.name }))}</b></div></div>
+    sheet(`<div class="ph-shead"><span class="thumb">${img(coverUrl(a, 60))}</span><div class="ph-col ph-grow"><small>${esc(when)}</small><b>${esc(tf('How did {name} run?', { name: o.name || a.name }))}</b></div></div>
       <div class="ph-rvpicks" role="radiogroup">${window.VERDICT.map(([k, n]) => pick(k, n)).join('')}</div>
       <div class="ph-rvw" hidden><b class="ph-rvq"></b><textarea class="ph-rvta" rows="4" maxlength="1000"></textarea><small class="ph-rvcount"></small></div>
       ${extra.map((x) => `<p class="ph-mut ph-rvnote">${esc(x)}</p>`).join('')}
@@ -1422,7 +1441,7 @@
   function drawMini() {
     const id = Object.keys(S.jobs)[0], a = id ? appOf(id) : null;
     if (!a) { el.mini.classList.remove('on'); return; }
-    paint(el.mini, `<span class="pic">${img(coverUrl(a, 160))}<span class="ph-ringp">${ring(id, 40)}</span></span><span class="ph-col ph-grow"><b class="ph-gname">${esc(a.name)}</b><small data-pt="${esc(id)}">${esc(jobText(id))}</small></span>`);
+    paint(el.mini, `<span class="pic">${img(coverUrl(a, 60))}<span class="ph-ringp">${ring(id, 40)}</span></span><span class="ph-col ph-grow"><b class="ph-gname">${esc(a.name)}</b><small data-pt="${esc(id)}">${esc(jobText(id))}</small></span>`);
     el.mini.classList.add('on');
   }
   // Everything on screen, brought up to date in place.
@@ -1527,7 +1546,7 @@
       w.innerHTML = cols;
       requestAnimationFrame(() => w.classList.add('on'));
     };
-    const fresh = () => pool().filter((a) => a.cover).sort(byDl).slice(0, 20).map((a) => coverUrl(a, 160));
+    const fresh = () => pool().filter((a) => a.cover).sort(byDl).slice(0, 20).map((a) => coverUrl(a, 60));
     if (Array.isArray(last) && !lite()) wall(last.filter((u) => typeof u === 'string'));
     // Gone once the games are in and the logo has had its moment; never kept waiting long offline.
     const check = () => {
@@ -1578,6 +1597,12 @@
       case 'signup': return window.signIn && window.signIn(true);
       case 'signout': if (typeof signOut === 'function') await signOut(); return refresh();
       case 'account-site': return invoke('open_url', { url: SITE + '/account' }).catch(fail);
+      case 'dev-save': {
+        const v = ((root.querySelector('#ph-devname') || {}).value || '').trim();
+        await saveUi({ device_name: v }, true);
+        buzz('ok');
+        return toast(v ? t('Saved. New saves from this phone carry that name.') : t('Back to the phone\'s own name.'));
+      }
       case 'discord': return invoke('open_url', { url: discordUrl() }).catch(fail);
       case 'site': return invoke('open_url', { url: SITE }).catch(fail);
       case 'lang': return langSheet();
@@ -2004,7 +2029,7 @@
     const p = padArt(ui().tv_glyphs || (typeof padKind === 'function' ? padKind() : S.padKind) || 'xbox', n);
     return `<i class="glyph" style="--m:url(${p.url})" role="img" aria-label="${esc(t(p.name))}"></i>`;
   };
-  const bpCover = (a, key, sub) => `<button type="button" class="ph-bpc ph-press" data-bp="game" data-id="${esc(a.id)}" data-key="${esc(key)}" aria-label="${esc(a.name)}">${coverBox(a, isBusy(a) ? 'dim' : '')}${isBusy(a) ? `<span class="ph-ringp">${ring(a.id, 40)}</span>` : ''}${sub == null ? '' : `<span class="ph-gname" dir="auto">${esc(a.name)}</span><span class="ph-gsub">${sub}</span>`}</button>`;
+  const bpCover = (a, key, sub) => `<button type="button" class="ph-bpc ph-press" data-bp="game" data-id="${esc(a.id)}" data-key="${esc(key)}" aria-label="${esc(a.name)}">${coverBox(a, isBusy(a) ? 'dim' : '', '', 180)}${isBusy(a) ? `<span class="ph-ringp">${ring(a.id, 40)}</span>` : ''}${sub == null ? '' : `<span class="ph-gname" dir="auto">${esc(a.name)}</span><span class="ph-gsub">${sub}</span>`}</button>`;
   function bpInfo(a, full) {
     const id = esc(a.id), lib = S.library[a.id];
     const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '') + (stateOf(a) === 'update' ? `<span class="ph-tag acc">${esc(t('Update ready'))}</span>` : '');
@@ -2044,7 +2069,7 @@
     const sh = bpShelf();
     if (!sh.length) return `<div class="ph-bpnone" data-key="none">${S.listGate ? gate() : `<span class="ph-spin"></span><span>${esc(S.offline ? t("Can't reach recomplauncher.com right now.") : t('Loading…'))}</span>`}</div>`;
     if (!sh.some((a) => a.id === bp.focus)) bp.focus = sh[0].id;
-    const shelf = sh.map((a) => `<button type="button" class="ph-press${a.id === bp.focus ? ' f' : ''}" data-bp="focus" data-id="${esc(a.id)}" data-key="s:${esc(a.id)}" aria-label="${esc(a.name)}">${coverBox(a)}</button>`).join('');
+    const shelf = sh.map((a) => `<button type="button" class="ph-press${a.id === bp.focus ? ' f' : ''}" data-bp="focus" data-id="${esc(a.id)}" data-key="s:${esc(a.id)}" aria-label="${esc(a.name)}">${coverBox(a, '', '', 180)}</button>`).join('');
     return `<div class="ph-bpscroll home" data-key="home"><section class="ph-bphero" data-key="hero">${bpInfo(appOf(bp.focus))}<div class="ph-bpshelf" data-key="shelf">${shelf}</div></section><div class="ph-bprows" data-key="rows">${bpRows()}</div></div>`;
   }
   // Library and Catalog: covers in a grid, a few rows at a time. The Catalog narrows by console or
