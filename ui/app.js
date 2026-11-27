@@ -6196,6 +6196,7 @@ async function loadCatalog(force, asked) {
     const r = await (asked || invoke('get_catalog', { force: !!force }));
     S.cat = Object.assign({ apps: [], origins: [] }, r.data);
     S.offline = !!r.offline;
+    S.listGate = '';
     S.owned = ownedHere(S.owned);
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
@@ -6210,7 +6211,10 @@ async function loadCatalog(force, asked) {
     // No list on disk and the site can't be reached: the Library still works, and the "Offline"
     // mark says why Discover is empty. No popup.
     if (!S.cat) S.cat = { apps: [], origins: [] };
-    S.offline = true;
+    // Android while it's for testers only: the website said why (signed out, or not a tester).
+    const why = String((e && e.message) || e || '').replace(/^[A-Z_]+\|/, '');
+    S.listGate = /only open to testers/.test(why) ? why : '';
+    S.offline = !S.listGate;
   }
 }
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
@@ -7452,6 +7456,8 @@ async function packInstalled(id, name, games, open) {
   if (su && su.needs && !ready) setupModal(from);
 }
 async function startInstall(id, dir, tag, anyway) {
+  // Android installs its games through the system's own installer: that part of the test app comes next.
+  if (S.os === 'android') return toast(t('Installing Android games isn\'t in this test version yet.'));
   // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
   const from = subOf(id) ? id : '';
   id = parentId(id);

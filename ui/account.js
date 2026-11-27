@@ -21,6 +21,8 @@ async function loadAccount(fresh) {
   try { S.account = await invoke('account_state', { fresh: !!fresh }); } catch (e) { S.account = S.account || { signedIn: false }; }
   // Signed in (or out) just now: what each game's Saves tab knew is out of date.
   if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; forgetSaveStatus(); }
+  // Android's list is for testers only for now: it's asked for again with the new sign-in.
+  if (was !== !!S.account.signedIn && S.os === 'android' && S.cat && (S.listGate || was) && typeof loadCatalog === 'function') loadCatalog(true).then(() => { render(true); if (window.tvRefresh) window.tvRefresh(); });
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
   // The saved list, kept with the account.

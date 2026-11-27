@@ -326,6 +326,12 @@ pub fn forced() -> bool {
 /// The one way to ask the server. A site that's resting isn't asked at all; trouble makes it rest.
 /// The answer comes back whatever its status, for the caller to read.
 pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Result<reqwest::Response, crate::Error> {
+    send_allowing(rb, url, player, &[]).await
+}
+
+/// `send`, where some statuses are a normal answer and not trouble: the Android list's 403 (signed
+/// out, or not a tester) mustn't make the whole site rest.
+pub async fn send_allowing(rb: reqwest::RequestBuilder, url: &str, player: bool, normal: &[u16]) -> Result<reqwest::Response, crate::Error> {
     if !forced() && resting(url, player) {
         if busy() && is_api(&key(url)) {
             return Err(crate::Error::Net(format!("{} is busy, retrying in {}s. Using what's saved on this PC.", host(url), wait_left(url).max(1))));
@@ -337,7 +343,7 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
     match rb.send().await {
         Ok(r) => {
             let code = r.status().as_u16();
-            if trouble_status(code) {
+            if trouble_status(code) && !normal.contains(&code) {
                 went_badly_as(url, if matches!(code, 429 | 503) { retry_after(&r) } else { None }, started, code == 429 || code >= 500);
             } else {
                 went_well(url);
