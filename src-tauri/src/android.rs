@@ -115,7 +115,8 @@ fn package_of(st: &App, id: &str) -> Res<String> {
 
 /// Downloads the game's APK, checks it, and has Android install it (or update it). Called from
 /// `do_install` in place of the PC's unpacking.
-pub async fn install(app: &AppHandle, st: &App, id: &str, cancel: Arc<AtomicBool>) -> Res<()> {
+/// `want`: an older release the player picked (Updates), else the one the list has.
+pub async fn install(app: &AppHandle, st: &App, id: &str, want: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
     let report = |p: Progress| {
         let _ = app.emit("install", p);
     };
@@ -123,7 +124,10 @@ pub async fn install(app: &AppHandle, st: &App, id: &str, cancel: Arc<AtomicBool
     let cat = crate::getting_ready(catalog::catalog(&st.http, &st.dir, false), &cancel).await?.data;
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This game isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
-    let tag = str_of(&entry, "tag").to_string();
+    let listed = str_of(&entry, "tag").to_string();
+    let tag = want.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| listed.clone());
+    // One the player went back to stays until they pick another: no update is offered over it.
+    let picked = !crate::same_tag(&tag, &listed);
     let pattern = entry.get("assets").and_then(|a| a.get("android")).and_then(Value::as_str).unwrap_or("").to_string();
     if pattern.is_empty() {
         return Err(Error::Msg("This game has no Android version yet.".into()));
@@ -132,6 +136,11 @@ pub async fn install(app: &AppHandle, st: &App, id: &str, cancel: Arc<AtomicBool
     let rels: Vec<Release> = serde_json::from_value(crate::getting_ready(catalog::releases_within(&st.http, &st.dir, &repo, 600), &cancel).await?.data)?;
     let rel = rels.iter().find(|r| crate::same_tag(&r.tag_name, &tag)).ok_or_else(|| Error::Msg(format!("Its release ({tag}) isn't on its project anymore.")))?;
     let asset = catalog::android_asset(&rel.assets, &pattern).ok_or_else(|| Error::Msg(format!("Its release ({tag}) has no Android app in it anymore.")))?.clone();
+    // Allowed to install apps before anything is downloaded (Android's settings open when not).
+    let ok: Value = call_async("canInstall", json!({})).await?;
+    if !ok.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+        return Err(Error::Msg("Allow RecompLauncher to install apps in the settings that opened, then press Install again.".into()));
+    }
     let cache = st.dir.join("cache/apk");
     std::fs::create_dir_all(&cache)?;
     let got = install::download(&st.http, &asset, &cache, id, cancel.clone(), &report).await?;
@@ -148,11 +157,6 @@ pub async fn install(app: &AppHandle, st: &App, id: &str, cancel: Arc<AtomicBool
         crate::trail::note(format!("Install {id} (Android): {why}"));
         return Err(cleanup(Error::Msg("This download isn't the game the store checked (a different app, or signed by someone else). It wasn't installed.".into())));
     }
-    let ok: Value = call_async("canInstall", json!({})).await.map_err(cleanup)?;
-    if !ok.get("ok").and_then(Value::as_bool).unwrap_or(false) {
-        let _ = std::fs::remove_file(&got.file);
-        return Err(Error::Msg("Allow RecompLauncher to install apps in the settings that opened, then press Install again.".into()));
-    }
     crate::trail::note(format!("Install {id} (Android): asking Android to install {}", asset.name));
     let r: Res<Value> = call_async("install", json!({ "path": path })).await;
     let _ = std::fs::remove_file(&got.file);
@@ -168,8 +172,9 @@ pub async fn install(app: &AppHandle, st: &App, id: &str, cancel: Arc<AtomicBool
         id: id.into(),
         name: str_of(&entry, "name").into(),
         repo,
+        version: if picked { tag.trim_start_matches(['v', 'V']).to_string() } else { str_of(&entry, "version").into() },
         tag,
-        version: str_of(&entry, "version").into(),
+        pinned: picked,
         path: folder,
         asset: asset.name.clone(),
         size: asset.size,
@@ -214,6 +219,32 @@ pub fn open(st: &App, id: &str) -> Res<()> {
             crate::cloud::set_after_play(&st.dir, id, true);
         }
     }
+    Ok(())
+}
+
+/// Whether the launcher may install apps; with `ask`, Android's page to allow it opens when not.
+pub fn install_allowed(ask: bool) -> Res<bool> {
+    let v: Value = call(if ask { "canInstall" } else { "installAllowed" }, json!({}))?;
+    Ok(v.get("ok").and_then(Value::as_bool).unwrap_or(false))
+}
+
+/// A session of a game's app, as the launcher timed it, added to its play time like a PC's: the
+/// launcher only sees it opened, so the time runs until the player came back.
+pub fn played(st: &App, id: &str, secs: u64) -> Res<()> {
+    let now = library::now();
+    let mut l = st.lib.lock().unwrap();
+    let Some(g) = l.installed.get_mut(id) else { return Ok(()) };
+    g.played_secs += secs;
+    g.last_played = now;
+    if secs >= 10 {
+        g.sessions.push([now.saturating_sub(secs), secs]);
+        let n = g.sessions.len();
+        if n > 500 {
+            g.sessions.drain(..n - 500);
+        }
+    }
+    drop(l);
+    st.save();
     Ok(())
 }
 

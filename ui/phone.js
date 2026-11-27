@@ -17,7 +17,10 @@
   const TABS_FIRST = ['home', 'catalog', 'library', 'saves', 'settings'];
   // Home and Settings can't be taken off the menu: one is the way in, the other the way to put tabs back.
   const TABS_FIXED = ['home', 'settings'];
-  const SIZES = { s: 0.82 / 0.9, m: 1, l: 1 / 0.9 };
+  // Display size: two steps smaller and two bigger than the design (S and L as they were).
+  const SIZES = { xs: 0.8, s: 0.82 / 0.9, m: 1, l: 1 / 0.9, xl: 1.22 };
+  const SIZE_KEYS = ['xs', 's', 'm', 'l', 'xl'];
+  const SIZE_LABELS = ['XS', 'S', 'M', 'L', 'XL'];
   const THEMES = ['dark', 'oled', 'light'];
   const ui = () => (S.settings && S.settings.ui) || {};
   const pref = {
@@ -25,6 +28,12 @@
     labels: () => ui().phone_labels === true,
     haptics: () => ui().phone_haptics !== false,
     size: () => (SIZES[ui().phone_size] ? ui().phone_size : 'm'),
+    // Big Picture has its own size, and its own look: Phone (made for this screen) or Full (the
+    // big-screen one tablets and PCs have). Unset, the device decides (app.js droidPhone).
+    bpSize: () => (SIZES[ui().phone_bp_size] ? ui().phone_bp_size : 'm'),
+    bpStyle: () => (ui().bp_style === 'full' ? 'full' : ui().bp_style === 'phone' ? 'phone' : window.droidPhone && !droidPhone() ? 'full' : 'phone'),
+    bold: () => ui().phone_bold === true,
+    solid: () => ui().phone_solid === true,
     theme: () => (ui().theme === 'light' ? 'light' : ui().oled ? 'oled' : 'dark'),
     libview: () => (ui().phone_libview === 'list' ? 'list' : 'grid'),
     padTv: () => ui().pad_tv !== false,
@@ -68,6 +77,16 @@
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     chev: '<path d="m9 5 7 7-7 7"/>',
     chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    discord: '<path fill="currentColor" stroke="none" d="M19.3 5.4A16.6 16.6 0 0 0 15.2 4l-.5 1a15.4 15.4 0 0 0-5.4 0l-.5-1a16.5 16.5 0 0 0-4.1 1.4C2.1 9.3 1.4 13.1 1.8 16.9a16.7 16.7 0 0 0 5 2.6l1.1-1.7a10.8 10.8 0 0 1-1.7-.8l.4-.3a11.9 11.9 0 0 0 10.8 0l.4.3c-.5.3-1.1.6-1.7.8l1.1 1.7a16.6 16.6 0 0 0 5-2.6c.5-4.4-.8-8.2-2.9-11.5zM8.7 14.6c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm6.6 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/>',
+    lang: '<path d="M4 5h9M8.5 3v2M6 5c.6 3.4 3 6 6 7.5M11 5c-.6 3.6-3.4 6.5-7 8"/><path d="m12 21 4.5-10 4.5 10M13.8 17h5.4"/>',
+    bug: '<path d="M9 7.5a3 3 0 0 1 6 0M8 10h8v4a4 4 0 0 1-8 0zM12 10v8M4 9l4 2M20 9l-4 2M4 19l4-2.5M20 19l-4-2.5M3.5 14H8M16 14h4.5"/>',
+    undo: '<path d="M4 9h11a5 5 0 0 1 0 10H8M4 9l4-4M4 9l4 4"/>',
+    spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
+    box: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
+    shield: '<path d="M12 3 4.5 6v5.5c0 4.5 3.2 8.2 7.5 9.5 4.3-1.3 7.5-5 7.5-9.5V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0"/>',
+    text: '<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>',
+    eye: '<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="3"/>',
     saves: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7"/>',
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/>',
     up: '<path d="M12 20V9m0 0-4.5 4.5M12 9l4.5 4.5M5 4h14"/>',
@@ -98,8 +117,12 @@
     return `<img src="${esc(url)}" alt=""${c ? ` class="${c}"` : ''} loading="lazy" decoding="async" draggable="false"${more ? ' ' + more : ''}>`;
   }
   const coverUrl = (a, w = 320) => (a && a.cover ? media(thumbOf(a.cover, w)) : '');
-  const heroUrl = (a) => (a && (a.hero || a.cover) ? media(a.hero || a.cover) : '');
-  const coverBox = (a, cls = '', id = '') => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(coverUrl(a))}</span>`;
+  // Wide art at about the size it's shown (the site keeps copies up to 960 pixels wide), else the cover.
+  const heroUrl = (a, w = 960) => (!a ? '' : a.hero ? media(thumbOf(a.hero, w)) : a.cover ? media(thumbOf(a.cover, Math.min(w, 400))) : '');
+  // A page's backdrop: the wide art, or the cover blurred, where a small copy looks the same and decodes far quicker.
+  const pageArt = (a) => heroUrl(a, a && a.hero ? 960 : 160);
+  // With Console Labels on Covers, the console's band across the top, as on a real game box.
+  const coverBox = (a, cls = '', id = '') => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(coverUrl(a))}${coverLabel(a)}</span>`;
 
   // ---------- the games ----------
   // Each game once, as on the desktop: a game with several versions (the website's Versions) shows
@@ -107,10 +130,12 @@
   // when the catalog, the library or what's hidden changes.
   let poolMemo = null;
   const pool = () => {
-    const k = { idx: index(), hid: hiddenSet(), ai: !!S.settings.hide_ai, lib: Object.keys(S.library).join('|') };
+    const u = ui(), k = { idx: index(), hid: hiddenSet(), ai: !!S.settings.hide_ai, lib: Object.keys(S.library).join('|'), look: [u.game_names, u.game_media, u.names, S.arts].map((x) => (typeof x === 'object' ? x : String(!!x))) };
     const m = poolMemo;
-    if (m && m.idx === k.idx && m.hid === k.hid && m.ai === k.ai && m.lib === k.lib) return m.list;
-    poolMemo = Object.assign(k, { list: oneEach(visible().filter((a) => forOS(a) && !a.soon)) });
+    if (m && m.idx === k.idx && m.hid === k.hid && m.ai === k.ai && m.lib === k.lib && m.look.every((x, i) => x === k.look[i])) return m.list;
+    // Each through byId, so the names and pictures the player picked (Show Game Names and Media,
+    // Rename, Change Cover) are the ones shown.
+    poolMemo = Object.assign(k, { list: oneEach(visible().filter((a) => forOS(a) && !a.soon)).map((a) => byId(a.id) || a) });
     return poolMemo.list;
   };
   const appOf = (id) => byId(id) || (S.library[id] ? libApp(S.library[id]) : null);
@@ -225,7 +250,7 @@
   function continueRow() {
     const mine = Object.values(S.library).sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map(libApp).filter(Boolean).slice(0, 14);
     if (!mine.length) return '';
-    const one = (a) => `<button type="button" class="ph-wide ph-press" data-open="${esc(a.id)}" data-soft="1" data-key="w:${esc(a.id)}">${img(heroUrl(a), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${esc(playedFor(S.library[a.id]))}</span></span><span class="ph-playdot">${ic('play', 's')}</span></span></button>`;
+    const one = (a) => `<button type="button" class="ph-wide ph-press" data-open="${esc(a.id)}" data-soft="1" data-key="w:${esc(a.id)}">${img(heroUrl(a, 640), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${esc(playedFor(S.library[a.id]))}</span></span><span class="ph-playdot">${ic('play', 's')}</span></span></button>`;
     return `<section class="ph-sec" data-key="continue">${secHead(t('Continue playing'), `<button type="button" data-tab="library">${esc(t('Library'))}</button>`)}<div class="ph-hs">${mine.map(one).join('')}</div></section>`;
   }
   function row(key, title, list, sub, more) {
@@ -317,7 +342,7 @@
     const savedList = savedItems().map((x) => x.a).filter((a) => !a.soon && forOS(a));
     if (!mine.length && !savedList.length) return gate() + empty('library', esc(t('Your games show up here once you install one.')));
     const last = mine.find((a) => S.library[a.id] && S.library[a.id].last_played && a.hero && !isBusy(a));
-    const jump = last ? `<button type="button" class="ph-jump ph-press" data-open="${esc(last.id)}" data-soft="1" data-key="jump">${img(heroUrl(last), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="eye">${esc(t('Jump back in'))}</span><span class="ph-disp">${esc(last.name)}</span><small>${esc(playedFor(S.library[last.id]))}</small></span><span class="ph-btn pri sm">${ic('play', 's')}${esc(t('Play'))}</span></span></button>` : '';
+    const jump = last ? `<button type="button" class="ph-jump ph-press" data-open="${esc(last.id)}" data-soft="1" data-key="jump">${img(heroUrl(last, 640), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="eye">${esc(t('Jump back in'))}</span><span class="ph-disp">${esc(last.name)}</span><small>${esc(playedFor(S.library[last.id]))}</small></span><span class="ph-btn pri sm">${ic('play', 's')}${esc(t('Play'))}</span></span></button>` : '';
     const grid = pref.libview() === 'grid';
     const tile = (a) => `<button type="button" class="ph-gcard ph-press" data-open="${esc(a.id)}" data-key="g:${esc(a.id)}"><span style="position:relative;display:block">${coverBox(a, isBusy(a) ? 'dim' : '')}${libOver(a)}</span><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${libLine(a)}</span></button>`;
     const line = (a) => lrow(a, { sub: libLine(a) });
@@ -433,32 +458,51 @@
       <button type="button" class="ph-panel ph-set link ph-press" data-sub="account" data-key="acc"><span class="ph-ibtn ph-avatar big">${face}</span><span class="ph-col ph-grow"><b>${esc(user ? user.username : t('Sign in'))}</b><small>${esc(user ? t('Signed in. Your saved games follow you.') : t('Keep your saved games with your account.'))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>
       <div class="ph-panel ph-set" data-key="look"><h3>${esc(t('Appearance'))}</h3>
         ${srow(t('Theme'), t('OLED is pure black to save battery'), `<div class="ph-pick" style="width:188px">${seg('theme', [esc(tc('Dark|theme')), 'OLED', esc(tc('Light|theme'))], THEMES.indexOf(pref.theme()))}</div>`)}
-        ${srow(t('Display size'), '', `<div class="ph-pick" style="width:132px">${seg('size', ['S', 'M', 'L'], ['s', 'm', 'l'].indexOf(pref.size()))}</div>`)}
+        ${srow(t('Display size'), t('Bigger or smaller text, buttons and covers'), `<div class="ph-pick" style="width:190px">${seg('size', SIZE_LABELS, SIZE_KEYS.indexOf(pref.size()))}</div>`)}
         ${srow(t('Menu labels'), t('Show names under the menu icons'), sw('labels', pref.labels()))}
         ${srow(t('Vibrate on taps'), '', sw('haptics', pref.haptics()))}</div>
+      <div class="ph-panel ph-set" data-key="covers"><h3>${esc(t('Covers and names'))}</h3>
+        ${srow(t('Covers Only'), t('Hide the names under game covers.'), sw('bare', !!ui().hide_names))}
+        ${srow(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cvl', !!ui().cover_labels))}
+        ${srow(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('gnames', !!ui().game_names))}
+        ${srow(t('Show Game Media'), t('Every version of a game shows the same cover, background and logo: the recommended version\'s.'), sw('gmedia', !!ui().game_media))}</div>
       <div class="ph-panel ph-set" data-key="menu"><h3>${esc(t('Menu bar'))}</h3>
         <div class="ph-srow" style="min-height:0;padding:8px 0 4px"><span class="ph-mut" style="font-size:12.5px">${esc(tf('Pick 3 to 5 tabs. {n} chosen.', { n: tabs.length }))}</span></div>
         ${Object.keys(TABS).map(tabRow).join('')}</div>
       <div class="ph-panel ph-set" data-key="bp"><h3>${esc(t('Big Picture mode'))}</h3>
+        ${srow(t('Big Picture style'), t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'), `<div class="ph-pick" style="width:150px">${seg('bpstyle', [esc(t('Phone')), esc(t('Full'))], pref.bpStyle() === 'full' ? 1 : 0)}</div>`)}
+        ${pref.bpStyle() === 'phone' ? srow(t('Big Picture size'), t('Bigger or smaller text, buttons and covers in Big Picture'), `<div class="ph-pick" style="width:190px">${seg('bpsize', SIZE_LABELS, SIZE_KEYS.indexOf(pref.bpSize()))}</div>`) : ''}
         ${srow(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('bpstart', !!S.settings.start_in_tv))}
         ${srow(t('Open with a controller'), t('Switches when you press a button on one'), sw('padtv', pref.padTv()))}
         <div class="ph-srow"><button type="button" class="ph-btn sec wide ph-press" data-act="tv">${ic('tv', 's')}${esc(t('Open Big Picture now'))}</button></div></div>
       <div class="ph-panel ph-set" data-key="cat"><h3>${esc(t('Catalog and updates'))}</h3>
         ${srow(t('Hide AI-assisted Recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in the Catalog.'), sw('hideai', !!S.settings.hide_ai))}
         ${link('refresh', t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now'), 'data-act="refresh-cat"')}
-        ${link('downloads', t('Check for Game Updates'), updatesList().length ? tn(updatesList().length, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd"')}</div>
+        ${link('downloads', t('Check for Game Updates'), updatesList().length ? tn(updatesList().length, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd"')}
+        ${link('phone', t('Check for Launcher Updates'), tf('You have {v}', { v: S.version || '' }), 'data-act="self-upd"')}
+        ${link('box', t('Bring Your Own Recomps'), t('Finds recomps already installed on this phone and adds them to your Library'), 'data-act="find-recomps"')}</div>
       <div class="ph-panel ph-set" data-key="rev"><h3>${esc(t('Reviews'))}</h3>
-        ${srow(t('Ask After Playing'), t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), sw('revask', window.reviewAskOn ? window.reviewAskOn() : true))}</div>
+        ${srow(t('Ask After Playing'), t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), sw('revask', window.reviewAskOn ? window.reviewAskOn() : true))}
+        ${link('star', t('Your Reviews'), t('Every review you wrote, with any answer from its developer'), 'data-act="my-revs"')}</div>
       ${mine.length ? `<div class="ph-panel ph-set" data-key="stor"><h3>${esc(t('Storage'))}</h3><div class="ph-storh"><b>${esc(total ? fmtB(total) : '')}</b><span>${esc(tn(mine.length, '1 game', '{n} games'))}</span></div>
         ${total ? `<div class="ph-stor">${mine.map((a, i) => `<i style="flex:${(bytes[i] || 0) / total};--c:${conColor(a.origin)};animation-delay:${i * 60}ms"></i>`).join('')}</div>` : ''}${mine.map(stor).join('')}</div>` : ''}
       <div class="ph-panel ph-set" data-key="ease"><h3>${esc(t('Accessibility'))}</h3>
-        ${srow(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}
+        ${srow(t('Bold text'), t('Heavier letters everywhere, easier to read'), sw('bold', pref.bold()))}
+        ${srow(t('High contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}
+        ${srow(t('Reduce transparency'), t('Solid menus and buttons instead of see-through ones'), sw('solid', pref.solid()))}
         ${srow(t('Reduce motion'), t('Pages change without sliding or zooming'), sw('still', pref.still() || pref.lite(), pref.lite()))}
-        ${srow(t('High contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}</div>
+        ${srow(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}</div>
+      <div class="ph-panel ph-set" data-key="help"><h3>${esc(t('Help and privacy'))}</h3>
+        ${link('bug', t('Report a Problem'), t('Something broke, an idea, or what you think so far. It goes straight to the developer.'), 'data-act="report"')}
+        ${srow(t('Share usage and diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), sw('usage', !!S.settings.share_usage))}
+        ${srow(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('stats', !!S.settings.share_stats))}</div>
+      <div class="ph-panel ph-set" data-key="over"><h3>${esc(t('Start over'))}</h3>
+        ${link('undo', t('Reset settings'), t('Every setting goes back to how it started. Your games and saves stay.'), 'data-act="reset-set"')}
+        ${link('spark', t('Run first-time setup again'), t('Nothing is deleted.'), 'data-act="reset-setup"')}</div>
       <div class="ph-panel ph-set" data-key="about"><h3>${esc(t('About'))}</h3>
-        ${link('globe', t('Language'), lang, 'data-act="lang"')}
-        ${link('chat', 'Discord', t('Help, news and other players'), 'data-act="discord"')}
-        ${link('home', 'recomplauncher.com', '', 'data-act="site"')}
+        ${link('lang', t('Language'), lang, 'data-act="lang"')}
+        ${link('discord', 'Discord', t('Help, news and other players'), 'data-act="discord"')}
+        ${link('globe', 'recomplauncher.com', '', 'data-act="site"')}
         ${srow(tf('RecompLauncher {v}', { v: S.version || '' }), engine(), '')}</div>`;
   }
 
@@ -494,12 +538,13 @@
     const based = a.game ? htmlFill(t('Based on {game}'), { game: esc(a.game) }) : '';
     const by = devName(a) ? htmlFill(t('by {who}'), { who: `<b>${esc(devName(a))}</b>` }) : '';
     return `<div class="ph-ptop"><button type="button" class="ph-ibtn glass ph-press" data-act="back" aria-label="${esc(t('Back'))}">${ic('back')}</button><button type="button" class="ph-ibtn glass ph-press" data-menu="${id}" aria-label="${esc(t('More options'))}">${ic('more', 's')}</button></div>
-      <div class="ph-gph">${img(heroUrl(a), wide ? '' : 'blur', 'id="ph-gphimg"')}<div class="tint"></div></div>
+      <div class="ph-gph">${img(pageArt(a), wide ? '' : 'blur', 'id="ph-gphimg"')}<div class="tint"></div></div>
       <div class="ph-gpb">
         <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover')}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p>${verPillPh(a)}</div></div>
         ${stats.length ? `<div class="ph-stats">${stats.map(([v, k]) => `<div><b class="${v.length > 7 ? 'long' : ''}">${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>` : ''}
         <div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>
         ${a.soon ? `<p class="ph-mut" style="font-size:13px;line-height:1.45">${esc(soonNoteText(a))}</p>` : ''}
+        ${playBox(a)}
         ${tags.length ? `<div class="ph-chips">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}
         ${gameAbout(a)}
         <div class="ph-revbox" data-rev="${id}">${revSection(a)}</div>
@@ -510,9 +555,12 @@
   }
 
   // Where a rectangle sits in the design's own pixels (the frame is scaled).
+  // How many screen pixels a design pixel takes, as this web engine reports boxes (older engines report
+  // a zoomed page's boxes in its own pixels, newer ones in the screen's).
+  const zk = () => (el.ui.getBoundingClientRect().width / el.ui.offsetWidth) || 1;
   function rin(node) {
-    const r = node.getBoundingClientRect(), u = el.ui.getBoundingClientRect();
-    return { x: (r.left - u.left) / P.z, y: (r.top - u.top) / P.z, w: r.width / P.z, h: r.height / P.z };
+    const r = node.getBoundingClientRect(), u = el.ui.getBoundingClientRect(), k = zk();
+    return { x: (r.left - u.left) / k, y: (r.top - u.top) / k, w: r.width / k, h: r.height / k };
   }
   function depth() {
     el.ui.classList.toggle('ph-deep', P.stack.length > 0);
@@ -532,20 +580,15 @@
     const an = f.animate(frames, { duration: 560, easing: 'cubic-bezier(.3,1.2,.4,1)', fill: 'forwards' });
     an.onfinish = () => { if (done) done(); f.remove(); };
   }
-  // A banner grows into the top of the game's page, then fades into the page's own picture.
-  function flyHero(srcImg, a, b, rad) {
-    if (still()) return;
-    const from = rin(srcImg), f = document.createElement('img');
-    f.src = heroUrl(a);
-    f.className = 'ph-fly';
-    f.style.cssText = `left:${from.x}px;top:${from.y}px;width:${from.w}px;height:${from.h}px;border-radius:${rad}px`;
-    el.ui.appendChild(f);
-    const start = { left: from.x + 'px', top: from.y + 'px', width: from.w + 'px', height: from.h + 'px', borderRadius: rad + 'px', opacity: 1 };
-    const end = { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px', borderRadius: '0px' };
-    const frames = [start, Object.assign({ opacity: 1, offset: 0.72 }, end), Object.assign({ opacity: 0 }, end)];
-    f.animate(frames, { duration: 700, easing: 'cubic-bezier(.3,1.08,.4,1)', fill: 'forwards' }).onfinish = () => f.remove();
+  // Once a game's page fully covers the tabs, they're left out of layout and painting until it closes.
+  let coverT = 0;
+  function covered(on) {
+    clearTimeout(coverT);
+    if (!on) return el.pager.classList.remove('covered');
+    coverT = setTimeout(() => { if (P.stack.length) el.pager.classList.add('covered'); }, 700);
   }
   function rise(gp) {
+    covered(true);
     if (still()) { gp.style.opacity = '1'; gp.style.transform = 'none'; return; }
     gp.style.transform = 'translateY(46px) scale(.97)';
     void gp.offsetWidth;
@@ -560,30 +603,23 @@
     if (P.stack.length) { P.stack.push(id); return swapGame(a, 1); }
     const gp = el.gp;
     P.stack = [id];
+    // Where the tapped cover sits is read first, while the screen is still laid out, and the page is
+    // built and laid out once after that.
+    const soft = from && from.dataset.soft;
+    const srcCover = from && !soft ? $('.ph-cover img.ld', from) : null;
+    const from0 = srcCover ? rin(srcCover.parentNode) : null;
     gp.innerHTML = gameHTML(a);
     gp.classList.add('on');
     gp.style.cssText = 'transition:none;opacity:0;transform:none';
+    depth();
     // A game's page always opens at its top (set once it's on screen: a hidden page can't scroll).
     gp.scrollTop = 0;
-    depth();
     loadReadme(a);
     const target = $('#ph-gpcover', gp);
-    const soft = from && from.dataset.soft;
-    const srcCover = from && !soft ? $('.ph-cover img.ld', from) : null;
-    const srcWide = soft && a.hero && from.offsetWidth > el.ui.offsetWidth * 0.6 ? $('img.bg', from) : null;
     P.src = null;
-    if (srcWide) {
-      const b = rin($('.ph-gph', gp));
-      gp.style.transform = 'translateY(34px)';
-      void gp.offsetWidth;
-      gp.style.transition = 'opacity 360ms ease 140ms,transform 640ms var(--soft)';
-      gp.style.opacity = '1';
-      gp.style.transform = 'none';
-      return flyHero(srcWide, a, b, 20);
-    }
     if (srcCover) {
       const srcBox = srcCover.parentNode;
-      const from0 = rin(srcBox), to = rin(target);
+      const to = rin(target);
       P.src = { layer: from.closest('.ph-view,.ph-sp,.ph-so'), id };
       target.style.visibility = 'hidden';
       srcBox.style.visibility = 'hidden';
@@ -622,6 +658,7 @@
     if (!P.stack.length) return;
     const gp = el.gp, a = appOf(P.stack[0]);
     P.stack = [];
+    covered(false);
     depth();
     const src = slide ? null : flyBackTarget(), cover = $('#ph-gpcover', gp), pic = cover && $('img.ld', cover);
     if (src && pic && gp.scrollTop < 200) {
@@ -641,7 +678,10 @@
     }
     setTimeout(() => { if (!P.stack.length) { gp.classList.remove('on'); gp.style.cssText = ''; gp.innerHTML = ''; } }, 470);
     void a;
-    refresh();
+    // The tab it uncovers is brought up to date now if it changed meanwhile; the rest wait until the
+    // page has gone, so nothing heavy runs while it slides away.
+    fresh(P.tab);
+    setTimeout(() => { if (!P.stack.length) refresh(); }, 480);
   }
 
   // ---------- pages inside a tab: a console, all consoles, the chart, the account ----------
@@ -841,6 +881,8 @@
     if (!reviewable(a) || (!force && S.reports[a.id] !== undefined)) return;
     loadReports(a.id, force).then(soon);
   }
+  // Reviews with words in them first, newest first within each (the order they came in).
+  const written = (list) => [...list.filter((x) => x.note && String(x.note).trim()), ...list.filter((x) => !(x.note && String(x.note).trim()))];
   function revItem(x) {
     const when = x.when ? ago(Date.parse(x.when) / 1000 || x.when) : '';
     const meta = [RV_SYS[x.sys] || '', x.version || '', when].filter(Boolean).join(' · ');
@@ -866,7 +908,7 @@
     const id = esc(a.id), say = revSay(a), mine = myReviewOf(a.id);
     const head = `<h2>${esc(t('Reviews'))}</h2>`;
     if (!rep || rep === 'loading') return `<div class="ph-panel ph-rev" data-key="rev:${id}" data-f>${head}<div class="ph-row" style="gap:10px"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading…'))}</span></div></div>`;
-    const all = runTally(rep.counts), items = rep.items || [];
+    const all = runTally(rep.counts), items = written(rep.items || []);
     const own = mine ? `<div class="ph-revi mine"><div class="top"><b>${esc(t('Your Review'))}</b>${rvPill(mine.verdict)}<small>${esc(mine.version || '')}</small></div>${mine.note ? `<p dir="auto">${esc(mine.note)}</p>` : ''}</div>` : '';
     if (!all.n) {
       const why = rep.error ? t('Can\'t be reached right now') : S.library[a.id] ? t('Be the first: after you play, say how it ran.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.');
@@ -880,7 +922,7 @@
     const a = appOf(id), rep = S.reports[id];
     if (!a || !rep || rep === 'loading') return;
     P.rvAll = { id, v: v || '' };
-    const items = (rep.items || []).filter((x) => !P.rvAll.v || x.verdict === P.rvAll.v);
+    const items = written((rep.items || []).filter((x) => !P.rvAll.v || x.verdict === P.rvAll.v));
     const r = runTally(rep.counts);
     const chip = (k, label, n) => `<button type="button" class="ph-chip ph-press${P.rvAll.v === k ? ' on' : ''}" data-act="rev-v" data-id="${esc(id)}" data-v="${k}"${n || !k ? '' : ' disabled'}>${esc(label)}${k ? ` · ${fmtNum(n)}` : ''}</button>`;
     const chips = chip('', t('All'), r.n) + chip('runs', t('Plays great'), r.runs) + chip('issues', t('Has problems'), r.issues) + chip('broken', t('Won\'t run'), r.broken);
@@ -990,19 +1032,265 @@
     const body = [a.description ? `<div class="ph-md md">${md(a.description)}</div>` : '', a.credits ? `<h3 class="ph-sh3">${esc(t('Credits'))}</h3><div class="ph-md md">${md(a.credits)}</div>` : ''].join('');
     sheet(`<p class="ph-eyebrow">${esc(t('From the developer'))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body || `<p class="ph-mut">${esc(t('Nothing here yet.'))}</p>`}`);
   }
-  // Its releases, newest first, each with its notes.
+  // Its releases, newest first, each folded to its name until it's opened (the newest starts open),
+  // as the desktop's Updates tab has them. One with an Android app in it can be installed from here:
+  // that's how a player goes back to an older version when a new one broke something.
+  const sameTag = (x, y) => String(x || '').trim().replace(/^v/i, '').toLowerCase() === String(y || '').trim().replace(/^v/i, '').toLowerCase();
+  const wildRe = (pat) => new RegExp('^' + String(pat).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
+  const apkIn = (x, a) => { const pat = (a.assets || {}).android; const re = pat ? wildRe(pat) : null; return (x.assets || []).some((f) => /\.apk$/i.test(f.name || '') && (!re || re.test(f.name))); };
   function relsSheet(id) {
     const a = appOf(id);
     if (!a || !a.repo) return;
     P.rels = id;
     const r = S.rels[a.repo];
     if (!r) loadRels(a.repo).then(() => { if (P.rels === id && P.sheet) relsSheet(id); });
-    const list = r && !r.loading ? (r.list || []).filter((x) => !x.draft).slice(0, 10) : null;
+    const list = r && !r.loading ? (r.list || []).filter((x) => !x.draft).slice(0, 15) : null;
+    const lib = S.library[id], droid = S.os === 'android';
+    const row = (x, n) => {
+      const latest = a.tag ? sameTag(x.tag_name, a.tag) : n === 0;
+      const have = !!lib && !!lib.tag && sameTag(x.tag_name, lib.tag);
+      const tags = [latest ? `<span class="ph-tag acc">${esc(t('Latest version'))}</span>` : '', have ? `<span class="ph-tag">${esc(t('Installed'))}</span>` : '', x.prerelease ? `<span class="ph-tag">${esc(t('Pre-release'))}</span>` : ''].join('');
+      const can = !have && !a.local && (droid ? apkIn(x, a) : true);
+      const pick = can ? `<button type="button" class="ph-btn sec wide ph-press" data-act="rel-pick" data-id="${esc(id)}" data-tag="${esc(x.tag_name)}">${ic('downloads', 's')}${esc(latest ? t('Install this version') : lib ? t('Go back to this version') : t('Install this version'))}</button>` : '';
+      return `<div class="ph-relx${n ? '' : ' open'}"><button type="button" class="ph-relh ph-press" data-act="rel-t" aria-expanded="${n ? 'false' : 'true'}"><span class="ph-col ph-grow"><b dir="auto">${esc(x.name || x.tag_name)}</b><span class="ph-vtags">${tags}</span><small class="ph-mut">${esc([x.name && x.name !== x.tag_name ? x.tag_name : '', date(x.published_at)].filter(Boolean).join(' · '))}</small></span>${ic('chev', 's chv')}</button>
+        <div class="ph-relb">${x.body ? `<div class="ph-md md">${md(x.body)}</div>` : `<p class="ph-mut">${esc(t('No notes for this one.'))}</p>`}${pick}</div></div>`;
+    };
     const body = !list ? `<div class="ph-row" style="gap:12px;padding:26px 0"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading the releases…'))}</span></div>`
       : !list.length ? `<p class="ph-mut">${esc(r.error ? t(r.error) : t('No releases yet.'))}</p>`
-      : list.map((x, n) => `<div class="ph-rel${n ? '' : ' first'}"><div class="ph-row"><b dir="auto">${esc(x.name || x.tag_name)}</b>${x.prerelease ? `<span class="ph-tag">${esc(t('Pre-release'))}</span>` : ''}<span class="ph-grow"></span><small class="ph-mut">${esc(date(x.published_at))}</small></div>${x.body ? `<div class="ph-md md">${md(x.body)}</div>` : `<p class="ph-mut">${esc(t('No notes for this one.'))}</p>`}</div>`).join('');
+      : `<div class="ph-rels">${list.map(row).join('')}</div>`;
     sheet(`<p class="ph-eyebrow">${esc(t('Updates'))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body}`);
   }
+  // A release picked from Updates. Newer than the one installed (or nothing installed): installed
+  // over it. Older: Android won't put an older app over a newer one, so it's uninstalled first.
+  function relPick(id, tag) {
+    const a = appOf(id), lib = S.library[id], r = a && S.rels[a.repo];
+    if (!a || !tag) return;
+    buzz();
+    const list = (r && r.list) || [];
+    const at = (t0) => list.findIndex((x) => sameTag(x.tag_name, t0));
+    const older = !!lib && !!lib.tag && at(tag) > at(lib.tag) && at(lib.tag) >= 0;
+    if (S.os !== 'android' || !older) { closeSheet(); return startInstall(id, undefined, tag).then(refresh); }
+    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('undo')}</span><h2 class="ph-disp">${esc(tf('Go back to {v}?', { v: tag }))}</h2>
+      <p class="ph-mut" style="line-height:1.5;margin:8px 0 18px">${esc(t('Android only puts an older version on after the newer one is uninstalled. The game\'s own data on this phone goes with it, so back up its saves first if it keeps them in the app.'))}</p>
+      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-close="1" data-act="down-go" data-id="${esc(id)}" data-tag="${esc(tag)}">${esc(t('Uninstall, then install'))}</button></div>`);
+  }
+  // Android's uninstall question first; once the player comes back with it gone, the older one installs.
+  async function downGo(id, tag) {
+    P.down = { id, tag, at: Date.now() };
+    try { await invoke('uninstall', { id, deleteFiles: false }); } catch (e) { P.down = null; return fail(e); }
+  }
+  async function downBack() {
+    const d = P.down;
+    if (!d) return;
+    P.down = null;
+    await androidSync();
+    try { await refreshState(); } catch (e) { /* the next look */ }
+    if (S.library[d.id]) { refresh(); return toast(t('It\'s still installed, so nothing changed.')); }
+    toast(tf('Installing {v}…', { v: d.tag }));
+    await startInstall(d.id, undefined, d.tag);
+    refresh();
+  }
+
+
+  // ---------- first-time setup, made for a phone ----------
+  // No language (the phone's own) and no "how will you play" (fingers here, a controller opens Big
+  // Picture): installing games, saves, recomps already on the phone, what's shared, the account.
+  const FTS = ['hello', 'installs', 'saves', 'found', 'share', 'account', 'done'];
+  function ftsOpen() {
+    if (P.fts != null || bp) return;
+    const box = document.createElement('div');
+    box.className = 'ph-fts';
+    el.ui.appendChild(box);
+    el.fts = box;
+    P.fts = 0;
+    P.ftsInfo = { installs: null, files: null, found: null };
+    ftsDraw();
+  }
+  async function ftsLook() {
+    const i = P.ftsInfo;
+    if (!i) return;
+    try { i.installs = await invoke('android_install_allowed', { ask: false }); } catch (e) { i.installs = true; }
+    try { i.files = !!(await invoke('android_files_access')).granted; } catch (e) { i.files = false; }
+  }
+  async function ftsDraw() {
+    const box = el.fts;
+    if (!box || P.fts == null) return;
+    const k = FTS[P.fts], info = P.ftsInfo;
+    if (k === 'installs' || k === 'saves') await ftsLook();
+    if (k === 'found' && info.found == null) {
+      const before = new Set(Object.keys(S.library));
+      info.found = -1;
+      androidSync().then(() => { info.found = Object.keys(S.library).filter((x) => !before.has(x)).length + before.size; if (FTS[P.fts] === 'found') ftsDraw(); });
+    }
+    if (el.fts !== box || FTS[P.fts] !== k) return;
+    const ok = (on, yes, no) => `<p class="ph-ftsok${on ? ' on' : ''}">${ic(on ? 'check' : 'warn', 's')}${esc(on ? yes : no)}</p>`;
+    const nav = (main, mainAct, skip) => `<div class="ph-ftsacts">${main ? `<button type="button" class="ph-btn pri wide ph-press" data-act="${mainAct}">${esc(main)}</button>` : ''}${skip ? `<button type="button" class="ph-btn sec wide ph-press" data-act="fts-next">${esc(skip)}</button>` : ''}</div>`;
+    const swr = (key, title, sub, on) => `<div class="ph-srow"><div class="t"><b>${esc(title)}</b><span>${esc(sub)}</span></div>${sw(key, on)}</div>`;
+    let body = '';
+    if (k === 'hello') body = `<div class="ph-ftsmark">${mark(92)}</div><h1 class="ph-disp">${esc(t('Welcome to RecompLauncher'))}</h1><p>${esc(t('Recompiled games, running natively on your phone. A few things to get ready first. It takes a minute.'))}</p>${nav(t('Get started'), 'fts-next')}`;
+    else if (k === 'installs') body = `<span class="ph-ei">${ic('shield')}</span><h1 class="ph-disp">${esc(t('Let RecompLauncher install games'))}</h1><p>${esc(t('Each game is its own app. Android asks once before RecompLauncher can install them: turn on Allow from this source, then come back here.'))}</p>${ok(info.installs, t('Allowed. Games install with one tap.'), t('Not allowed yet'))}${info.installs ? nav(t('Continue'), 'fts-next') : nav(t('Allow installing games'), 'perm-ask', t('Later'))}`;
+    else if (k === 'saves') body = `<span class="ph-ei">${ic('saves')}</span><h1 class="ph-disp">${esc(t('Back up your saves'))}</h1><p>${esc(t('Some games keep their saves in your phone\'s shared folders. With file access, the launcher copies them after you play, and keeps them with your account when cloud saves are on.'))}</p>${ok(info.files, t('File access is on.'), t('File access is off'))}${info.files ? nav(t('Continue'), 'fts-next') : nav(t('Allow file access'), 'files', t('Later'))}`;
+    else if (k === 'found') body = `<span class="ph-ei">${ic('box')}</span><h1 class="ph-disp">${esc(t('Games already on this phone'))}</h1><p>${esc(t('Recomps you installed some other way show up in your Library by themselves, and get updates like any other.'))}</p>${info.found < 0 ? `<p class="ph-ftsok"><span class="ph-spin s"></span>${esc(t('Looking…'))}</p>` : ok(info.found > 0, tn(info.found, '1 recomp is in your Library.', '{n} recomps are in your Library.'), t('None yet. Install one from the Catalog.'))}${nav(t('Continue'), 'fts-next')}`;
+    else if (k === 'share') body = `<span class="ph-ei">${ic('bug')}</span><h1 class="ph-disp">${esc(t('Help improve RecompLauncher?'))}</h1><p>${esc(t('Both are off unless you turn them on, and you can change this any time in Settings.'))}</p>
+      <div class="ph-panel ph-set">${swr('usage', t('Share usage and diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), !!S.settings.share_usage)}${swr('stats', t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), !!S.settings.share_stats)}</div>${nav(t('Continue'), 'fts-next')}`;
+    else if (k === 'account') {
+      const user = (S.account || {}).signedIn && S.account.user;
+      body = `<span class="ph-ei">${ic('user')}</span><h1 class="ph-disp">${esc(user ? tf('Signed in as {name}', { name: user.username }) : t('Create an account'))}</h1><p>${esc(t('Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.'))}</p>${user ? nav(t('Continue'), 'fts-next') : nav(t('Sign in or create an account'), 'signin', t('Maybe later'))}`;
+    } else body = `<span class="ph-ei">${ic('check')}</span><h1 class="ph-disp">${esc(t('You\'re all set'))}</h1><p>${esc(t('Everything here can be changed in Settings, and first-time setup can run again from there.'))}</p>${nav(t('Start playing'), 'fts-done')}`;
+    const dots = FTS.map((_, n) => `<i class="${n === P.fts ? 'on' : n < P.fts ? 'done' : ''}"></i>`).join('');
+    box.innerHTML = `<div class="ph-ftstop">${P.fts ? `<button type="button" class="ph-ibtn ph-press" data-act="fts-back" aria-label="${esc(t('Back'))}">${ic('back')}</button>` : '<span></span>'}<div class="ph-ftsdots">${dots}</div><span></span></div><div class="ph-ftsbody" data-step="${k}">${body}</div>`;
+  }
+  async function ftsDone() {
+    buzz('ok');
+    await saveSettings({ setup_done: true, data_asked: true }, true);
+    const box = el.fts;
+    P.fts = null;
+    el.fts = null;
+    if (!box) return;
+    box.classList.add('out');
+    setTimeout(() => box.remove(), 420);
+    refresh();
+  }
+  // ---------- Settings' own pages ----------
+  // The launcher's own update: Android installs the downloaded APK over this one.
+  async function selfUpd() {
+    buzz();
+    toast(t('Checking for updates…'));
+    let v = null, bad = false;
+    try { v = await invoke('launcher_update', { force: true }); } catch (e) { bad = true; }
+    if (!v) return toast(bad ? t('Couldn\'t check for updates right now.') : t('You have the newest RecompLauncher.'), bad);
+    sheet(`<p class="ph-eyebrow">${esc(t('Update'))}</p><h2 class="ph-disp">${esc(tf('RecompLauncher {v}', { v: v.version || '' }))}</h2>${v.notes ? `<div class="ph-md md">${md(String(v.notes))}</div>` : ''}
+      <p class="ph-mut" style="margin:12px 0;line-height:1.5">${esc(t('It downloads in your browser. Open the file when it\'s done and Android installs it over this one. Your games and settings stay.'))}</p>
+      <button type="button" class="ph-btn pri wide ph-press" data-close="1" data-act="url" data-url="${esc(v.url || '')}">${ic('downloads', 's')}${esc(t('Download the update'))}</button>`);
+  }
+  // Recomps installed some other way (a download, another app) that the store lists: into the Library.
+  async function findRecomps() {
+    buzz();
+    const before = new Set(Object.keys(S.library));
+    await androidSync();
+    const found = Object.keys(S.library).filter((k) => !before.has(k)).map(appOf).filter(Boolean);
+    if (!found.length) return toast(t('No other recomps found on this phone. Ones the store lists show up here as soon as they\'re installed.'));
+    sheet(`<p class="ph-eyebrow">${esc(t('Bring Your Own Recomps'))}</p><h2 class="ph-disp">${esc(tn(found.length, 'Found 1 recomp', 'Found {n} recomps'))}</h2><p class="ph-mut" style="margin:6px 0 10px">${esc(t('They\'re in your Library now, and get updates like any other.'))}</p>
+      <div class="ph-verlist">${found.map((a) => `<button type="button" class="ph-lmain ph-press ph-verrow" data-close="1" data-open="${esc(a.id)}">${coverBox(a)}<span class="ph-col ph-grow"><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${esc(conName(a))}</span></span>${ic('chev', 's')}</button>`).join('')}</div>`);
+    refresh();
+  }
+  // Your Reviews: every review the account wrote, newest answers first, each opening its game.
+  function myRevsSheet() {
+    const acc = S.account || {};
+    if (!acc.signedIn) return phoneSignInAsk(t('Sign in to your RecompLauncher account to see your reviews.'));
+    const m = S.myReports;
+    if (!m || (!m.list && !m.error)) {
+      if (!m || !m.loading) window.loadMyReports && window.loadMyReports();
+      // Drawn again once they're in (for a little while: a slow answer is shown next time).
+      const from = Date.now();
+      P.myRevs = from;
+      const again = () => { if (P.myRevs !== from || !P.sheet) return; const n = S.myReports; if (n && (n.list || n.error) && !n.loading) return myRevsSheet(); if (Date.now() - from < 15000) setTimeout(again, 500); };
+      setTimeout(again, 500);
+      return sheet(`<p class="ph-eyebrow">${esc(t('Your Reviews'))}</p><div class="ph-row" style="gap:12px;padding:26px 0"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading…'))}</span></div>`);
+    }
+    P.myRevs = 0;
+    const list = m.list || [];
+    const item = (r) => {
+      const a = appOf(r.app), name = (a && a.name) || r.name || r.app;
+      const dev = (r.replies || []).filter((x) => x.dev).map((x) => `<div class="dev"><b>${esc(x.name || t('Developer'))}</b><span class="ph-tag">${esc(t('Developer'))}</span><p dir="auto">${esc(x.text)}</p></div>`).join('');
+      const when = r.when ? ago(Date.parse(r.when) / 1000 || r.when) : '';
+      return `<div class="ph-revi ph-myrev"><button type="button" class="ph-lmain ph-press" ${a ? `data-close="1" data-open="${esc(a.id)}"` : 'disabled'}>${a ? coverBox(a) : ''}<span class="ph-col ph-grow"><b class="ph-gname">${esc(name)}</b><span class="top">${rvPill(r.verdict)}<small>${esc([r.version || '', when].filter(Boolean).join(' · '))}</small></span></span></button>${r.note ? `<p dir="auto">${esc(r.note)}</p>` : ''}${dev}
+        ${S.library[r.app] ? `<div class="ph-row acts"><button type="button" class="ph-btn sec sm ph-press" data-close="1" data-act="rev-say" data-id="${esc(r.app)}">${ic('pen', 's')}${esc(t('Edit'))}</button></div>` : ''}</div>`;
+    };
+    sheet(`<p class="ph-eyebrow">${esc(tn(list.length, '1 review', '{n} reviews'))}</p><h2 class="ph-disp">${esc(t('Your Reviews'))}</h2>
+      ${m.error && !list.length ? `<p class="ph-mut">${esc(t('Your reviews couldn\'t be loaded'))}</p>` : !list.length ? `<p class="ph-mut" style="line-height:1.5">${esc(t('When you review a project, it shows here with any answer from its developer.'))}</p>` : `<div class="ph-revl">${list.map(item).join('')}</div>`}`);
+  }
+  // Report a Problem: what kind, which game (its log goes along), and a few words. Marked as from Android.
+  const REP_KINDS = [['bug', N_('Something broke')], ['install', N_('Won\'t install')], ['idea', N_('An idea')], ['other', N_('Something else')]];
+  function reportSheet(game) {
+    P.rep = { kind: 'bug', game: game && S.library[game] ? game : '' };
+    const r = P.rep;
+    const mine = Object.keys(S.library).map(appOf).filter(Boolean);
+    const chip = (act, k, label, on) => `<button type="button" class="ph-chip ph-press${on ? ' on' : ''}" data-act="${act}" ${act === 'rep-k' ? 'data-k' : 'data-g'}="${esc(k)}">${esc(label)}</button>`;
+    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('bug')}</span><h2 class="ph-disp">${esc(t('Report a Problem'))}</h2><p class="ph-mut" style="line-height:1.5;margin:6px 0 14px">${esc(t('It goes straight to the developer. Pick the game if it\'s about one: its last log and how the launcher started it go along.'))}</p>
+      <div class="ph-chips ph-repk">${REP_KINDS.map(([k, n]) => chip('rep-k', k, t(n), r.kind === k)).join('')}</div>
+      ${mine.length ? `<b class="ph-reph">${esc(t('Which game?'))}</b><div class="ph-chips ph-repk">${chip('rep-g', '', t('Not about a game'), !r.game)}${mine.map((a) => chip('rep-g', a.id, a.name, r.game === a.id)).join('')}</div>` : ''}
+      <b class="ph-reph">${esc(t('Tell us about it'))}</b><textarea class="ph-rvta ph-repta" rows="5" maxlength="1800" placeholder="${esc(t('What you did and what happened'))}"></textarea>
+      <p class="ph-rverr" hidden></p>
+      <div class="ph-row ph-rvacts"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-act="rep-send">${esc(t('Send it'))}</button></div>`);
+  }
+  async function reportSend() {
+    const r = P.rep, ta = el.sheet && $('.ph-repta', el.sheet), go = el.sheet && $('[data-act="rep-send"]', el.sheet), err = el.sheet && $('.ph-rverr', el.sheet);
+    if (!r || !ta || r.busy) return;
+    const text = ta.value.trim();
+    if (text.replace(/\s/g, '').length < (r.kind === 'bug' ? 12 : 3)) { err.textContent = t('Tell us a little more: what you did and what happened.'); err.hidden = false; return ta.focus(); }
+    const u = S.account && S.account.signedIn && S.account.user;
+    r.busy = true;
+    go.disabled = true;
+    go.textContent = t('Sending…');
+    try {
+      await invoke('beta_feedback', { kind: r.kind, area: 'Android', mood: null, message: text, contact: u ? `account: ${u.username}` : null, attach: !!S.settings.share_usage, game: r.game || null });
+      P.rep = null;
+      closeSheet();
+      buzz('ok');
+      toast(t('Sent. Thanks for telling us.'));
+    } catch (e) {
+      r.busy = false;
+      go.disabled = false;
+      go.textContent = t('Send it');
+      err.textContent = t(String(e && e.message ? e.message : e));
+      err.hidden = false;
+    }
+  }
+  // Reset settings, or first-time setup again: asked once.
+  function resetAsk(setup) {
+    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic(setup ? 'spark' : 'undo')}</span><h2 class="ph-disp">${esc(setup ? t('Run first-time setup again?') : t('Reset settings?'))}</h2>
+      <p class="ph-mut" style="line-height:1.5;margin:8px 0 18px">${esc(setup ? t('The launcher starts over in first-time setup. Your games, saves and settings stay as they are.') : t('Every setting goes back to how it started. Your games and saves stay.'))}</p>
+      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-close="1" data-act="reset-go" data-k="${setup ? 'setup' : 'settings'}">${esc(setup ? t('Run it again') : t('Reset settings'))}</button></div>`);
+  }
+  async function resetGo(setup) {
+    try {
+      S.settings = await invoke('reset_settings', { what: setup ? 'setup' : 'settings' });
+    } catch (e) { return fail(e); }
+    if (setup) return location.reload();
+    poolMemo = null;
+    paintTheme();
+    applyLook();
+    fit();
+    buildPager();
+    drawNav();
+    toast(t('Settings are back to how they started.'));
+  }
+  // Android installs games only once the launcher is allowed to: asked before anything downloads,
+  // with Android's page a tap away, and the install carries on by itself once it's allowed.
+  let permWait = null;
+  function permSheet() {
+    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('shield')}</span><h2 class="ph-disp">${esc(t('Allow installing games'))}</h2>
+      <p class="ph-mut" style="line-height:1.5;margin:8px 0 18px">${esc(t('Android asks once before an app can install other apps. Turn on Allow from this source for RecompLauncher, then come back: the install carries on by itself.'))}</p>
+      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Not Now'))}</button><button type="button" class="ph-btn pri ph-press" data-act="perm-ask">${esc(t('Open settings'))}</button></div>`);
+    el.sheet.classList.add('ph-perm');
+  }
+  window.droidInstallGate = async (resume) => {
+    let ok = true;
+    try { ok = await invoke('android_install_allowed', { ask: false }); } catch (e) { return true; }
+    if (ok) return true;
+    permWait = resume;
+    if (P.on && !document.body.classList.contains('tv-on')) permSheet();
+    else { invoke('android_install_allowed', { ask: true }).catch(() => {}); toast(t('Allow RecompLauncher to install apps, then come back. The install carries on by itself.')); }
+    return false;
+  };
+  window.droidInstallOk = () => invoke('android_install_allowed', { ask: false }).catch(() => true);
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) return;
+    if (P.down) downBack();
+    // Back from Android's settings or the browser during first-time setup: the step shows what changed.
+    if (P.fts != null) setTimeout(ftsDraw, 300);
+    if (!permWait) return;
+    let ok = false;
+    try { ok = await invoke('android_install_allowed', { ask: false }); } catch (e) { /* asked again next time */ }
+    if (!ok) return;
+    const go = permWait;
+    permWait = null;
+    if (P.sheet && el.sheet.classList.contains('ph-perm')) closeSheet();
+    toast(t('Thanks. Installing now.'));
+    go();
+  });
+
   // A row on the game's page that opens one of those.
   const pageRow = (icon, title, sub, attr) => `<button type="button" class="ph-panel ph-note ph-press" ${attr}><span class="ib">${ic(icon, 's')}</span><span class="ph-col ph-grow"><b>${esc(title)}</b><small>${esc(sub)}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>`;
   function pageRows(a) {
@@ -1014,13 +1302,39 @@
     ].join('');
   }
   // About the game itself (IGDB or LaunchBox): what it is and the facts, as the desktop has them.
-  function gameAbout(a) {
+  // Your play time on this phone, as the desktop's card has it (without its chart): all of it, this
+  // week, this month, how many sessions and the longest. Only once it's been played.
+  function playBox(a) {
+    const g = S.library[a.id];
+    if (!g || !g.last_played) return '';
+    const { recent, count, longest } = playStats(a.id, g.sessions);
+    const now = Date.now() / 1000, sum = (from) => recent.filter((x) => x[0] >= from).reduce((n, x) => n + x[1], 0);
+    const nums = [
+      [PT_IC.all, t('Played'), g.played_secs >= 60 ? fmtTimeShort(g.played_secs) : t('Under a minute')],
+      [PT_IC.week, t('This week'), fmtTimeShort(sum(now - 7 * 86400))],
+      [PT_IC.month, t('This month'), fmtTimeShort(sum(now - 30 * 86400))],
+      [PT_IC.ses, t('Sessions'), fmtNum(count)],
+      [PT_IC.long, t('Longest'), fmtTimeShort(longest)],
+    ];
+    return `<div class="ph-play" data-key="play:${esc(a.id)}">${nums.map(([icon, k, v]) => `<div><span>${icon}${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>`;
+  }
+  // About the original game, from IGDB as the desktop shows it (the whole summary in Big Picture, its
+  // first part on a phone), or from Wikipedia when the catalog has nothing on it.
+  function gameAbout(a, full) {
     const ab = a.about && (a.about.summary || aboutFacts(a.about).length) ? a.about : null;
     const own = [a.blurb || notesLine(a.description)].filter(Boolean);
-    if (!ab && !own.length) return '';
-    const facts = ab ? aboutFacts(ab).slice(0, 6) : [];
-    const src = ab ? aboutSource(ab) : null;
-    return `<div class="ph-about" data-key="about:${esc(a.id)}" data-f><h2>${esc(t('About'))}</h2>${own.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}${ab && ab.summary ? `<p dir="auto">${esc(String(ab.summary).split(/\n\s*\n/)[0])}</p>` : ''}
+    let wiki = null;
+    if (!ab && !a.local && !a.custom) {
+      if (S.info[a.id] === undefined) loadInfo(a.id).then(soon);
+      wiki = S.info[a.id] && S.info[a.id] !== 'loading' && S.info[a.id].text ? S.info[a.id] : null;
+    }
+    if (!ab && !wiki && !own.length) return '';
+    const facts = ab ? aboutFacts(ab).slice(0, full ? 9 : 6) : [];
+    const src = ab ? aboutSource(ab) : wiki ? { label: t('From Wikipedia, under CC BY-SA.') } : null;
+    const paras = (txt) => { const all = String(txt).split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); return full ? all : all.slice(0, 1); };
+    const said = ab && ab.summary ? paras(ab.summary) : wiki ? paras(wiki.text) : [];
+    const score = ab && ab.rating !== null && ab.rating !== '' && Number.isFinite(Number(ab.rating)) ? Math.round(Number(ab.rating)) : null;
+    return `<div class="ph-about" data-key="about:${esc(a.id)}" data-f><h2>${esc(t('About'))}${score !== null ? `<span class="ph-score" title="${esc(t('Critic and player score'))}"><b>${score}</b>${esc(t('Critic and player score'))}</span>` : ''}</h2>${own.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}${said.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}
       ${facts.length ? `<div class="ph-panel ph-facts">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`).join('')}</div>` : ''}${src ? `<p class="ph-src">${esc(src.label)}</p>` : ''}
       ${isAI(a) ? `<p class="ph-mut ph-ainote"><span class="ph-tag">${esc(t('AI-assisted'))}</span> ${esc(a.ai.by === 'developer' ? tf('Its developer says AI tools helped with its {uses}.', { uses: aiUses(a) }) : tf('Its project on GitHub shows AI tools helped with its {uses}.', { uses: aiUses(a) }))}</p>` : ''}</div>`;
   }
@@ -1031,9 +1345,27 @@
     if (!node) return;
     if (node.childNodes.length) morph(node, html); else node.innerHTML = html;
   }
+  // Tabs off screen aren't drawn again on every change: they're marked, and drawn when they're about to
+  // show (the tab's neighbours too, so a swipe never uncovers an old page), or when the phone is idle.
+  const stale = new Set();
+  let idleDraw = 0;
+  const whenIdle = window.requestIdleCallback ? (f) => requestIdleCallback(f, { timeout: 900 }) : (f) => setTimeout(f, 200);
+  function drawLater() {
+    if (idleDraw || !stale.size) return;
+    idleDraw = whenIdle(() => {
+      idleDraw = 0;
+      if (!P.on || bp) return;
+      const near = [P.tab, ...neighbours()].find((k) => stale.has(k)) || [...stale][0];
+      if (near) drawView(near);
+      drawLater();
+    });
+  }
+  const neighbours = () => { const t = pref.tabs(), i = t.indexOf(P.tab); return [t[i - 1], t[i + 1]].filter(Boolean); };
+  function fresh(k) { if (stale.has(k)) drawView(k); }
   function drawView(k) {
     const v = viewEl(k);
     if (!v) return;
+    stale.delete(k);
     paint(v, (VIEW[k] || viewHome)());
     // A tall screen shows the end of All games without a scroll: the next rows come in right away.
     if (k === 'catalog') requestAnimationFrame(() => moreGames(v));
@@ -1042,7 +1374,9 @@
     const tabs = pref.tabs();
     el.pager.innerHTML = tabs.map((k) => `<section class="ph-view" id="ph-v-${k}"></section>`).join('');
     if (!tabs.includes(P.tab)) P.tab = 'home';
-    tabs.forEach(drawView);
+    for (const k of tabs) stale.add(k);
+    drawView(P.tab);
+    drawLater();
     setPager(false);
   }
   function placeInd(at) {
@@ -1051,6 +1385,9 @@
     ind.style.transform = P.land ? `translateY(${at * b.offsetHeight}px)` : `translateX(${at * b.offsetWidth}px)`;
   }
   function setPager(anim) {
+    // Tabs further than one swipe away skip being laid out and painted until they come near.
+    const near = new Set([P.tab, ...neighbours()]);
+    for (const v of el.pager.children) v.classList.toggle('far', !near.has(v.id.slice(5)));
     el.pager.classList.toggle('anim', !!anim);
     el.pager.style.transform = `translateX(${-idx() * 100}%)`;
     placeInd(idx());
@@ -1070,7 +1407,9 @@
     }
     const changed = P.tab !== k;
     P.tab = k;
+    fresh(k);
     setPager(anim);
+    drawLater();
     for (const b of el.nav.querySelectorAll('button')) b.classList.toggle('on', b.dataset.tab === k);
     if (!changed) return;
     const v = viewEl(k);
@@ -1091,7 +1430,10 @@
     if (!P.on) return;
     // Big Picture mode covers the phone layout: only it is drawn again, the rest once it closes.
     if (bp) return bpDraw();
-    pref.tabs().forEach(drawView);
+    // Only what's on screen now: the tab showing (none while a game's page covers the tabs).
+    for (const k of pref.tabs()) stale.add(k);
+    if (!P.stack.length) drawView(P.tab);
+    drawLater();
     const s = P.subs[P.subs.length - 1];
     if (s) { const y = el.sp.scrollTop; paint(el.sp, subHTML(s)); el.sp.scrollTop = y; consFlow(); }
     for (const box of root.querySelectorAll('[data-cta]')) { const a = appOf(box.dataset.cta); if (a) paint(box, ctaHTML(a)); }
@@ -1120,7 +1462,7 @@
     // covers keep their size against the screen instead of turning into a sea of small things.
     const short = Math.min(innerWidth, innerHeight);
     const base = short <= 433 ? short / 433 : short < 560 ? 1 : Math.min(1.7, short / 560);
-    P.z = base * SIZES[pref.size()];
+    P.z = base * SIZES[bp ? pref.bpSize() : pref.size()];
     P.land = innerWidth > innerHeight;
     const px = (v) => (v / P.z).toFixed(2) + 'px';
     // Big Picture mode hides the system's bars, and Android keeps the window clear of the camera
@@ -1152,6 +1494,10 @@
     root.classList.toggle('ph-lite', lite());
     root.classList.toggle('ph-still', still());
     root.classList.toggle('ph-hc', pref.contrast());
+    root.classList.toggle('ph-bold', pref.bold());
+    root.classList.toggle('ph-solid', pref.solid());
+    // Covers Only: the covers without their names under them (Settings, as on the desktop).
+    root.classList.toggle('ph-bare', !!ui().hide_names);
     if (root.dataset.theme === theme) return;
     root.dataset.theme = theme;
     if (S.os === 'android') invoke('android_edges', { phone: true, light: theme === 'light' }).catch(() => {});
@@ -1196,6 +1542,8 @@
   function endBoot() {
     const b = el.boot, v = viewEl(P.tab);
     P.booted = true;
+    // The first time on this phone (or Run first-time setup again): a few steps before Home.
+    if (S.os === 'android' && !S.settings.setup_done && !bp) setTimeout(() => ftsOpen(), 450);
     b.classList.add('out');
     if (v) { v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter'); }
     setTimeout(() => { b.hidden = true; b.innerHTML = ''; }, 700);
@@ -1233,6 +1581,28 @@
       case 'discord': return invoke('open_url', { url: discordUrl() }).catch(fail);
       case 'site': return invoke('open_url', { url: SITE }).catch(fail);
       case 'lang': return langSheet();
+      case 'bpsize-roll': { const k = SIZE_KEYS[(SIZE_KEYS.indexOf(pref.bpSize()) + 1) % SIZE_KEYS.length]; buzz(); await save('phone_bp_size', k); fit(); return bp ? bpDraw() : null; }
+      case 'bpstyle-roll': return bpStyleSwap();
+      case 'fts-next': buzz(); P.fts = Math.min(FTS.length - 1, P.fts + 1); return ftsDraw();
+      case 'fts-back': buzz(); P.fts = Math.max(0, P.fts - 1); return ftsDraw();
+      case 'fts-done': return ftsDone();
+      case 'self-upd': return selfUpd();
+      case 'find-recomps': return findRecomps();
+      case 'my-revs': return myRevsSheet();
+      case 'report': return reportSheet(id);
+      case 'rep-k': case 'rep-g':
+        if (!P.rep) return;
+        if (b.dataset.act === 'rep-k') P.rep.kind = b.dataset.k; else P.rep.game = b.dataset.g;
+        b.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        return buzz();
+      case 'rep-send': return reportSend();
+      case 'reset-set': return resetAsk(false);
+      case 'reset-setup': return resetAsk(true);
+      case 'reset-go': return resetGo(b.dataset.k === 'setup');
+      case 'perm-ask': buzz(); return invoke('android_install_allowed', { ask: true }).catch(fail);
+      case 'rel-t': { const box = b.closest('.ph-relx'); if (box) { box.classList.toggle('open'); b.setAttribute('aria-expanded', String(box.classList.contains('open'))); } return buzz(); }
+      case 'rel-pick': return relPick(id, b.dataset.tag);
+      case 'down-go': return downGo(id, b.dataset.tag);
       case 'url': return invoke('open_url', { url: b.dataset.url }).catch(fail);
       case 'notes': return notesSheet(id);
       case 'vers': return versSheet(id);
@@ -1315,6 +1685,11 @@
       if (bp) bpDraw();
       return drawView('settings');
     }
+    if (key === 'bold' || key === 'solid') { await save(key === 'bold' ? 'phone_bold' : 'phone_solid', on); applyLook(); if (bp) bpDraw(); return; }
+    // The desktop's own settings, so a PC and this phone agree on them.
+    if (key === 'bare') { await saveUi({ hide_names: on }, true); applyLook(); return; }
+    if (key === 'cvl' || key === 'gnames' || key === 'gmedia') { await saveUi({ [{ cvl: 'cover_labels', gnames: 'game_names', gmedia: 'game_media' }[key]]: on }, true); return refresh(); }
+    if (key === 'usage' || key === 'stats') return saveSettings({ [key === 'usage' ? 'share_usage' : 'share_stats']: on, data_asked: true }, true);
     if (key === 'hideai') { await saveSettings({ hide_ai: on }, true); return refresh(); }
     if (key === 'revask') return window.setReviewAsk && window.setReviewAsk(on);
     if (key === 'revnever') return window.setReviewAsk && window.setReviewAsk(!on);
@@ -1337,7 +1712,9 @@
       paintTheme();
       return applyLook();
     }
-    if (key === 'size') { await save('phone_size', ['s', 'm', 'l'][i]); fit(); }
+    if (key === 'size') { await save('phone_size', SIZE_KEYS[i]); fit(); }
+    if (key === 'bpsize') { await save('phone_bp_size', SIZE_KEYS[i]); fit(); }
+    if (key === 'bpstyle') { await save('bp_style', i ? 'full' : 'phone'); drawView('settings'); }
   }
 
   let dragged = false, pressed = false, hold = 0;
@@ -1439,7 +1816,7 @@
   // A game's big picture starts loading as the finger lands on its cover, so its page opens with it.
   const warmed = new Set();
   function warm(id) {
-    const a = appOf(id), u = a && heroUrl(a);
+    const a = appOf(id), u = a && pageArt(a);
     if (!u || warmed.has(u) || SEEN.has(u)) return;
     warmed.add(u);
     const i = new Image();
@@ -1473,7 +1850,7 @@
         const to = P.libi - Math.sign(dx);
         // Inside the Library, a swipe moves between its panes first, then on to the next tab.
         if (G.inLib && to >= 0 && to <= 2) { G.ax = 'lib'; $('#ph-lp', root).classList.remove('anim'); }
-        else { G.ax = 'pager'; el.pager.classList.remove('anim'); el.nav.classList.add('drag'); }
+        else { G.ax = 'pager'; neighbours().forEach(fresh); el.pager.classList.remove('anim'); el.nav.classList.add('drag'); }
       } else G.ax = 'none';
       dragged = G.ax !== 'none';
     }
@@ -1550,6 +1927,41 @@
   addEventListener('pointerup', endSwipe);
   addEventListener('pointercancel', endSwipe);
 
+  // Rubber band: a list pulled past its top or end gives a little and springs back, instead of
+  // stopping dead. Touch events are only listened to (never held up), so scrolling stays the phone's own.
+  const BAND = '.ph-view,.ph-gp,.ph-sp,.ph-so,.ph-bpscroll';
+  let R = null;
+  root.addEventListener('touchstart', (e) => {
+    const n = e.touches.length === 1 && e.target.closest && e.target.closest(BAND);
+    R = n && !still() && !e.target.closest('.ph-sheet,input,textarea') ? { n, y: e.touches[0].clientY, x: e.touches[0].clientX, edge: null, d: 0 } : null;
+  }, { passive: true, capture: true });
+  root.addEventListener('touchmove', (e) => {
+    if (!R || dragged) return;
+    const { n } = R, y = e.touches[0].clientY;
+    if (R.edge === null) {
+      if (Math.abs(e.touches[0].clientX - R.x) > Math.abs(y - R.y) + 4) { R = null; return; }
+      const top = n.scrollTop <= 0, end = n.scrollTop + n.clientHeight >= n.scrollHeight - 1;
+      if (top && y > R.y + 2) R.edge = 1;
+      else if (end && y < R.y - 2) R.edge = -1;
+      else { if (!top && !end) R.y = y; return; }
+      R.y = y;
+    }
+    const pull = Math.max(0, (y - R.y) * R.edge) / P.z, h = n.clientHeight || 600;
+    // Harder to pull the further it goes, never more than a tenth of the screen.
+    R.d = R.edge * (1 - 1 / (pull * 0.5 / h + 1)) * h * 0.22;
+    n.style.translate = `0 ${R.d.toFixed(1)}px`;
+  }, { passive: true, capture: true });
+  const unband = () => {
+    if (!R) return;
+    const { n, d } = R;
+    R = null;
+    if (!d) return;
+    n.style.translate = '';
+    if (n.animate) n.animate([{ translate: `0 ${d.toFixed(1)}px` }, { translate: '0 0' }], { duration: 520, easing: 'cubic-bezier(.3,1.35,.5,1)' });
+  };
+  root.addEventListener('touchend', unband, { passive: true, capture: true });
+  root.addEventListener('touchcancel', unband, { passive: true, capture: true });
+
   // Android's Back: the nearest thing closes, then Home, then out of the app (false).
   function back() {
     if (P.sheet) { closeSheet(); return true; }
@@ -1598,12 +2010,13 @@
     const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '') + (stateOf(a) === 'update' ? `<span class="ph-tag acc">${esc(t('Update ready'))}</span>` : '');
     const title = a.logo ? img(media(a.logo), 'logo', 'data-logo') + `<h1 class="ph-disp" dir="auto" hidden>${esc(a.name)}</h1>` : `<h1 class="ph-disp" dir="auto">${esc(a.name)}</h1>`;
     const by = devName(a) ? tf('by {who}', { who: devName(a) }) : '';
-    const line = [a.logo ? a.name : '', lib ? playedFor(lib) : by, lib ? '' : sizeOf(a)].filter(Boolean).join(' · ');
+    // On its page: what it's based on and who made it, with the play time in its own boxes below.
+    const line = full ? [a.logo ? a.name : '', a.game ? tf('Based on {game}', { game: a.game }) : '', by].filter(Boolean).join(' · ')
+      : [a.logo ? a.name : '', lib ? playedFor(lib) : by, lib ? '' : sizeOf(a)].filter(Boolean).join(' · ');
     // The score players gave it, in a word: on Home and on its page.
     const c = runTally((S.runCounts || {})[a.id]);
     const score = c.n ? `<span class="ph-bpscore ${rvTone(c.pct('runs'))}">${esc(tf('{pct}% say it plays great', { pct: c.pct('runs') }))} · ${esc(tn(c.n, '1 review', '{n} reviews'))}</span>` : '';
-    const based = full && a.game ? `<p class="line" dir="auto">${esc(tf('Based on {game}', { game: a.game }))}${lib && by ? ' · ' + esc(by) : ''}</p>` : '';
-    return `<div class="ph-bpinfo${full ? ' full' : ''}" data-key="i:${id}"><div class="tags">${tags}</div>${title}<p class="line" dir="auto">${esc(line)}</p>${based}${score}
+    return `<div class="ph-bpinfo${full ? ' full' : ''}" data-key="i:${id}"><div class="tags">${tags}</div>${title}${line ? `<p class="line" dir="auto">${esc(line)}</p>` : ''}${score}${full ? playBox(a) : ''}
       <div class="ph-row ph-bpacts"><div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>${full ? '' : `<button type="button" class="ph-btn sec ph-press" data-bp="game" data-id="${id}">${esc(t('Details'))}</button>`}</div>
       ${a.soon && full ? `<p class="ph-bpab" dir="auto">${esc(soonNoteText(a))}</p>` : ''}</div>`;
   }
@@ -1715,7 +2128,7 @@
     const right = `${vers}${pageRows(a)}${bpAchGame(a)}${tags.length ? `<div class="ph-chips ph-bpchips" data-key="tags">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}`;
     return `<div class="ph-bpscroll game" data-key="gp:${id}">
       <section class="ph-bpgtop" data-key="gtop">${bpInfo(a, true)}${bpSide(a)}</section>
-      <div class="ph-bpgbody" data-key="gbody"><div class="ph-col" data-key="gl">${gameAbout(a)}<div class="ph-revbox" data-rev="${id}">${revSection(a)}</div></div><div class="ph-col" data-key="gr">${right}</div></div>
+      <div class="ph-bpgbody" data-key="gbody"><div class="ph-col" data-key="gl">${gameAbout(a, true)}<div class="ph-revbox" data-rev="${id}">${revSection(a)}</div></div><div class="ph-col" data-key="gr">${right}</div></div>
       ${more.length ? `<section class="ph-bpsec" data-key="row:like"><h3>${esc(t('More like this'))}</h3><div class="ph-bpline" data-key="line:like">${more.map((x) => bpCover(x, 'like:' + x.id, listLine(x))).join('')}</div></section>` : ''}
     </div>`;
   }
@@ -1751,24 +2164,44 @@
       ${head('acc', t('Account'))}
       ${user ? go('user', tf('Signed in as {name}', { name: user.username }), t('Your saved games and reviews follow you.'), 'data-act="account-site" data-key="s-acc"') : go('user', t('Sign in'), t('Keep your saved games with your account, and write reviews.'), 'data-act="signin" data-key="s-acc"')}
       ${head('bp', t('Big Picture mode'))}
+      ${go('tv', t('Big Picture style'), t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'), 'data-act="bpstyle-roll" data-key="s-style"', pref.bpStyle() === 'full' ? t('Full') : t('Phone'))}
+      ${go('text', t('Big Picture size'), t('Bigger or smaller text, buttons and covers in Big Picture'), 'data-act="bpsize-roll" data-key="s-size"', SIZE_LABELS[SIZE_KEYS.indexOf(pref.bpSize())])}
       ${row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), 'bpstart', !!S.settings.start_in_tv)}
       ${row(t('Open with a controller'), t('Switches when you press a button on one'), 'padtv', pref.padTv())}
       ${go('pad', t('Button Icons'), t('Which controller\'s buttons are shown. Automatic follows the one you use.'), 'data-bp="glyphs" data-key="s-gl"', t(g[1]))}
       ${row(t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), 'padstick', S.settings.pad_stick !== false)}
       ${row(t('Vibrate on taps'), '', 'haptics', pref.haptics())}
+      ${head('covers', t('Covers and names'))}
+      ${row(t('Covers Only'), t('Hide the names under game covers.'), 'bare', !!ui().hide_names)}
+      ${row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), 'cvl', !!ui().cover_labels)}
+      ${row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), 'gnames', !!ui().game_names)}
+      ${row(t('Show Game Media'), t('Every version of a game shows the same cover, background and logo: the recommended version\'s.'), 'gmedia', !!ui().game_media)}
       ${head('cat', t('Catalog and updates'))}
       ${row(t('Hide AI-assisted Recomps'), t('They won\'t show in the Catalog'), 'hideai', !!S.settings.hide_ai)}
       ${go('refresh', t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now'), 'data-act="refresh-cat" data-key="s-ref"')}
       ${go('downloads', t('Check for Game Updates'), ups ? tn(ups, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd" data-key="s-upd"')}
+      ${go('phone', t('Check for Launcher Updates'), tf('You have {v}', { v: S.version || '' }), 'data-act="self-upd" data-key="s-self"')}
+      ${go('box', t('Bring Your Own Recomps'), t('Finds recomps already installed on this phone and adds them to your Library'), 'data-act="find-recomps" data-key="s-find"')}
+      ${head('rev', t('Reviews'))}
       ${row(t('Ask After Playing'), t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), 'revask', window.reviewAskOn ? window.reviewAskOn() : true)}
+      ${go('star', t('Your Reviews'), t('Every review you wrote, with any answer from its developer'), 'data-act="my-revs" data-key="s-myrev"')}
       ${head('ease', t('Accessibility'))}
-      ${row(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
-      ${row(t('Reduce motion'), t('Pages change without sliding or zooming'), 'still', pref.still() || pref.lite(), pref.lite())}
+      ${row(t('Bold text'), t('Heavier letters everywhere, easier to read'), 'bold', pref.bold())}
       ${row(t('High contrast'), t('Stronger text and edges'), 'contrast', pref.contrast())}
+      ${row(t('Reduce transparency'), t('Solid menus and buttons instead of see-through ones'), 'solid', pref.solid())}
+      ${row(t('Reduce motion'), t('Pages change without sliding or zooming'), 'still', pref.still() || pref.lite(), pref.lite())}
+      ${row(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
+      ${head('help', t('Help and privacy'))}
+      ${go('bug', t('Report a Problem'), t('Something broke, an idea, or what you think so far. It goes straight to the developer.'), 'data-act="report" data-key="s-rep"')}
+      ${row(t('Share usage and diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), 'usage', !!S.settings.share_usage)}
+      ${row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), 'stats', !!S.settings.share_stats)}
+      ${head('over', t('Start over'))}
+      ${go('undo', t('Reset settings'), t('Every setting goes back to how it started. Your games and saves stay.'), 'data-act="reset-set" data-key="s-reset"')}
+      ${go('spark', t('Run first-time setup again'), t('Nothing is deleted.'), 'data-act="reset-setup" data-key="s-setup"')}
       ${head('about', t('About'))}
-      ${go('globe', t('Language'), '', 'data-act="lang" data-key="s-lang"', lang)}
-      ${go('chat', 'Discord', t('Help, news and other players'), 'data-act="discord" data-key="s-dc"')}
-      ${go('home', 'recomplauncher.com', '', 'data-act="site" data-key="s-site"')}
+      ${go('lang', t('Language'), '', 'data-act="lang" data-key="s-lang"', lang)}
+      ${go('discord', 'Discord', t('Help, news and other players'), 'data-act="discord" data-key="s-dc"')}
+      ${go('globe', 'recomplauncher.com', '', 'data-act="site" data-key="s-site"')}
       <div class="ph-bprow set" data-f data-key="s-ver"><span class="ph-col ph-grow"><span>${esc(tf('RecompLauncher {v}', { v: S.version || '' }))}</span><small>${esc(engine())}</small></span></div>
       <button type="button" class="ph-bprow ph-press" data-bp="exit" data-key="exitrow">${ic('phone', 's')}<span>${esc(t('Leave Big Picture mode'))}</span></button></div></div>`;
   }
@@ -1791,7 +2224,7 @@
   }
   // The focused game's art fades in over the last one.
   function bpBg(a) {
-    const box = el.bpbg, u = a ? heroUrl(a) : '';
+    const box = el.bpbg, u = a ? pageArt(a) : '';
     if (!box || box.dataset.u === u) return;
     box.dataset.u = u;
     if (!u) return;
@@ -2076,6 +2509,21 @@
     root.classList.remove('ph-bpon');
     if (still() || !box.animate) return box.remove();
     box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease-out', fill: 'forwards' }).onfinish = () => box.remove();
+  }
+  // Big Picture style changed from here: Phone stays; Full (the big-screen one, tv.js) comes up over
+  // this one, which then goes without turning the phone back first.
+  async function bpStyleSwap() {
+    const full = pref.bpStyle() !== 'full';
+    buzz();
+    await save('bp_style', full ? 'full' : 'phone');
+    if (!bp || !full) return bp ? bpDraw() : drawView('settings');
+    const box = el.bp;
+    bp.busy = 'out';
+    await toTV();
+    bp = null;
+    el.bp = el.bpbg = el.bpin = null;
+    if (box) box.remove();
+    root.classList.remove('ph-bpon');
   }
   // The last controller gone: back to the phone layout, if a controller is what opened it.
   function bpPadGone() {

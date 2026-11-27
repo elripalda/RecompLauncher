@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# The launcher's own Android code (its plugins and their arguments) is called by name from Rust and
+# Tauri: kept whole when the release build shrinks the rest.
+-keep class com.recomplauncher.app.** { *; }

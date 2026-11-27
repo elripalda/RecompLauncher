@@ -7533,6 +7533,9 @@ async function startInstall(id, dir, tag, anyway) {
       if (v !== 'go') return;
     }
   }
+  // Android: the launcher must be allowed to install apps before anything downloads. Android's page
+  // for it is offered, and the install carries on by itself once the player comes back allowed.
+  if (S.os === 'android' && window.droidInstallGate && !(await window.droidInstallGate(() => startInstall(id, dir, tag, true)))) return;
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
   dlArgs(id, { id, dir: dir || null, tag: tag || null });
@@ -8341,7 +8344,9 @@ function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() ||
 // controller built in get the big-screen one, as on a PC, and a handheld starts in it.
 const droidHandheld = () => !!(S.droidDev && S.droidDev.pad);
 function droidPhone() {
-  const d = S.droidDev || {};
+  const d = S.droidDev || {}, style = ((S.settings || {}).ui || {}).bp_style;
+  // The player's pick (Settings, Big Picture style): Phone or Full, on any touch screen.
+  if (style === 'phone' || style === 'full') return style === 'phone';
   if (d.pad) return false;
   return (Number(d.sw) || Math.min(screen.width, screen.height)) < 600;
 }
@@ -10834,11 +10839,14 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // Android opens Big Picture mode or the phone layout straight away, without first-time setup
   // (folders, the PC's own options), and fills in as the list comes.
   const droid = loaded && S.os === 'android';
-  if (droid && !S.settings.setup_done) await saveSettings({ setup_done: true, asked_location: true }, true);
+  if (droid && !S.settings.asked_location) await saveSettings({ asked_location: true }, true);
   if (droid) {
     // Big Picture (tv.js) and the phone layout (phone.js) load after this file: both are in once the page is.
     if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
     S.droidDev = await invoke('android_device').catch(() => null);
+    // The phone layout has its own short first-time setup (phone.js); Big Picture on a TV or with a
+    // controller starts straight away.
+    if (!S.settings.setup_done && startsInTV()) await saveSettings({ setup_done: true }, true);
     const open = startsInTV() ? window.startTV : window.startPhone;
     if (open) open();
   }
@@ -10880,7 +10888,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   upd.finally(() => loadNews());
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
-  if (!S.settings.setup_done && window.firstRun) window.firstRun();
+  if (!S.settings.setup_done && window.firstRun && !droid) window.firstRun();
   else if (window.startTV && startsInTV()) window.startTV();
   else if (!droid) setTimeout(askData, 800);
   // Signed in before cloud saves were asked about once for every game: asked now (account.js; the

@@ -48,7 +48,7 @@ test('the phone\'s Big Picture has every section of the big-screen one', () => {
 
 test('a game\'s page in Big Picture has reviews, what it is, its README, notes, updates and more like it', () => {
   const gp = slice(phone, '  function bpGameHTML(a)', '  function bpMenuHTML(');
-  for (const f of ['revSection(a)', 'gameAbout(a)', 'pageRows(a)', 'bpAchGame(a)', 'moreLike(a']) assert.ok(gp.includes(f), f);
+  for (const f of ['revSection(a)', 'gameAbout(a, true)', 'pageRows(a)', 'bpAchGame(a)', 'moreLike(a']) assert.ok(gp.includes(f), f);
   const rows = slice(phone, '  function pageRows(a)', '  // About the game itself');
   for (const f of ['data-readme', 'data-act="notes"', 'data-act="rels"']) assert.ok(rows.includes(f), f);
   // The phone layout's own game page has them too.
@@ -88,7 +88,7 @@ test('Settings: Accessibility between Storage and About, Optimization mode, Refr
 });
 
 test('each game shows once, as on the desktop, and its page lists its other versions', () => {
-  assert.match(phone, /poolMemo = Object\.assign\(k, \{ list: oneEach\(visible\(\)\.filter\(\(a\) => forOS\(a\) && !a\.soon\)\) \}\);/);
+  assert.match(phone, /poolMemo = Object\.assign\(k, \{ list: oneEach\(visible\(\)\.filter\(\(a\) => forOS\(a\) && !a\.soon\)\)\.map\(\(a\) => byId\(a\.id\) \|\| a\) \}\);/);
   assert.match(phone, /\$\{verPillPh\(a\)\}/);
   assert.match(phone, /case 'vers': return versSheet\(id\);/);
   assert.match(slice(phone, '  function bpGameHTML(a)', '  function bpMenuHTML('), /data-act="vers"/);

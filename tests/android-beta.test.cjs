@@ -25,7 +25,10 @@ test('a phone opens its own Big Picture mode; a tablet, a handheld and Android T
   // Every way in goes through enter(): Settings, the start-up choice, a controller, F11.
   assert.match(tv, /async function enter\(\) \{\n    if \(phoneBp\(\)\) return phoneBp\(\)\.enter\(padHere\(\)\);/);
   // The launcher asks Android what it runs on before it picks a layout.
-  assert.match(app, /S\.droidDev = await invoke\('android_device'\)\.catch\(\(\) => null\);\n    const open = startsInTV\(\)/);
+  assert.match(app, /S\.droidDev = await invoke\('android_device'\)\.catch\(\(\) => null\);\n[^]{0,400}?\n    const open = startsInTV\(\)/);
+  // Settings, Big Picture style: the player's pick wins over what the device is.
+  assert.deepEqual(vm.runInNewContext(`${fn}; ${line}; phoneBp()`, { S: { droidDev: { sw: 800 }, settings: { ui: { bp_style: 'phone' } } }, screen: { width: 800, height: 1280 }, android: () => true, touchHere: () => true, window: { phoneBp: { name: 'phone' } } }), { name: 'phone' });
+  assert.equal(vm.runInNewContext(`${fn}; ${line}; phoneBp()`, { S: { droidDev: { sw: 393 }, settings: { ui: { bp_style: 'full' } } }, screen: { width: 393, height: 873 }, android: () => true, touchHere: () => true, window: { phoneBp: { name: 'phone' } } }), null);
 });
 
 test('the phone\'s Big Picture mode answers the controller, Android\'s Back and the last controller leaving', () => {

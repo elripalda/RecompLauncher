@@ -66,16 +66,27 @@ jobs:
       - name: Use Google's copy of Maven Central
         run: install -D .github/scripts/maven-mirror.gradle ~/.gradle/init.d/maven-mirror.gradle
 
+      # The same debug key every run (it's only for test builds), so a new APK installs over the
+      # last one and keeps the player's games and settings.
+      - name: Keep the test signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-test-signing-key-v1
+
+      # An optimized build, one APK per kind of chip: phones get the arm64 one (a debug build for
+      # both kinds was about 100 MB); the x86_64 one is only for the emulator check below.
       - name: Build the APK
         run: |
           export NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           echo "NDK: $NDK_HOME"
-          npx tauri android build --debug --apk --target aarch64 --target x86_64
+          npx tauri android build --apk --split-per-abi --target aarch64 --target x86_64
+          find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -exec ls -l {} \;
 
       - uses: actions/upload-artifact@v5
         with:
           name: recomplauncher-android-test
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*arm64*.apk
           retention-days: 7
           if-no-files-found: error
 

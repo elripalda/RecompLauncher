@@ -155,8 +155,12 @@ To build it yourself you need Android Studio (its SDK and NDK), Java 17 and the 
 ```
 rustup target add aarch64-linux-android
 export ANDROID_HOME=<your Android SDK>   NDK_HOME=$ANDROID_HOME/ndk/<version>
-npx tauri android build --debug --apk --target aarch64
+npx tauri android build --apk --split-per-abi --target aarch64
 ```
+
+The release build is optimized and stripped (about a third of the old debug build's size). Test
+builds sign it with the machine's debug key (`build.gradle.kts`); the workflow keeps that key
+between runs, so a new test APK installs over the last one.
 
 On Android there's no desktop view. There are two layouts instead:
 
@@ -170,8 +174,10 @@ On Android there's no desktop view. There are two layouts instead:
   to Home, and from Home puts the launcher in the background.
   The design is drawn for a phone about 433 points wide. A narrower phone scales it down; a tablet
   (or anything whose short side is over 560) draws it bigger in proportion, up to 1.7 times, so
-  words, buttons and covers keep their size against the screen. Settings, Display size (small,
-  medium or large) is a step either side. Android tells the page
+  words, buttons and covers keep their size against the screen. Settings, Display size (XS to XL,
+  `phone_size`) scales it from there, and Big Picture size (`phone_bp_size`) does the same for the
+  phone's Big Picture mode. The screen is drawn with CSS `zoom`, not a scaled picture of it, so text
+  and edges stay sharp (`rin()` reads boxes in the design's own pixels). Android tells the page
   how tall the status bar and gesture line are (`android_insets`, and again whenever they change),
   the page draws behind them, and nothing readable sits under the clock or the camera. The bars'
   icons follow the theme (`android_edges`), and taps can buzz (`android_haptic`, Settings, Vibrate
@@ -179,10 +185,33 @@ On Android there's no desktop view. There are two layouts instead:
   `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`, and the Accessibility switches below).
   Catalog's All games comes in 30 at a time as the page scrolls, and Trending is the week's top 10
   (filled from the most played when the chart is short).
-  Settings, in the desktop's order: Account, Look, Big Picture, Catalog and updates (Hide
-  AI-assisted Recomps, Refresh Catalog, Check for Game Updates; the Android launcher has no update
-  of its own yet), Storage, Reviews (Ask After Playing), Accessibility, About.
-  Accessibility: **Optimization mode** (`phone_lite`: no frosted glass, glows, shadows,
+  Only the tab on screen is redrawn when something changes; the others are marked stale and drawn
+  when the browser is idle or a swipe starts towards them (`fresh`, `drawLater`). Tabs that aren't
+  on screen or next to it, and the tabs under an open game page, are left out of layout
+  (`content-visibility`), as are a game page's lower parts until they come near. Wide art loads at
+  about the size it's shown (`heroUrl(a, w)`, the site's 960 and 640 copies), and a blurred cover
+  standing in for it at 160. Lists pulled past their top or end give a little and spring back
+  (touch events only listened to, never held, so scrolling stays native).
+  Settings: Account, Appearance, Covers and names (Covers Only `hide_names`, Console Labels on
+  Covers `cover_labels`, Show Game Names `game_names`, Show Game Media `game_media`: the desktop's own
+  settings), Menu bar, Big Picture (style, size), Catalog and updates (Hide AI-assisted Recomps,
+  Refresh Catalog, Check for Game Updates, Check for Launcher Updates, Bring Your Own Recomps),
+  Reviews (Ask After Playing, Your Reviews), Storage, Accessibility, Help and privacy (Report a
+  Problem, the two sharing switches), Start over (Reset settings, Run first-time setup again), About.
+  Big Picture's Settings has the same rows. Check for Launcher Updates reads `version.json`'s
+  `android` entry (`url`, `version`, `notes`); the APK downloads in the browser and Android installs
+  it over this one. Bring Your Own Recomps runs the Library check now: any listed game installed
+  some other way (a download, another app) joins the Library. Report a Problem sends
+  `beta_feedback` with the area `Android`, and the game's log when one is picked.
+  First-time setup (`ftsOpen`, when `setup_done` is false): Welcome, Allow installing games, Back up
+  your saves (All files access), Games already on this phone, the two sharing switches, the account
+  (sign-in opens the browser), done. No language step (the phone's) and no "how will you play". Big
+  Picture on a TV or with a controller skips it.
+  Installing: Android must allow RecompLauncher to install apps. Before anything downloads,
+  `startInstall` asks `android_install_allowed`; when it isn't allowed a sheet offers Android's
+  page, and the install carries on by itself when the player comes back allowed (`droidInstallGate`).
+  Accessibility: **Bold text** (`phone_bold`: the text face points at heavier font files,
+  `--ff` in `phone.css`), **Reduce transparency** (`phone_solid`), **Optimization mode** (`phone_lite`: no frosted glass, glows, shadows,
   start-up cover wall or moving extras, and no animations, for older phones), **Reduce motion**
   (`phone_still`: pages change in place, no slides or zooms; the phone's own reduce-motion setting
   does the same) and **High contrast** (`phone_contrast`: brighter secondary text and edges).
@@ -191,10 +220,16 @@ On Android there's no desktop view. There are two layouts instead:
   play, else the recommended one. Its page has an "{n} versions" pill (a row in Big Picture mode)
   that opens a sheet listing them all.
   A game's page has the same player reviews as the desktop (`loadReports`, score, filters, write,
-  edit and delete, sheets in `phone.js` "Reviews"), the IGDB about text and facts, and rows for the
-  README, From the developer (description and credits) and Updates (every release). Android has no
-  play-time log of its own, so `more.js` notes when a game is opened and, when the launcher comes
-  back after 10 minutes or more, asks how it ran (Settings, Ask After Playing).
+  edit and delete, sheets in `phone.js` "Reviews"; reviews with words in them come first), the IGDB
+  about text, score and facts (Wikipedia's when the catalog has none), and rows for the README,
+  From the developer (description and credits) and Updates. Updates lists the releases folded to
+  their names (the newest open), tagged Latest version and Installed; one with an Android app in it
+  can be installed from there. Going back to an older one uninstalls the game first (Android won't
+  put an older app over a newer one), then installs it once the player is back; `android::install`
+  takes the picked tag and marks it `pinned`. Android doesn't say when a game closes, so `more.js`
+  notes when a game is opened and, when the launcher comes back, counts the session in its play
+  time (`android_played`, under 12 hours) and, after 10 minutes or more, asks how it ran. The page
+  shows Played, This week, This month, Sessions and Longest (`playBox`), in both layouts.
 - **Big Picture mode** with a controller, or picked in Settings. Which one depends on the device
   (`droidPhone()` / `droidHandheld()` in `app.js`, from `android_device`: smallest screen width and
   a built-in controller, `ScreenPlugin.kt` `device`). A phone (narrower than 600dp, no built-in
@@ -214,7 +249,8 @@ On Android there's no desktop view. There are two layouts instead:
   goes back to the phone layout. tv.js hands every way in to it (`window.phoneBp`): its `enter()`,
   the controller (`pad()`), Back and the unplug.
   A tablet, a handheld (a built-in controller; it starts in Big Picture mode) and an Android TV get
-  the desktop's Big Picture mode (`ui/tv.js`).
+  the desktop's Big Picture mode (`ui/tv.js`). Settings, Big Picture style (`bp_style`) lets any
+  touch screen pick: Phone (this one) or Full (tv.js); both settings pages switch it.
   Going in or out never shows a half-turned page: a dark cover fades in, the screen turns (Android
   crossfades the turn), `settle()` waits until the page size stops changing, the new layout draws
   under the cover, and the cover fades away. tv.js uses the same wait (`window.screenSettle`).
