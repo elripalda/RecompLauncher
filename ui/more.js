@@ -34,7 +34,8 @@ async function whatsNew() {
   const ui = S.settings.ui || {};
   if (ui.seen_version === S.version) return;
   // A new install has nothing to compare with: just remember this version.
-  if (!ui.seen_version && !S.settings.setup_done) return saveUi({ seen_version: S.version });
+  // Android too: the release notes are the PC launcher's.
+  if ((!ui.seen_version && !S.settings.setup_done) || S.os === 'android') return saveUi({ seen_version: S.version });
   const from = ui.seen_version;
   // Show What's New After an Update off (Settings → Updates and Downloads): the notes stay in
   // Settings → Changelog.
