@@ -5658,6 +5658,10 @@ function scrollAnchor(main) {
 function render(keepScroll) {
   // Records set from an answer about one of a recomp's games go back on the recomp, and its games' records follow.
   expandLib();
+  // Android never shows the desktop view (it's Big Picture mode or the phone layout, see phone.css):
+  // its pages aren't built, measured or their pictures fetched. The theme is kept, and the phone
+  // layout follows whatever changed, as the desktop view would have.
+  if (S.os === 'android') { paintTheme(); paintIsland(); if (window.phoneRefresh) window.phoneRefresh(); return; }
   const main = $('#main'), top = main.scrollTop;
   const v = S.view;
   // Typing in a search: it keeps its text, caret and focus across a redraw.
@@ -5747,6 +5751,12 @@ function sideRows() {
 }
 
 // The sidebar: which page is on, counts, and the pinned games.
+// The theme (dark, OLED black or light), as every layout reads it.
+function paintTheme() {
+  const ui = S.settings.ui || {};
+  document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
+  document.body.classList.toggle('light', ui.theme === 'light');
+}
 function renderSide() {
   const v = S.view, ui = S.settings.ui || {};
   applySide();
@@ -5764,10 +5774,9 @@ function renderSide() {
   // A new launcher: the Update pill in the title bar, on every page.
   { const pill = $('#upd-pill'); if (pill) pill.hidden = !S.launcherUpd; }
   if (window.achSide) window.achSide();
-  document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
+  paintTheme();
   document.body.classList.toggle('nonames', !!ui.hide_names);
   document.body.classList.toggle('no-tv-btn', !!ui.hide_tv_btn);
-  document.body.classList.toggle('light', ui.theme === 'light');
   { const wm = $('#brand .wm'); const want = ui.theme === 'light' ? 'img/wordmark-dark.svg' : 'img/wordmark.svg'; if (wm && wm.getAttribute('src') !== want) wm.setAttribute('src', want); }
   const auto = innerWidth < 1180;
   $('#side').classList.toggle('auto', auto);
@@ -6604,7 +6613,9 @@ function fbCrumbs(path) {
 // Lighter Launcher: no animations or moving pictures (CSS does the rest).
 function applyLighter() {
   const st = S.settings || {};
-  document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld : !!st.lighter);
+  // A phone or TV box draws lighter by default too, as a handheld PC does: their graphics chips are
+  // small next to a PC's, and the moving backdrop and blurs are what cost the most.
+  document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld || S.os === 'android' : !!st.lighter);
   // Nothing animates: Lighter Launcher turned on by the player, or the system asking for less
   // motion. Not on Linux, where game-mode sessions on handhelds ask for that by default and the
   // menus would stop moving; Lighter Launcher still turns it off there. A handheld that's lighter

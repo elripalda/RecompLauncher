@@ -103,8 +103,11 @@ body.tv-on #app{visibility:hidden}
 
 /* long names glide across when focused */
 .tv-stage .long{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent)}
-.tv-stage .f .long .glide,.tv-cell:has(.f) .long .glide,.tv-hero .long .glide{transform:translateX(var(--shift,0))}
-.tv-stage .f .long,.tv-cell:has(.f) .long{-webkit-mask-image:none;mask-image:none}
+.tv-stage .f .long .glide,.tv-hero .long .glide{transform:translateX(var(--shift,0))}
+.tv-stage .f .long{-webkit-mask-image:none;mask-image:none}
+/* On their own lines: a web engine that doesn't know :has() skips only these, not the two above. */
+.tv-cell:has(.f) .long .glide{transform:translateX(var(--shift,0))}
+.tv-cell:has(.f) .long{-webkit-mask-image:none;mask-image:none}
 
 /* grid pages */
 .tv-head{margin:0 0 22px}
@@ -1092,3 +1095,29 @@ body.light .tv-badge.soon{color:#1a1400}
 .tv-svp-set.ours{color:#34F2E8}
 /* The named folder while the player's own is used instead: greyed, as on the desktop. */
 .tv-item.tv-svp-unused .k{opacity:.6}
+
+/* ===== Older web engines ===================================================================
+   An Android phone, TV box or emulator can have a web engine from before 2023, which can't mix
+   colours (color-mix). A rule that tries isn't just skipped there: it draws nothing, so menus were
+   see-through, the Play button had no shape, the focused button had no ring and a game's backdrop
+   had no shade under the words. Those engines get the same pieces in the launcher's own colours
+   (not tinted by the game in view). Engines that can mix colours never read this. */
+@supports not (color:color-mix(in srgb,red,blue)){
+  .tv-full.home::after,.tv-full.game::after,.tv-full.flowbg::after{background:var(--noise),linear-gradient(90deg,rgba(var(--tvrgb),.93) 0%,rgba(var(--tvrgb),.7) 38%,rgba(var(--tvrgb),.14) 74%),linear-gradient(180deg,rgba(var(--tvrgb),.7) 0%,transparent 22%,transparent 40%,rgba(var(--tvrgb),.88) 70%,var(--tvbg) 100%)}
+  .tv-full.flowbg::after{background:var(--noise),linear-gradient(180deg,rgba(var(--tvrgb),.72) 0%,rgba(var(--tvrgb),.4) 40%,rgba(var(--tvrgb),.92) 78%,var(--tvbg) 100%)}
+  .tv-full.amb::after{background:var(--noise),radial-gradient(60% 65% at 85% 20%,rgba(52,242,232,.2),transparent 72%),radial-gradient(55% 60% at 10% 95%,rgba(52,242,232,.14),transparent 72%),linear-gradient(180deg,transparent 62%,rgba(var(--tvrgb),.5))}
+  .tv-flow::before{background:radial-gradient(closest-side,rgba(52,242,232,.24),rgba(52,242,232,.09) 55%,transparent)}
+  .tv-hints{background:rgba(var(--tvrgb),.92)}
+  .tv-btn.main{background:var(--acc);color:var(--accink)}
+  .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--tvink,#F4F8FC),0 18px 44px rgba(0,0,0,.5),0 0 34px rgba(52,242,232,.42)!important}
+  body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--acc),0 18px 44px rgba(14,22,38,.18),0 0 34px rgba(7,117,112,.3)!important}
+  .tv-stage .tv-tag.f{box-shadow:0 0 0 3px var(--acc)!important}
+  .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#0e1729,#0b1220)}
+  body.oled .tv-sheet-in{background:#05070a}
+  body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#F7F8FA,#ECEEF2)}
+  .tv-fcase.f .plate{box-shadow:0 0 30px 4px rgba(52,242,232,.5)}
+  .tv-chip.act{box-shadow:inset 0 0 0 2px var(--acc)}
+  .tv-sheet.kb .tv-item.key.done{background:rgba(52,242,232,.18)}
+  .tv-kb-field{border:2px solid var(--acc)}
+  .tv-ach-toast{border:1px solid rgba(242,193,78,.4)}
+}

@@ -178,6 +178,16 @@ as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera
 (`MainActivity.kt`). Cloud saves aren't offered: a phone's games are Android apps, and their saves
 are out of the launcher's reach.
 
+The desktop view isn't drawn at all on Android: `ui/droid.js` marks the page from `<head>` so it
+never shows at start-up, and `render()` builds nothing for it. Android also draws lighter by default
+(no moving backdrop, no blurs), as a handheld PC does. The phone layout patches the page that's
+showing instead of rebuilding it, and each page keeps its place when you come back to it.
+
+Android's web engine (Android System WebView) can be years old on a TV box, an emulator or a phone
+that isn't updated. Styles that an older engine doesn't know need a plain version beside them:
+`tv.css` ends with one for every colour-mixing rule (a test checks none is missing), and
+`phone.css` has one for shapes. Settings → About in the phone layout shows the engine's version.
+
 Its game list is the website's Android list (`/api/pc.php?a=android`: the same shape as
 `pc-catalog.json`, with each game's Android download), not `pc-catalog.json`. While Android is
 hidden on the website only testers get it, so the request carries the player's sign-in; signed

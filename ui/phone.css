@@ -1,7 +1,9 @@
 /* The phone layout (phone.js): Android without a controller. Made for a phone held upright (about
    360 px wide) or sideways (about 360 px tall): pages scroll with a finger, rows swipe sideways, the
    tabs sit at the bottom upright and down the side sideways. */
-body.phone-on #app{visibility:hidden}
+/* Android never shows the desktop view (droid.js marks the page before anything is drawn): it isn't
+   laid out or painted at all, at start-up or behind this layout and Big Picture mode. */
+html.droid #app{display:none}
 #phone{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 :where(#phone) button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
 :where(#phone) h1,:where(#phone) h2,:where(#phone) p{margin:0}
@@ -10,30 +12,43 @@ body.phone-on #app{visibility:hidden}
 .ph-top{flex:none;display:flex;align-items:center;min-height:60px;padding:12px 20px 6px}
 .ph-top h1{font:800 28px/1.15 Archivo,Figtree,system-ui,sans-serif;letter-spacing:-.01em}
 .ph-top.over{position:absolute;top:0;left:0;right:0;z-index:2;padding:12px;pointer-events:none}
-.ph-backbtn{pointer-events:auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(8,16,28,.6);backdrop-filter:blur(14px);color:#F4F8FC}
+.ph-backbtn{pointer-events:auto;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(8,16,28,.72);color:#F4F8FC;transition:transform .12s var(--ease)}
+.ph-backbtn:active{transform:scale(.92)}
 
 /* The page: scrolls up and down. */
 .ph-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:2px 0 28px;scrollbar-width:none}
 .ph-main::-webkit-scrollbar{display:none}
 .ph-main.ph-page-game{padding-top:0}
+/* Another page comes in with a short fade (a game's page rises a little); the same page never blinks. */
+.ph-main.ph-in{animation:ph-in .16s ease-out both}
+.ph-main.ph-in-up{animation:ph-in-up .2s var(--ease) both}
+@keyframes ph-in{from{opacity:0}}
+@keyframes ph-in-up{from{opacity:0;transform:translateY(14px)}}
+@media (prefers-reduced-motion:reduce){.ph-main.ph-in,.ph-main.ph-in-up{animation:none}}
 .ph-sec{margin:12px 0 10px}
 .ph-sec h2,.ph-set h2{margin:0 20px 10px;font:700 18px/1.25 Figtree,system-ui,sans-serif}
 .ph-empty{margin:48px 28px;text-align:center;color:var(--muted);font-size:15px}
 
-/* Covers: a row that swipes sideways and stops on a cover, or a grid. */
+/* Covers: a row that swipes sideways and stops on a cover, or a grid. A cover's height comes from
+   its own width (never from the row around it, which older Android web engines get wrong and draw
+   no cover at all), and its picture fades in once it has loaded. */
 .ph-row{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding:0 20px;padding:0 20px 2px;scrollbar-width:none}
 .ph-row::-webkit-scrollbar{display:none}
 .ph-row .ph-card{flex:none;width:124px;scroll-snap-align:start}
 .ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:16px 12px;padding:0 20px}
-.ph-card{display:flex;flex-direction:column;gap:7px;min-width:0}
-.ph-cover{position:relative;display:block;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:var(--card2);transition:transform .14s var(--ease)}
+.ph-card{display:block;min-width:0}
+/* A big grid's covers out of view aren't drawn until they scroll in. */
+.ph-grid .ph-card{content-visibility:auto;contain-intrinsic-size:auto 220px}
+.ph-cover{position:relative;display:block;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:var(--card2);transition:transform .14s var(--ease)}
 .ph-card:active .ph-cover{transform:scale(.96)}
 .ph-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ph-cover img,.ph-thumb img,.ph-hero img{opacity:0;transition:opacity .2s ease-out}
+.ph-cover img.ld,.ph-thumb img.ld,.ph-hero img.ld{opacity:1}
 .ph-ph{position:absolute;inset:0;display:flex;align-items:flex-end;padding:10px;font:700 13px/1.25 Figtree,system-ui,sans-serif;color:var(--muted)}
 .ph-badge{position:absolute;top:7px;left:7px;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:800;background:var(--cyan);color:#08101C}
 .ph-bar{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:2px;background:rgba(0,0,0,.55);overflow:hidden}
 .ph-bar i{display:block;height:100%;background:var(--cyan)}
-.ph-name{font-size:13px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ph-name{margin-top:7px;font-size:13px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* Buttons: big enough for a thumb. */
 .ph-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:24px;background:var(--fill3);font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;transition:transform .12s var(--ease)}
@@ -112,4 +127,11 @@ body.phone-on .signin-qr{display:none}
   .ph-game{padding:0 24px}
   .ph-acts{max-width:520px}
   body.phone-on .island{bottom:16px;left:calc(50% + 42px)}
+}
+
+/* Web engines from before 2021 don't know aspect-ratio: the same shapes, the older way. */
+@supports not (aspect-ratio:1){
+  .ph-cover{height:0;padding-top:150%}
+  .ph-thumb{height:69px}
+  .ph-hero{height:56.25vw;max-height:46vh}
 }
