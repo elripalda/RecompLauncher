@@ -64,7 +64,7 @@ jobs:
         with:
           name: recomplauncher-android-test
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
       # Opens the APK on an Android emulator and prints two small screenshots and the app's log into

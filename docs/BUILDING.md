@@ -193,7 +193,7 @@ the launcher comes back to the front, so a game installed or removed outside the
 right. The first install asks the player to let RecompLauncher install apps.
 
 The Android workflow (`.github/workflows/android.yml`) builds the same APK on GitHub when the
-Android parts change, or when run by hand, and keeps it for a day. It also opens the APK on an
+Android parts change, or when run by hand, and keeps it for a week (time to put it on a phone). It also opens the APK on an
 Android emulator and prints a few small screenshots (base64 JPEG between `=====SHOT` lines) and
 the app's log into the job's log (`.github/scripts/android-smoke.sh`).
 
