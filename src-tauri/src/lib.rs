@@ -6618,14 +6618,10 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
             if !(n.ends_with(".log") || n.ends_with("log.txt")) {
                 continue;
             }
-            // An empty log (made at start, nothing written before it closed) says nothing, and it
-            // would hide what the game printed.
-            if m.len() == 0 {
-                continue;
-            }
             let Ok(t) = m.modified() else { continue };
             let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) {
+            // A log that says nothing would hide what the game printed.
+            if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) && !says_nothing(&p) {
                 best = Some((t, p));
             }
         }
@@ -6636,7 +6632,7 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
         let m = std::fs::metadata(&p).ok()?;
         let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
+        (secs + 5 >= since && !says_nothing(&p)).then_some((t, p))
     });
     // Nor that: ReShade's, when it ran with a look.
     let best = best.or_else(|| {
@@ -6644,9 +6640,23 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
         let m = std::fs::metadata(&p).ok()?;
         let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
+        (secs + 5 >= since && !says_nothing(&p)).then_some((t, p))
     });
     best.map(|(_, p)| p)
+}
+
+/// A log with nothing in it to read: empty, or only blank lines, NULs and a byte order mark, as a
+/// game leaves when it makes its log at start and closes before writing a line. Only a small file
+/// is looked into: a big one always has something, even when its end is padding.
+fn says_nothing(p: &Path) -> bool {
+    const SMALL: u64 = 64 * 1024;
+    let len = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+    if len > SMALL {
+        return false;
+    }
+    let bytes = std::fs::read(p).unwrap_or_default();
+    let text = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
+    text.iter().all(|c| c.is_ascii_whitespace() || *c == 0)
 }
 
 // ---------- Troubleshoot ----------
@@ -11744,6 +11754,24 @@ mod tests {
 
     fn a_minute_ago() -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 60
+    }
+
+    #[test]
+    fn a_game_log_of_blank_lines_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-blank-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "\r\n\r\n", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_game_log_of_a_byte_order_mark_alone_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-bom-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "\u{feff}", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
     }
 
     #[test]
