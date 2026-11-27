@@ -21,7 +21,7 @@ function home(ui) {
   const c = vm.createContext({
     S: { settings: { ui }, library: { game: { id: 'game' } }, easy: new Set() },
     visible: list, forOS: () => true, bannerApps: list, turnkeyFirst: same, oneEach: same, uniq: same,
-    notPC: () => true, byDl: () => 0, byNew: () => 0, byId: () => a, withGames: same, turnkey: () => false,
+    notPC: () => true, byDl: () => 0, byNew: () => 0, byId: () => a, withGames: same, turnkey: () => false, projectEasy: () => false,
     jumpRecs: list, libApp: same, foundInFolders: none, haveAny: () => false, favs: none, follows: none,
     recentlyUpdated: none, devOf: () => null, foundSection: () => '', foundCallout: () => '',
     trendShelf: () => '', newsSection: () => '', offlineNote: () => '', sponsBand: () => '',

@@ -34,7 +34,7 @@ function ctx(S) {
     DISC_L: '[disc]', svg: () => '[x]',
     httpsOnly: (u) => (/^https:\/\/\S+$/i.test(String(u || '')) ? String(u) : ''),
     row: (name) => `[${name}]`, poster: () => '', card: () => '', timeLine: () => '', date: () => '', ago: () => '',
-    recent: () => games.map((a) => ({ a })), foundInFolders: () => games, oneEach: same, turnkey: () => true, byNew: () => 0,
+    recent: () => games.map((a) => ({ a })), foundInFolders: () => games, oneEach: same, turnkey: () => true, projectEasy: () => true, byNew: () => 0,
     haveAny: () => false, recentlyUpdated: same, turnkeyFirst: same, trendList: () => [], pool: () => games, notPC: () => true, byDl: () => 0,
     HOME_ROW: 14, favs: () => c._favs || [], follows: () => c._follows || [], libApp: (g) => ({ id: g.id, dev: 'dev1' }), devOf: () => ({ name: 'Dev' }),
   });

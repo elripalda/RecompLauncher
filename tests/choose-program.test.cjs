@@ -111,7 +111,7 @@ test('no pill on a game Easy Setup can\'t do while Play starts the default progr
 });
 
 test('the pill sits under the game\'s name in place of Easy Setup, and no longer in On Disk', () => {
-  assert.match(fn(app, 'gameTitle'), /inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : turnkey\(a\) \? /);
+  assert.match(fn(app, 'gameTitle'), /inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : projectEasy\(a\) \? /);
   assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), size \? esc\(fmtB\(size\)\) : '—'\)/);
 });
 

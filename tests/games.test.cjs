@@ -309,7 +309,7 @@ test('Big Picture lists each game on its own and shows the recomp\'s games on it
 test('Home\'s rows list a recomp\'s games; the banner and the weekly chart keep the recomp', () => {
   const home = fn(app, 'pageHome');
   assert.match(home, /const games = withGames\(pool\);/);
-  for (const row of ['games.filter(turnkey)', 'recentlyUpdated(games)', 'games.filter((a) => a.dev', '[...games].sort(byNew)']) assert.ok(home.includes(row), row);
+  for (const row of ['games.filter(projectEasy)', 'recentlyUpdated(games)', 'games.filter((a) => a.dev', '[...games].sort(byNew)']) assert.ok(home.includes(row), row);
   assert.match(home, /trendShelf\(pool\)/);
   assert.match(tv, /const games = withGames\(pool\(\)\);/);
   assert.match(tv, /recentlyUpdated\(games\)/);

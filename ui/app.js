@@ -293,8 +293,9 @@ const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
 // (Never on Android: a game there is an app that keeps its own files, out of the launcher's reach.)
 const feedsCopy = (a) => S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
-// Turnkey recomps first, each group in the order it had. Nothing is left out.
-const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
+// The project's own Easy Setup recomps first (projectEasy), each group in the order it had.
+// Nothing is left out.
+const turnkeyFirst = (list) => [...list.filter(projectEasy), ...list.filter((a) => !projectEasy(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
 // Text Size: the whole window zoomed, like a browser's zoom, and kept for next time.
 const UI_SCALES = [0.9, 1, 1.1, 1.25, 1.5];
@@ -1209,7 +1210,7 @@ function poster(a, mine, inst, wide, w, rank) {
   // One label at the bottom: with a versions count there, Setup Required stays on the game's page
   // and its install button, and Easy Setup shrinks to its icon, so nothing overlaps on small posters.
   const easy = S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? (vg ? '' : `<span class="badge easy setupreq">${WRENCH.replace(/18/g, '13')}${esc(t('Setup Required'))}</span>`)
-    : !S.library[a.id] && turnkey(a) ? (vg ? `<span class="badge easy ico" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${DISC_S}</span>` : `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>`) : '';
+    : !S.library[a.id] && projectEasy(a) ? (vg ? `<span class="badge easy ico" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${DISC_S}</span>` : `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>`) : '';
   const vers = vg ? `<span class="badge vers" title="${esc(tn(vg.list.length, '1 version', '{n} versions'))}">${LAYERS}${fmtNum(vg.list.length)}</span>`
     : inst > 1 && !prog ? `<span class="badge tl" title="${esc(tn(inst, '1 installed', '{n} installed'))}">${LAYERS}${esc(tn(inst, '1 installed', '{n} installed'))}</span>` : '';
   // Only two feature flags on a card: Easy Setup and the versions count (icons when both). Great
@@ -1491,6 +1492,22 @@ function supportStates(a, local, sup, source) {
     verified: pick('verified', copyIds || ours('verified')),
     saves: pick('saves', ourSaves),
   };
+}
+// Easy Setup the project gives itself, from its own recomplauncher.json: the box's 'p', not 'l'.
+// Only this is advertised (the badge and tag, the Easy Setup filter, the Ready to Play rows and
+// the sorting that puts Easy Setup first). A game the launcher sets up from its own boot profile
+// still installs and sets up the same way (turnkey), but it isn't shown as an Easy Setup recomp:
+// that support is the launcher's stopgap, and the project's own file is what we point people to.
+// Reads the installed release's file only if the game page already asked for it (no core call
+// per tile); until then the catalog's copy of the project's file counts.
+function projectEasy(a) {
+  if (!turnkey(a)) return false;
+  const rid = a.parent || a.id;
+  const g = S.library[rid], known = S.supLocal[rid];
+  const local = g && known && known.key === supLocalKey(g) ? known.v : null;
+  if (local && local.problem) return false;
+  const sup = a.support && typeof a.support === 'object' ? a.support : null;
+  return supportStates(a, local, sup, supportSource(a, local, sup)).easy_setup === 'p';
 }
 // Launcher Support, a box on Overview under Before You Play: what RecompLauncher can do for this
 // recomp, and whether the project's own recomplauncher.json or RecompLauncher makes each part work.
@@ -1884,7 +1901,7 @@ function pageHome() {
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
   // The banner and the weekly chart stay per recomp (picked and ranked as one); the rows list its games.
   const games = withGames(pool);
-  const ready = oneEach(games.filter(turnkey).sort(byNew), true);
+  const ready = oneEach(games.filter(projectEasy).sort(byNew), true);
   const played = jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = foundInFolders();
   const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
@@ -2259,7 +2276,7 @@ function discoverList(ended = false, leftOut = false) {
   const f = S.find, q = S.q.trim();
   const games = byGame();
   const onThisPC = leftOut ? hiddenByProton : forOS;
-  let list = withGames(visible()).filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
+  let list = withGames(visible()).filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || projectEasy(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
     && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name, a.parentName] : [a.name, a.game, a.parentName, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
@@ -2581,7 +2598,7 @@ function gameTitle(a, id) {
   const inst = S.library[id], su = S.setup[id];
   // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
   const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : projectEasy(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   return `${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}`;
 }
 function pageGame(id) {

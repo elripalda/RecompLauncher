@@ -418,7 +418,7 @@
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
-    const easy = !j && !S.library[a.id] && turnkey(a) ? `<span class="tv-easyb${vers ? ' ico' : ''}" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${svg('disc', 16)}${vers ? '' : esc(t('Easy Setup'))}</span>` : '';
+    const easy = !j && !S.library[a.id] && projectEasy(a) ? `<span class="tv-easyb${vers ? ' ico' : ''}" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${svg('disc', 16)}${vers ? '' : esc(t('Easy Setup'))}</span>` : '';
     return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(thumbOf(a.cover, 400)))}')"></span>` : ''}<button type="button" class="tv-poster${coverLabelPush(a)}" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
       <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${coverLabel(a)}${rk}${badge}${easy}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
@@ -631,11 +631,11 @@
         return (S.settings.rom_dirs || []).length || S.os === 'android' ? '' : tvFoundBox();
       },
       ready: () => {
-        const ready = oneEach(games.filter(turnkey).sort(byNew), true);
+        const ready = oneEach(games.filter(projectEasy).sort(byNew), true);
         return ready.length >= 4 ? row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')) : '';
       },
       easy: () => {
-        const disc = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
+        const disc = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && projectEasy(a) && !haveAny(a)));
         return disc.length >= 2 ? row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')) : '';
       },
       news: () => {
@@ -1346,7 +1346,7 @@
     const q = (TV.dq || '').trim(), org = TV.dorigin || '', srt = TV.dsort || 'popular';
     const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDlConsolesFirst;
     // `ended`: the ended projects those filters would show (what "Hide ended" takes out of the list).
-    const chain = (ended) => apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
+    const chain = (ended) => apps.filter((a) => (g === 'easy' ? projectEasy(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
