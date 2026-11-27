@@ -48,7 +48,7 @@ test("the Trending row keeps the chart's ranks and skips games this player can't
 
 test('the partner card shows only when the site turns it on for the launcher', () => {
   const c = ctx();
-  vm.runInContext(app.match(/^const IG = .*$/m)[0] + '\n' + line('igOn') + fn('igEntry'), c);
+  vm.runInContext(app.match(/^const IG = .*$/m)[0] + '\n' + line('igOn') + '\n' + line('sponsOff') + fn('igEntry'), c);
   const a = { id: 'oot' };
   vm.runInContext("IG.data = { on: true, launcher: false, l: { oot: { t: 'The Game', price: '$10' } } }", c);
   assert.equal(c.igEntry(a), null);
@@ -64,7 +64,7 @@ test('the partner card shows only when the site turns it on for the launcher', (
 
 test('Show sponsored content off hides the sponsor spot on Home too', () => {
   const c = ctx({ SITE: 'https://site', media: (u) => u });
-  vm.runInContext(line('sponsFor') + fn('sponsBand'), c);
+  vm.runInContext(line('sponsFor') + '\n' + line('sponsOff') + fn('sponsBand'), c);
   c.S.spons = [{ id: 7, slot: 'app_home', img: '/s.png', alt: 'A spot' }];
   assert.match(c.sponsBand('app_home'), /data-sp="7"/);
   c.S.settings.ui.hide_buy = true;

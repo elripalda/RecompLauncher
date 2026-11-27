@@ -698,7 +698,7 @@
   // views and clicks count as on the desktop (sponsWatch, api/spons.php).
   function tvHomeBanner(x) {
     const sp = x && x.sp;
-    if (!sp || !sp.id || !sp.img) return '';
+    if (!sp || !sp.id || !sp.img || sponsOff()) return '';
     const id = String(Number(sp.id) || 0);
     const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
     return `<section class="tv-sec tv-hban" data-sec="hbn:${id}"><button type="button" class="tv-spb" data-f data-key="hbn:${id}" data-tvact="spgo" data-id="${id}" data-sp="${id}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
@@ -1493,6 +1493,8 @@
           ${droid && !touchHere() ? '' : `${head(t('Big Picture mode'))}
           ${droid ? `<button type="button" class="tv-item" data-f data-key="s:bpstyle" data-tvact="bpstyle" data-val="${esc(t('Full'))}"><span class="k">${esc(t('Big Picture style'))}<small>${esc(t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'))}</small></span><span class="tv-pill on">${esc(t('Full'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(droid ? t('The phone layout, for playing with your fingers') : t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>`}
+          ${head(t('Sponsored'))}
+          <button type="button" class="tv-item" data-f data-key="s:sponsored" data-tvact="sponsored"><span class="k">${esc(t('Show sponsored content'))}<small>${esc(t('The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.'))}</small></span><span class="switch" aria-checked="${!(S.settings.ui || {}).hide_buy}"></span></button>
           ${head(t('About'))}
           <button type="button" class="tv-item" data-f data-key="s:support" data-tvact="support">${HEART}<span class="k">${esc(t('Support RecompLauncher'))}<small>${esc(t('Help keep it running and growing, on Ko-fi'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:about" data-tvact="about"><span class="k">${esc(t('About RecompLauncher'))}<small>${esc(t('Who makes it, and where to find the Discord'))}</small></span>${svg('chevR', 30)}</button>
@@ -3240,6 +3242,8 @@
       case 'monitor': sfx('open'); return tvMonitorSheet();
       // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
       case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);
+      // Show sponsored content, the same setting as the desktop's (stored the other way round).
+      case 'sponsored': sfx('select'); await saveUi({ hide_buy: !sponsOff() }); return draw(true);
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');
