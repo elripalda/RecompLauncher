@@ -72,3 +72,15 @@ test('light themes get their own grain so gradients stay smooth', () => {
   assert.match(css, /body\.light\{--noise:url\(img\/noise-light\.png\)/);
   assert.ok(fs.existsSync(path.join(__dirname, '../ui/img/noise-light.png')));
 });
+
+test('a home folder under /var (Bazzite, Silverblue) becomes ~ as a whole', () => {
+  const file = '/var/home/someone/.local/share/com.recomplauncher.app/game-output/g.log';
+  const { body } = parts(ghCrashUrl(crash(['Error while copying to "/var/home/someone/.local/share/x/a.dll"'], { file })));
+  assert.ok(body.includes('Last 1 lines of ~/.local/share/com.recomplauncher.app/game-output/g.log:'));
+  assert.ok(body.includes('"~/.local/share/x/a.dll"'));
+});
+
+test('a Windows user folder seen from Linux becomes ~ as a whole', () => {
+  const { body } = parts(ghCrashUrl(crash(['loading /mnt/c/Users/someone/AppData/game.bin'])));
+  assert.ok(body.includes('loading ~/AppData/game.bin'));
+});

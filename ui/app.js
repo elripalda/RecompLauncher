@@ -8729,9 +8729,11 @@ function evenActs(btns) {
 }
 // A new issue on RecompLauncher's GitHub for a crash, filled in: the versions, the PC, the game and
 // the end of its log. Home folders become "~" and the excerpt loses lines from the top until the
-// address fits in 8 KB, which is about what GitHub and browsers take.
+// address fits in 8 KB, which is about what GitHub and browsers take. A path's whole start up to
+// its home folder becomes "~" (/var/home/me on Bazzite and Silverblue, /mnt/c/Users/me from WSL),
+// so no part of a user's name is left.
 const ghCrashUrl = (c) => {
-  const home = (s) => String(s || '').replace(/([A-Za-z]:\\Users\\|\/home\/|\/Users\/)[^\\/\s]+/g, '~');
+  const home = (s) => String(s || '').replace(/(^|[^\w.\/\\-])(?:[A-Za-z]:\\Users\\|(?:\/[^\/\s"']+)*?\/(?:home|Users)\/)[^\\/\s"']+/gm, '$1~');
   const reason = String(c.reason || '').replace(/\s+/g, ' ').trim();
   const title = `Crash: ${reason.length > 80 ? `${reason.slice(0, 79)}…` : reason}`;
   const head = [c.note ? `**What happened:** ${c.note}` : '**What happened:** ', '',
