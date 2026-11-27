@@ -9175,6 +9175,8 @@ fn get_state(st: State<'_, App>) -> Value {
         // Where the web view draws on the processor, the page leaves out what keeps moving.
         "cpuDraw": cpu_draw(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
+        // Hidden in a crash report before it goes on GitHub.
+        "home": usage::home_for_reports(),
     })
 }
 

@@ -401,6 +401,51 @@ fn scrub(e: &str) -> String {
     words.join(" ").chars().take(160).collect()
 }
 
+/// This PC's home folder and user name, for the window to hide in a crash report before it goes
+/// on GitHub: { forms, names }. Guessing a home folder from a path's shape misses some (Bazzite's
+/// /var/home, Wine's Z:\home, Windows' \\?\ long form), so the window gets the real ones.
+pub fn home_for_reports() -> Value {
+    let user = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
+    let Some(home) = dirs::home_dir() else { return json!({ "forms": [], "names": [user] }) };
+    let real = std::fs::canonicalize(&home).ok();
+    let forms = home_forms(&home.to_string_lossy(), real.as_ref().map(|p| p.to_string_lossy().to_string()).as_deref(), &user);
+    let folder = home.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let mut names = vec![user];
+    if !names.iter().any(|n| n.eq_ignore_ascii_case(&folder)) {
+        names.push(folder);
+    }
+    names.retain(|n| !n.is_empty());
+    json!({ "forms": forms, "names": names })
+}
+
+/// Every way a home folder shows up in a log: as it is, its real path (/home is a link to
+/// /var/home on Bazzite and Silverblue), Wine's view of it (Z:\home\me, and C:\users\me inside a
+/// prefix) and on Windows the \\?\ long form. Longest first, so a shorter one never cuts a longer
+/// one in half.
+fn home_forms(home: &str, real: Option<&str>, user: &str) -> Vec<String> {
+    let strip = |p: &str| p.strip_prefix(r"\\?\").unwrap_or(p).trim_end_matches(['/', '\\']).to_string();
+    let mut base = vec![strip(home)];
+    if let Some(r) = real.map(strip) {
+        base.push(r);
+    }
+    let mut forms = vec![];
+    for b in base.into_iter().filter(|b| b.len() > 1) {
+        if b.starts_with('/') {
+            forms.push(format!("Z:{}", b.replace('/', "\\")));
+            if !user.is_empty() {
+                forms.push(format!(r"C:\users\{user}"));
+            }
+        } else if b.as_bytes().get(1) == Some(&b':') {
+            forms.push(format!(r"\\?\{b}"));
+        }
+        forms.push(b);
+    }
+    let mut seen = std::collections::HashSet::new();
+    forms.retain(|f| seen.insert(f.to_lowercase()));
+    forms.sort_by_key(|f| std::cmp::Reverse(f.len()));
+    forms
+}
+
 /// From the window: how an Easy Setup or a settings change went.
 #[tauri::command]
 pub async fn profile_report(app: AppHandle, id: String, step: String, ok: bool, error: Option<String>) -> Res<()> {
@@ -765,6 +810,23 @@ mod tests {
         let e = scrub("Couldn't open C:\\Users\\Ruben\\game.iso: not found at /home/ruben/x");
         assert!(!e.contains("Users") && !e.contains("/home") && e.contains("not found"));
         assert!(scrub(&"x ".repeat(300)).chars().count() <= 160);
+    }
+
+    #[test]
+    fn a_linux_home_comes_in_every_form_a_log_shows() {
+        let forms = home_forms("/home/ruben", Some("/var/home/ruben"), "ruben");
+        assert_eq!(forms, [r"Z:\var\home\ruben", "/var/home/ruben", r"C:\users\ruben", r"Z:\home\ruben", "/home/ruben"]);
+    }
+
+    #[test]
+    fn a_windows_home_comes_with_its_long_form() {
+        let forms = home_forms(r"C:\Users\Ruben", Some(r"\\?\C:\Users\Ruben"), "Ruben");
+        assert_eq!(forms, [r"\\?\C:\Users\Ruben", r"C:\Users\Ruben"]);
+    }
+
+    #[test]
+    fn a_home_that_is_its_real_path_is_listed_once() {
+        assert_eq!(home_forms("/Users/ruben/", Some("/Users/ruben"), "ruben"), [r"Z:\Users\ruben", r"C:\users\ruben", "/Users/ruben"]);
     }
 
     #[test]
