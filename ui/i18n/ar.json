@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "لعبة واحدة تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "لعبتان تحفظان ملفاتهما حيث لا يسمح Android للمشغّل بالدخول.|{n} ألعاب تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.|{n} لعبة تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.|{n} لعبة تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "يسأل Android أولًا. اسمح مرة واحدة وسيتمكن المشغّل من نسخ ملفات حفظ ألعابك.",
- "Sign in to keep your saves in the cloud.": "سجّل الدخول للاحتفاظ بملفات حفظك في السحابة."
+ "Sign in to keep your saves in the cloud.": "سجّل الدخول للاحتفاظ بملفات حفظك في السحابة.",
+ "Accessibility": "إمكانية الوصول",
+ "Performance mode": "وضع الأداء",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "مسطّح وثابت: بلا ضبابية أو توهّج أو إضافات متحركة. أسلس على الهواتف القديمة.",
+ "Reduce motion": "تقليل الحركة",
+ "Pages change without sliding or zooming": "تتغيّر الصفحات دون انزلاق أو تكبير",
+ "High contrast": "تباين عالٍ",
+ "Stronger text and edges": "نص وحواف أوضح"
 }

@@ -201,7 +201,11 @@
   // Into Big Picture: the launcher fades to dark first, the window goes full screen behind the
   // dark, and only then the start-up begins, so the resize never shows.
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // A phone or tablet has its own Big Picture mode, made for its screen and for fingers as well as a
+  // controller (phone.js). Android TV, with no touch screen, has this one.
+  const phoneBp = () => (android() && touchHere() && window.phoneBp) || null;
   async function enter() {
+    if (phoneBp()) return phoneBp().enter(padHere());
     if (TV.on) return;
     TV.on = true;
     TV.booting = true;
@@ -3478,6 +3482,12 @@
       S.padKind = kind;
       if (TV.on && !$('.tv-boot', root)) draw(true); // the button icons follow the controller
     }
+    const pb = !TV.on && phoneBp();
+    if (pb) {
+      if (pb.on()) return void pb.pad(b, kind);
+      if (b !== 'menu-hold' && (!window.phonePadTv || window.phonePadTv())) pb.enter(true);
+      return;
+    }
     if (!TV.on) {
       // Android: a controller in use is Big Picture mode. Any button switches from the phone layout.
       // Settings, Open with a controller off: the phone layout stays, the controller is left alone.
@@ -3639,14 +3649,22 @@
     // Big Picture: B. The phone layout: back a page, and from Home, out of the way like any app.
     app.onBackButtonPress(() => {
       if (TV.on) return press('b');
+      if (window.phoneBp && window.phoneBp.on()) return window.phoneBp.back();
       if (window.phoneOn && window.phoneOn() && !window.phoneBack()) invoke('android_to_back').catch(() => {});
     }).catch(() => { backHooked = false; });
   }
   window.hookAndroidBack = hookAndroidBack;
   // Android tells the page about a controller once a button on it is pressed: that press switches to
   // Big Picture mode. With the last controller gone, a phone goes back to the phone layout.
-  addEventListener('gamepadconnected', () => { if (android() && !TV.on && window.phoneOn && window.phoneOn() && (!window.phonePadTv || window.phonePadTv())) enter(); });
-  addEventListener('gamepaddisconnected', () => { if (android() && TV.on && !padHere()) leave(); });
+  addEventListener('gamepadconnected', () => {
+    if (!android() || TV.on || !window.phoneOn || !window.phoneOn() || (window.phonePadTv && !window.phonePadTv())) return;
+    if (phoneBp()) phoneBp().enter(true); else enter();
+  });
+  addEventListener('gamepaddisconnected', () => {
+    if (!android() || padHere()) return;
+    if (TV.on) leave();
+    else if (phoneBp()) phoneBp().padGone();
+  });
 
   // Keep the pages current while things happen elsewhere.
   let redraw = 0;

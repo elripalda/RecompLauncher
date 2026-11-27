@@ -8331,7 +8331,7 @@ const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" str
 // An update restart returns to the mode that was on screen.
 // Android has no desktop view: Big Picture mode with a controller or on a TV (no touch screen),
 // else the phone layout (phone.js).
-function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() : !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() || !!S.settings.start_in_tv : !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
 // A controller the page already knows about (Android tells it once a button is pressed).
 function padHere() { return typeof navigator !== 'undefined' && !!navigator.getGamepads && [...navigator.getGamepads()].some(Boolean); }
 // A touch screen: a phone or a tablet, not a TV box.

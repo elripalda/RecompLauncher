@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 เกมเก็บเซฟไว้ในที่ที่ Android ไม่ให้ตัวเปิดเกมเข้าถึง",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} เกมเก็บเซฟไว้ในที่ที่ Android ไม่ให้ตัวเปิดเกมเข้าถึง",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android จะถามก่อน อนุญาตครั้งเดียวแล้วตัวเปิดเกมจะคัดลอกเซฟของเกมคุณได้",
- "Sign in to keep your saves in the cloud.": "ลงชื่อเข้าใช้เพื่อเก็บเซฟไว้บนคลาวด์"
+ "Sign in to keep your saves in the cloud.": "ลงชื่อเข้าใช้เพื่อเก็บเซฟไว้บนคลาวด์",
+ "Accessibility": "การช่วยเหลือการเข้าถึง",
+ "Performance mode": "โหมดประสิทธิภาพ",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "เรียบและนิ่ง: ไม่มีภาพเบลอ แสงเรือง หรือลูกเล่นที่เคลื่อนไหว ลื่นขึ้นบนโทรศัพท์รุ่นเก่า",
+ "Reduce motion": "ลดการเคลื่อนไหว",
+ "Pages change without sliding or zooming": "เปลี่ยนหน้าโดยไม่เลื่อนหรือซูม",
+ "High contrast": "คอนทราสต์สูง",
+ "Stronger text and edges": "ตัวอักษรและขอบชัดขึ้น"
 }

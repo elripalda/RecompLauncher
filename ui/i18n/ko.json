@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "게임 1개가 Android가 런처의 접근을 막는 곳에 세이브를 둡니다.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "게임 {n}개가 Android가 런처의 접근을 막는 곳에 세이브를 둡니다.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android가 먼저 묻습니다. 한 번 허용하면 런처가 게임 세이브를 복사할 수 있습니다.",
- "Sign in to keep your saves in the cloud.": "로그인하면 세이브를 클라우드에 보관할 수 있습니다."
+ "Sign in to keep your saves in the cloud.": "로그인하면 세이브를 클라우드에 보관할 수 있습니다.",
+ "Accessibility": "접근성",
+ "Performance mode": "성능 모드",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "평평하고 정적인 화면: 흐림, 빛 번짐, 움직이는 장식 없음. 오래된 폰에서 더 부드럽습니다.",
+ "Reduce motion": "동작 줄이기",
+ "Pages change without sliding or zooming": "페이지가 밀리거나 확대되지 않고 바뀝니다",
+ "High contrast": "고대비",
+ "Stronger text and edges": "더 진한 글자와 테두리"
 }

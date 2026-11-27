@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 игра хранит сохранения там, куда Android не пускает лаунчер.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} игра хранит сохранения там, куда Android не пускает лаунчер.|{n} игры хранят сохранения там, куда Android не пускает лаунчер.|{n} игр хранят сохранения там, куда Android не пускает лаунчер.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android сначала спрашивает. Разрешите один раз, и лаунчер сможет копировать сохранения ваших игр.",
- "Sign in to keep your saves in the cloud.": "Войдите, чтобы хранить сохранения в облаке."
+ "Sign in to keep your saves in the cloud.": "Войдите, чтобы хранить сохранения в облаке.",
+ "Accessibility": "Специальные возможности",
+ "Performance mode": "Режим производительности",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Плоско и спокойно: без размытия, свечения и движущихся элементов. Плавнее на старых телефонах.",
+ "Reduce motion": "Уменьшить движение",
+ "Pages change without sliding or zooming": "Страницы сменяются без сдвига и масштабирования",
+ "High contrast": "Высокий контраст",
+ "Stronger text and edges": "Более чёткий текст и края"
 }

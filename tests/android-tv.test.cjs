@@ -70,6 +70,8 @@ test('a controller leaves the phone layout alone when Open with a controller is 
   // Both ways a controller opens Big Picture mode on Android ask the phone layout first.
   const press = tv.slice(tv.indexOf('if (!TV.on) {'), tv.indexOf('if (S.settings.pad_desktop === false)'));
   assert.match(press, /android\(\)\) \{ if \(!window\.phonePadTv \|\| window\.phonePadTv\(\)\) enter\(\); return; \}/);
-  const plug = tv.split('\n').find((l) => l.includes("addEventListener('gamepadconnected'"));
-  assert.match(plug, /window\.phonePadTv\(\)/);
+  const plug = tv.slice(tv.indexOf("addEventListener('gamepadconnected'"), tv.indexOf("addEventListener('gamepaddisconnected'"));
+  assert.match(plug, /\(window\.phonePadTv && !window\.phonePadTv\(\)\)\) return;/);
+  // A phone's own Big Picture mode asks the same (tv.js pad()).
+  assert.match(tv, /if \(b !== 'menu-hold' && \(!window\.phonePadTv \|\| window\.phonePadTv\(\)\)\) pb\.enter\(true\);/);
 });

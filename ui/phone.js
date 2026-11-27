@@ -28,11 +28,21 @@
     theme: () => (ui().theme === 'light' ? 'light' : ui().oled ? 'oled' : 'dark'),
     libview: () => (ui().phone_libview === 'list' ? 'list' : 'grid'),
     padTv: () => ui().pad_tv !== false,
+    lite: () => ui().phone_lite === true,
+    still: () => ui().phone_still === true,
+    contrast: () => ui().phone_contrast === true,
   };
+  // Performance mode: flat (no blurs, glows or shadows) and no moving extras, for older phones.
+  const lite = () => pref.lite();
+  // Movement kept to the least: Performance mode, Reduce motion, or the phone's own setting.
+  const still = () => pref.lite() || pref.still() || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // P: where the player is. stack: game pages open (the last shows). subs: pages inside a tab.
-  const P = { on: false, booted: false, tab: 'home', libi: 0, stack: [], subs: [], search: false, src: null, land: false, z: 1 };
+  const ALL_STEP = 30;
+  const P = { on: false, booted: false, tab: 'home', libi: 0, stack: [], subs: [], search: false, src: null, land: false, z: 1, allN: ALL_STEP };
   let el = {};
+  // Big Picture mode, while it's open (its own section, further down).
+  let bp = null;
 
   // ---------- small pieces ----------
   const ICON = {
@@ -105,10 +115,14 @@
     const out = [...by].map(([k, list]) => ({ k, name: originName(k), list: list.sort(byDl) }));
     return out.sort((x, y) => y.list.length - x.list.length || x.name.localeCompare(y.name));
   }
-  // This week's chart when it has come; until then (or without one) the most downloaded.
+  // This week's chart, always ten: the chart's games on Android first, then the most played and
+  // downloaded (the chart is made from every system, so fewer of its games may be here).
+  const TOP = 10;
   function ranked() {
-    const all = pool(), chart = trendList(all).map((x) => x.a);
-    return chart.length ? chart : [...all].sort(byDl).slice(0, 20);
+    const all = pool(), chart = trendList(all).map((x) => x.a).slice(0, TOP);
+    if (chart.length >= TOP) return chart;
+    const have = new Set(chart.map((a) => a.id));
+    return chart.concat([...all].sort((x, y) => (Number(y.players) || 0) - (Number(x.players) || 0) || byDl(x, y)).filter((a) => !have.has(a.id)).slice(0, TOP - chart.length));
   }
   // The line under a game in a list: its console, then how many play it.
   function listLine(a) {
@@ -231,11 +245,14 @@
     const head = `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">${esc(t('Catalog'))}</h1><p class="ph-vs">${esc(tf('{games} across {consoles}', { games: tn(all.length, '1 game', '{n} games'), consoles: tn(cons.length, '1 console', '{n} consoles') }))}</p></header>`;
     if (!all.length) return head + (gate() || empty('catalog', esc(S.offline ? t("Can't reach recomplauncher.com right now.") : t('No games yet'))));
     const az = [...all].sort((x, y) => x.name.localeCompare(y.name));
+    // All games come in a few rows at a time as the page scrolls down (moreGames), not all at once.
+    const shown = az.slice(0, P.allN);
+    const tail = shown.length < az.length ? `<div class="ph-gridmore" data-key="allmore"><span class="ph-spin"></span></div>` : '';
     return `${head}
       <div class="ph-padx" data-key="find" style="margin-top:6px"><button type="button" class="ph-sfield ph-press" data-act="search">${ic('search')}<span>${esc(t('Search games, consoles, developers'))}</span></button></div>
       <section class="ph-sec" data-key="cons">${secHead(t('Consoles'), `<button type="button" data-sub="cons">${esc(t('See all'))}</button>`)}<div class="ph-cons">${cons.slice(0, 4).map((c) => conTile(c)).join('')}</div></section>
       <section class="ph-sec" data-key="trend">${secHead(t('Trending this week'), `<button type="button" data-sub="trend">${esc(tf('Top {n}', { n: top.length }))}</button>`)}${top.slice(0, 5).map((a, i) => lrow(a, { rank: i + 1 })).join('')}</section>
-      <section class="ph-sec" data-key="all">${secHead(t('All games'))}<div class="ph-grid long">${az.map((a) => card(a)).join('')}</div></section>`;
+      <section class="ph-sec" data-key="all">${secHead(t('All games'))}<div class="ph-grid long">${shown.map((a) => card(a)).join('')}</div>${tail}</section>`;
   }
 
   // ---------- Library ----------
@@ -401,10 +418,15 @@
         ${srow(t('Display size'), '', `<div class="ph-pick" style="width:132px">${seg('size', ['S', 'M', 'L'], ['s', 'm', 'l'].indexOf(pref.size()))}</div>`)}
         ${srow(t('Menu labels'), t('Show names under the menu icons'), sw('labels', pref.labels()))}
         ${srow(t('Vibrate on taps'), '', sw('haptics', pref.haptics()))}</div>
+      <div class="ph-panel ph-set" data-key="ease"><h3>${esc(t('Accessibility'))}</h3>
+        ${srow(t('Performance mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}
+        ${srow(t('Reduce motion'), t('Pages change without sliding or zooming'), sw('still', pref.still() || pref.lite(), pref.lite()))}
+        ${srow(t('High contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}</div>
       <div class="ph-panel ph-set" data-key="menu"><h3>${esc(t('Menu bar'))}</h3>
         <div class="ph-srow" style="min-height:0;padding:8px 0 4px"><span class="ph-mut" style="font-size:12.5px">${esc(tf('Pick 3 to 5 tabs. {n} chosen.', { n: tabs.length }))}</span></div>
         ${Object.keys(TABS).map(tabRow).join('')}</div>
       <div class="ph-panel ph-set" data-key="bp"><h3>${esc(t('Big Picture mode'))}</h3>
+        ${srow(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('bpstart', !!S.settings.start_in_tv))}
         ${srow(t('Open with a controller'), t('Switches when you press a button on one'), sw('padtv', pref.padTv()))}
         <div class="ph-srow"><button type="button" class="ph-btn sec wide ph-press" data-act="tv">${ic('tv', 's')}${esc(t('Open Big Picture now'))}</button></div></div>
       <div class="ph-panel ph-set" data-key="cat"><h3>${esc(t('Catalog'))}</h3>
@@ -476,6 +498,7 @@
   }
   // A cover flies from where it was tapped to its place on the game's page (and back).
   function fly(src, a, b, rad, done) {
+    if (still()) { if (done) done(); return; }
     const f = document.createElement('img');
     f.src = src;
     f.className = 'ph-fly';
@@ -489,6 +512,7 @@
   }
   // A banner grows into the top of the game's page, then fades into the page's own picture.
   function flyHero(srcImg, a, b, rad) {
+    if (still()) return;
     const from = rin(srcImg), f = document.createElement('img');
     f.src = heroUrl(a);
     f.className = 'ph-fly';
@@ -500,6 +524,7 @@
     f.animate(frames, { duration: 700, easing: 'cubic-bezier(.3,1.08,.4,1)', fill: 'forwards' }).onfinish = () => f.remove();
   }
   function rise(gp) {
+    if (still()) { gp.style.opacity = '1'; gp.style.transform = 'none'; return; }
     gp.style.transform = 'translateY(46px) scale(.97)';
     void gp.offsetWidth;
     gp.style.transition = 'opacity 300ms ease,transform 600ms var(--soft)';
@@ -544,11 +569,12 @@
       return fly(srcCover.currentSrc || srcCover.src, from0, to, 14, () => { target.style.visibility = ''; srcBox.style.visibility = ''; });
     }
     rise(gp);
-    target.animate([{ transform: 'scale(.6)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 640, delay: 70, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+    if (!still()) target.animate([{ transform: 'scale(.6)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 640, delay: 70, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
   }
   // From one game's page to another (More like this), and back again.
   function swapGame(a, dir) {
     const gp = el.gp;
+    if (still()) { gp.innerHTML = gameHTML(a); gp.scrollTop = 0; loadReadme(a); return; }
     const out = gp.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-60 * dir}px) scale(.97)` }], { duration: 200, easing: 'ease-in' });
     out.onfinish = () => {
       gp.innerHTML = gameHTML(a);
@@ -645,7 +671,9 @@
   // One page inside a tab pushes the next straight in (or pops back): a copy of the page that's
   // leaving slides away while the new one slides over, so the tab underneath never shows through.
   function subSwap(dir) {
-    const sp = el.sp, s = P.subs[P.subs.length - 1], y = sp.scrollTop, ghost = sp.cloneNode(true), E = 'cubic-bezier(.22,1,.36,1)';
+    const sp = el.sp, s = P.subs[P.subs.length - 1], y = sp.scrollTop, E = 'cubic-bezier(.22,1,.36,1)';
+    if (still()) { sp.innerHTML = subHTML(s); sp.scrollTop = dir > 0 ? 0 : (s.y || 0); requestAnimationFrame(() => consFlow()); return; }
+    const ghost = sp.cloneNode(true);
     ghost.removeAttribute('id');
     ghost.style.cssText = 'pointer-events:none;transform:none;z-index:' + (dir > 0 ? 30 : 31);
     if (dir > 0) sp.before(ghost); else sp.after(ghost);
@@ -694,8 +722,10 @@
   // ---------- search ----------
   function searchResults(q) {
     if (!q.trim()) {
-      const chips = consoles().map((c) => `<button type="button" class="ph-chip ph-press" data-con="${esc(c.k)}">${conDot(c.k, false)}${esc(c.name)}</button>`).join('');
-      return `<h2>${esc(t('Jump to a console'))}</h2><div class="ph-chips">${chips}</div><h2>${esc(t('People are playing'))}</h2><div class="ph-in">${ranked().slice(0, 5).map((a) => lrow(a, { right: '' })).join('')}</div>`;
+      // Consoles are one row here (their own page has them all), not a wall of chips.
+      const cons = consoles();
+      const browse = cons.length ? `<div class="ph-in"><button type="button" class="ph-panel ph-note ph-press ph-socons" data-act="search-cons"><span class="ib">${ic('library', 's')}</span><span class="ph-col ph-grow"><b>${esc(t('Consoles'))}</b><small>${esc(cons.slice(0, 4).map((c) => c.name).join(' · '))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button></div>` : '';
+      return `${browse}<h2>${esc(t('People are playing'))}</h2><div class="ph-in">${ranked().slice(0, 6).map((a) => lrow(a, { right: '' })).join('')}</div>`;
     }
     const hay = (a) => `${a.name} ${a.game || ''} ${devName(a)} ${conName(a)} ${GENRES[a.genre] || ''}`;
     const found = pool().filter((a) => sMatch(hay(a), q)).sort(byDl);
@@ -782,7 +812,10 @@
   }
   function drawView(k) {
     const v = viewEl(k);
-    if (v) paint(v, (VIEW[k] || viewHome)());
+    if (!v) return;
+    paint(v, (VIEW[k] || viewHome)());
+    // A tall screen shows the end of All games without a scroll: the next rows come in right away.
+    if (k === 'catalog') requestAnimationFrame(() => moreGames(v));
   }
   function buildPager() {
     const tabs = pref.tabs();
@@ -835,6 +868,8 @@
   // Everything on screen, brought up to date in place.
   function refresh() {
     if (!P.on) return;
+    // Big Picture mode covers the phone layout: only it is drawn again, the rest once it closes.
+    if (bp) return bpDraw();
     pref.tabs().forEach(drawView);
     const s = P.subs[P.subs.length - 1];
     if (s) { const y = el.sp.scrollTop; paint(el.sp, subHTML(s)); el.sp.scrollTop = y; consFlow(); }
@@ -854,15 +889,21 @@
   }
 
   // ---------- the screen: its size, its edges, which way it's held ----------
-  let insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  let edges = { top: 0, right: 0, bottom: 0, left: 0 };
   // The design is drawn 433 wide on a phone held upright. A narrower phone scales it down to fit, a
   // tablet keeps it at full size and shows more of everything; S and L are a step either side.
   function fit() {
+    // The design is drawn for a phone about 400 px across. A tablet (or a big phone held sideways in
+    // a window) is drawn bigger in proportion, as if it were a large phone, so words, buttons and
+    // covers keep their size against the screen instead of turning into a sea of small things.
     const short = Math.min(innerWidth, innerHeight);
-    const base = short <= 433 ? short / 433 : short < 720 ? 1 : Math.min(1.25, short / 720);
+    const base = short <= 433 ? short / 433 : short < 560 ? 1 : Math.min(1.7, short / 560);
     P.z = base * SIZES[pref.size()];
     P.land = innerWidth > innerHeight;
     const px = (v) => (v / P.z).toFixed(2) + 'px';
+    // Big Picture mode hides the system's bars, and Android keeps the window clear of the camera
+    // hole itself (MainActivity.kt): there's nothing for the page to keep clear of.
+    const insets = bp ? { top: 0, right: 0, bottom: 0, left: 0 } : edges;
     const side = Math.max(insets.left, insets.right);
     root.style.setProperty('--z', P.z.toFixed(4));
     root.style.setProperty('--pt', px(insets.top));
@@ -879,13 +920,16 @@
   }
   async function syncInsets() {
     if (S.os !== 'android') return fit();
-    try { insets = Object.assign({ top: 0, right: 0, bottom: 0, left: 0 }, await invoke('android_insets')); } catch (e) { /* the last known sizes stay */ }
+    try { edges = Object.assign({ top: 0, right: 0, bottom: 0, left: 0 }, await invoke('android_insets')); } catch (e) { /* the last known sizes stay */ }
     fit();
   }
   window.phoneInsets = () => { if (P.on) syncInsets(); };
   addEventListener('resize', () => { if (P.on) { fit(); syncInsets(); } });
   function applyLook() {
     const theme = pref.theme();
+    root.classList.toggle('ph-lite', lite());
+    root.classList.toggle('ph-still', still());
+    root.classList.toggle('ph-hc', pref.contrast());
     if (root.dataset.theme === theme) return;
     root.dataset.theme = theme;
     if (S.os === 'android') invoke('android_edges', { phone: true, light: theme === 'light' }).catch(() => {});
@@ -896,25 +940,31 @@
   function boot() {
     const b = el.boot;
     b.hidden = false;
-    b.innerHTML = `<div class="ph-wall"></div><div class="veil"></div><div class="glow"></div><div class="mid">${mark(112)}<p class="ph-disp w">RecompLauncher</p></div><div class="ld"><i></i></div>`;
+    b.innerHTML = `<div class="ph-wall"></div><div class="veil"></div><div class="glow"></div><div class="mid">${mark(112)}<p class="ph-disp w">RecompLauncher</p></div><div class="ph-bootbar"><i></i></div><p class="ph-bootsay">${esc(t('Loading…'))}</p>`;
     const t0 = performance.now();
-    const wall = () => {
-      const ids = pool().filter((a) => a.cover).sort(byDl).slice(0, 20);
-      if (ids.length < 6 || $('.c', b)) return;
+    // The covers of the last start, kept on the phone: they come from the web engine's cache, so the
+    // wall is there from the first frame instead of after the list and its pictures have come in.
+    let last = [];
+    try { last = JSON.parse(localStorage.getItem('ph-wall') || '[]'); } catch (e) { last = []; }
+    const wall = (urls) => {
+      if (urls.length < 6 || $('.c', b)) return;
       let cols = '';
       for (let c = 0; c < 7; c++) {
         const set = [];
-        for (let i = 0; i < 5; i++) set.push(ids[(c * 3 + i * 4) % ids.length]);
-        const pics = set.concat(set).map((a) => `<img src="${esc(coverUrl(a, 160))}" alt="" class="ld" draggable="false">`).join('');
+        for (let i = 0; i < 5; i++) set.push(urls[(c * 3 + i * 4) % urls.length]);
+        const pics = set.concat(set).map((u) => `<img src="${esc(u)}" alt="" draggable="false">`).join('');
         cols += `<div class="c" style="animation-duration:${22 + (c % 3) * 5}s">${pics}</div>`;
       }
       const w = $('.ph-wall', b);
       w.innerHTML = cols;
       requestAnimationFrame(() => w.classList.add('on'));
     };
+    const fresh = () => pool().filter((a) => a.cover).sort(byDl).slice(0, 20).map((a) => coverUrl(a, 160));
+    if (Array.isArray(last) && !lite()) wall(last.filter((u) => typeof u === 'string'));
     // Gone once the games are in and the logo has had its moment; never kept waiting long offline.
     const check = () => {
-      wall();
+      const now = fresh();
+      if (now.length >= 6) { if (!lite()) wall(now); try { localStorage.setItem('ph-wall', JSON.stringify(now)); } catch (e) { /* kept next time */ } }
       const age = performance.now() - t0, ready = !!S.cat && (pool().length > 0 || !!S.listGate || S.offline);
       if ((ready && age > 1900) || age > 7000) return endBoot();
       setTimeout(check, 150);
@@ -940,6 +990,7 @@
       case 'subback': return closeSub();
       case 'search': return openSearch();
       case 'search-close': return closeSearch();
+      case 'search-cons': closeSearch(); return openSub({ t: 'cons' });
       case 'install': buzz(); await startInstall(id); return refresh();
       case 'update': buzz(); await updateGame(id); return refresh();
       case 'update-all': buzz(); for (const a of updatesList()) await updateGame(a.id); return refresh();
@@ -999,6 +1050,12 @@
     if (key === 'labels') { await save('phone_labels', on); return drawNav(); }
     if (key === 'haptics') return save('phone_haptics', on);
     if (key === 'padtv') return save('pad_tv', on);
+    if (key === 'bpstart') return saveSettings({ start_in_tv: on }, true);
+    if (key === 'lite' || key === 'still' || key === 'contrast') {
+      await save({ lite: 'phone_lite', still: 'phone_still', contrast: 'phone_contrast' }[key], on);
+      applyLook();
+      return drawView('settings');
+    }
     if (key === 'hideai') { await saveSettings({ hide_ai: on }, true); return refresh(); }
     if (key === 'cloudall') { await setCloudAll(on); return refresh(); }
   }
@@ -1034,10 +1091,13 @@
     if (!b || !root.contains(b) || b.disabled) return;
     const d = b.dataset;
     if (d.close) closeSheet();
+    if (d.bp) return bpAct(b);
+    // A row of Big Picture's game menu closes it as it does its thing.
+    if (d.bpm && bp) { Object.assign(bp, { menu: '', f: bp.mback || '' }); bpDraw(); }
     if (d.act) return act(b);
     if (d.sw) return flip(b);
     if (d.sgi !== undefined) return pick(b);
-    if (d.menu) return menuSheet(d.menu);
+    if (d.menu) return bp ? bpMenu(d.menu) : menuSheet(d.menu);
     if (d.readme) return readmeSheet(d.readme);
     if (d.lang) return setLanguage(d.lang).then(() => { buildPager(); drawNav(); });
     if (d.sub) {
@@ -1084,6 +1144,9 @@
         n.parentNode.querySelectorAll('.ph-dots i').forEach((d, i) => d.classList.toggle('on', i === P.slide));
         return;
       }
+      if (n.id === 'ph-v-catalog') return moreGames(n);
+      if (n.classList.contains('ph-bpscroll')) return bpMore(n);
+      if (still()) return;
       if (n.id === 'ph-v-home') {
         const y = Math.min(n.scrollTop, 500);
         for (const pic of n.querySelectorAll('.ph-hero img.bg')) pic.style.transform = `translateY(${y * 0.35}px) scale(${1 + y / 2400})`;
@@ -1100,11 +1163,32 @@
     });
   }, true);
 
+  // The next rows of All games, once the page is near its end. A screenful stays ready below.
+  function moreGames(n) {
+    if (P.allN >= pool().length || n.scrollTop + n.clientHeight < n.scrollHeight - n.clientHeight * 1.5) return;
+    P.allN += ALL_STEP;
+    drawView('catalog');
+  }
+
   // ---------- swipes: between tabs, back from the edge, a sheet pulled down, a long press ----------
   let G = null;
+  // A game's big picture starts loading as the finger lands on its cover, so its page opens with it.
+  const warmed = new Set();
+  function warm(id) {
+    const a = appOf(id), u = a && heroUrl(a);
+    if (!u || warmed.has(u) || SEEN.has(u)) return;
+    warmed.add(u);
+    const i = new Image();
+    i.decoding = 'async';
+    i.src = u;
+  }
   root.addEventListener('pointerdown', (e) => {
+    const o = e.target.closest && e.target.closest('[data-open]');
+    if (o) warm(o.dataset.open);
     dragged = false; pressed = false;
     clearTimeout(hold);
+    // Big Picture mode: fingers tap and scroll; the controller's highlight steps aside.
+    if (bp) { G = null; if (bp.pad) { bp.pad = false; bpDraw(); } return; }
     if (!P.on || e.target.closest('input')) return;
     const t0 = e.target, u = el.ui.getBoundingClientRect();
     G = { x: e.clientX, y: e.clientY, at: performance.now(), ax: null, hs: t0.closest('.ph-hs,.ph-hero'), sheet: t0.closest('.ph-sheet'), layer: t0.closest('.ph-gp,.ph-sp'), inPager: !!t0.closest('.ph-pager'), inLib: !!t0.closest('.ph-lp') };
@@ -1212,6 +1296,302 @@
     return false;
   }
 
+  // ---------- Big Picture mode ----------
+  // Full screen and sideways, for a controller and for fingers alike: the focused game's art behind
+  // a shelf of covers, four sections (Home, Library, Catalog, Settings), a game's page and its menu.
+  // It's drawn over the phone layout, which waits underneath as it was. Android TV (no touch screen)
+  // keeps the big-screen Big Picture mode instead (tv.js).
+  const BP_TABS = [N_('Home'), N_('Library'), N_('Catalog'), N_('Settings')];
+  const BP_STEP = 36;
+  // Home's shelf: the player's own games first, then the week's top 10.
+  function bpShelf() {
+    const mine = mineList(), have = new Set(mine.map((a) => a.id));
+    return mine.concat(ranked().filter((a) => !have.has(a.id))).slice(0, 24);
+  }
+  const bpGrid = () => (bp.tab === 1 ? mineList() : [...pool()].sort((x, y) => x.name.localeCompare(y.name)));
+  // The controller's own button pictures (Xbox letters, PlayStation shapes), as in tv.js.
+  const glyph = (n) => {
+    if (!window.padArt) return '';
+    const p = padArt((S.settings.ui || {}).tv_glyphs || S.padKind || 'xbox', n);
+    return `<i class="glyph" style="--m:url(${p.url})" role="img" aria-label="${esc(t(p.name))}"></i>`;
+  };
+  function bpInfo(a, full) {
+    const id = esc(a.id), lib = S.library[a.id];
+    const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '');
+    const title = a.logo ? img(media(a.logo), 'logo', 'data-logo') + `<h1 class="ph-disp" dir="auto" hidden>${esc(a.name)}</h1>` : `<h1 class="ph-disp" dir="auto">${esc(a.name)}</h1>`;
+    const line = [a.logo ? a.name : '', lib ? playedFor(lib) : devName(a) ? tf('by {who}', { who: devName(a) }) : '', lib ? '' : sizeOf(a)].filter(Boolean).join(' · ');
+    const tagsMore = full ? tagsOf(a).slice(0, 4) : [];
+    const about = full ? a.blurb || notesLine(a.description) : '';
+    return `<div class="ph-bpinfo${full ? ' full' : ''}" data-key="i:${id}"><div class="tags">${tags}</div>${title}<p class="line" dir="auto">${esc(line)}</p>
+      <div class="ph-row ph-bpacts"><div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>${full ? '' : `<button type="button" class="ph-btn sec ph-press" data-bp="game" data-id="${id}">${esc(t('Details'))}</button>`}</div>
+      ${about ? `<p class="ph-bpab" dir="auto">${esc(about)}</p>` : ''}${tagsMore.length ? `<div class="ph-row ph-bpchips">${tagsMore.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}</div>`;
+  }
+  function bpSide(a) {
+    const facts = [[t('Console'), conName(a)], [t('Developer'), devName(a)], [t('version'), a.version ? String(verText(a.version)) : ''], [t('size'), sizeOf(a)], [t('players'), Number(a.players) > 0 ? fmtN(Number(a.players)) : ''], [t('Latest release'), a.released ? date(a.released) : '']].filter(([, v]) => v);
+    if (!facts.length) return '';
+    return `<div class="ph-bpside" data-key="side:${esc(a.id)}">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`).join('')}</div>`;
+  }
+  function bpMenuHTML(a) {
+    const st = stateOf(a), id = esc(a.id);
+    const row = (icon, label, attr, cls = '') => `<button type="button" class="ph-bprow ph-press ${cls}" data-bpm="1" ${attr}>${ic(icon, 's')}<span>${esc(label)}</span></button>`;
+    const rows = [];
+    if (st === 'installed' || st === 'running') rows.push(row('play', t('Play'), `data-act="play" data-id="${id}"`));
+    if (st === 'update') rows.push(row('downloads', t('Update'), `data-act="update" data-id="${id}"`), row('play', t('Play'), `data-act="play" data-id="${id}"`));
+    if (st === 'get') rows.push(row('downloads', t('Install'), `data-act="install" data-id="${id}"`));
+    if (st === 'paused') rows.push(row('downloads', t('Resume'), `data-act="resume" data-id="${id}"`));
+    if (st === 'busy' || st === 'paused') rows.push(row('x', t('Cancel'), `data-act="cancel" data-id="${id}"`));
+    if (bp.game !== a.id) rows.push(`<button type="button" class="ph-bprow ph-press" data-bp="game" data-id="${id}">${ic('chev', 's')}<span>${esc(t('Details'))}</span></button>`);
+    if (!S.library[a.id] && !a.custom) rows.push(row('bookmark', isSaved(a.id) ? t('Remove from saved') : t('Save for later'), `data-act="save" data-id="${id}"`));
+    if (a.repo && !a.local) rows.push(row('globe', t('Open the project page'), `data-act="project" data-id="${id}"`));
+    if (S.library[a.id] && st !== 'busy' && st !== 'uninstalling') rows.push(row('trash', t('Uninstall'), `data-act="uninstall" data-id="${id}"`, 'red'));
+    return `<div class="ph-bpmenu" data-key="m:${id}"><div class="ph-bpwho">${coverBox(a)}<b dir="auto">${esc(a.name)}</b><small>${esc([a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '', sizeOf(a)].filter(Boolean).join(' · '))}</small></div><div class="rows">${rows.join('')}</div></div>`;
+  }
+  function bpSettings() {
+    const row = (title, sub, key, on, off) => `<div class="ph-bprow set"><span class="ph-col ph-grow"><span>${esc(title)}</span><small>${esc(sub)}</small></span>${sw(key, on, off)}</div>`;
+    return `<div class="ph-bpscroll" data-key="set"><div class="ph-bpset">
+      ${row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), 'bpstart', !!S.settings.start_in_tv)}
+      ${row(t('Open with a controller'), t('Switches when you press a button on one'), 'padtv', pref.padTv())}
+      ${row(t('Vibrate on taps'), '', 'haptics', pref.haptics())}
+      ${row(t('Performance mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
+      <button type="button" class="ph-bprow ph-press" data-bp="exit" data-key="exitrow">${ic('phone', 's')}<span>${esc(t('Leave Big Picture mode'))}</span></button></div></div>`;
+  }
+  function bpHTML() {
+    const pad = bp.pad;
+    const back = `<button type="button" class="ph-btn sec sm ph-press ph-bpback" data-bp="back" data-key="back">${pad ? glyph('b') : ic('back', 's')}${esc(t('Back'))}</button>`;
+    const tabs = `<div class="ph-bptabs" data-key="tabs" style="--i:${bp.tab}">${pad ? glyph('lb') : ''}<div class="in"><span class="th"></span>${BP_TABS.map((k, i) => `<button type="button" class="${i === bp.tab ? 'on' : ''}" data-bp="tab" data-i="${i}" data-key="t:${i}">${esc(t(k))}</button>`).join('')}</div>${pad ? glyph('rb') : ''}</div>`;
+    const hints = pad ? `<div class="ph-bphints" data-key="hints">${[['a', t('Select')], ['b', t('Back')], ['y', t('Options')]].map(([k, l]) => `<span>${glyph(k)}${esc(l)}</span>`).join('')}</div>` : '';
+    const top = `<div class="ph-bptop" data-key="top">${bp.menu || bp.game ? back : tabs}<span class="ph-grow"></span>${hints}<button type="button" class="ph-ibtn glass ph-press" data-bp="exit" data-key="exit" aria-label="${esc(t('Leave Big Picture mode'))}">${ic('x', 's')}</button></div>`;
+    let body;
+    const all = pool();
+    if (bp.menu && appOf(bp.menu)) body = bpMenuHTML(appOf(bp.menu));
+    else if (bp.game && appOf(bp.game)) { const a = appOf(bp.game); body = bpInfo(a, true) + bpSide(a); }
+    else if (bp.tab === 3) body = bpSettings();
+    else if (bp.tab === 0) {
+      const sh = bpShelf();
+      if (!sh.length) body = `<div class="ph-bpnone" data-key="none">${S.listGate ? gate() : `<span class="ph-spin"></span><span>${esc(S.offline ? t("Can't reach recomplauncher.com right now.") : t('Loading…'))}</span>`}</div>`;
+      else {
+        if (!sh.some((a) => a.id === bp.focus)) bp.focus = sh[0].id;
+        body = bpInfo(appOf(bp.focus)) + `<div class="ph-bpshelf" data-key="shelf">${sh.map((a) => `<button type="button" class="ph-press${a.id === bp.focus ? ' f' : ''}" data-bp="focus" data-id="${esc(a.id)}" data-key="s:${esc(a.id)}" aria-label="${esc(a.name)}">${coverBox(a)}</button>`).join('')}</div>`;
+      }
+    } else {
+      const list = bpGrid(), shown = list.slice(0, bp.n);
+      const none = bp.tab === 1 ? t('Your games show up here once you install one.') : all.length ? '' : t('Loading…');
+      body = `<div class="ph-bpscroll" data-key="grid:${bp.tab}">${shown.length ? `<div class="ph-bpgrid">${shown.map((a) => `<button type="button" class="ph-press" data-bp="game" data-id="${esc(a.id)}" data-key="g:${esc(a.id)}">${coverBox(a)}<span class="ph-gname" dir="auto">${esc(a.name)}</span></button>`).join('')}</div>${shown.length < list.length ? '<div class="ph-gridmore" data-key="more"><span class="ph-spin"></span></div>' : ''}` : `<div class="ph-bpnone">${esc(none)}</div>`}</div>`;
+    }
+    return top + body;
+  }
+  // The focused game's art fades in over the last one.
+  function bpBg(a) {
+    const box = el.bpbg, u = a ? heroUrl(a) : '';
+    if (!box || box.dataset.u === u) return;
+    box.dataset.u = u;
+    if (!u) return;
+    const pic = document.createElement('img');
+    pic.alt = '';
+    pic.decoding = 'async';
+    if (!a.hero) pic.className = 'blur';
+    pic.src = u;
+    box.appendChild(pic);
+    while (box.children.length > 2) box.firstChild.remove();
+  }
+  function bpDraw() {
+    if (!bp || !el.bpin) return;
+    const flat = !bp.menu && !bp.game && bp.tab !== 0;
+    paint(el.bpin, bpHTML());
+    el.bp.classList.toggle('dim', flat || !!bp.menu);
+    el.bp.classList.toggle('pad', bp.pad);
+    bpBg(appOf(bp.menu || bp.game || bp.focus));
+    bpLight(false);
+  }
+  // ---------- moving around with a controller ----------
+  const bpItems = () => (el.bpin ? [...el.bpin.querySelectorAll('button:not(:disabled)')].filter((b) => b.offsetParent) : []);
+  const bpKey = (b) => b.dataset.key || [b.dataset.act || b.dataset.bp || (b.dataset.menu ? 'menu' : '') || (b.dataset.sw ? 'sw' : ''), b.dataset.id || b.dataset.menu || b.dataset.sw || b.dataset.i || ''].join(':');
+  function bpFirst(all) {
+    const pick = (sel) => all.find((b) => b.matches(sel));
+    if (bp.menu) return pick('.ph-bprow');
+    if (bp.game) return pick('.ph-cta button');
+    if (bp.tab === 0) return pick('.ph-bpshelf .f') || pick('.ph-cta button');
+    return pick('.ph-bpgrid button,.ph-bpset button') || pick('.ph-bptabs .on');
+  }
+  function bpLight(scroll) {
+    const all = bpItems();
+    let f = all.find((b) => bpKey(b) === bp.f);
+    // A game's buttons change under the highlight (Install becomes the download's Cancel): it stays on them.
+    if (!f && bp.cta) f = all.find((b) => b.closest('.ph-cta'));
+    if (!f) f = bpFirst(all);
+    bp.f = f ? bpKey(f) : '';
+    bp.cta = !!(f && f.closest('.ph-cta'));
+    for (const b of all) b.classList.toggle('ph-bpon', b === f);
+    if (scroll && f) bpShow(f);
+  }
+  function bpShow(b) {
+    const sh = b.closest('.ph-bpshelf');
+    if (sh) return sh.scrollTo({ left: b.offsetLeft - (sh.clientWidth - b.offsetWidth) / 2, behavior: still() ? 'auto' : 'smooth' });
+    b.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: still() ? 'auto' : 'smooth' });
+  }
+  function bpFocus(b) {
+    bp.f = bpKey(b);
+    // On Home, the shelf's cover in focus is the game shown above it.
+    if (b.dataset.bp === 'focus' && b.dataset.id !== bp.focus) { bp.focus = b.dataset.id; bpDraw(); }
+    else bpLight(false);
+    bpShow(b);
+  }
+  // The nearest thing that way. Coming into the shelf or the tabs lands on the one picked there.
+  function bpMove(dir) {
+    const all = bpItems(), cur = all.find((b) => b.classList.contains('ph-bpon'));
+    if (!cur) return bpLight(true);
+    const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const flat = dir === 'left' || dir === 'right';
+    let best = null, score = Infinity;
+    for (const b of all) {
+      if (b === cur) continue;
+      const q = b.getBoundingClientRect();
+      const dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+      const ahead = dir === 'left' ? -dx : dir === 'right' ? dx : dir === 'up' ? -dy : dy;
+      if (ahead <= 4) continue;
+      // A row's neighbours come before anything further off to the side.
+      const off = flat ? Math.max(0, Math.abs(dy) - (q.height + r.height) / 4) : Math.max(0, Math.abs(dx) - (q.width + r.width) / 4);
+      const s = ahead + off * 3;
+      if (s < score) { score = s; best = b; }
+    }
+    if (!best) return;
+    for (const sel of ['.ph-bpshelf', '.ph-bptabs']) {
+      const box = best.closest(sel);
+      if (box && !cur.closest(sel)) best = $(sel === '.ph-bpshelf' ? '.f' : '.on', box) || best;
+    }
+    bpFocus(best);
+  }
+  // ---------- the sections and pages ----------
+  function bpTab(i) {
+    if (i === bp.tab && !bp.game && !bp.menu) return;
+    Object.assign(bp, { tab: i, game: '', menu: '', f: '', n: BP_STEP });
+    buzz();
+    bpDraw();
+    const sc = $('.ph-bpscroll', el.bpin);
+    if (sc) sc.scrollTop = 0;
+  }
+  function bpGame(id) {
+    bp.back = { f: bp.menu ? bp.mback : bp.f };
+    Object.assign(bp, { game: id, menu: '', f: '' });
+    buzz();
+    bpDraw();
+  }
+  function bpMenu(id) {
+    if (!appOf(id)) return;
+    bp.mback = bp.f;
+    Object.assign(bp, { menu: id, f: '' });
+    buzz();
+    bpDraw();
+  }
+  // Back a step: the menu, then a game's page, then to Home. False on Home itself.
+  function bpBack() {
+    if (!bp) return false;
+    if (P.sheet) { closeSheet(); return true; }
+    if (bp.menu) { Object.assign(bp, { menu: '', f: bp.mback || '' }); bpDraw(); return true; }
+    if (bp.game) { const b = bp.back || {}; Object.assign(bp, { game: '', f: b.f || '' }); bpDraw(); return true; }
+    if (bp.tab !== 0) { bpTab(0); return true; }
+    return false;
+  }
+  function bpAct(b) {
+    const d = b.dataset;
+    switch (d.bp) {
+      case 'tab': return bpTab(Number(d.i));
+      case 'exit': return bpLeave();
+      case 'back': return bpBack();
+      case 'game': return bpGame(d.id);
+      // A cover on the shelf: the first tap shows it, the next opens its page.
+      case 'focus': if (d.id === bp.focus) return bpGame(d.id); bp.f = bpKey(b); bp.focus = d.id; buzz(); bpDraw(); return bpShow(b);
+    }
+  }
+  // A controller's button (from tv.js) or a key. True: Big Picture took it.
+  function bpPad(b, kind) {
+    if (!bp) return false;
+    const was = bp.pad, k = S.padKind;
+    bp.pad = true;
+    if (!was || (kind && kind !== bp.kind)) { bp.kind = kind || k; bpDraw(); }
+    if (P.sheet) { if (b === 'b' || b === 'a') closeSheet(); return true; }
+    const cur = bpItems().find((x) => x.classList.contains('ph-bpon'));
+    switch (b) {
+      case 'up': case 'down': case 'left': case 'right': bpMove(b); break;
+      case 'a': if (cur) cur.click(); else bpLight(true); break;
+      case 'b': bpBack(); break;
+      case 'x': case 'y': {
+        const id = bp.menu ? '' : (cur && cur.dataset.id && (cur.dataset.bp === 'focus' || cur.dataset.bp === 'game') ? cur.dataset.id : bp.game || (bp.tab === 0 ? bp.focus : ''));
+        if (bp.menu) bpBack(); else if (id) bpMenu(id);
+        break;
+      }
+      case 'lb': case 'rb': if (!bp.game && !bp.menu) bpTab((bp.tab + (b === 'rb' ? 1 : 3)) % 4); break;
+      case 'menu': bpTab(3); break;
+    }
+    return true;
+  }
+  // The next covers of a long grid, once it's scrolled near its end.
+  function bpMore(n) {
+    if (!bp || n.scrollTop + n.clientHeight < n.scrollHeight - n.clientHeight) return;
+    if (bp.n >= bpGrid().length) return;
+    bp.n += BP_STEP;
+    bpDraw();
+  }
+  // ---------- in and out ----------
+  function bpEnter(byPad) {
+    if (bp) return;
+    if (!P.on) enter();
+    if (P.sheet) closeSheet();
+    if (P.search) closeSearch();
+    if (P.stack.length) closeGame(true);
+    closeSub(true);
+    bp = { tab: 0, focus: '', game: '', menu: '', f: '', n: BP_STEP, pad: !!byPad || padHere(), byPad: !!byPad, kind: S.padKind };
+    const box = document.createElement('div');
+    box.className = 'ph-bp';
+    box.innerHTML = '<div class="ph-bpbg"></div><i class="sc1"></i><i class="sc2"></i><div class="ph-bpin"></div>';
+    // Under the start-up screen, when it's still up.
+    el.ui.insertBefore(box, el.boot);
+    Object.assign(el, { bp: box, bpbg: box.firstChild, bpin: box.lastChild });
+    root.classList.add('ph-bpon');
+    fit();
+    // Sideways, with the system's bars hidden; the edges follow once they have moved.
+    invoke('android_orientation', { landscape: true }).catch(() => {});
+    invoke('android_edges', { phone: false, light: false }).catch(() => {}).then(syncInsets);
+    bpDraw();
+    buzz();
+  }
+  function bpLeave() {
+    if (!bp) return;
+    const box = el.bp;
+    bp = null;
+    el.bp = el.bpbg = el.bpin = null;
+    root.classList.remove('ph-bpon');
+    invoke('android_orientation', { landscape: false }).catch(() => {});
+    // The bars back as the phone layout has them (applyLook sets them when the theme is new to it).
+    delete root.dataset.theme;
+    applyLook();
+    syncInsets();
+    refresh();
+    if (still() || !box.animate) box.remove();
+    else box.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(1.04)' }], { duration: 260, easing: 'ease-in' }).onfinish = () => box.remove();
+  }
+  // The last controller gone: back to the phone layout, if a controller is what opened it.
+  function bpPadGone() {
+    if (bp && bp.byPad && !S.settings.start_in_tv) bpLeave();
+  }
+  // Android's Back: a step back, and from Home out of Big Picture (or, when it's how the launcher
+  // opens, out of the way like any app).
+  function bpSysBack() {
+    if (bpBack()) return;
+    if (S.settings.start_in_tv) invoke('android_to_back').catch(() => {});
+    else bpLeave();
+  }
+  window.phoneBp = { enter: bpEnter, leave: bpLeave, on: () => !!bp, pad: bpPad, padGone: bpPadGone, back: bpSysBack };
+  // A keyboard works as a controller: arrows, Enter, Escape, Q and E for the sections.
+  addEventListener('keydown', (e) => {
+    if (!bp || e.ctrlKey || e.altKey || e.metaKey || (e.target.closest && e.target.closest('input,textarea'))) return;
+    const n = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'a', ' ': 'a', Escape: 'b', Backspace: 'b', q: 'lb', e: 'rb', PageUp: 'lb', PageDown: 'rb', x: 'x', y: 'y' }[e.key];
+    if (!n) return;
+    e.preventDefault();
+    e.stopPropagation();
+    bpPad(n);
+  }, true);
+
   // ---------- in and out ----------
   function enter() {
     if (P.on) return;
@@ -1239,6 +1619,7 @@
   }
   function leave() {
     P.on = false;
+    bp = null;
     document.body.classList.remove('phone-on');
     document.body.style.removeProperty('--ph-toast');
     root.hidden = true;

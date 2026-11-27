@@ -3644,5 +3644,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 trò chơi giữ bản lưu ở nơi Android không cho launcher vào.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} trò chơi giữ bản lưu ở nơi Android không cho launcher vào.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android sẽ hỏi trước. Cho phép một lần để launcher có thể sao chép bản lưu trò chơi của bạn.",
- "Sign in to keep your saves in the cloud.": "Đăng nhập để giữ bản lưu trên đám mây."
+ "Sign in to keep your saves in the cloud.": "Đăng nhập để giữ bản lưu trên đám mây.",
+ "Accessibility": "Trợ năng",
+ "Performance mode": "Chế độ hiệu năng",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Phẳng và tĩnh: không làm mờ, không phát sáng, không hiệu ứng chuyển động. Mượt hơn trên điện thoại cũ.",
+ "Reduce motion": "Giảm chuyển động",
+ "Pages change without sliding or zooming": "Trang đổi mà không trượt hay phóng to",
+ "High contrast": "Độ tương phản cao",
+ "Stronger text and edges": "Chữ và viền rõ hơn"
 }

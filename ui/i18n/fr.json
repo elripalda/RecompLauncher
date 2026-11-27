@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 jeu garde ses sauvegardes là où Android ne laisse pas entrer le launcher.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} jeux gardent leurs sauvegardes là où Android ne laisse pas entrer le launcher.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android demande d'abord. Autorisez-le une fois et le launcher pourra copier les sauvegardes de vos jeux.",
- "Sign in to keep your saves in the cloud.": "Connectez-vous pour garder vos sauvegardes dans le cloud."
+ "Sign in to keep your saves in the cloud.": "Connectez-vous pour garder vos sauvegardes dans le cloud.",
+ "Accessibility": "Accessibilité",
+ "Performance mode": "Mode performance",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Plat et immobile : sans flous, lueurs ni éléments animés. Plus fluide sur les anciens téléphones.",
+ "Reduce motion": "Réduire les animations",
+ "Pages change without sliding or zooming": "Les pages changent sans glisser ni zoomer",
+ "High contrast": "Contraste élevé",
+ "Stronger text and edges": "Texte et contours plus nets"
 }

@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 款游戏把存档放在 Android 不让启动器进入的地方。",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} 款游戏把存档放在 Android 不让启动器进入的地方。",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android 会先询问。允许一次，启动器就能复制你的游戏存档。",
- "Sign in to keep your saves in the cloud.": "登录后即可把存档保存在云端。"
+ "Sign in to keep your saves in the cloud.": "登录后即可把存档保存在云端。",
+ "Accessibility": "无障碍",
+ "Performance mode": "性能模式",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "扁平、静止：没有模糊、光晕和动态装饰。在旧手机上更流畅。",
+ "Reduce motion": "减弱动态效果",
+ "Pages change without sliding or zooming": "页面切换时不滑动也不缩放",
+ "High contrast": "高对比度",
+ "Stronger text and edges": "文字和边框更清晰"
 }
