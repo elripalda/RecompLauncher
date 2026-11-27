@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} op {consoles}",
  "{n} consoles": "{n} consoles",
  "{n} results": "{n} resultaten",
- "{size} on this device": "{size} op dit apparaat"
+ "{size} on this device": "{size} op dit apparaat",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "Na elke sessie bewaart de launcher een kopie. Zet een oudere terug wanneer je wilt.",
+ "After you play, a copy goes to your account": "Na het spelen gaat er een kopie naar je account",
+ "Allow All files access": "Toegang tot alle bestanden toestaan",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Sta toegang tot alle bestanden toe voor RecompLauncher, zodat hij de saves van deze game kan bereiken.",
+ "Back up to the cloud": "Back-up naar de cloud",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Games die hun saves in de gedeelde opslag van de telefoon bewaren, verschijnen hier zodra je er een installeert.",
+ "On this phone": "Op deze telefoon",
+ "Only on this phone": "Alleen op deze telefoon",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 game bewaart zijn saves waar Android de launcher niet toelaat.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} games bewaren hun saves waar Android de launcher niet toelaat.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android vraagt het eerst. Sta het één keer toe en de launcher kan de saves van je games kopiëren.",
+ "Sign in to keep your saves in the cloud.": "Log in om je saves in de cloud te bewaren."
 }

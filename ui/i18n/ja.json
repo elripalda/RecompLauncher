@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{consoles}・{games}",
  "{n} consoles": "{n} 機種",
  "{n} results": "{n} 件",
- "{size} on this device": "この端末で {size}"
+ "{size} on this device": "この端末で {size}",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "プレイのたびにランチャーがコピーを残します。古いものにいつでも戻せます。",
+ "After you play, a copy goes to your account": "プレイ後、コピーがアカウントに送られます",
+ "Allow All files access": "すべてのファイルへのアクセスを許可",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "このゲームのセーブに届くよう、RecompLauncher にすべてのファイルへのアクセスを許可してください。",
+ "Back up to the cloud": "クラウドにバックアップ",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "スマホの共有ストレージにセーブを置くゲームは、インストールするとここに表示されます。",
+ "On this phone": "このスマホ",
+ "Only on this phone": "このスマホのみ",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 本のゲームは、Android がランチャーを入れない場所にセーブを置いています。",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} 本のゲームは、Android がランチャーを入れない場所にセーブを置いています。",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android が最初に確認します。一度許可すれば、ランチャーがゲームのセーブをコピーできます。",
+ "Sign in to keep your saves in the cloud.": "サインインすると、セーブをクラウドに保管できます。"
 }

@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} على {consoles}",
  "{n} consoles": "جهازان|{n} أجهزة|{n} جهازًا|{n} جهاز",
  "{n} results": "نتيجتان|{n} نتائج|{n} نتيجة|{n} نتيجة",
- "{size} on this device": "{size} على هذا الجهاز"
+ "{size} on this device": "{size} على هذا الجهاز",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "بعد كل جلسة يحتفظ المشغّل بنسخة. استعد نسخة أقدم متى شئت.",
+ "After you play, a copy goes to your account": "بعد اللعب تذهب نسخة إلى حسابك",
+ "Allow All files access": "السماح بالوصول إلى كل الملفات",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "اسمح لـ RecompLauncher بالوصول إلى كل الملفات حتى يصل إلى ملفات حفظ هذه اللعبة.",
+ "Back up to the cloud": "النسخ الاحتياطي إلى السحابة",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "تظهر هنا الألعاب التي تحفظ ملفاتها في مساحة التخزين المشتركة للهاتف عند تثبيت إحداها.",
+ "On this phone": "على هذا الهاتف",
+ "Only on this phone": "على هذا الهاتف فقط",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "لعبة واحدة تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "لعبتان تحفظان ملفاتهما حيث لا يسمح Android للمشغّل بالدخول.|{n} ألعاب تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.|{n} لعبة تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.|{n} لعبة تحفظ ملفاتها حيث لا يسمح Android للمشغّل بالدخول.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "يسأل Android أولًا. اسمح مرة واحدة وسيتمكن المشغّل من نسخ ملفات حفظ ألعابك.",
+ "Sign in to keep your saves in the cloud.": "سجّل الدخول للاحتفاظ بملفات حفظك في السحابة."
 }

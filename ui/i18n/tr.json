@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{consoles} genelinde {games}",
  "{n} consoles": "{n} konsol",
  "{n} results": "{n} sonuç",
- "{size} on this device": "Bu cihazda {size}"
+ "{size} on this device": "Bu cihazda {size}",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "Her oturumdan sonra launcher bir kopya tutar. Daha eskisini istediğin zaman geri yükle.",
+ "After you play, a copy goes to your account": "Oynadıktan sonra bir kopya hesabına gider",
+ "Allow All files access": "Tüm dosyalara erişime izin ver",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Bu oyunun kayıtlarına ulaşabilmesi için RecompLauncher'a tüm dosyalara erişim izni ver.",
+ "Back up to the cloud": "Buluta yedekle",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Kayıtlarını telefonun paylaşılan depolamasında tutan oyunlar, birini yüklediğinde burada görünür.",
+ "On this phone": "Bu telefonda",
+ "Only on this phone": "Yalnızca bu telefonda",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 oyun kayıtlarını Android'in launcher'ı içeri almadığı bir yerde tutuyor.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} oyun kayıtlarını Android'in launcher'ı içeri almadığı bir yerde tutuyor.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android önce sorar. Bir kez izin ver, launcher oyunlarının kayıtlarını kopyalayabilsin.",
+ "Sign in to keep your saves in the cloud.": "Kayıtlarını bulutta tutmak için giriş yap."
 }

@@ -400,6 +400,44 @@ body .ph-glassy{-webkit-backdrop-filter:blur(22px) saturate(1.7) !important;back
 .ph-step>.ph-ic{color:var(--mut)}
 .ph-step.red,.ph-step.red>.ph-ic{color:#e5484d}
 .ph-step.on,.ph-step.on>.ph-ic{color:var(--acc)}
+/* Saves: what's kept on this phone and in the cloud, then each game's copies. */
+.ph-svacc{display:flex;gap:12px;margin:4px var(--gr) 12px var(--gl);padding:14px}
+.ph-svacc b{font:700 15px Figtree,system-ui,sans-serif}
+.ph-svacc .ph-mut{font-size:12.5px;line-height:1.4;margin:3px 0 12px}
+.ph-svacc .ph-btn{align-self:flex-start}
+.ph-svcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:8px}
+.ph-svc{padding:14px;min-width:0}
+.ph-svc b{font-size:15px}
+.ph-svc small{color:var(--mut);font-size:12px}
+.ph-svc .ph-col{gap:1px;min-width:0}
+.ph-svi{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--p3);color:var(--fg);flex:none}
+.ph-meter{display:flex;gap:3px;margin:14px 0 10px}
+.ph-meter i{flex:1;height:10px;border-radius:3px;background:var(--p3)}
+.ph-meter i.on{animation:ph-pop 520ms var(--spring) both}
+.ph-meter.a i.on{background:linear-gradient(180deg,#34F2E8,#2bb8c9)}
+.ph-meter.b i.on{background:linear-gradient(180deg,#8fb2ff,#5b84e8)}
+@keyframes ph-pop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:none}}
+.ph-svn{justify-content:space-between;align-items:baseline;gap:8px}
+.ph-svn b{font-size:17px}
+.ph-svn small{font-size:11.5px;text-align:right}
+.ph-svn b{white-space:nowrap}
+.ph-svn .ph-svq{font-size:14px;white-space:normal}
+.ph-svh{margin:18px 0 8px}
+.ph-svp{line-height:1.5}
+.ph-svsec{margin-top:24px}
+.ph-svrow{display:flex;align-items:center;gap:8px;margin:8px var(--gr) 0 var(--gl);padding:10px 8px 10px 10px;border-radius:20px}
+.ph-svrow>button:first-child{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left}
+.ph-svrow .ph-cover{width:46px;border-radius:10px;flex:none}
+.ph-svrow .ph-gsub{font-size:11.5px}
+.ph-svm{align-items:flex-end;gap:2px;flex:none}
+.ph-svm b{font-size:12.5px;white-space:nowrap}
+.ph-svm small{color:var(--mut);font-size:11px}
+.ph-svb{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:8px;font:700 10.5px Figtree,system-ui,sans-serif;border:1px solid var(--edge2);color:var(--mut);align-self:flex-start;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.ph-svb.ok{color:var(--acc);border-color:var(--acc);background:var(--accbg)}
+.ph-svb.warn{color:#d9952a;border-color:rgba(245,184,61,.55)}
+.ph-svout{font-size:12.5px;line-height:1.45;margin-top:18px}
+.ph-view .ph-set[data-key="auto"]{margin-top:10px}
+
 /* A README as its developer wrote it. */
 .ph-md{margin-top:12px;font-size:14px;line-height:1.55;color:var(--mut);user-select:text;-webkit-user-select:text;overflow-wrap:anywhere}
 .ph-md h1,.ph-md h2,.ph-md h3,.ph-md h4{color:var(--fg);font:700 15px/1.3 Figtree,system-ui,sans-serif;margin:18px 0 6px}

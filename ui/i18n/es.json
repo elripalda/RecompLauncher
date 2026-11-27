@@ -3511,5 +3511,17 @@
  "{games} across {consoles}": "{games} en {consoles}",
  "{n} consoles": "{n} consolas",
  "{n} results": "{n} resultados",
- "{size} on this device": "{size} en este dispositivo"
+ "{size} on this device": "{size} en este dispositivo",
+ "After every session the launcher keeps a copy. Restore an older one any time.": "Después de cada sesión, el launcher guarda una copia. Restaura una anterior cuando quieras.",
+ "After you play, a copy goes to your account": "Después de jugar, una copia va a tu cuenta",
+ "Allow All files access": "Permitir el acceso a todos los archivos",
+ "Allow All files access for RecompLauncher so it can reach this game's saves.": "Permite el acceso a todos los archivos para RecompLauncher, así podrá llegar a las partidas de este juego.",
+ "Back up to the cloud": "Copia de seguridad en la nube",
+ "Games that keep their saves in the phone's shared storage show up here once you install one.": "Los juegos que guardan sus partidas en el almacenamiento compartido del teléfono aparecen aquí cuando instales uno.",
+ "On this phone": "En este teléfono",
+ "Only on this phone": "Solo en este teléfono",
+ "1 game keeps its saves where Android doesn't let the launcher in.": "1 juego guarda sus partidas donde Android no deja entrar al launcher.",
+ "{n} games keep their saves where Android doesn't let the launcher in.": "{n} juegos guardan sus partidas donde Android no deja entrar al launcher.",
+ "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android pregunta primero. Permítelo una vez y el launcher podrá copiar las partidas de tus juegos.",
+ "Sign in to keep your saves in the cloud.": "Inicia sesión para guardar tus partidas en la nube."
 }
