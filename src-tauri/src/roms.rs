@@ -98,6 +98,14 @@ fn has_bytes(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
+/// A Mega Drive or Genesis cartridge names its console at 0x100 ("SEGA MEGA DRIVE", " SEGA
+/// GENESIS"): the console itself checks for SEGA there before it boots one.
+fn mega_drive_header(p: &Path) -> bool {
+    let mut console = [0u8; 16];
+    let read = fs::File::open(p).and_then(|mut f| read_at(&mut f, 0x100, &mut console));
+    read.is_ok() && has_bytes(&console, b"SEGA")
+}
+
 /// Which console a disc image is for, from what's inside it: an Xbox or Xbox 360 disc (its XDVDFS
 /// volume, and default.xbe or default.xex at its root), a GameCube or Wii disc (their magic
 /// numbers), a PlayStation disc (ISO 9660 saying PLAYSTATION; its SYSTEM.CNF's BOOT2 line makes it a
@@ -807,7 +815,9 @@ fn identify_by_type(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
-    let is_cart = CART.contains(&ext.as_str());
+    // .md is also Markdown, and READMEs and licenses sit in every recomp's folder: one only counts
+    // when it has a Mega Drive header.
+    let is_cart = CART.contains(&ext.as_str()) && (ext != "md" || mega_drive_header(p));
     if !is_n64 && !is_disc && !is_cart && ext != "xex" {
         return None;
     }
@@ -2115,6 +2125,31 @@ pub(crate) mod tests {
         assert!(fits(&found[0], "switch2"));
         assert!(fits(&found[0], "switch"));
         assert!(!fits(&found[0], "ps3"));
+    }
+
+    #[test]
+    fn skips_markdown_files() {
+        let root = tmp("markdown-scan");
+        fs::write(root.join("README.md"), "# Some Recomp\n".repeat(1024)).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn scans_mega_drive_md_roms() {
+        let root = tmp("mega-drive-scan");
+        let mut cart = vec![0u8; 8192];
+        cart[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        let sonic = root.join("Sonic the Hedgehog (USA, Europe).md");
+        fs::write(&sonic, cart).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, sonic);
+        assert_eq!(found[0].system, "genesis");
     }
 
     #[test]
