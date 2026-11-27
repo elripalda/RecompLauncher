@@ -24,6 +24,8 @@
     "core:window:allow-is-fullscreen",
     "core:window:allow-hide",
     "core:window:allow-show",
-    "core:window:allow-set-focus"
+    "core:window:allow-set-focus",
+    "core:app:allow-register-listener",
+    "core:app:allow-remove-listener"
   ]
 }

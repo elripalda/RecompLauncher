@@ -11,6 +11,7 @@ on:
       - src-tauri/gen/android/**
       - src-tauri/src/mobile.rs
       - src-tauri/src/*_mobile.rs
+      - .github/scripts/android-smoke.sh
 
 permissions:
   contents: read
@@ -55,7 +56,7 @@ jobs:
         run: |
           export NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           echo "NDK: $NDK_HOME"
-          npx tauri android build --debug --apk --target aarch64
+          npx tauri android build --debug --apk --target aarch64 --target x86_64
 
       - uses: actions/upload-artifact@v5
         with:
@@ -63,3 +64,21 @@ jobs:
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           retention-days: 1
           if-no-files-found: error
+
+      # Opens the APK on an Android emulator and prints two small screenshots and the app's log into
+      # this job's log, so a build can be checked without a phone.
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Open it on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: bash .github/scripts/android-smoke.sh

@@ -13,7 +13,7 @@ function screenLabels(su) {
 }
 
 const GENRES = { action: N_('Action'), adventure: N_('Adventure'), platformer: N_('Platformers'), racing: N_('Racing'), fighting: N_('Fighting'), shooter: N_('Shooters'), sports: N_('Sports'), rpg: N_('RPG'), puzzle: N_('Puzzle') };
-const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux' };
+const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux', android: 'Android' };
 // Text for searching: lower case and without accents, so "pokemon" finds Pokémon.
 const fold = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 // Search: accents folded and punctuation as spaces, so "sky racer", "skyracer" and "Sky-Racer!!"
@@ -8292,7 +8292,8 @@ const selfAuto = () => !S.flatpak && !!(S.settings.ui || {}).self_auto_update;
 const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>';
 
 // An update restart returns to the mode that was on screen.
-function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+// Android has no desktop view: it's always Big Picture mode.
+function startsInTV() { return S.os === 'android' || (!S.desktopArg && !!(S.settings.start_in_tv || S.bigArg)); }
 
 // The update window at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
@@ -10807,6 +10808,9 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   upd.finally(() => loadNews());
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
+  // Android skips the desktop's first-time setup (folders, the PC's own options): Big Picture asks
+  // what it needs.
+  if (!S.settings.setup_done && S.os === 'android') await saveSettings({ setup_done: true, asked_location: true }, true);
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && startsInTV()) window.startTV();
   else setTimeout(askData, 800);

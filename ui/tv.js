@@ -21,6 +21,8 @@
     return TABS.filter(([k]) => k === 'settings' || k === 'home' || k === 'library' || !hide.has(k)).sort((a, b) => rank(a[0]) - rank(b[0]));
   };
   const SX = 96; // the side margin, in stage pixels
+  // Android: no desktop view to go back to, and no PC-only settings (see pageSettings).
+  const android = () => S.os === 'android';
   const MARK = '<svg viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="tvm" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#tvm)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
   const ICON = {
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -120,8 +122,12 @@
   // ---------- the stage ----------
   // A bigger stage makes everything smaller on screen.
   const SIZES = { small: [2400, 1350], medium: [2133, 1200], large: [1920, 1080] };
+  // A phone held sideways is about 400 points tall: the TV stage would shrink its words to a few
+  // points, so Auto draws a little bigger there.
+  const PHONE = [1600, 900];
   function stageSize() {
     let k = S.settings.tv_size;
+    if (!SIZES[k] && android() && Math.min(innerWidth, innerHeight) < 600) return PHONE;
     if (!SIZES[k]) { const w = screen.width * (devicePixelRatio || 1); k = w >= 3000 ? 'small' : w >= 2200 ? 'medium' : 'large'; }
     return SIZES[k];
   }
@@ -199,6 +205,7 @@
     if (TV.on) return;
     TV.on = true;
     TV.booting = true;
+    hookAndroidBack();
     TV.enteredAt = performance.now();
     root.innerHTML = '';
     root.hidden = false;
@@ -217,6 +224,7 @@
     boot();
   }
   async function leave() {
+    if (android()) return;
     root.classList.add('tv-cover', 'out');
     await wait(still() ? 0 : 220);
     TV.on = false;
@@ -1386,18 +1394,20 @@
 
   // Settings in groups, with the focused one shown large on the right (what it does, and its value).
   function pageSettings() {
+    // Android: no desktop view to leave for, and none of the PC-only settings.
+    const droid = S.os === 'android';
     const sw = (k, label, sub, on = !!S.settings[k]) => `<button type="button" class="tv-item" data-f data-key="s:${k}" data-toggle="${k}" data-sw="${on ? 1 : 0}"><span class="k">${esc(label)}<small>${esc(sub)}</small></span><span class="switch" aria-checked="${on}"></span></button>`;
     const size = { small: 'Smaller', medium: 'Medium', large: 'Larger' }[S.settings.tv_size] || 'Auto';
     const head = (n) => `<h3 class="tv-lh">${esc(n)}</h3>`;
     return `${backdrop(null)}${bar()}
-      ${region(`${pageHead(t('Settings'), t('Folders, updates and the rest are in the desktop view.'))}
+      ${region(`${pageHead(t('Settings'), droid ? '' : t('Folders, updates and the rest are in the desktop view.'))}
         <div class="tv-setwrap"><div class="tv-list tv-setlist">
           ${head(t('Account'))}
           ${S.account && S.account.signedIn
             ? `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account" data-val="${esc(S.account.user.username)}"><span class="k">${esc(tf('Signed in as {name}', { name: S.account.user.username }))}<small>${esc(t('Cloud saves keep each game\'s saves on your account'))}</small></span><span class="tv-pill on">${esc(t('Account'))}</span></button>`
             : `<button type="button" class="tv-item" data-f data-key="s:account" data-tvact="account"><span class="k">${esc(t('Sign in'))}<small>${esc(t('Back your saves up to a RecompStore account, and play on with them on any PC'))}</small></span><span class="tv-pill on">${esc(t('Sign in'))}</span></button>`}
           ${head(t('Display'))}
-          ${(() => {
+          ${droid ? '' : (() => {
             const m = window.monitorPicked(S.monitors, S.settings.tv_monitor);
             const now = m ? window.monitorName(m) : t('Main Display');
             return `<button type="button" class="tv-item" data-f data-key="s:monitor" data-tvact="monitor" data-val="${esc(now)}"><span class="k">${esc(t('Monitor'))}<small>${esc(now)}</small></span><span class="tv-pill on">${esc(t('Change'))}</span></button>`;
@@ -1412,19 +1422,19 @@
           ${clockRow()}
           ${S.noSound ? '' : sw('sounds', t('Sounds'), t('The start-up sound and a soft click as you move around'), S.settings.sounds !== false)}
           ${sw('pad_stick', t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), S.settings.pad_stick !== false)}
-          ${sw('pad_desktop', t('Controller as a Mouse'), t('On: the desktop view ignores your controller\'s buttons, so a mouse mapping doesn\'t press things twice. Big Picture mode always uses the controller.'), S.settings.pad_desktop === false)}
-          ${head(t('Starting up'))}
+          ${droid ? '' : sw('pad_desktop', t('Controller as a Mouse'), t('On: the desktop view ignores your controller\'s buttons, so a mouse mapping doesn\'t press things twice. Big Picture mode always uses the controller.'), S.settings.pad_desktop === false)}
+          ${droid ? '' : `${head(t('Starting up'))}
           ${sw('start_in_tv', t('Start in Big Picture mode'), t('Open full screen, ready for a controller'))}
           ${S.canStartAtLogin ? sw('start_at_login', t('Start with your PC'), startAtLoginNote()) : ''}
           ${head(t('When you close the window'))}
-          ${sw('close_to_tray', t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}
+          ${sw('close_to_tray', t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'))}`}
           ${head(t('Games and updates'))}
           ${sw('notify', t('Notifications'), t('When a new recomp comes out for a game you own'))}
           ${sw('auto_update_all', t('Update All Games Automatically'), t('Every installed game takes a new release as soon as the launcher finds one'))}
           ${sw('backup_before_update', t('Back up saves before updates'), t('The newest five copies of each game\'s saves'))}
           ${sw('auto_install', t('Auto-Install'), t('Open a game\'s setup or installer as soon as it finishes downloading'), S.settings.auto_install !== false)}
           ${sw('hide_ai', t('Hide AI-assisted recomps'), t('They won\'t show in the Catalog'))}
-          ${sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
+          ${droid ? '' : sw('discord', t('Discord status'), t('Show the game you\'re playing on your Discord profile'), S.settings.discord !== false)}
           ${(() => { const on = window.reviewAskOn ? window.reviewAskOn() : true; return `<button type="button" class="tv-item" data-f data-key="s:reviewask" data-tvact="reviewask"><span class="k">${esc(t('Ask After Playing'))}<small>${esc(t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'))}</small></span><span class="switch" aria-checked="${on}"></span></button>`; })()}
           ${S.steam ? sw('steam_sync', t('Keep Steam in Sync'), t('Installed games go in your Steam library, in a RecompLauncher collection, and leave it when you uninstall them')) : ''}
           ${S.steam && S.settings.steam_sync ? `<button type="button" class="tv-item" data-f data-key="s:steamsync" data-tvact="steamsync"><span class="k">${esc(t('Sync Now'))}<small>${esc(t('Steam takes changes while it\'s closed. This restarts it to put them in now.'))}</small></span><span class="tv-pill on">${esc(t('Sync Now'))}</span></button>` : ''}
@@ -1434,8 +1444,8 @@
           ${head(t('Controller'))}
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
-          ${head(t('Big Picture mode'))}
-          <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>
+          ${droid ? '' : `${head(t('Big Picture mode'))}
+          <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>`}
           ${head(t('About'))}
           <button type="button" class="tv-item" data-f data-key="s:support" data-tvact="support">${HEART}<span class="k">${esc(t('Support RecompLauncher'))}<small>${esc(t('Help keep it running and growing, on Ko-fi'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:about" data-tvact="about"><span class="k">${esc(t('About RecompLauncher'))}<small>${esc(t('Who makes it, and where to find the Discord'))}</small></span>${svg('chevR', 30)}</button>
@@ -3080,8 +3090,8 @@
     if (!b) {
       if (TV.view !== 'home') { TV.view = 'home'; TV.enter = 'back'; draw(); return; }
       // Back on Home: offer the way out, like Steam (B or Esc, then A).
-      return sheet(t('Leave Big Picture mode'), [
-        { label: t('Leave Big Picture mode'), sub: t('Back to the desktop view, for mouse and keyboard'), icon: 'chevL', run: () => leave() },
+      return sheet(android() ? t('Quit RecompLauncher') : t('Leave Big Picture mode'), [
+        ...(android() ? [] : [{ label: t('Leave Big Picture mode'), sub: t('Back to the desktop view, for mouse and keyboard'), icon: 'chevL', run: () => leave() }]),
         { label: t('Quit RecompLauncher'), icon: 'close', run: () => invoke('quit_launcher').catch(fail) },
         { label: t('Cancel'), icon: 'check', run: () => {} },
       ]);
@@ -3548,6 +3558,60 @@
     if (!el.classList.contains('f')) focus(el);
     activate(el);
   });
+
+  // Touch screens (Android): drag a page up and down, or a row of games sideways, as the d-pad
+  // moves them. A tap is a click, so it picks and opens like a mouse; a drag never counts as one.
+  const touch = { at: null, dragEnd: 0 };
+  const rowX = (r) => -new DOMMatrixReadOnly(getComputedStyle(r).transform).m41 || 0;
+  root.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || TV.sheet) { touch.at = null; return; }
+    const p = e.touches[0];
+    const row = e.target.closest('.tv-row');
+    touch.at = { x: p.clientX, y: p.clientY, y0: TV.scrollY || 0, row, x0: row ? rowX(row) : 0, axis: '' };
+    root.classList.remove('mouse-off');
+  }, { passive: true });
+  root.addEventListener('touchmove', (e) => {
+    const at = touch.at;
+    if (!at || TV.sheet) return;
+    const p = e.touches[0];
+    const k = TV.k || 1;
+    const dx = (p.clientX - at.x) / k, dy = (p.clientY - at.y) / k;
+    if (!at.axis) {
+      if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
+      at.axis = at.row && Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (at.axis === 'y') { setScroll(at.y0 - dy, true); return; }
+    const view = at.row.parentElement;
+    const maxX = Math.max(0, at.row.scrollWidth - (view.clientWidth - SX * 2));
+    at.row.style.transition = 'none';
+    at.row.style.transform = `translateX(${-Math.max(0, Math.min(maxX, at.x0 - dx))}px)`;
+  }, { passive: true });
+  const touchDone = () => {
+    const at = touch.at;
+    touch.at = null;
+    if (!at || !at.axis) return;
+    touch.dragEnd = performance.now();
+    const sc = $('#tv-scroll', root);
+    if (sc) sc.style.transition = '';
+    if (at.row) at.row.style.transition = '';
+  };
+  root.addEventListener('touchend', touchDone, { passive: true });
+  root.addEventListener('touchcancel', touchDone, { passive: true });
+  // The click a browser sends at the end of a drag is dropped.
+  root.addEventListener('click', (e) => {
+    if (performance.now() - touch.dragEnd > 350) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
+  // Android's Back (the gesture or the button) is B: back a page, and on Home the way out.
+  let backHooked = false;
+  function hookAndroidBack() {
+    const app = window.__TAURI__ && window.__TAURI__.app;
+    if (backHooked || !android() || !app || !app.onBackButtonPress) return;
+    backHooked = true;
+    app.onBackButtonPress(() => { if (TV.on) press('b'); }).catch(() => { backHooked = false; });
+  }
 
   // Keep the pages current while things happen elsewhere.
   let redraw = 0;

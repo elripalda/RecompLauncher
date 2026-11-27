@@ -158,8 +158,15 @@ export ANDROID_HOME=<your Android SDK>   NDK_HOME=$ANDROID_HOME/ndk/<version>
 npx tauri android build --debug --apk --target aarch64
 ```
 
+On Android the launcher is always in Big Picture mode, held sideways: there's no desktop view to
+leave for, and Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord,
+controller as a mouse). A finger drags a page or a row of games, a tap opens, and Android's Back is
+B. On a phone, Auto size draws the stage a little bigger (1600×900) so words stay readable.
+
 The Android workflow (`.github/workflows/android.yml`) builds the same APK on GitHub when the
-Android parts change, or when run by hand, and keeps it for a day.
+Android parts change, or when run by hand, and keeps it for a day. It also opens the APK on an
+Android emulator and prints two small screenshots (base64 JPEG between `=====SHOT` lines) and
+the app's log into the job's log (`.github/scripts/android-smoke.sh`).
 
 ## Pull request builds
 
