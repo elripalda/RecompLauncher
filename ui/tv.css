@@ -36,6 +36,11 @@ body.tv-on #app{visibility:hidden}
 .tv-stage.narrow .tv-nav{justify-self:center}
 .tv-stage.narrow .tv-tab{padding:0 18px}
 .tv-stage.narrow .tv-wm,html.droid .tv-wm{display:none}
+/* Phones and tablets: the page's top and bottom edges are cut straight instead of faded. The fade is
+   a mask over the whole moving page, redrawn on every frame of a drag, and a phone's graphics chip
+   (or an emulator's) feels it. The focused game's glow is blurred less, as on Linux. */
+html.droid .tv-region{-webkit-mask-image:none;mask-image:none}
+html.droid .tv-cell .aura{filter:blur(18px) saturate(1.5)}
 .tv-padico{display:grid;place-items:center;color:var(--tvmuted,#a7b3c4)}
 .tv-back{height:58px;padding:0 26px 0 12px;border-radius:999px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:21px;background:rgba(var(--tvrgb),.55);border:1px solid rgba(var(--tvinkrgb,244,248,252),.16);justify-self:start;backdrop-filter:blur(16px)}
 

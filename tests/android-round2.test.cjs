@@ -79,7 +79,7 @@ test('Settings: Accessibility between Storage and About, Optimization mode, Refr
   const set = slice(phone, '  function viewSettings()', '  const VIEW = {');
   const at = (k) => set.indexOf(`data-key="${k}"`);
   assert.ok(at('stor') < at('ease') && at('ease') < at('about'));
-  assert.match(set, /t\('Optimization mode'\)/);
+  assert.match(set, /t\('Optimization Mode'\)/);
   assert.doesNotMatch(phone, /t\('Performance mode'\)/);
   assert.match(set, /t\('Hide AI-assisted Recomps'\)/);
   assert.match(set, /data-act="refresh-cat"/);
