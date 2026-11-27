@@ -86,3 +86,10 @@ test('Settings: Accessibility between Storage and About, Optimization mode, Refr
   assert.match(set, /data-act="check-upd"/);
   assert.match(set, /sw\('revask'/);
 });
+
+test('each game shows once, as on the desktop, and its page lists its other versions', () => {
+  assert.match(phone, /poolMemo = Object\.assign\(k, \{ list: oneEach\(visible\(\)\.filter\(\(a\) => forOS\(a\) && !a\.soon\)\) \}\);/);
+  assert.match(phone, /\$\{verPillPh\(a\)\}/);
+  assert.match(phone, /case 'vers': return versSheet\(id\);/);
+  assert.match(slice(phone, '  function bpGameHTML(a)', '  function bpMenuHTML('), /data-act="vers"/);
+});

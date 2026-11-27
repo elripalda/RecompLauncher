@@ -58,6 +58,7 @@
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
     bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
     file: '<path d="M14 3H6v18h12V7zM14 3v4h4"/>',
@@ -101,7 +102,17 @@
   const coverBox = (a, cls = '', id = '') => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(coverUrl(a))}</span>`;
 
   // ---------- the games ----------
-  const pool = () => visible().filter((a) => forOS(a) && !a.soon);
+  // Each game once, as on the desktop: a game with several versions (the website's Versions) shows
+  // the one you play, else the recommended one; its page lists the others. Worked out again only
+  // when the catalog, the library or what's hidden changes.
+  let poolMemo = null;
+  const pool = () => {
+    const k = { idx: index(), hid: hiddenSet(), ai: !!S.settings.hide_ai, lib: Object.keys(S.library).join('|') };
+    const m = poolMemo;
+    if (m && m.idx === k.idx && m.hid === k.hid && m.ai === k.ai && m.lib === k.lib) return m.list;
+    poolMemo = Object.assign(k, { list: oneEach(visible().filter((a) => forOS(a) && !a.soon)) });
+    return poolMemo.list;
+  };
   const appOf = (id) => byId(id) || (S.library[id] ? libApp(S.library[id]) : null);
   const conName = (a) => originName(a.origin) || '';
   const conColor = (k) => CONSOLE_COLORS[k] || CONSOLE_COLORS.other;
@@ -485,7 +496,7 @@
     return `<div class="ph-ptop"><button type="button" class="ph-ibtn glass ph-press" data-act="back" aria-label="${esc(t('Back'))}">${ic('back')}</button><button type="button" class="ph-ibtn glass ph-press" data-menu="${id}" aria-label="${esc(t('More options'))}">${ic('more', 's')}</button></div>
       <div class="ph-gph">${img(heroUrl(a), wide ? '' : 'blur', 'id="ph-gphimg"')}<div class="tint"></div></div>
       <div class="ph-gpb">
-        <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover')}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p></div></div>
+        <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover')}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p>${verPillPh(a)}</div></div>
         ${stats.length ? `<div class="ph-stats">${stats.map(([v, k]) => `<div><b class="${v.length > 7 ? 'long' : ''}">${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>` : ''}
         <div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>
         ${a.soon ? `<p class="ph-mut" style="font-size:13px;line-height:1.45">${esc(soonNoteText(a))}</p>` : ''}
@@ -957,6 +968,21 @@
   }
   window.phoneReview = reviewSheet;
   window.phoneSignInAsk = phoneSignInAsk;
+  // The versions of its game: another developer's take, a port, a build with extras. Opens one.
+  const verPillPh = (a) => {
+    const g = verGroup(a);
+    return g ? `<button type="button" class="ph-verpill ph-press" data-act="vers" data-id="${esc(a.id)}" data-key="vers:${esc(a.id)}">${ic('layers', 's')}<span>${esc(tn(g.list.length, '1 version', '{n} versions'))}</span>${ic('chev', 's')}</button>` : '';
+  };
+  function versSheet(id) {
+    const a = appOf(id), g = verGroup(a);
+    if (!g) return;
+    const row = (v) => {
+      const tags = [v.id === g.pick ? `<span class="ph-tag acc">${esc(t('Recommended'))}</span>` : '', S.library[v.id] ? `<span class="ph-tag">${esc(t('Installed'))}</span>` : ''].join('');
+      const line = [devName(v), v.adds || '', v.downloads ? `${fmtN(v.downloads)} ${t('downloads')}` : ''].filter(Boolean).join(' · ');
+      return `<button type="button" class="ph-lmain ph-press ph-verrow${v.id === a.id ? ' on' : ''}" data-close="1" ${v.id === a.id ? '' : `data-open="${esc(v.id)}"`} data-key="v:${esc(v.id)}">${coverBox(v)}<span class="ph-col ph-grow"><span class="ph-gname">${esc(v.name)}</span><span class="ph-vtags">${tags}</span><span class="ph-gsub">${esc(line)}</span></span>${v.id === a.id ? ic('check', 's') : ic('chev', 's')}</button>`;
+    };
+    sheet(`<p class="ph-eyebrow">${esc(tn(g.list.length, '1 version', '{n} versions'))}</p><h2 class="ph-disp">${esc(g.name)}</h2>${g.why ? `<p class="ph-mut" style="font-size:13px;margin:4px 0 10px">${esc(g.why)}</p>` : ''}<div class="ph-verlist">${g.list.map(row).join('')}</div>`);
+  }
   // What the developer wrote about it, and who helped make it.
   function notesSheet(id) {
     const a = appOf(id);
@@ -1209,6 +1235,7 @@
       case 'lang': return langSheet();
       case 'url': return invoke('open_url', { url: b.dataset.url }).catch(fail);
       case 'notes': return notesSheet(id);
+      case 'vers': return versSheet(id);
       case 'rels': return relsSheet(id);
       case 'rev-say': buzz(); return window.askRun && window.askRun(id, (S.library[id] || {}).played_secs || 0, true);
       case 'rev-all': return revAllSheet(id);
@@ -1683,7 +1710,9 @@
   // A game's own page: everything the phone layout's page has, laid out for a sideways screen.
   function bpGameHTML(a) {
     const id = esc(a.id), more = moreLike(a, 12), tags = tagsOf(a);
-    const right = `${pageRows(a)}${bpAchGame(a)}${tags.length ? `<div class="ph-chips ph-bpchips" data-key="tags">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}`;
+    const g = verGroup(a);
+    const vers = g ? pageRow('layers', tn(g.list.length, '1 version', '{n} versions'), g.why || g.name, `data-act="vers" data-id="${id}" data-key="vers:${id}"`) : '';
+    const right = `${vers}${pageRows(a)}${bpAchGame(a)}${tags.length ? `<div class="ph-chips ph-bpchips" data-key="tags">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}`;
     return `<div class="ph-bpscroll game" data-key="gp:${id}">
       <section class="ph-bpgtop" data-key="gtop">${bpInfo(a, true)}${bpSide(a)}</section>
       <div class="ph-bpgbody" data-key="gbody"><div class="ph-col" data-key="gl">${gameAbout(a)}<div class="ph-revbox" data-rev="${id}">${revSection(a)}</div></div><div class="ph-col" data-key="gr">${right}</div></div>

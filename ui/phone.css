@@ -789,3 +789,14 @@ body #phone.ph-lite .ph-glassy{-webkit-backdrop-filter:none !important;backdrop-
 /* High contrast: brighter secondary text and stronger edges. */
 #phone.ph-hc{--mut:#dbe3ee;--dim:#b4c0d2;--edge:rgba(244,248,252,.24);--edge2:rgba(244,248,252,.4)}
 #phone.ph-hc[data-theme="light"]{--mut:#26324a;--dim:#3b4860;--edge:rgba(11,18,32,.26);--edge2:rgba(11,18,32,.42);--acc:#05606a}
+
+/* A game's versions: the pill under its name, and the sheet that lists them */
+.ph-verpill{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-top:8px;padding:6px 10px 6px 9px;border-radius:99px;background:var(--p3);color:var(--fg);font:600 12.5px Figtree,system-ui,sans-serif}
+.ph-verpill .ph-ic{width:15px;height:15px}
+.ph-verlist{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.ph-verrow{display:flex;align-items:center;gap:12px;width:100%;padding:8px;border-radius:16px;text-align:start}
+.ph-verrow .ph-cover{width:46px;flex:none}
+.ph-verrow.on{background:var(--accbg)}
+.ph-vtags{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0}
+.ph-vtags:empty{display:none}
+.ph-tag.acc{background:var(--accbg);color:var(--acc)}

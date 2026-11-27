@@ -186,6 +186,10 @@ On Android there's no desktop view. There are two layouts instead:
   start-up cover wall or moving extras, and no animations, for older phones), **Reduce motion**
   (`phone_still`: pages change in place, no slides or zooms; the phone's own reduce-motion setting
   does the same) and **High contrast** (`phone_contrast`: brighter secondary text and edges).
+  Each game shows once in every list, as on the desktop (`oneEach` over the website's Versions,
+  worked out again only when the catalog, the library or what's hidden changes): the version you
+  play, else the recommended one. Its page has an "{n} versions" pill (a row in Big Picture mode)
+  that opens a sheet listing them all.
   A game's page has the same player reviews as the desktop (`loadReports`, score, filters, write,
   edit and delete, sheets in `phone.js` "Reviews"), the IGDB about text and facts, and rows for the
   README, From the developer (description and credits) and Updates (every release). Android has no
