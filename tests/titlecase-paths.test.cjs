@@ -29,3 +29,11 @@ test('a Windows path stays as it is', () => {
 test('a web address stays as it is', () => {
   assert.equal(titleCase()('open github.com/dev/game'), 'Open github.com/dev/game');
 });
+
+test('"back" is one of the launcher\'s own words', () => {
+  assert.equal(titleCase()('Jump back in'), 'Jump Back In');
+});
+
+test('"available" is one of the launcher\'s own words', () => {
+  assert.equal(titleCase()('update available'), 'Update Available');
+});
