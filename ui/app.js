@@ -13,7 +13,7 @@ function screenLabels(su) {
 }
 
 const GENRES = { action: N_('Action'), adventure: N_('Adventure'), platformer: N_('Platformers'), racing: N_('Racing'), fighting: N_('Fighting'), shooter: N_('Shooters'), sports: N_('Sports'), rpg: N_('RPG'), puzzle: N_('Puzzle') };
-const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux' };
+const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux', android: 'Android' };
 // Text for searching: lower case and without accents, so "pokemon" finds Pokémon.
 const fold = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 // Search: accents folded and punctuation as spaces, so "sky racer", "skyracer" and "Sky-Racer!!"
@@ -8292,7 +8292,8 @@ const selfAuto = () => !S.flatpak && !!(S.settings.ui || {}).self_auto_update;
 const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>';
 
 // An update restart returns to the mode that was on screen.
-function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+// Android has no desktop view: it's always Big Picture mode.
+function startsInTV() { return S.os === 'android' || (!S.desktopArg && !!(S.settings.start_in_tv || S.bigArg)); }
 
 // The update window at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
@@ -10772,8 +10773,14 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The Library's sort, as the player left it.
   if (['played', 'time', 'az', 'game'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
+  // Android is always Big Picture mode: it opens straight away, without first-time setup (folders,
+  // the PC's own options), and fills in as the list comes.
+  const droid = loaded && S.os === 'android';
+  if (droid && !S.settings.setup_done) await saveSettings({ setup_done: true, asked_location: true }, true);
+  if (droid && window.startTV) window.startTV();
   trayWords();
   await loadCatalog(false, catAsk);
+  if (droid && window.tvRefresh) window.tvRefresh();
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
   homeSync();
@@ -10794,6 +10801,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (S.view === 'discover' && S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   S.anim = 'enter';
   render(true);
+  if (droid && window.tvRefresh) window.tvRefresh();
   // Update check first (it keeps the release info on disk current), then the news reads from it.
   const upd = afterCatalog();
   applyLighter();
