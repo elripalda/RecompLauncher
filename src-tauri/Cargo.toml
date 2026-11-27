@@ -5,7 +5,7 @@ description = "RecompLauncher: recompiled and decompiled PC games"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.90"
 
 [lib]
 name = "recomplauncher_lib"
@@ -41,9 +41,12 @@ unrar = "0.5"
 flate2 = "1"
 zstd = "0.13"
 # .tar.xz releases. Already built in for backhand's xz AppImages; named here since install.rs uses it.
-xz2 = "0.1"
+# The same liblzma as backhand's: two xz libraries can't be linked into one program.
+liblzma = "0.4"
 tar = "0.4"
-backhand = { version = "0.21", default-features = false, features = ["gzip", "xz", "xz-static", "zstd", "lz4"] }
+# 0.25.4 reads SquashFS's extended links, devices, pipes and sockets (inode types 10 to 14), which
+# any image built with SELinux labels (Fedora, Bazzite, Silverblue) is full of.
+backhand = { version = "0.25.4", default-features = false, features = ["gzip", "xz", "xz-static", "zstd", "lz4"] }
 # AppImages packed with DwarFS (pkgforge's Anylinux/uruntime, Tauri's portable AppImage): unpacked like
 # SquashFS ones (appimage.rs). zstd is what mkdwarfs uses unless told otherwise.
 dwarfs = { version = "0.2", default-features = false, features = ["zstd"] }

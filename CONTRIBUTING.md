@@ -6,7 +6,7 @@ If you're planning something big, open an issue or ask in the [Discord](https://
 
 ## Getting set up
 
-You need Rust 1.85 or newer, Node.js 20 or newer and CMake. The full list for each system, including the Windows and Linux extras, is in [docs/BUILDING.md](docs/BUILDING.md).
+You need Rust 1.90 or newer, Node.js 20 or newer and CMake. The full list for each system, including the Windows and Linux extras, is in [docs/BUILDING.md](docs/BUILDING.md).
 
 ```
 npm ci
