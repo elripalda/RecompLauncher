@@ -5,7 +5,9 @@ set -u
 # Every adb call has a time limit, so a stuck emulator ends the check instead of the whole job.
 a() { timeout 60 adb "$@"; }
 command -v convert >/dev/null || sudo apt-get install -y -q imagemagick >/dev/null
-apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -1)
+# The emulator is an x86_64 machine: its own APK (phones get the arm64 one).
+apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*x86_64*.apk' | head -1)
+[ -n "$apk" ] || apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -1)
 echo "APK: $apk"
 a install -r "$apk"
 # Let Google Play services finish starting first: when it restarts during our start-up, Android

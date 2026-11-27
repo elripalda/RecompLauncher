@@ -477,7 +477,9 @@ function droidBack() {
   let p = null;
   try { p = JSON.parse(localStorage.getItem(DROID_PLAY) || 'null'); localStorage.removeItem(DROID_PLAY); } catch (e) { return; }
   const secs = p && p.id ? Math.round((Date.now() - Number(p.at || 0)) / 1000) : 0;
-  // Ten minutes or more, as on a PC; a day or more away isn't one session.
+  // Counted in the game's play time (half a day or more away isn't one session), then asked about
+  // when it was ten minutes or more, as on a PC.
+  if (secs >= 10 && secs < 43200) invoke('android_played', { id: p.id, secs }).then(refreshState).then(() => render()).catch(() => {});
   if (secs >= 600 && secs < 86400) setTimeout(() => askRun(p.id, secs), 1500);
 }
 document.addEventListener('visibilitychange', droidBack);

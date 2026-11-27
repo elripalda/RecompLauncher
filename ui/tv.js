@@ -1484,6 +1484,7 @@
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
           ${droid && !touchHere() ? '' : `${head(t('Big Picture mode'))}
+          ${droid ? `<button type="button" class="tv-item" data-f data-key="s:bpstyle" data-tvact="bpstyle" data-val="${esc(t('Full'))}"><span class="k">${esc(t('Big Picture style'))}<small>${esc(t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'))}</small></span><span class="tv-pill on">${esc(t('Full'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(droid ? t('The phone layout, for playing with your fingers') : t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>`}
           ${head(t('About'))}
           <button type="button" class="tv-item" data-f data-key="s:support" data-tvact="support">${HEART}<span class="k">${esc(t('Support RecompLauncher'))}<small>${esc(t('Help keep it running and growing, on Ko-fi'))}</small></span>${svg('chevR', 30)}</button>
@@ -3210,6 +3211,8 @@
       case 'page': return go('game', id);
       case 'back': return back();
       case 'leave': return leave();
+      // Android: over to the Big Picture made for phones (phone.js), kept as the player's pick.
+      case 'bpstyle': await saveUi({ bp_style: 'phone' }, true); await leave(); return window.phoneBp && window.phoneBp.enter(padHere());
       case 'monitor': sfx('open'); return tvMonitorSheet();
       // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
       case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);

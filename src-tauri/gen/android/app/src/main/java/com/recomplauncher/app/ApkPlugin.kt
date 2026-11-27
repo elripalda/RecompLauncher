@@ -102,6 +102,15 @@ class ApkPlugin(private val activity: Activity) : Plugin(activity) {
     invoke.resolve(out)
   }
 
+  // Whether the launcher may install apps yet, without opening anything (first-time setup and the
+  // Install button ask before a download starts).
+  @Command
+  fun installAllowed(invoke: Invoke) {
+    val out = JSObject()
+    out.put("ok", Build.VERSION.SDK_INT < Build.VERSION_CODES.O || pm.canRequestPackageInstalls())
+    invoke.resolve(out)
+  }
+
   // Android asks once whether the launcher may install apps; until then its settings page opens.
   @Command
   fun canInstall(invoke: Invoke) {

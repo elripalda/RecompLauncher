@@ -399,7 +399,7 @@ fn replacement<'a>(fresh: &'a [Release], was_pre: bool, have: &str, fits: impl F
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
     // Android installs the game's app through Android itself.
     #[cfg(target_os = "android")]
-    return android::install(app, st, id, cancel).await;
+    return android::install(app, st, id, tag, cancel).await;
     let picked_tag = tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -1464,6 +1464,32 @@ fn android_haptic(kind: String) -> Res<()> {
     #[cfg(not(target_os = "android"))]
     {
         let _ = kind;
+        Ok(())
+    }
+}
+
+/// Android: whether the launcher may install games' apps yet (with `ask`, Android's page to allow it
+/// opens when not). Always yes on a PC.
+#[tauri::command(async)]
+fn android_install_allowed(ask: Option<bool>) -> Res<bool> {
+    #[cfg(target_os = "android")]
+    return android::install_allowed(ask.unwrap_or(false));
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = ask;
+        Ok(true)
+    }
+}
+
+/// Android: a game's session, timed by the launcher (from opening the game to coming back to the
+/// launcher, since it can't see the game close), counted as a PC counts one. Nothing on a PC.
+#[tauri::command(async)]
+fn android_played(st: State<'_, App>, id: String, secs: u64) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::played(&st, &id, secs);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (st, id, secs);
         Ok(())
     }
 }
@@ -8328,6 +8354,24 @@ fn launcher_platform_entry(v: &Value, os: &str, arch: &str) -> Option<Value> {
             }
             Some(out)
         }
+        // Android's APK, when one is published: the player downloads it and Android installs it over
+        // this one (the launcher can't replace its own app).
+        "android" => {
+            let apk = v.get("android")?;
+            if str_of(apk, "url").is_empty() {
+                return None;
+            }
+            let mut out = v.clone();
+            for key in ["linux", "macos", "android", "url", "sha256", "min", "size"] {
+                out.as_object_mut()?.remove(key);
+            }
+            for key in ["version", "url", "sha256", "notes", "min", "size"] {
+                if let Some(value) = apk.get(key) {
+                    out[key] = value.clone();
+                }
+            }
+            Some(out)
+        }
         _ => None,
     }
 }
@@ -10904,7 +10948,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, android_sync, android_files_access, android_ask_files_access, android_back, android_orientation, android_edges, android_insets, android_device, android_haptic, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, android_files_access, android_ask_files_access, android_back, android_orientation, android_edges, android_insets, android_device, android_haptic, android_to_back, android_played, android_install_allowed, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,
@@ -12293,6 +12337,17 @@ mod tests {
         assert!(launcher_platform_entry(&feed, "macos", "arm64").is_none());
         assert_eq!(launcher_platform_entry(&feed, "windows", "x64").unwrap()["url"], "https://example.com/windows.exe");
         assert_eq!(launcher_platform_entry(&feed, "linux", "x64").unwrap()["url"], "https://example.com/linux.AppImage");
+    }
+
+    #[test]
+    fn android_launcher_updates_use_only_the_apk_entry() {
+        let feed = json!({"version":"2.0", "url":"https://example.com/windows.exe", "min":"2.0", "linux":{"url":"https://example.com/linux.AppImage"}});
+        assert!(launcher_platform_entry(&feed, "android", "arm64").is_none());
+        let feed = json!({"version":"2.0", "url":"https://example.com/windows.exe", "min":"2.0", "android":{"url":"https://example.com/app.apk", "version":"1.5"}});
+        let apk = launcher_platform_entry(&feed, "android", "arm64").unwrap();
+        assert_eq!(apk["url"], "https://example.com/app.apk");
+        assert_eq!(apk["version"], "1.5");
+        assert!(apk.get("min").is_none());
     }
 
     #[test]

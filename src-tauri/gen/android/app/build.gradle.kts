@@ -39,6 +39,9 @@ android {
             }
         }
         getByName("release") {
+            // Test builds are signed with the build machine's debug key (kept between runs, see
+            // android.yml), so a new one installs over the last without uninstalling it first.
+            signingConfig = signingConfigs.getByName("debug")
             optimization {
                enable = true
             }
