@@ -1,7 +1,7 @@
 name: Android
 
 # Builds the Android test app (an APK for arm64 phones, handhelds and TVs). It runs when the
-# Android parts change, or by hand. The APK is kept for one day only: it's a test build.
+# Android parts change, or by hand. The APK is kept for a week (time to put it on a phone): it's a test build.
 
 on:
   workflow_dispatch:
