@@ -806,6 +806,10 @@ impl Library {
             Err(_) => Library::default(),
         };
         l.format = crate::library_convert::FORMAT;
+        // A phone has no home folder to put the library in: it goes in the launcher's own folder.
+        if cfg!(target_os = "android") && !l.settings.library_dir.is_absolute() {
+            l.settings.library_dir = dir.join("Library");
+        }
         if converted {
             let _ = l.save(dir);
         }

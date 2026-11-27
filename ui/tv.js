@@ -471,7 +471,7 @@
     sheet('', [
       { label: t('Don\'t Share'), sub: t('Nothing is sent'), icon: 'close', run: () => set(false, false) },
       { label: t('Share Anonymous Stats'), sub: t('When the launcher is open and which recomps are played, under a random ID'), icon: 'check', run: () => set(false, true) },
-      { label: t('Share Both'), sub: t('Also your PC\'s parts and what went wrong when a game crashes. No names, no files.'), icon: 'check', run: () => set(true, true) },
+      { label: t('Share Both'), sub: S.os === 'android' ? t('Also your device\'s model and what went wrong when a game crashes. No names, no files.') : t('Also your PC\'s parts and what went wrong when a game crashes. No names, no files.'), icon: 'check', run: () => set(true, true) },
     ], 'tv-ask', head);
     return true;
   };
@@ -590,7 +590,8 @@
       found: () => {
         const owned = foundInFolders();
         if (owned.length) return row('own', t('Found in your folders'), owned.slice(0, HOME_ROW).map((a) => poster(a, 'o:' + a.id, t('You have it'))).join(''));
-        return (S.settings.rom_dirs || []).length ? '' : tvFoundBox();
+        // A phone doesn't run games from ROM folders: no box there.
+        return (S.settings.rom_dirs || []).length || S.os === 'android' ? '' : tvFoundBox();
       },
       ready: () => {
         const ready = oneEach(games.filter(turnkey).sort(byNew), true);

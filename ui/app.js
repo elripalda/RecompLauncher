@@ -10773,8 +10773,14 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The Library's sort, as the player left it.
   if (['played', 'time', 'az', 'game'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
+  // Android is always Big Picture mode: it opens straight away, without first-time setup (folders,
+  // the PC's own options), and fills in as the list comes.
+  const droid = loaded && S.os === 'android';
+  if (droid && !S.settings.setup_done) await saveSettings({ setup_done: true, asked_location: true }, true);
+  if (droid && window.startTV) window.startTV();
   trayWords();
   await loadCatalog(false, catAsk);
+  if (droid && window.tvRefresh) window.tvRefresh();
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
   homeSync();
@@ -10795,6 +10801,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (S.view === 'discover' && S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   S.anim = 'enter';
   render(true);
+  if (droid && window.tvRefresh) window.tvRefresh();
   // Update check first (it keeps the release info on disk current), then the news reads from it.
   const upd = afterCatalog();
   applyLighter();
@@ -10808,9 +10815,6 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   upd.finally(() => loadNews());
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
-  // Android skips the desktop's first-time setup (folders, the PC's own options): Big Picture asks
-  // what it needs.
-  if (!S.settings.setup_done && S.os === 'android') await saveSettings({ setup_done: true, asked_location: true }, true);
   if (!S.settings.setup_done && window.firstRun) window.firstRun();
   else if (window.startTV && startsInTV()) window.startTV();
   else setTimeout(askData, 800);
