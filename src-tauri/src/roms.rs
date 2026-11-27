@@ -386,9 +386,9 @@ fn stfs_name(field: &[u8]) -> String {
     String::from_utf16_lossy(&units).trim().to_string()
 }
 
-/// An Xbox 360 title update or downloadable content package, as its header says.
+/// An Xbox 360 Arcade game, title update or downloadable content package, as its header says.
 struct Package {
-    /// "update" or "dlc".
+    /// "game" (an Arcade game), "update" or "dlc".
     kind: &'static str,
     /// The game's name, which is what it's matched to its game by.
     title: String,
@@ -396,13 +396,15 @@ struct Package {
     display: String,
 }
 
-/// Title updates and DLC are kept as files named only by a content ID, with no file type, so their
-/// header says what they are. Its content type tells an update from DLC; other packages (Arcade
-/// games, saves, profiles, demos) aren't extra content for a game and are left out.
+/// Arcade (XBLA) games, title updates and DLC are kept as files named only by a content ID, with no
+/// file type, so their header says what they are. Its content type tells them apart; other
+/// packages (saves, profiles, demos, themes) are neither a game nor extra content and are left out.
 fn x360_package(p: &Path) -> Option<Package> {
     let h = stfs_header(&mut fs::File::open(p).ok()?)?;
     let content_type = u32::from_be_bytes([h[0x344], h[0x345], h[0x346], h[0x347]]);
     let kind = match content_type {
+        // The whole game is in this one file, so it's the player's copy, not something added to one.
+        0x000D_0000 => "game",
         0x000B_0000 => "update",
         0x0000_0002 => "dlc",
         _ => return None,
@@ -415,7 +417,7 @@ fn x360_package(p: &Path) -> Option<Package> {
 
 /// An Xbox 360 update or DLC package: named for its game, but never a copy of the game itself.
 pub fn is_extra_package(r: &RomFile) -> bool {
-    r.system == "x360" && r.path.is_file() && x360_package(&r.path).is_some()
+    r.system == "x360" && r.path.is_file() && x360_package(&r.path).is_some_and(|p| p.kind != "game")
 }
 
 /// The start of a PS3 package, up to the end of its content ID. It's plain, so no keys are needed.
@@ -837,7 +839,8 @@ fn identify_by_type(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     }
 }
 
-/// An Xbox 360 title update or DLC package, matched to its game by the game's name in its header.
+/// An Xbox 360 Arcade game, title update or DLC package, matched to its game by the game's name in
+/// its header.
 /// Only a file big enough to hold the header is opened, and only its first four bytes are read
 /// unless they're a package's.
 fn identify_package(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
@@ -1608,6 +1611,25 @@ pub(crate) mod tests {
         let p = d.join("TU_16L61VP_0000004000000.00000000000G1");
         fs::write(&p, stfs(0x000B_0000, "SkyRacer", "")).unwrap();
         assert_eq!(scan(&[d.clone()]).len(), 1);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_arcade_package_is_the_game() {
+        // XBLA games are one package with no file type, kept next to their update and DLC.
+        let d = tmp("x360-xbla");
+        let game = d.join("SkyRacer/17EE90959CCE5C680E1B7D3DB92A616D807CFA8358");
+        fs::create_dir_all(game.parent().unwrap()).unwrap();
+        fs::write(&game, stfs(0x000D_0000, "SkyRacer", "")).unwrap();
+        fs::write(d.join("SkyRacer/TU_1C422BA_0000104000000.00000000000G1"), stfs(0x000B_0000, "SkyRacer", "")).unwrap();
+        fs::write(d.join("SkyRacer/C995E87FB46F446F58E194647202F4ABB3BD77E958"), stfs(0x0000_0002, "SkyRacer", "Bonus Track Pack")).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 3);
+        assert_eq!(part_of_file(&game).kind, "game");
+        assert_eq!(copy_id(&game).as_deref(), Some("4D5307E6"));
+        let cat = serde_json::json!({ "apps": [{ "id": "skyracer", "game": "SkyRacer", "origin": "x360" }] });
+        assert_eq!(match_catalog(&cat, &found).get("skyracer").map(|r| r.path.clone()), Some(game));
+        assert_eq!(files_of(&cat["apps"][0], &found).len(), 3);
         let _ = fs::remove_dir_all(&d);
     }
 

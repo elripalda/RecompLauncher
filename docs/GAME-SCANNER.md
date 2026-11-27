@@ -45,7 +45,7 @@ update this page in the same commit.**
 | PlayStation 4 (`ps4`) | An extracted game (`eboot.bin` and `sce_sys/param.sfo`, `CUSA...` ID) | The folder's files | Title ID from `param.sfo` (`CUSA00242`) | `.pkg` (PS4 packages are skipped) |
 | PlayStation 5 (`ps5`) | An extracted game (`eboot.bin` and `sce_sys/param.json`, `PPSA...` ID) | The folder's files | Title ID from `param.json` (`PPSA21559`) | |
 | Xbox (`xbox`) | `.iso` | What's on the disc (XDVDFS with `default.xbe`) | None | `.xiso` file type, extracted folders (`default.xbe`) |
-| Xbox 360 (`x360`) | `.iso`; an extracted game (the folder holding `default.xex`); title updates and DLC (CON, LIVE and PIRS packages, usually with no file type) | What's on the disc (XDVDFS with `default.xex`); a package's header | Title ID from `default.xex` (`454107EC`), in a disc image or a folder; from a package's header | Games on Demand packages (their ID is read when a recomp checks a picked one, but the scan skips them), `.xex` files not named `default` |
+| Xbox 360 (`x360`) | `.iso`; an extracted game (the folder holding `default.xex`); Xbox Live Arcade games, title updates and DLC (CON, LIVE and PIRS packages, usually with no file type) | What's on the disc (XDVDFS with `default.xex`); a package's header | Title ID from `default.xex` (`454107EC`), in a disc image or a folder; from a package's header | Games on Demand packages (their ID is read when a recomp checks a picked one, but the scan skips them), `.xex` files not named `default` |
 | Saturn (`saturn`) | `.iso`; a `.cue` and its `.bin` tracks; `.chd` | What's on the disc (`SEGA SEGASATURN`); a `.chd` fits any disc console | None | A Saturn folder name, `.mdf` |
 | Dreamcast (`dc`) | `.gdi` and its tracks; `.cue`; `.iso`; `.chd` | What's on the disc (`SEGA SEGAKATANA`); a `.gdi` is a Dreamcast disc; a `.chd` by its folder name, else it fits any disc console | None | `.cdi` |
 | Arcade (`arcade`) | A MAME-style set: a `.zip` or `.7z` with a short name (`hopr`) in a folder named arcade, MAME, FBNeo, FBA or FinalBurn | The folder name | The set's name, which has to be listed whole in `copy_ids` | `.chd` disks that go with a set |
@@ -113,7 +113,8 @@ next to its game isn't taken for one.
 5. **The recomp's own check.** For recomps the launcher sets up, the copy also has to pass the
    recomp's `check` (see [DEVELOPERS.md](DEVELOPERS.md#inputs-the-players-copy)).
 
-Xbox 360 updates and DLC are never picked as the game: they're kept as that game's extra content.
+An Xbox Live Arcade package is the game itself. Xbox 360 updates and DLC are never picked as the
+game: they're kept as that game's extra content.
 Whether a file is the game, an update or DLC, and which disc it is, is read from its name
 (`(Disc 2 of 3)`, `[UPD]`, `Title Update`, `DLC`, a Switch title ID ending in `800` for an update),
 or from the header for Xbox 360 packages and PS3 update `.pkg` files.
