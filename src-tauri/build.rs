@@ -85,9 +85,10 @@ fn android_cxx() {
         println!("cargo:warning=the NDK's libc++_static.a wasn't found; the app may stop at start");
         return;
     };
-    println!("cargo:rustc-link-search=native={}", dir.display());
-    println!("cargo:rustc-link-lib=static=c++_static");
-    println!("cargo:rustc-link-lib=static=c++abi");
+    // Handed to the linker as files (not as static libraries Rust bundles into the rlib, which
+    // brings in Rust's own runtime a second time: rust_eh_personality defined twice).
+    println!("cargo:rustc-link-arg={}", dir.join("libc++_static.a").display());
+    println!("cargo:rustc-link-arg={}", dir.join("libc++abi.a").display());
 }
 
 /// unrar_sys's C++ sources, in Cargo's download folder.
