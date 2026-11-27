@@ -445,7 +445,8 @@ async function playSync(ids) {
 }
 setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); homeSync(); } }, 10 * 60 * 1000);
 // Sponsor spots in the app for this account, from the website (Sponsors in the admin). Home shows
-// one between Ready to Play and Recently Updated when there is one.
+// one between Ready to Play and Recently Updated when there is one, unless Show sponsored content is
+// off in Settings (hide_buy, which also hides the partner store card on game pages).
 async function sponsSync() {
   const before = JSON.stringify(S.spons || []);
   let s = [];
@@ -458,7 +459,7 @@ async function sponsSync() {
 const sponsFor = (slot) => (S.spons || []).find((x) => x.slot === slot) || null;
 function sponsBand(slot) {
   const x = sponsFor(slot);
-  if (!x) return '';
+  if (!x || (S.settings.ui || {}).hide_buy) return '';
   const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
   return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
