@@ -25,6 +25,7 @@ function desktop(padDesktop, os = 'windows') {
       deskPad: (b) => { got.push(`desktop:${b}`); return true; },
     },
     holdOpensTV: () => true,
+    phoneBp: () => null,
     enter: () => got.push('big-picture'),
     toast: () => {}, t: (s) => s,
     got,
@@ -113,4 +114,41 @@ test('on Android any controller button switches from the phone layout to Big Pic
     c.pad(b);
     assert.deepEqual(c.got, ['big-picture'], b);
   }
+});
+
+// A phone or tablet: its own Big Picture mode (phone.js) takes the controller instead.
+function phone(on, padTv = true) {
+  const got = [];
+  const c = vm.createContext({
+    S: { os: 'android', settings: {} },
+    android: () => true,
+    TV: { on: false, hinted: true },
+    lastPad: { b: '', t: 0 },
+    performance: { now: () => 10000 },
+    document: { hasFocus: () => true, querySelector: () => null },
+    window: { phonePadTv: () => padTv },
+    phoneBp: () => ({ on: () => on, enter: (byPad) => got.push(`enter:${byPad}`), pad: (b) => got.push(`pad:${b}`) }),
+    enter: () => got.push('big-screen'),
+    got,
+  });
+  vm.runInContext(fn(tv, 'pad'), c);
+  return c;
+}
+
+test('on a phone a controller button opens the phone\'s own Big Picture mode, not the big-screen one', () => {
+  const c = phone(false);
+  c.pad('a');
+  assert.deepEqual(c.got, ['enter:true']);
+});
+
+test('the phone\'s Big Picture mode gets every button while it is open', () => {
+  const c = phone(true);
+  for (const b of ['up', 'a', 'b', 'rb']) { c.lastPad.t = 0; c.pad(b); }
+  assert.deepEqual(c.got, ['pad:up', 'pad:a', 'pad:b', 'pad:rb']);
+});
+
+test('on a phone with Open with a controller off, a button leaves the phone layout alone', () => {
+  const c = phone(false, false);
+  c.pad('a');
+  assert.deepEqual(c.got, []);
 });

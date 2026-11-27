@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 гра зберігає збереження там, куди Android не пускає лаунчер.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} гра зберігає збереження там, куди Android не пускає лаунчер.|{n} гри зберігають збереження там, куди Android не пускає лаунчер.|{n} ігор зберігають збереження там, куди Android не пускає лаунчер.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android спершу питає. Дозвольте один раз, і лаунчер зможе копіювати збереження ваших ігор.",
- "Sign in to keep your saves in the cloud.": "Увійдіть, щоб зберігати збереження в хмарі."
+ "Sign in to keep your saves in the cloud.": "Увійдіть, щоб зберігати збереження в хмарі.",
+ "Accessibility": "Доступність",
+ "Performance mode": "Режим продуктивності",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Пласко й спокійно: без розмиття, світіння та рухомих елементів. Плавніше на старих телефонах.",
+ "Reduce motion": "Зменшити рух",
+ "Pages change without sliding or zooming": "Сторінки змінюються без зсуву й масштабування",
+ "High contrast": "Висока контрастність",
+ "Stronger text and edges": "Чіткіший текст і краї"
 }

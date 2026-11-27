@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 game menyimpan datanya di tempat yang tidak bisa dimasuki launcher karena Android.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} game menyimpan datanya di tempat yang tidak bisa dimasuki launcher karena Android.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android akan bertanya dulu. Izinkan sekali agar launcher bisa menyalin simpanan game-mu.",
- "Sign in to keep your saves in the cloud.": "Masuk untuk menyimpan data game-mu di cloud."
+ "Sign in to keep your saves in the cloud.": "Masuk untuk menyimpan data game-mu di cloud.",
+ "Accessibility": "Aksesibilitas",
+ "Performance mode": "Mode performa",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Datar dan diam: tanpa blur, cahaya, atau hiasan bergerak. Lebih lancar di ponsel lama.",
+ "Reduce motion": "Kurangi gerakan",
+ "Pages change without sliding or zooming": "Halaman berganti tanpa geser atau zoom",
+ "High contrast": "Kontras tinggi",
+ "Stronger text and edges": "Teks dan tepi lebih tegas"
 }

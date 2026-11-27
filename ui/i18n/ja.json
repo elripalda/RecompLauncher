@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 本のゲームは、Android がランチャーを入れない場所にセーブを置いています。",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} 本のゲームは、Android がランチャーを入れない場所にセーブを置いています。",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android が最初に確認します。一度許可すれば、ランチャーがゲームのセーブをコピーできます。",
- "Sign in to keep your saves in the cloud.": "サインインすると、セーブをクラウドに保管できます。"
+ "Sign in to keep your saves in the cloud.": "サインインすると、セーブをクラウドに保管できます。",
+ "Accessibility": "アクセシビリティ",
+ "Performance mode": "パフォーマンスモード",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "フラットで静か: ぼかし、光彩、動く装飾なし。古いスマホでもなめらか。",
+ "Reduce motion": "動きを減らす",
+ "Pages change without sliding or zooming": "ページはスライドやズームなしで切り替わります",
+ "High contrast": "コントラストを上げる",
+ "Stronger text and edges": "文字と枠をくっきり"
 }

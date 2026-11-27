@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 oyun kayıtlarını Android'in launcher'ı içeri almadığı bir yerde tutuyor.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} oyun kayıtlarını Android'in launcher'ı içeri almadığı bir yerde tutuyor.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android önce sorar. Bir kez izin ver, launcher oyunlarının kayıtlarını kopyalayabilsin.",
- "Sign in to keep your saves in the cloud.": "Kayıtlarını bulutta tutmak için giriş yap."
+ "Sign in to keep your saves in the cloud.": "Kayıtlarını bulutta tutmak için giriş yap.",
+ "Accessibility": "Erişilebilirlik",
+ "Performance mode": "Performans modu",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Düz ve sakin: bulanıklık, parlama ya da hareketli süs yok. Eski telefonlarda daha akıcı.",
+ "Reduce motion": "Hareketi azalt",
+ "Pages change without sliding or zooming": "Sayfalar kaymadan ya da yakınlaşmadan değişir",
+ "High contrast": "Yüksek kontrast",
+ "Stronger text and edges": "Daha belirgin yazı ve kenarlar"
 }

@@ -3523,5 +3523,12 @@
  "1 game keeps its saves where Android doesn't let the launcher in.": "1 game bewaart zijn saves waar Android de launcher niet toelaat.",
  "{n} games keep their saves where Android doesn't let the launcher in.": "{n} games bewaren hun saves waar Android de launcher niet toelaat.",
  "Android asks first. Allow it once and the launcher can copy your games' saves.": "Android vraagt het eerst. Sta het één keer toe en de launcher kan de saves van je games kopiëren.",
- "Sign in to keep your saves in the cloud.": "Log in om je saves in de cloud te bewaren."
+ "Sign in to keep your saves in the cloud.": "Log in om je saves in de cloud te bewaren.",
+ "Accessibility": "Toegankelijkheid",
+ "Performance mode": "Prestatiemodus",
+ "Flat and still: no blurs, glows or moving extras. Smoother on older phones.": "Vlak en stil: geen vervaging, gloed of bewegende extra's. Soepeler op oudere telefoons.",
+ "Reduce motion": "Minder beweging",
+ "Pages change without sliding or zooming": "Pagina's wisselen zonder schuiven of zoomen",
+ "High contrast": "Hoog contrast",
+ "Stronger text and edges": "Sterkere tekst en randen"
 }

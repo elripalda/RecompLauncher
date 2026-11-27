@@ -168,25 +168,48 @@ On Android there's no desktop view. There are two layouts instead:
   back). Get installs in place, like an app store, and turns into Open. No button hints. Android's
   Back closes the topmost thing (a sheet, search, the game page, a page inside a page), then goes
   to Home, and from Home puts the launcher in the background.
-  The design is drawn 433 points wide and scaled to the screen (Settings, Display size: small,
-  medium or large), so a tablet or a handheld gets the same layout, bigger. Android tells the page
+  The design is drawn for a phone about 433 points wide. A narrower phone scales it down; a tablet
+  (or anything whose short side is over 560) draws it bigger in proportion, up to 1.7 times, so
+  words, buttons and covers keep their size against the screen. Settings, Display size (small,
+  medium or large) is a step either side. Android tells the page
   how tall the status bar and gesture line are (`android_insets`, and again whenever they change),
   the page draws behind them, and nothing readable sits under the clock or the camera. The bars'
   icons follow the theme (`android_edges`), and taps can buzz (`android_haptic`, Settings, Vibrate
   on taps). The player's choices are kept in settings.ui (`phone_tabs`, `phone_labels`,
-  `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`).
-- **Big Picture mode** (`ui/tv.js`) with a controller, held sideways. Any button pressed on a
-  controller switches to it, unless Settings, Open with a controller is off (Android tells the
-  page about a controller only once a button is pressed), and when the last controller is unplugged it goes back to the phone layout. It's also
-  in the phone layout's Settings. Settings leaves out what only a PC has (monitor, tray, start with
-  your PC, Discord, controller as a mouse), and Leave Big Picture mode goes to the phone layout. A
-  finger drags a page or a row of games, a tap opens, and Android's Back is B. On a phone, Auto size
-  draws the stage a little bigger (1600×900) so words stay readable.
+  `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`, and the Accessibility switches below).
+  Catalog's All games comes in 30 at a time as the page scrolls, and Trending is the week's top 10
+  (filled from the most played when the chart is short).
+  Settings, Accessibility: **Performance mode** (`phone_lite`: no frosted glass, glows, shadows,
+  start-up cover wall or moving extras, and no animations, for older phones), **Reduce motion**
+  (`phone_still`: pages change in place, no slides or zooms; the phone's own reduce-motion setting
+  does the same) and **High contrast** (`phone_contrast`: brighter secondary text and edges).
+- **Big Picture mode** with a controller, or picked in Settings. On a phone or tablet (a touch
+  screen) it's the phone layout's own (`phone.js`, Big Picture section; `.ph-bp` in `phone.css`),
+  from the Android design: full screen and sideways, always dark, the focused game's art behind a
+  shelf of covers (the player's games, then the top 10), sections for Home, Library, Catalog and
+  Settings (LB and RB), a game's page with its facts, and its menu (Y). The d-pad moves to the
+  nearest thing that way, A presses it, B goes back. Button hints show only while a controller or
+  keyboard is in use; a finger taps (on the shelf, the first tap shows a game, the next opens it).
+  Any button pressed on a controller switches to it, unless Settings, Open with a controller is off
+  (Android tells the page about a controller only once a button is pressed). Unplugging the last
+  controller goes back to the phone layout when a controller is what opened it. Settings, Start in
+  Big Picture mode (`start_in_tv`) opens the launcher in it; then Android's Back on Home puts the
+  launcher in the background, otherwise it goes back to the phone layout. tv.js hands every way in
+  to it (`window.phoneBp`): its `enter()`, the controller (`pad()`), Back and the unplug.
 
-A device without a touch screen (an Android TV) always uses Big Picture mode. Which way the window
+A device without a touch screen (an Android TV) always uses the big-screen Big Picture mode (`ui/tv.js`).
+Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord, controller as
+a mouse), and on Auto size draws the stage a little bigger (1600×900) so words stay readable. Which way the window
 turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
 as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
 (`MainActivity.kt`).
+
+The app icon is an adaptive icon (`mipmap-anydpi-v26`): a transparent mark inside the middle
+66dp every launcher shape keeps, over a dark gradient, plus a one-colour version for themed icons.
+Android 12 and newer always show a splash screen; it's the start-up screen's dark blue with no
+icon (`values-v31/themes.xml`), so it hands straight over to the launcher's own start-up screen
+(the logo over a wall of covers, the last ones seen kept for an instant start; none in
+Performance mode).
 
 Cloud saves on Android: a phone's games are Android apps, and Android keeps each app's own folders
 (`Android/data`, its private storage) away from every other app. The launcher can copy only saves a

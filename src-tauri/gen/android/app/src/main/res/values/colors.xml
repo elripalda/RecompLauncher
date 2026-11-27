@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- The start-up screen's background (phone.css .ph-boot). -->
+    <color name="boot_background">#FF0B1220</color>
 </resources>
