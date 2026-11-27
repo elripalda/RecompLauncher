@@ -3530,5 +3530,20 @@
  "Reduce motion": "動きを減らす",
  "Pages change without sliding or zooming": "ページはスライドやズームなしで切り替わります",
  "High contrast": "コントラストを上げる",
- "Stronger text and edges": "文字と枠をくっきり"
+ "Stronger text and edges": "文字と枠をくっきり",
+ "Be the first: after you play, say how it ran.": "最初のレビューを: プレイしたら動作の感想を伝えましょう。",
+ "Catalog and updates": "カタログとアップデート",
+ "Delete your review? This can't be undone.": "レビューを削除しますか？元に戻せません。",
+ "Every release and what changed": "すべてのリリースと変更点",
+ "Get the newest list of recomps, their releases and their art now": "リコンプの最新リスト、リリース、アートを今すぐ取得",
+ "Hide AI-assisted Recomps": "AIの助けで作られたRecompを隠す",
+ "Keep your saved games with your account, and write reviews.": "保存したゲームをアカウントに残し、レビューを書けます。",
+ "Latest release {when}": "最新リリース: {when}",
+ "Looks for new releases of your games now": "ゲームの新しいバージョンを今すぐ探します",
+ "Nothing matches that.": "一致するものがありません。",
+ "Optimization mode": "最適化モード",
+ "What it is, what it needs, and who made it": "どんなものか、必要なもの、作った人",
+ "Your saved games and reviews follow you.": "保存したゲームとレビューはどこでも一緒です。",
+ "{n} of {all} unlocked": "{all}個中{n}個解除",
+ "{pct}% say it plays great": "{pct}%が快適に動くと回答"
 }

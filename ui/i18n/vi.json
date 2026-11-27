@@ -3651,5 +3651,20 @@
  "Reduce motion": "Giảm chuyển động",
  "Pages change without sliding or zooming": "Trang đổi mà không trượt hay phóng to",
  "High contrast": "Độ tương phản cao",
- "Stronger text and edges": "Chữ và viền rõ hơn"
+ "Stronger text and edges": "Chữ và viền rõ hơn",
+ "Be the first: after you play, say how it ran.": "Hãy là người đầu tiên: chơi xong, cho biết game chạy thế nào.",
+ "Catalog and updates": "Danh mục và cập nhật",
+ "Delete your review? This can't be undone.": "Xóa đánh giá của bạn? Không thể hoàn tác.",
+ "Every release and what changed": "Mọi bản phát hành và những gì đã thay đổi",
+ "Get the newest list of recomps, their releases and their art now": "Lấy ngay danh sách recomp mới nhất, các bản phát hành và hình ảnh",
+ "Hide AI-assisted Recomps": "Ẩn các Recomp có AI hỗ trợ",
+ "Keep your saved games with your account, and write reviews.": "Giữ game đã lưu trong tài khoản và viết đánh giá.",
+ "Latest release {when}": "Bản mới nhất: {when}",
+ "Looks for new releases of your games now": "Tìm ngay bản mới cho các game của bạn",
+ "Nothing matches that.": "Không có gì khớp.",
+ "Optimization mode": "Chế độ tối ưu",
+ "What it is, what it needs, and who made it": "Nó là gì, cần gì và ai làm ra",
+ "Your saved games and reviews follow you.": "Game đã lưu và đánh giá đi theo bạn.",
+ "{n} of {all} unlocked": "Đã mở {n}/{all}",
+ "{pct}% say it plays great": "{pct}% nói game chạy rất tốt"
 }

@@ -179,26 +179,47 @@ On Android there's no desktop view. There are two layouts instead:
   `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`, and the Accessibility switches below).
   Catalog's All games comes in 30 at a time as the page scrolls, and Trending is the week's top 10
   (filled from the most played when the chart is short).
-  Settings, Accessibility: **Performance mode** (`phone_lite`: no frosted glass, glows, shadows,
+  Settings, in the desktop's order: Account, Look, Big Picture, Catalog and updates (Hide
+  AI-assisted Recomps, Refresh Catalog, Check for Game Updates; the Android launcher has no update
+  of its own yet), Storage, Reviews (Ask After Playing), Accessibility, About.
+  Accessibility: **Optimization mode** (`phone_lite`: no frosted glass, glows, shadows,
   start-up cover wall or moving extras, and no animations, for older phones), **Reduce motion**
   (`phone_still`: pages change in place, no slides or zooms; the phone's own reduce-motion setting
   does the same) and **High contrast** (`phone_contrast`: brighter secondary text and edges).
-- **Big Picture mode** with a controller, or picked in Settings. On a phone or tablet (a touch
-  screen) it's the phone layout's own (`phone.js`, Big Picture section; `.ph-bp` in `phone.css`),
-  from the Android design: full screen and sideways, always dark, the focused game's art behind a
-  shelf of covers (the player's games, then the top 10), sections for Home, Library, Catalog and
-  Settings (LB and RB), a game's page with its facts, and its menu (Y). The d-pad moves to the
-  nearest thing that way, A presses it, B goes back. Button hints show only while a controller or
-  keyboard is in use; a finger taps (on the shelf, the first tap shows a game, the next opens it).
-  Any button pressed on a controller switches to it, unless Settings, Open with a controller is off
-  (Android tells the page about a controller only once a button is pressed). Unplugging the last
-  controller goes back to the phone layout when a controller is what opened it. Settings, Start in
-  Big Picture mode (`start_in_tv`) opens the launcher in it; then Android's Back on Home puts the
-  launcher in the background, otherwise it goes back to the phone layout. tv.js hands every way in
-  to it (`window.phoneBp`): its `enter()`, the controller (`pad()`), Back and the unplug.
+  Each game shows once in every list, as on the desktop (`oneEach` over the website's Versions,
+  worked out again only when the catalog, the library or what's hidden changes): the version you
+  play, else the recommended one. Its page has an "{n} versions" pill (a row in Big Picture mode)
+  that opens a sheet listing them all.
+  A game's page has the same player reviews as the desktop (`loadReports`, score, filters, write,
+  edit and delete, sheets in `phone.js` "Reviews"), the IGDB about text and facts, and rows for the
+  README, From the developer (description and credits) and Updates (every release). Android has no
+  play-time log of its own, so `more.js` notes when a game is opened and, when the launcher comes
+  back after 10 minutes or more, asks how it ran (Settings, Ask After Playing).
+- **Big Picture mode** with a controller, or picked in Settings. Which one depends on the device
+  (`droidPhone()` / `droidHandheld()` in `app.js`, from `android_device`: smallest screen width and
+  a built-in controller, `ScreenPlugin.kt` `device`). A phone (narrower than 600dp, no built-in
+  controller) gets the phone layout's own (`phone.js`, Big Picture section; `.ph-bp` in
+  `phone.css`): full screen and sideways, always dark, six sections like the desktop (Home,
+  Library, Catalog with search and console chips, Downloads, Achievements, Settings; LB and RB),
+  Home is the focused game's art over a centred shelf of covers, then rows (Continue playing,
+  Trending, Saved, Recently updated, Just added, Popular on Android). A game's page has its facts,
+  About, reviews, README, notes, updates, achievements and More like this, and its menu (Y). The
+  d-pad moves to the nearest thing that way, A presses it, B goes back (sheet, menu, game, Home).
+  Button hints show only while a controller or keyboard is in use; a finger taps (on the shelf,
+  the first tap shows a game, the next opens it). Any button pressed on a controller switches to
+  it, unless Settings, Open with a controller is off (Android tells the page about a controller
+  only once a button is pressed). Unplugging the last controller goes back to the phone layout when
+  a controller is what opened it. Settings, Start in Big Picture mode (`start_in_tv`) opens the
+  launcher in it; then Android's Back on Home puts the launcher in the background, otherwise it
+  goes back to the phone layout. tv.js hands every way in to it (`window.phoneBp`): its `enter()`,
+  the controller (`pad()`), Back and the unplug.
+  A tablet, a handheld (a built-in controller; it starts in Big Picture mode) and an Android TV get
+  the desktop's Big Picture mode (`ui/tv.js`).
+  Going in or out never shows a half-turned page: a dark cover fades in, the screen turns (Android
+  crossfades the turn), `settle()` waits until the page size stops changing, the new layout draws
+  under the cover, and the cover fades away. tv.js uses the same wait (`window.screenSettle`).
 
-A device without a touch screen (an Android TV) always uses the big-screen Big Picture mode (`ui/tv.js`).
-Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord, controller as
+In the desktop's Big Picture mode on Android, Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord, controller as
 a mouse), and on Auto size draws the stage a little bigger (1600×900) so words stay readable. Which way the window
 turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
 as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
@@ -209,7 +230,7 @@ The app icon is an adaptive icon (`mipmap-anydpi-v26`): a transparent mark insid
 Android 12 and newer always show a splash screen; it's the start-up screen's dark blue with no
 icon (`values-v31/themes.xml`), so it hands straight over to the launcher's own start-up screen
 (the logo over a wall of covers, the last ones seen kept for an instant start; none in
-Performance mode).
+Optimization mode).
 
 Cloud saves on Android: a phone's games are Android apps, and Android keeps each app's own folders
 (`Android/data`, its private storage) away from every other app. The launcher can copy only saves a

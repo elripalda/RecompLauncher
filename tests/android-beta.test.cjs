@@ -11,14 +11,21 @@ const exists = (f) => fs.existsSync(path.join(__dirname, '..', f));
 const phone = read('ui/phone.js'), css = read('ui/phone.css'), tv = read('ui/tv.js'), app = read('ui/app.js');
 const RES = 'src-tauri/gen/android/app/src/main/res';
 
-test('a phone or tablet opens its own Big Picture mode; Android TV keeps the big-screen one', () => {
+test('a phone opens its own Big Picture mode; a tablet, a handheld and Android TV get the big-screen one', () => {
   const line = tv.split('\n').find((l) => l.includes('const phoneBp = '));
-  const pick = (touch, os) => vm.runInNewContext(`${line}; phoneBp()`, { android: () => os === 'android', touchHere: () => touch, window: { phoneBp: { name: 'phone' } } });
-  assert.deepEqual(pick(true, 'android'), { name: 'phone' });
-  assert.equal(pick(false, 'android'), null);
-  assert.equal(pick(true, 'windows'), null);
+  const fn = app.match(/^function droidPhone\(\) \{[^]*?^\}/m)[0];
+  const pick = (touch, os, dev, short = 393) => vm.runInNewContext(`${fn}; ${line}; phoneBp()`, { S: { droidDev: dev }, screen: { width: short, height: 873 }, android: () => os === 'android', touchHere: () => touch, window: { phoneBp: { name: 'phone' } } });
+  assert.deepEqual(pick(true, 'android', { sw: 393, pad: false }), { name: 'phone' });
+  assert.deepEqual(pick(true, 'android', null), { name: 'phone' });
+  assert.equal(pick(true, 'android', { sw: 800, pad: false }), null);
+  assert.equal(pick(true, 'android', null, 800), null);
+  assert.equal(pick(true, 'android', { sw: 411, pad: true }), null);
+  assert.equal(pick(false, 'android', { sw: 393 }), null);
+  assert.equal(pick(true, 'windows', { sw: 393 }), null);
   // Every way in goes through enter(): Settings, the start-up choice, a controller, F11.
   assert.match(tv, /async function enter\(\) \{\n    if \(phoneBp\(\)\) return phoneBp\(\)\.enter\(padHere\(\)\);/);
+  // The launcher asks Android what it runs on before it picks a layout.
+  assert.match(app, /S\.droidDev = await invoke\('android_device'\)\.catch\(\(\) => null\);\n    const open = startsInTV\(\)/);
 });
 
 test('the phone\'s Big Picture mode answers the controller, Android\'s Back and the last controller leaving', () => {
@@ -39,7 +46,7 @@ test('the phone\'s Big Picture mode turns sideways and hides the system bars, an
 });
 
 test('Big Picture mode is always dark, whatever the phone layout\'s theme', () => {
-  assert.match(css, /\.ph-bp\{--bg:#0B1220;/);
+  assert.match(css, /\.ph-bp,#phone\.ph-bpon \.ph-sheet,#phone\.ph-bpon \.ph-scrim\{--bg:#0B1220;/);
   assert.match(css, /#phone\.ph-bpon \.ph-safe-t,#phone\.ph-bpon \.ph-safe-s\{display:none\}/);
 });
 
@@ -47,14 +54,16 @@ test('Start in Big Picture mode is a switch on the phone too, and the start-up f
   assert.match(phone, /sw\('bpstart', !!S\.settings\.start_in_tv\)/);
   assert.match(phone, /if \(key === 'bpstart'\) return saveSettings\(\{ start_in_tv: on \}, true\);/);
   const starts = app.match(/^function startsInTV\(\) \{[^\n]*\}/m)[0];
-  const run = (settings, pads = false, touch = true) => vm.runInNewContext(`${starts}; startsInTV()`, { S: { os: 'android', settings }, padHere: () => pads, touchHere: () => touch });
+  const run = (settings, pads = false, touch = true, handheld = false) => vm.runInNewContext(`${starts}; startsInTV()`, { S: { os: 'android', settings }, padHere: () => pads, touchHere: () => touch, droidHandheld: () => handheld });
   assert.equal(run({}), false);
   assert.equal(run({ start_in_tv: true }), true);
   assert.equal(run({}, true), true);
   assert.equal(run({}, false, false), true);
+  // A handheld with a controller built in starts in Big Picture mode.
+  assert.equal(run({}, false, true, true), true);
 });
 
-test('Performance mode, Reduce motion and High contrast are saved and change the whole layout', () => {
+test('Optimization mode, Reduce motion and High contrast are saved and change the whole layout', () => {
   for (const k of ['lite', 'still', 'contrast']) assert.match(phone, new RegExp(`sw\\('${k}'`));
   assert.match(phone, /\{ lite: 'phone_lite', still: 'phone_still', contrast: 'phone_contrast' \}\[key\]/);
   assert.match(phone, /root\.classList\.toggle\('ph-lite', lite\(\)\);\n    root\.classList\.toggle\('ph-still', still\(\)\);\n    root\.classList\.toggle\('ph-hc', pref\.contrast\(\)\);/);
@@ -81,7 +90,7 @@ test('All games and Big Picture\'s Catalog load as they scroll, not all at once'
   assert.match(phone, /const shown = az\.slice\(0, P\.allN\);/);
   assert.match(phone, /if \(n\.id === 'ph-v-catalog'\) return moreGames\(n\);/);
   assert.match(phone, /const list = bpGrid\(\), shown = list\.slice\(0, bp\.n\);/);
-  assert.match(phone, /if \(n\.classList\.contains\('ph-bpscroll'\)\) return bpMore\(n\);/);
+  assert.match(phone, /if \(n\.classList\.contains\('ph-bpscroll'\)\) \{ if \(bp\) bpScrolled\(n\); return bpMore\(n\); \}/);
 });
 
 test('Search has one Consoles row instead of a wall of console chips', () => {

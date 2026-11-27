@@ -3530,5 +3530,20 @@
  "Reduce motion": "ลดการเคลื่อนไหว",
  "Pages change without sliding or zooming": "เปลี่ยนหน้าโดยไม่เลื่อนหรือซูม",
  "High contrast": "คอนทราสต์สูง",
- "Stronger text and edges": "ตัวอักษรและขอบชัดขึ้น"
+ "Stronger text and edges": "ตัวอักษรและขอบชัดขึ้น",
+ "Be the first: after you play, say how it ran.": "เป็นคนแรก: เล่นเสร็จแล้วบอกว่าเกมทำงานเป็นอย่างไร",
+ "Catalog and updates": "แคตตาล็อกและการอัปเดต",
+ "Delete your review? This can't be undone.": "ลบรีวิวของคุณไหม? ย้อนกลับไม่ได้",
+ "Every release and what changed": "ทุกรุ่นที่ปล่อยและสิ่งที่เปลี่ยนไป",
+ "Get the newest list of recomps, their releases and their art now": "ดึงรายการรีคอมป์ล่าสุด รุ่นที่ปล่อย และภาพตอนนี้",
+ "Hide AI-assisted Recomps": "ซ่อน Recomp ที่ใช้ AI ช่วยทำ",
+ "Keep your saved games with your account, and write reviews.": "เก็บเกมที่บันทึกไว้ในบัญชีและเขียนรีวิว",
+ "Latest release {when}": "รุ่นล่าสุด: {when}",
+ "Looks for new releases of your games now": "ค้นหารุ่นใหม่ของเกมคุณตอนนี้",
+ "Nothing matches that.": "ไม่มีอะไรตรงกัน",
+ "Optimization mode": "โหมดปรับให้เหมาะสม",
+ "What it is, what it needs, and who made it": "คืออะไร ต้องใช้อะไร และใครเป็นผู้สร้าง",
+ "Your saved games and reviews follow you.": "เกมที่บันทึกไว้และรีวิวของคุณตามคุณไปทุกที่",
+ "{n} of {all} unlocked": "ปลดล็อก {n} จาก {all}",
+ "{pct}% say it plays great": "{pct}% บอกว่าเล่นได้ดีมาก"
 }

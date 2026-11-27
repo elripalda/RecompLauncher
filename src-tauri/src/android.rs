@@ -56,6 +56,13 @@ pub fn insets() -> Res<Value> {
     h.run_mobile_plugin::<Value>("insets", json!({})).map_err(|e| Error::Msg(e.to_string()))
 }
 
+/// What kind of screen the launcher is on: `{sw, pad}`, the screen's smaller side in the page's
+/// pixels (600 and up is a tablet) and whether it has a controller built in (a handheld).
+pub fn device() -> Res<Value> {
+    let h = SCREEN.get().ok_or_else(|| Error::Msg("The window isn't ready yet.".into()))?;
+    h.run_mobile_plugin::<Value>("device", json!({})).map_err(|e| Error::Msg(e.to_string()))
+}
+
 /// A light tick under the finger.
 pub fn haptic(kind: &str) -> Res<()> {
     screen_call("haptic", json!({ "kind": kind }))

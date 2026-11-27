@@ -668,6 +668,8 @@ body.cpu-draw .tv-down{animation:none}
 /* Going into Big Picture mode and out of it: a fade to dark over the launcher while the window
    changes size. */
 #tv.tv-cover{animation:tv-fade .24s ease both}
+/* On Android the phone layout is under it, and the dark goes over that while the screen turns. */
+.droid #tv.tv-cover{z-index:110}
 #tv.tv-cover.out{animation:tv-cover-out .22s ease both}
 #tv.tv-cover.out>*{opacity:0;transition:opacity .2s}
 @keyframes tv-cover-out{from{background:#070b14}to{background:#070b14}}

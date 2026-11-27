@@ -1446,6 +1446,16 @@ fn android_insets() -> Res<Value> {
     Ok(json!({ "top": 0, "right": 0, "bottom": 0, "left": 0 }))
 }
 
+/// Android: whether this is a phone, a tablet or a handheld with a controller built in, which decides
+/// which Big Picture mode it gets. `{sw, pad}`; nothing on a PC.
+#[tauri::command(async)]
+fn android_device() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::device();
+    #[cfg(not(target_os = "android"))]
+    Ok(Value::Null)
+}
+
 /// Android: a light tick under the finger ("tick" for scrolling past something, "tap", "ok").
 #[tauri::command(async)]
 fn android_haptic(kind: String) -> Res<()> {
@@ -10894,7 +10904,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, android_sync, android_files_access, android_ask_files_access, android_back, android_orientation, android_edges, android_insets, android_haptic, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, android_files_access, android_ask_files_access, android_back, android_orientation, android_edges, android_insets, android_device, android_haptic, android_to_back, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,

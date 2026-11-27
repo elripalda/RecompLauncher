@@ -3530,5 +3530,20 @@
  "Reduce motion": "Уменьшить движение",
  "Pages change without sliding or zooming": "Страницы сменяются без сдвига и масштабирования",
  "High contrast": "Высокий контраст",
- "Stronger text and edges": "Более чёткий текст и края"
+ "Stronger text and edges": "Более чёткий текст и края",
+ "Be the first: after you play, say how it ran.": "Будьте первым: после игры расскажите, как она шла.",
+ "Catalog and updates": "Каталог и обновления",
+ "Delete your review? This can't be undone.": "Удалить отзыв? Это нельзя отменить.",
+ "Every release and what changed": "Все выпуски и что изменилось",
+ "Get the newest list of recomps, their releases and their art now": "Получить свежий список рекомпов, их выпусков и обложек сейчас",
+ "Hide AI-assisted Recomps": "Скрывать Рекомпы, сделанные с помощью ИИ",
+ "Keep your saved games with your account, and write reviews.": "Храните сохранённые игры в аккаунте и пишите отзывы.",
+ "Latest release {when}": "Последний выпуск: {when}",
+ "Looks for new releases of your games now": "Ищет новые версии ваших игр сейчас",
+ "Nothing matches that.": "Ничего не найдено.",
+ "Optimization mode": "Режим оптимизации",
+ "What it is, what it needs, and who made it": "Что это, что нужно и кто это сделал",
+ "Your saved games and reviews follow you.": "Ваши сохранённые игры и отзывы всегда с вами.",
+ "{n} of {all} unlocked": "Открыто {n} из {all}|Открыто {n} из {all}|Открыто {n} из {all}",
+ "{pct}% say it plays great": "{pct}% говорят, что работает отлично"
 }

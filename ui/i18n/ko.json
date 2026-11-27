@@ -3530,5 +3530,20 @@
  "Reduce motion": "동작 줄이기",
  "Pages change without sliding or zooming": "페이지가 밀리거나 확대되지 않고 바뀝니다",
  "High contrast": "고대비",
- "Stronger text and edges": "더 진한 글자와 테두리"
+ "Stronger text and edges": "더 진한 글자와 테두리",
+ "Be the first: after you play, say how it ran.": "첫 리뷰를 남겨 보세요: 플레이 후 어떻게 실행됐는지 알려 주세요.",
+ "Catalog and updates": "카탈로그 및 업데이트",
+ "Delete your review? This can't be undone.": "리뷰를 삭제할까요? 되돌릴 수 없습니다.",
+ "Every release and what changed": "모든 릴리스와 변경 사항",
+ "Get the newest list of recomps, their releases and their art now": "리컴프의 최신 목록, 릴리스, 아트를 지금 가져옵니다",
+ "Hide AI-assisted Recomps": "AI 도움으로 만든 Recomp 숨기기",
+ "Keep your saved games with your account, and write reviews.": "저장한 게임을 계정에 보관하고 리뷰를 쓰세요.",
+ "Latest release {when}": "최신 릴리스: {when}",
+ "Looks for new releases of your games now": "내 게임의 새 버전을 지금 찾습니다",
+ "Nothing matches that.": "일치하는 항목이 없습니다.",
+ "Optimization mode": "최적화 모드",
+ "What it is, what it needs, and who made it": "무엇인지, 무엇이 필요한지, 누가 만들었는지",
+ "Your saved games and reviews follow you.": "저장한 게임과 리뷰가 어디서나 함께합니다.",
+ "{n} of {all} unlocked": "{all}개 중 {n}개 해제",
+ "{pct}% say it plays great": "{pct}%가 잘 실행된다고 말해요"
 }

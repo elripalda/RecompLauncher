@@ -3530,5 +3530,20 @@
  "Reduce motion": "Зменшити рух",
  "Pages change without sliding or zooming": "Сторінки змінюються без зсуву й масштабування",
  "High contrast": "Висока контрастність",
- "Stronger text and edges": "Чіткіший текст і краї"
+ "Stronger text and edges": "Чіткіший текст і краї",
+ "Be the first: after you play, say how it ran.": "Будьте першим: після гри розкажіть, як вона йшла.",
+ "Catalog and updates": "Каталог і оновлення",
+ "Delete your review? This can't be undone.": "Видалити відгук? Це не можна скасувати.",
+ "Every release and what changed": "Усі випуски й що змінилося",
+ "Get the newest list of recomps, their releases and their art now": "Отримати свіжий список рекомпів, їхніх випусків і обкладинок зараз",
+ "Hide AI-assisted Recomps": "Приховувати Рекомпи, зроблені за допомогою ШІ",
+ "Keep your saved games with your account, and write reviews.": "Зберігайте збережені ігри в акаунті й пишіть відгуки.",
+ "Latest release {when}": "Останній випуск: {when}",
+ "Looks for new releases of your games now": "Шукає нові версії ваших ігор зараз",
+ "Nothing matches that.": "Нічого не знайдено.",
+ "Optimization mode": "Режим оптимізації",
+ "What it is, what it needs, and who made it": "Що це, що потрібно і хто це зробив",
+ "Your saved games and reviews follow you.": "Ваші збережені ігри й відгуки завжди з вами.",
+ "{n} of {all} unlocked": "Відкрито {n} з {all}|Відкрито {n} з {all}|Відкрито {n} з {all}",
+ "{pct}% say it plays great": "{pct}% кажуть, що працює чудово"
 }

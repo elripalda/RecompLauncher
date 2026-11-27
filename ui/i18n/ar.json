@@ -3530,5 +3530,20 @@
  "Reduce motion": "تقليل الحركة",
  "Pages change without sliding or zooming": "تتغيّر الصفحات دون انزلاق أو تكبير",
  "High contrast": "تباين عالٍ",
- "Stronger text and edges": "نص وحواف أوضح"
+ "Stronger text and edges": "نص وحواف أوضح",
+ "Be the first: after you play, say how it ran.": "كن الأول: بعد اللعب، أخبرنا كيف عملت.",
+ "Catalog and updates": "الكتالوج والتحديثات",
+ "Delete your review? This can't be undone.": "حذف مراجعتك؟ لا يمكن التراجع عن ذلك.",
+ "Every release and what changed": "كل إصدار وما الذي تغيّر",
+ "Get the newest list of recomps, their releases and their art now": "احصل الآن على أحدث قائمة بالريكومبات وإصداراتها وصورها",
+ "Hide AI-assisted Recomps": "إخفاء الريكومبات المصنوعة بمساعدة الذكاء الاصطناعي",
+ "Keep your saved games with your account, and write reviews.": "احتفظ بألعابك المحفوظة في حسابك واكتب المراجعات.",
+ "Latest release {when}": "أحدث إصدار: {when}",
+ "Looks for new releases of your games now": "يبحث الآن عن إصدارات جديدة لألعابك",
+ "Nothing matches that.": "لا شيء يطابق ذلك.",
+ "Optimization mode": "وضع التحسين",
+ "What it is, what it needs, and who made it": "ما هي، وما تحتاجه، ومن صنعها",
+ "Your saved games and reviews follow you.": "ألعابك المحفوظة ومراجعاتك تتبعك.",
+ "{n} of {all} unlocked": "{n} من {all} مفتوحة",
+ "{pct}% say it plays great": "{pct}% يقولون إنها تعمل بشكل رائع"
 }
