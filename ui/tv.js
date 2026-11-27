@@ -2409,6 +2409,8 @@
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
       const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+      const left = stepLeft(s[TS.step]);
+      if (left) sub[TS.step] += ` · ${left}`;
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;
@@ -2583,7 +2585,8 @@
       }
       TS.q.shift();
       TS.extras = ev.extras;
-      TS.steps[ev.step] = Object.assign({}, TS.steps[ev.step], ev);
+      // `from` gives the step's time left, as on the desktop (stepLeft, app.js).
+      TS.steps[ev.step] = Object.assign({ from: { at: Date.now(), pct: ev.pct || 0 } }, TS.steps[ev.step], ev);
       if (ev.step === 'done') {
         TS.result = ev;
         const sid = TS.id;

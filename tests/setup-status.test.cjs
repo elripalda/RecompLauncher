@@ -45,7 +45,7 @@ test('Easy Setup tells the core when its window opens and closes, in both modes'
   assert.match(tv, /if \(TS\.id !== id\) setupOpened\(id\);/);
   // Closed: as it closes, sent to the background, or cancelled.
   assert.match(app, /SU\.el = null;\r?\n\s*setupClosed\(closingId\);/);
-  assert.match(app, /\/\/ pick === 'bg':\r?\n\s*setupClosed\(id\);/);
+  assert.match(app, /function suBackground\(\) \{\r?\n\s*suDrive\.stop\(\);\r?\n[^\n]*\r?\n\s*setupClosed\(id\);/);
   assert.match(app, /invoke\('setup_cancel', \{ id \}\)\.catch\(\(\) => \{\}\);\r?\n\s*setupClosed\(id\);/);
   assert.match(tv, /setupClosed\(id\);\r?\n\s*TS\.id = null;/);
 });

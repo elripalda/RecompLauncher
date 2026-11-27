@@ -3743,13 +3743,7 @@ async function closeSetup(quiet) {
       toast(tf('Setup for {name} was cancelled.', { name: a.name }));
       return;
     }
-    // pick === 'bg':
-    setupClosed(id);
-    if (SU.el) { SU.el.remove(); SU.el = null; }
-    render(true);
-    if (S.view === 'game') refreshGame();
-    toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
-    return;
+    return suBackground();
   }
   if (SU.stage === 'convert') invoke('convert_cancel').catch(() => {});
   const closingId = SU.id;
@@ -3760,10 +3754,21 @@ async function closeSetup(quiet) {
   SU.upd = false;
   if (!quiet && closingStage !== 'steps' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
+// Run in Background, from its button or the X's question: the window goes, the setup goes on.
+function suBackground() {
+  suDrive.stop();
+  const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id };
+  setupClosed(id);
+  if (SU.el) { SU.el.remove(); SU.el = null; }
+  render(true);
+  if (S.view === 'game') refreshGame();
+  toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
+}
 async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
   switch (b.dataset.su) {
     case 'close': return closeSetup();
+    case 'bg': return suBackground();
     // A failed setup step's Copy and Open Full Log.
     case 'fail-copy': return setupFailAct('copy', SU.id, SU.err);
     case 'fail-open': return setupFailAct('open', SU.id, SU.err);
@@ -4170,7 +4175,8 @@ function suPump() {
     }
     SU.q.shift();
     SU.extras = ev.extras;
-    SU.steps[ev.step] = Object.assign({}, SU.steps[ev.step], ev);
+    // `from`: where and when the step's first event came, for its time left (stepLeft).
+    SU.steps[ev.step] = Object.assign({ from: { at: Date.now(), pct: ev.pct || 0 } }, SU.steps[ev.step], ev);
     if (ev.step === 'done') { SU.result = ev; profileSaid(SU.id, 'files', true); return suAfterCopy(); }
   }
   suDraw();
@@ -4244,6 +4250,8 @@ function suDraw() {
       extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
       setup: t('Its settings, your controller and where your copy is'),
     };
+    const left = stepLeft(st[SU.step]);
+    if (left) sub[SU.step] += ` · ${left}`;
     // Under the title: the file it's reading now (Disc 3's, while it checks the discs), else the copy.
     const reading = SU.step === 'verify' && st.verify && st.verify.file && !st.verify.text ? st.verify.file : SU.path;
     const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Setting it up') };
@@ -4262,7 +4270,8 @@ function suDraw() {
     box.dataset.step = SU.step + order.length;
     right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2><p class="su-now" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(reading)}</p>
       <div class="steps">${order.map((k) => { const i = order.indexOf(k), cur = order.indexOf(SU.step); const done = i < cur, now = i === cur; return `<div class="step${!done && !now ? ' wait' : ''}">${done ? `<span class="ok">${CHECK}</span>` : now ? '<span class="spinr"></span>' : '<span class="todo"></span>'}<div class="k"><b>${esc(names[k])}</b><span>${esc(sub[k])}</span></div></div>`; }).join('')}</div>
-      <div class="su-bar"><i style="width:${barW}%"></i></div>`;
+      <div class="su-bar"><i style="width:${barW}%"></i></div>
+      <div class="picks"><button type="button" class="btn big" data-su="bg">${esc(t('Run in Background'))}</button></div>`;
   } else if (SU.stage === 'ready') {
     const r = SU.result || {};
     right = `<span class="su-ok${r.verified ? '' : ' plain'}">${CHECK}${esc(r.text || t('Checked'))}</span><h2 style="font-size:32px">${esc(t('Ready to play'))}</h2>
@@ -4300,7 +4309,10 @@ function suDraw() {
     const f = retry || $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
+    const had = document.activeElement?.dataset?.su;
     $('.su-r', box).innerHTML = right;
+    // A step change redraws Run in Background: if it had the focus, it keeps it.
+    if (had) $(`.su-r [data-su="${had}"]`, box)?.focus({ preventScroll: true });
     const d = $('.su-media .mdisc', box);
     if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('is-busy')) mediaState(d, 'is-busy');
   }
@@ -4887,6 +4899,16 @@ async function loadDlHist() {
   if (window.tvRedraw) window.tvRedraw();
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
+// A setup step's time left, from how fast its pct has moved since its first event: said only after
+// a few seconds and a bit of progress, so the first jumps don't promise too much. A step that sends
+// no pct (Setting it up, a build that prints no progress) says nothing.
+function stepLeft(s) {
+  const f = s && s.from;
+  if (!f || !(s.pct < 1)) return '';
+  const moved = s.pct - f.pct, secs = (Date.now() - f.at) / 1000;
+  if (moved < 0.02 || secs < 5) return '';
+  return tf('{time} left', { time: took(Math.max(1, Math.round((secs * (1 - s.pct)) / moved))) });
+}
 // (0.91) Each download's speed over its last minute and a half; its newest point gives the time left on Downloads.
 // A short download barely drew a line with one point a second, so the speed is worked out here from
 // the bytes each progress update brings (several a second), smoothed a little, and kept five times a
