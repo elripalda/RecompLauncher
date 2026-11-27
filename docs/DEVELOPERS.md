@@ -1094,11 +1094,15 @@ Things that make a recomp feel finished in the launcher. None are required; each
   changes (some games tie physics or cutscenes to it) and keep the console's rate as an option.
 - **Say where saves go** with `saves`, so backups and cloud saves pick up exactly the right files.
 - **Write a log.** A `.log` in a `logs` folder (or next to your program) goes with the crash
-  report a player sends, so you get it without asking.
+  report a player sends, so you get it without asking. Under the launcher on Linux, next to your
+  program is `{install}/usr/bin`, so put it under `RECOMPLAUNCHER_DATA` when it's set (see
+  [Where your game writes](#where-your-game-writes)).
 - **Explain your exit codes** with `exit_codes`. A clear "Your copy is the European release; this
   needs the USA one" saves you a bug report.
 - **Support `portable.txt`.** If a `portable.txt` next to your program makes your recomp keep
-  everything in its own folder, mod installs from the launcher follow it.
+  everything in its own folder, mod installs from the launcher follow it. Under the launcher on
+  Linux that folder is `{install}/usr/bin`, so `RECOMPLAUNCHER_DATA` wins over portable mode
+  when it's set (see [Where your game writes](#where-your-game-writes)).
 - **Check the copy, then trust it.** With `check` (and `dumps`), the launcher has already checked the
   player's copy before your program starts, so your own check can be quick.
 - **Ship a `recomplauncher.json` in every release**, and keep it in step with your settings when
