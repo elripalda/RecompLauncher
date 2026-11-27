@@ -115,7 +115,7 @@
     const html = page === 'game' ? pageGame() : page === 'browse' ? pageBrowse() : page === 'library' ? pageLibrary() : page === 'settings' ? pageSettings() : pageHome();
     const focused = document.activeElement && document.activeElement.matches && document.activeElement.matches('[data-q]');
     root.innerHTML = `<header class="ph-top${P.game ? ' over' : ''}">${P.game ? `<button type="button" class="ph-backbtn" data-act="back" aria-label="${esc(t('Back'))}">${icon('back')}</button>` : `<h1>${esc(title)}</h1>`}</header>
-      <main class="ph-main ph-${page}">${html}</main>
+      <main class="ph-main ph-page-${page}">${html}</main>
       <nav class="ph-tabs">${TABS.map(([k, n]) => `<button type="button" class="ph-tab${!P.game && P.tab === k ? ' on' : ''}" data-tab="${k}">${icon(k)}<span>${esc(t(n))}</span></button>`).join('')}</nav>`;
     const m = $('.ph-main', root);
     if (m && top) m.scrollTop = top;

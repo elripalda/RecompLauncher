@@ -15,7 +15,7 @@ body.phone-on #app{visibility:hidden}
 /* The page: scrolls up and down. */
 .ph-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:2px 0 28px;scrollbar-width:none}
 .ph-main::-webkit-scrollbar{display:none}
-.ph-main.ph-game{padding-top:0}
+.ph-main.ph-page-game{padding-top:0}
 .ph-sec{margin:12px 0 10px}
 .ph-sec h2,.ph-set h2{margin:0 20px 10px;font:700 18px/1.25 Figtree,system-ui,sans-serif}
 .ph-empty{margin:48px 28px;text-align:center;color:var(--muted);font-size:15px}
