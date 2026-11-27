@@ -2812,6 +2812,7 @@ async function loadCounts(force) {
   else if (S.view === 'discover' && $('#dlist')) morphList($('#dlist'), discoverGrid());
   else if (S.view === 'home') render(true);
   if (window.tvRefresh) window.tvRefresh();
+  if (window.phoneRefresh) window.phoneRefresh();
 }
 async function loadReports(id, force) {
   S.reports[id] = S.reports[id] && S.reports[id] !== 'loading' ? S.reports[id] : 'loading';
@@ -7765,8 +7766,11 @@ async function playGame2(id, program) {
   if (window.beforePlay && !(await beforePlay(id))) return;
   const other = [...S.running].find((x) => x !== id && parentId(x) !== parentId(id) && !subOf(x));
   const go2 = async (replace) => {
-    try { await invoke('play', { id, replace, bigPicture: document.body.classList.contains('tv-on'), program: program || null }); }
-    catch (err) {
+    try {
+      await invoke('play', { id, replace, bigPicture: document.body.classList.contains('tv-on'), program: program || null });
+      // Android doesn't say when the game closes: the launcher coming back is the end (more.js).
+      if (S.os === 'android' && window.droidPlayed) window.droidPlayed(id);
+    } catch (err) {
       const m = String(err && err.message ? err.message : err).match(/^NEED_COPY\|([^|]*)(?:\|(.*))?$/);
       // The copy picked before didn't have what the game reads: the setup says which files.
       if (m && m[2]) S.setupNote = { id, text: tf('The copy you picked doesn\'t have {files}. Pick the folder that holds them.', { files: m[2] }) };
@@ -8331,7 +8335,16 @@ const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" str
 // An update restart returns to the mode that was on screen.
 // Android has no desktop view: Big Picture mode with a controller or on a TV (no touch screen),
 // else the phone layout (phone.js).
-function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() || !!S.settings.start_in_tv : !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() || droidHandheld() || !!S.settings.start_in_tv : !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+// Android: what the launcher runs on (MainActivity tells it, android_device). A phone gets the phone
+// layout's own Big Picture mode; a tablet (600 or more across its smaller side) and a handheld with a
+// controller built in get the big-screen one, as on a PC, and a handheld starts in it.
+const droidHandheld = () => !!(S.droidDev && S.droidDev.pad);
+function droidPhone() {
+  const d = S.droidDev || {};
+  if (d.pad) return false;
+  return (Number(d.sw) || Math.min(screen.width, screen.height)) < 600;
+}
 // A controller the page already knows about (Android tells it once a button is pressed).
 function padHere() { return typeof navigator !== 'undefined' && !!navigator.getGamepads && [...navigator.getGamepads()].some(Boolean); }
 // A touch screen: a phone or a tablet, not a TV box.
@@ -10825,6 +10838,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (droid) {
     // Big Picture (tv.js) and the phone layout (phone.js) load after this file: both are in once the page is.
     if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
+    S.droidDev = await invoke('android_device').catch(() => null);
     const open = startsInTV() ? window.startTV : window.startPhone;
     if (open) open();
   }

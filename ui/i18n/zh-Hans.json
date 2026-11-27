@@ -3530,5 +3530,20 @@
  "Reduce motion": "减弱动态效果",
  "Pages change without sliding or zooming": "页面切换时不滑动也不缩放",
  "High contrast": "高对比度",
- "Stronger text and edges": "文字和边框更清晰"
+ "Stronger text and edges": "文字和边框更清晰",
+ "Be the first: after you play, say how it ran.": "来做第一个：玩过后说说运行得怎么样。",
+ "Catalog and updates": "目录和更新",
+ "Delete your review? This can't be undone.": "删除你的评价？此操作无法撤销。",
+ "Every release and what changed": "每个版本及其更新内容",
+ "Get the newest list of recomps, their releases and their art now": "立即获取最新的重编译列表、版本和图片",
+ "Hide AI-assisted Recomps": "隐藏借助 AI 制作的 Recomp",
+ "Keep your saved games with your account, and write reviews.": "用你的账户保存收藏的游戏，并撰写评价。",
+ "Latest release {when}": "最新版本：{when}",
+ "Looks for new releases of your games now": "立即查找你的游戏的新版本",
+ "Nothing matches that.": "没有匹配的结果。",
+ "Optimization mode": "优化模式",
+ "What it is, what it needs, and who made it": "它是什么、需要什么、谁做的",
+ "Your saved games and reviews follow you.": "你收藏的游戏和评价随你而行。",
+ "{n} of {all} unlocked": "已解锁 {n}/{all}",
+ "{pct}% say it plays great": "{pct}% 的人说运行流畅"
 }

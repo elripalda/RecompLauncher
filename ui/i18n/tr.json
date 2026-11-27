@@ -3530,5 +3530,20 @@
  "Reduce motion": "Hareketi azalt",
  "Pages change without sliding or zooming": "Sayfalar kaymadan ya da yakınlaşmadan değişir",
  "High contrast": "Yüksek kontrast",
- "Stronger text and edges": "Daha belirgin yazı ve kenarlar"
+ "Stronger text and edges": "Daha belirgin yazı ve kenarlar",
+ "Be the first: after you play, say how it ran.": "İlk sen ol: oynadıktan sonra nasıl çalıştığını söyle.",
+ "Catalog and updates": "Katalog ve güncellemeler",
+ "Delete your review? This can't be undone.": "Yorumun silinsin mi? Bu geri alınamaz.",
+ "Every release and what changed": "Her sürüm ve neyin değiştiği",
+ "Get the newest list of recomps, their releases and their art now": "Recomp'ların en yeni listesini, sürümlerini ve görsellerini şimdi al",
+ "Hide AI-assisted Recomps": "Yapay zekâ yardımıyla yapılan Recomp'ları gizle",
+ "Keep your saved games with your account, and write reviews.": "Kaydettiğin oyunları hesabında tut ve yorum yaz.",
+ "Latest release {when}": "Son sürüm: {when}",
+ "Looks for new releases of your games now": "Oyunlarının yeni sürümlerini şimdi arar",
+ "Nothing matches that.": "Eşleşen bir şey yok.",
+ "Optimization mode": "Optimizasyon modu",
+ "What it is, what it needs, and who made it": "Ne olduğu, neye ihtiyaç duyduğu ve kimin yaptığı",
+ "Your saved games and reviews follow you.": "Kaydettiğin oyunlar ve yorumların seninle gelir.",
+ "{n} of {all} unlocked": "{all} başarımdan {n} tanesi açıldı",
+ "{pct}% say it plays great": "%{pct} harika çalıştığını söylüyor"
 }

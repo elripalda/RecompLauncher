@@ -201,25 +201,27 @@
   // Into Big Picture: the launcher fades to dark first, the window goes full screen behind the
   // dark, and only then the start-up begins, so the resize never shows.
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  // A phone or tablet has its own Big Picture mode, made for its screen and for fingers as well as a
-  // controller (phone.js). Android TV, with no touch screen, has this one.
-  const phoneBp = () => (android() && touchHere() && window.phoneBp) || null;
+  // A phone has its own Big Picture mode, made for its screen and for fingers as well as a controller
+  // (phone.js). A tablet, a handheld with a controller built in, and Android TV have this one.
+  const phoneBp = () => (android() && touchHere() && droidPhone() && window.phoneBp) || null;
   async function enter() {
     if (phoneBp()) return phoneBp().enter(padHere());
     if (TV.on) return;
     TV.on = true;
     TV.booting = true;
     hookAndroidBack();
-    // On Android it takes over from the phone layout, and is drawn sideways: a phone held upright turns.
-    if (android()) {
-      if (window.phoneLeave) window.phoneLeave();
-      invoke('android_orientation', { landscape: true }).catch(() => {});
-    }
     TV.enteredAt = performance.now();
     root.innerHTML = '';
     root.hidden = false;
     root.classList.add('tv-cover');
     await wait(still() ? 0 : 240);
+    // On Android it takes over from the phone layout once the dark is over it, and is drawn
+    // sideways: a tablet held upright turns behind the dark, and Big Picture starts once it has.
+    if (android()) {
+      if (window.phoneLeave) window.phoneLeave();
+      invoke('android_orientation', { landscape: true }).catch(() => {});
+      if (window.screenSettle) await window.screenSettle(true, 160);
+    }
     document.body.classList.add('tv-on');
     // Full screen on the monitor picked in Settings; where that can't be done, full screen where the
     // window is, as before there was a choice.
@@ -234,13 +236,24 @@
   }
   async function leave() {
     // Android has no desktop view: out of Big Picture is the phone layout (phone.js), on a touch screen.
+    // The dark comes over Big Picture first, the phone layout is drawn under it and the screen turns
+    // back, and the dark lifts once it has settled.
     if (android()) {
-      if (!touchHere()) return;
+      if (!touchHere() || root.classList.contains('out')) return;
+      root.classList.add('tv-cover', 'out');
+      await wait(still() ? 0 : 220);
       TV.on = false;
       root.innerHTML = '';
-      root.hidden = true;
       document.body.classList.remove('tv-on');
       if (window.startPhone) window.startPhone();
+      if (window.screenSettle) await window.screenSettle(null, 480);
+      root.style.transition = 'opacity .26s ease';
+      root.style.opacity = '0';
+      await wait(still() ? 0 : 270);
+      root.hidden = true;
+      root.classList.remove('tv-cover', 'out');
+      root.style.transition = '';
+      root.style.opacity = '';
       return;
     }
     root.classList.add('tv-cover', 'out');

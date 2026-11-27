@@ -32,9 +32,9 @@
     still: () => ui().phone_still === true,
     contrast: () => ui().phone_contrast === true,
   };
-  // Performance mode: flat (no blurs, glows or shadows) and no moving extras, for older phones.
+  // Optimization mode: flat (no blurs, glows or shadows) and no moving extras, for older phones.
   const lite = () => pref.lite();
-  // Movement kept to the least: Performance mode, Reduce motion, or the phone's own setting.
+  // Movement kept to the least: Optimization mode, Reduce motion, or the phone's own setting.
   const still = () => pref.lite() || pref.still() || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // P: where the player is. stack: game pages open (the last shows). subs: pages inside a tab.
@@ -72,6 +72,13 @@
     up: '<path d="M12 20V9m0 0-4.5 4.5M12 9l4.5 4.5M5 4h14"/>',
     phone: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
     key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-4 4 3 3"/>',
+    refresh: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16m0 4v-4h-4"/>',
+    warn: '<path d="M10.3 4.3 2.9 17.4A2 2 0 0 0 4.6 20.4h14.8a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/><path d="M12 9.6v4.2M12 17.2h.01"/>',
+    star: '<path d="M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2 6.3 20.3l1.2-6.4-4.7-4.4 6.4-.8z"/>',
+    trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
+    pen: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
+    notes: '<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/>',
+    pad: '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6l-.9 7.2a2.6 2.6 0 0 0 2.6 2.9c1 0 1.7-.5 2.3-1.3L8 15.5h8l1.3 1.9c.6.8 1.3 1.3 2.3 1.3a2.6 2.6 0 0 0 2.6-2.9l-.9-7.2a4 4 0 0 0-4-3.6z"/>',
   };
   const ic = (k, cls = '') => `<svg class="ph-ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
   const MARK = '<svg width="W" height="W" viewBox="0 0 256 256" role="img" aria-label="RecompLauncher"><defs><linearGradient id="ph-mg" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#ph-mg)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
@@ -418,10 +425,6 @@
         ${srow(t('Display size'), '', `<div class="ph-pick" style="width:132px">${seg('size', ['S', 'M', 'L'], ['s', 'm', 'l'].indexOf(pref.size()))}</div>`)}
         ${srow(t('Menu labels'), t('Show names under the menu icons'), sw('labels', pref.labels()))}
         ${srow(t('Vibrate on taps'), '', sw('haptics', pref.haptics()))}</div>
-      <div class="ph-panel ph-set" data-key="ease"><h3>${esc(t('Accessibility'))}</h3>
-        ${srow(t('Performance mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}
-        ${srow(t('Reduce motion'), t('Pages change without sliding or zooming'), sw('still', pref.still() || pref.lite(), pref.lite()))}
-        ${srow(t('High contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}</div>
       <div class="ph-panel ph-set" data-key="menu"><h3>${esc(t('Menu bar'))}</h3>
         <div class="ph-srow" style="min-height:0;padding:8px 0 4px"><span class="ph-mut" style="font-size:12.5px">${esc(tf('Pick 3 to 5 tabs. {n} chosen.', { n: tabs.length }))}</span></div>
         ${Object.keys(TABS).map(tabRow).join('')}</div>
@@ -429,10 +432,18 @@
         ${srow(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('bpstart', !!S.settings.start_in_tv))}
         ${srow(t('Open with a controller'), t('Switches when you press a button on one'), sw('padtv', pref.padTv()))}
         <div class="ph-srow"><button type="button" class="ph-btn sec wide ph-press" data-act="tv">${ic('tv', 's')}${esc(t('Open Big Picture now'))}</button></div></div>
-      <div class="ph-panel ph-set" data-key="cat"><h3>${esc(t('Catalog'))}</h3>
-        ${srow(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in the Catalog.'), sw('hideai', !!S.settings.hide_ai))}</div>
+      <div class="ph-panel ph-set" data-key="cat"><h3>${esc(t('Catalog and updates'))}</h3>
+        ${srow(t('Hide AI-assisted Recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in the Catalog.'), sw('hideai', !!S.settings.hide_ai))}
+        ${link('refresh', t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now'), 'data-act="refresh-cat"')}
+        ${link('downloads', t('Check for Game Updates'), updatesList().length ? tn(updatesList().length, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd"')}</div>
+      <div class="ph-panel ph-set" data-key="rev"><h3>${esc(t('Reviews'))}</h3>
+        ${srow(t('Ask After Playing'), t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), sw('revask', window.reviewAskOn ? window.reviewAskOn() : true))}</div>
       ${mine.length ? `<div class="ph-panel ph-set" data-key="stor"><h3>${esc(t('Storage'))}</h3><div class="ph-storh"><b>${esc(total ? fmtB(total) : '')}</b><span>${esc(tn(mine.length, '1 game', '{n} games'))}</span></div>
         ${total ? `<div class="ph-stor">${mine.map((a, i) => `<i style="flex:${(bytes[i] || 0) / total};--c:${conColor(a.origin)};animation-delay:${i * 60}ms"></i>`).join('')}</div>` : ''}${mine.map(stor).join('')}</div>` : ''}
+      <div class="ph-panel ph-set" data-key="ease"><h3>${esc(t('Accessibility'))}</h3>
+        ${srow(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}
+        ${srow(t('Reduce motion'), t('Pages change without sliding or zooming'), sw('still', pref.still() || pref.lite(), pref.lite()))}
+        ${srow(t('High contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}</div>
       <div class="ph-panel ph-set" data-key="about"><h3>${esc(t('About'))}</h3>
         ${link('globe', t('Language'), lang, 'data-act="lang"')}
         ${link('chat', 'Discord', t('Help, news and other players'), 'data-act="discord"')}
@@ -467,7 +478,6 @@
       [a.version ? String(verText(a.version)) : '', t('version')],
     ].filter(([v]) => v);
     const tags = tagsOf(a);
-    const about = [a.blurb || notesLine(a.description), a.about && a.about.summary].filter(Boolean);
     const facts = [[t('Developer'), devName(a)], [t('Console'), conName(a)], [t('Genre'), GENRES[a.genre] ? t(GENRES[a.genre]) : ''], [t('Latest release'), a.released ? date(a.released) : '']].filter(([, v]) => v);
     const more = moreLike(a, 8);
     const based = a.game ? htmlFill(t('Based on {game}'), { game: esc(a.game) }) : '';
@@ -480,8 +490,9 @@
         <div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>
         ${a.soon ? `<p class="ph-mut" style="font-size:13px;line-height:1.45">${esc(soonNoteText(a))}</p>` : ''}
         ${tags.length ? `<div class="ph-chips">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}
-        ${about.length ? `<div class="ph-about"><h2>${esc(t('About'))}</h2>${about.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}</div>` : ''}
-        ${a.repo && !a.local ? `<button type="button" class="ph-panel ph-note ph-press" data-readme="${id}"><span class="ib">${ic('file', 's')}</span><span class="ph-col ph-grow"><b>${esc(t('Read the README'))}</b><small>${esc(t('Notes, controls and known issues from the developer'))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>` : ''}
+        ${gameAbout(a)}
+        <div class="ph-revbox" data-rev="${id}">${revSection(a)}</div>
+        ${pageRows(a)}
         ${facts.length ? `<div class="ph-panel ph-facts aside">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
         ${more.length ? `<div class="ph-more full">${secHead(t('More like this'))}<div class="ph-hs">${more.map((x) => card(x)).join('')}</div></div>` : ''}
       </div>`;
@@ -756,10 +767,14 @@
     el.scrim.classList.add('on');
     P.sheet = true;
     requestAnimationFrame(() => el.sheet.classList.add('on'));
+    // In Big Picture mode a controller moves around the sheet, from its first button.
+    if (bp) { bp.sf = ''; bpLight(false); }
   }
   function closeSheet() {
     P.sheet = false;
-    el.sheet.classList.remove('on', 'drag');
+    P.rv = P.rvAll = null;
+    el.sheet.classList.remove('on', 'drag', 'ph-rvsheet');
+    if (bp && !bp.busy) bpLight(false);
     el.sheet.style.transform = '';
     el.scrim.classList.remove('on');
   }
@@ -803,6 +818,186 @@
   }
 
   // ---------- the frame ----------
+  // ---------- what players say: reviews, on a game's page and in Big Picture mode ----------
+  // The same reviews as the desktop's (the website's, newest 60), each with its answer, where it was
+  // played, the version, the player's words and any answer from the developer. Writing one needs an
+  // account; names never show with them.
+  const RV_SYS = { windows: 'Windows', linux: 'Linux', macos: 'Mac', deck: 'Steam Deck', android: 'Android' };
+  const rvTone = (p) => (p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low');
+  const rvPill = (v) => `<span class="ph-rv v-${esc(v)}"><i></i>${esc(t(RUN_WORD[v] || ''))}</span>`;
+  const reviewable = (a) => !!a && !a.soon && !a.custom && !(S.library[a.id] && S.library[a.id].local);
+  function revLoad(a, force) {
+    if (!reviewable(a) || (!force && S.reports[a.id] !== undefined)) return;
+    loadReports(a.id, force).then(soon);
+  }
+  function revItem(x) {
+    const when = x.when ? ago(Date.parse(x.when) / 1000 || x.when) : '';
+    const meta = [RV_SYS[x.sys] || '', x.version || '', when].filter(Boolean).join(' · ');
+    const dev = (x.replies || []).filter((r) => r.dev).map((r) => `<div class="dev"><b>${esc(r.name || t('Developer'))}</b><span class="ph-tag">${esc(t('Developer'))}</span><p dir="auto">${esc(r.text)}</p></div>`).join('');
+    return `<div class="ph-revi"><div class="top">${rvPill(x.verdict)}<small>${esc(meta)}</small></div>${x.note ? `<p dir="auto">${esc(x.note)}</p>` : ''}${x.specs ? `<p class="pc">${esc(x.specs)}</p>` : ''}${dev}</div>`;
+  }
+  // The score as an app store has it: this version's once three or more said, else every version's.
+  function revScore(rep) {
+    const sc = scoreOf(rep.counts, rep.latest), r = sc.r, p = r.pct('runs');
+    const what = sc.cur ? tf('This version ({v})', { v: sc.v }) : t('say it plays great');
+    const bar = ['runs', 'issues', 'broken'].map((k) => (r[k] ? `<i class="v-${k}" style="flex:${r[k]}"></i>` : '')).join('');
+    return `<div class="ph-revs"><b class="${rvTone(p)}">${esc(tf('{pct}%', { pct: p }))}</b><div class="ph-col ph-grow"><span>${esc(what)}</span><small>${esc(tn(r.n, '1 review', '{n} reviews'))}</small></div></div><div class="ph-revbar">${bar}</div>`;
+  }
+  function revSay(a) {
+    if (!S.library[a.id]) return '';
+    const mine = myReviewOf(a.id);
+    return `<button type="button" class="ph-btn sec ph-press" data-act="rev-say" data-id="${esc(a.id)}" data-key="rsay:${esc(a.id)}">${ic('pen', 's')}${esc(mine ? t('Edit Your Review') : t('Write a Review'))}</button>`;
+  }
+  function revSection(a) {
+    if (!reviewable(a)) return '';
+    const rep = S.reports[a.id];
+    revLoad(a);
+    const id = esc(a.id), say = revSay(a), mine = myReviewOf(a.id);
+    const head = `<h2>${esc(t('Reviews'))}</h2>`;
+    if (!rep || rep === 'loading') return `<div class="ph-panel ph-rev" data-key="rev:${id}" data-f>${head}<div class="ph-row" style="gap:10px"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading…'))}</span></div></div>`;
+    const all = runTally(rep.counts), items = rep.items || [];
+    const own = mine ? `<div class="ph-revi mine"><div class="top"><b>${esc(t('Your Review'))}</b>${rvPill(mine.verdict)}<small>${esc(mine.version || '')}</small></div>${mine.note ? `<p dir="auto">${esc(mine.note)}</p>` : ''}</div>` : '';
+    if (!all.n) {
+      const why = rep.error ? t('Can\'t be reached right now') : S.library[a.id] ? t('Be the first: after you play, say how it ran.') : t('Nobody has said how it runs yet. Players who try it can say so from the launcher.');
+      return `<div class="ph-panel ph-rev" data-key="rev:${id}" data-f>${head}${own}<p class="ph-mut">${esc(why)}</p>${say ? `<div class="ph-row acts">${say}</div>` : ''}</div>`;
+    }
+    const more = items.length > 3 ? `<button type="button" class="ph-btn sec ph-press" data-act="rev-all" data-id="${id}" data-key="rall:${id}">${esc(tf('All {n} reviews', { n: fmtNum(all.n) }))}</button>` : '';
+    return `<div class="ph-panel ph-rev" data-key="rev:${id}" data-f>${head}${revScore(rep)}${own}${items.slice(0, 3).map(revItem).join('')}${say || more ? `<div class="ph-row acts">${say}${more}</div>` : ''}</div>`;
+  }
+  // Every review, narrowed to one answer by its chip.
+  function revAllSheet(id, v) {
+    const a = appOf(id), rep = S.reports[id];
+    if (!a || !rep || rep === 'loading') return;
+    P.rvAll = { id, v: v || '' };
+    const items = (rep.items || []).filter((x) => !P.rvAll.v || x.verdict === P.rvAll.v);
+    const r = runTally(rep.counts);
+    const chip = (k, label, n) => `<button type="button" class="ph-chip ph-press${P.rvAll.v === k ? ' on' : ''}" data-act="rev-v" data-id="${esc(id)}" data-v="${k}"${n || !k ? '' : ' disabled'}>${esc(label)}${k ? ` · ${fmtNum(n)}` : ''}</button>`;
+    const chips = chip('', t('All'), r.n) + chip('runs', t('Plays great'), r.runs) + chip('issues', t('Has problems'), r.issues) + chip('broken', t('Won\'t run'), r.broken);
+    const rest = r.n > (rep.items || []).length ? `<p class="ph-mut" style="font-size:12.5px">${esc(tf('The newest {n} are here. The rest are on recomplauncher.com.', { n: fmtNum((rep.items || []).length) }))}</p>` : '';
+    sheet(`<p class="ph-eyebrow">${esc(tn(r.n, '1 review', '{n} reviews'))}</p><h2 class="ph-disp">${esc(a._name || a.name)}</h2>${revScore(rep)}<div class="ph-chips ph-rvchips">${chips}</div>
+      <div class="ph-revl">${items.length ? items.map(revItem).join('') : `<p class="ph-mut">${esc(t('No reviews yet'))}</p>`}</div>${rest}
+      ${revSay(a)}<button type="button" class="ph-btn sec wide ph-press" data-close="1" data-act="url" data-url="${esc(SITE + '/game/' + encodeURIComponent(id))}" style="margin-top:10px">${ic('globe', 's')}${esc(t('On recomplauncher.com'))}</button>`);
+  }
+  // "How did it run?": the three answers as big buttons, a few words (needed for a problem), and
+  // what goes with it. Asked after a long session too, with Don't Ask Me Again. From more.js askRun.
+  function reviewSheet(o) {
+    const a = appOf(o.id) || { id: o.id, name: o.name };
+    P.rv = { o, verdict: o.prev ? o.prev.verdict : '', busy: false, del: false };
+    const pick = (k, n) => `<button type="button" class="ph-rvpick ph-press v-${k}" data-act="rv-v" data-v="${k}" role="radio" aria-checked="false"><span class="ic">${ic(k === 'runs' ? 'check' : k === 'issues' ? 'warn' : 'x')}</span><span class="ph-col"><b>${esc(t(n))}</b><small>${esc(t(window.VERDICT_SUB[k]))}</small></span></button>`;
+    const when = o.secs >= 60 ? tf('{time} this session', { time: fmtTime(o.secs) }) : o.prev ? t('Edit Your Review') : t('Write a Review');
+    const extra = [o.specsLine ? `${t('This goes with your review')}: ${o.specsLine}` : '', t('Your name isn\'t shown with your review.')].filter(Boolean);
+    sheet(`<div class="ph-shead"><span class="thumb">${img(coverUrl(a, 160))}</span><div class="ph-col ph-grow"><small>${esc(when)}</small><b>${esc(tf('How did {name} run?', { name: o.name || a.name }))}</b></div></div>
+      <div class="ph-rvpicks" role="radiogroup">${window.VERDICT.map(([k, n]) => pick(k, n)).join('')}</div>
+      <div class="ph-rvw" hidden><b class="ph-rvq"></b><textarea class="ph-rvta" rows="4" maxlength="1000"></textarea><small class="ph-rvcount"></small></div>
+      ${extra.map((x) => `<p class="ph-mut ph-rvnote">${esc(x)}</p>`).join('')}
+      <p class="ph-rverr" hidden></p>
+      <div class="ph-row ph-rvacts"><button type="button" class="ph-btn sec ph-press" data-act="rv-cancel">${esc(o.auto ? t('Not Now') : t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-act="rv-send" disabled>${esc(o.prev ? t('Update Review') : t('Send'))}</button></div>
+      ${o.auto ? `<div class="ph-srow"><div class="t"><b>${esc(t('Don\'t Ask Me Again'))}</b><span>${esc(t('Turn it back on in Settings, Reviews.'))}</span></div>${sw('revnever', false)}</div>` : ''}
+      ${o.prev ? `<button type="button" class="ph-btn sec wide ph-press red" data-act="rv-del">${ic('trash', 's')}${esc(t('Delete Review'))}</button>` : ''}`);
+    el.sheet.classList.add('ph-rvsheet');
+    if (o.prev && o.prev.note) $('.ph-rvta', el.sheet).value = o.prev.note;
+    if (P.rv.verdict) rvPickIt(P.rv.verdict, true);
+    return true;
+  }
+  const rvBad = (v) => !!v && v !== 'runs';
+  function rvCheck() {
+    const box = el.sheet, ta = $('.ph-rvta', box), go = $('[data-act="rv-send"]', box);
+    if (!ta || !go || !P.rv) return;
+    const v = P.rv.verdict, need = rvBad(v) ? Math.max(0, 15 - [...ta.value.trim()].length) : 0;
+    go.disabled = !v || need > 0 || P.rv.busy;
+    $('.ph-rvcount', box).textContent = !v ? t('Pick an answer first') : need ? tf('{n} more letters', { n: need }) : '';
+  }
+  function rvPickIt(v, quiet) {
+    const box = el.sheet;
+    P.rv.verdict = v;
+    for (const p of box.querySelectorAll('.ph-rvpick')) { const on = p.dataset.v === v; p.classList.toggle('on', on); p.setAttribute('aria-checked', String(on)); }
+    const w = $('.ph-rvw', box), ta = $('.ph-rvta', box);
+    w.hidden = false;
+    $('.ph-rvq', box).textContent = rvBad(v) ? t('What happened?') : t('Anything others should know?');
+    ta.placeholder = rvBad(v) ? t('What happened, and when? (For example: crashes after the intro on the first level.)') : t('What works, what doesn\'t, settings that helped');
+    rvCheck();
+    // With fingers, the keyboard comes up for a problem's words; a controller stays on the buttons.
+    if (!quiet && rvBad(v) && !(bp && bp.pad)) ta.focus();
+  }
+  async function rvSend() {
+    const r = P.rv, box = el.sheet;
+    if (!r || r.busy || !r.verdict) return;
+    const note = $('.ph-rvta', box).value.trim();
+    if (rvBad(r.verdict) && [...note].length < 15) return;
+    r.busy = true;
+    rvCheck();
+    try {
+      await r.o.send(r.verdict, note, false);
+      buzz('ok');
+      P.rv = null;
+      closeSheet();
+      delete S.reports[r.o.id];
+      setTimeout(() => revLoad(appOf(r.o.id), true), 1500);
+    } catch (e) {
+      r.busy = false;
+      const need = window.needSignIn(e);
+      if (need != null) { closeSheet(); return phoneSignInAsk(need || t('Sign in to your RecompLauncher account to write a review. Your name isn\'t shown with it.')); }
+      const err = $('.ph-rverr', box);
+      err.textContent = String(e && e.message ? e.message : e);
+      err.hidden = false;
+      rvCheck();
+    }
+  }
+  async function rvDelete(b) {
+    const r = P.rv;
+    if (!r || r.busy) return;
+    // Asked once more, on the same button.
+    if (!r.del) { r.del = true; b.lastChild.textContent = t('Delete your review? This can\'t be undone.'); return; }
+    r.busy = true;
+    try { await window.deleteReview(r.o.id); P.rv = null; closeSheet(); soon(); } catch (e) { r.busy = false; fail(e); }
+  }
+  function phoneSignInAsk(msg) {
+    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('user')}</span><h2 class="ph-disp">${esc(t('Sign In to Write Reviews'))}</h2><p class="ph-mut" style="line-height:1.5;margin:8px 0 18px">${esc(msg)}</p>
+      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Not Now'))}</button><button type="button" class="ph-btn pri ph-press" data-close="1" data-act="signin">${esc(t('Sign In'))}</button></div>`);
+  }
+  window.phoneReview = reviewSheet;
+  window.phoneSignInAsk = phoneSignInAsk;
+  // What the developer wrote about it, and who helped make it.
+  function notesSheet(id) {
+    const a = appOf(id);
+    if (!a) return;
+    const body = [a.description ? `<div class="ph-md md">${md(a.description)}</div>` : '', a.credits ? `<h3 class="ph-sh3">${esc(t('Credits'))}</h3><div class="ph-md md">${md(a.credits)}</div>` : ''].join('');
+    sheet(`<p class="ph-eyebrow">${esc(t('From the developer'))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body || `<p class="ph-mut">${esc(t('Nothing here yet.'))}</p>`}`);
+  }
+  // Its releases, newest first, each with its notes.
+  function relsSheet(id) {
+    const a = appOf(id);
+    if (!a || !a.repo) return;
+    P.rels = id;
+    const r = S.rels[a.repo];
+    if (!r) loadRels(a.repo).then(() => { if (P.rels === id && P.sheet) relsSheet(id); });
+    const list = r && !r.loading ? (r.list || []).filter((x) => !x.draft).slice(0, 10) : null;
+    const body = !list ? `<div class="ph-row" style="gap:12px;padding:26px 0"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading the releases…'))}</span></div>`
+      : !list.length ? `<p class="ph-mut">${esc(r.error ? t(r.error) : t('No releases yet.'))}</p>`
+      : list.map((x, n) => `<div class="ph-rel${n ? '' : ' first'}"><div class="ph-row"><b dir="auto">${esc(x.name || x.tag_name)}</b>${x.prerelease ? `<span class="ph-tag">${esc(t('Pre-release'))}</span>` : ''}<span class="ph-grow"></span><small class="ph-mut">${esc(date(x.published_at))}</small></div>${x.body ? `<div class="ph-md md">${md(x.body)}</div>` : `<p class="ph-mut">${esc(t('No notes for this one.'))}</p>`}</div>`).join('');
+    sheet(`<p class="ph-eyebrow">${esc(t('Updates'))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body}`);
+  }
+  // A row on the game's page that opens one of those.
+  const pageRow = (icon, title, sub, attr) => `<button type="button" class="ph-panel ph-note ph-press" ${attr}><span class="ib">${ic(icon, 's')}</span><span class="ph-col ph-grow"><b>${esc(title)}</b><small>${esc(sub)}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>`;
+  function pageRows(a) {
+    const id = esc(a.id);
+    return [
+      a.repo && !a.local ? pageRow('file', t('Read the README'), t('Notes, controls and known issues from the developer'), `data-readme="${id}" data-key="readme:${id}"`) : '',
+      a.description || a.credits ? pageRow('notes', t('From the developer'), t('What it is, what it needs, and who made it'), `data-act="notes" data-id="${id}" data-key="notes:${id}"`) : '',
+      a.repo && !a.local ? pageRow('up', t('Updates'), a.released ? tf('Latest release {when}', { when: date(a.released) }) : t('Every release and what changed'), `data-act="rels" data-id="${id}" data-key="rels:${id}"`) : '',
+    ].join('');
+  }
+  // About the game itself (IGDB or LaunchBox): what it is and the facts, as the desktop has them.
+  function gameAbout(a) {
+    const ab = a.about && (a.about.summary || aboutFacts(a.about).length) ? a.about : null;
+    const own = [a.blurb || notesLine(a.description)].filter(Boolean);
+    if (!ab && !own.length) return '';
+    const facts = ab ? aboutFacts(ab).slice(0, 6) : [];
+    const src = ab ? aboutSource(ab) : null;
+    return `<div class="ph-about" data-key="about:${esc(a.id)}" data-f><h2>${esc(t('About'))}</h2>${own.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}${ab && ab.summary ? `<p dir="auto">${esc(String(ab.summary).split(/\n\s*\n/)[0])}</p>` : ''}
+      ${facts.length ? `<div class="ph-panel ph-facts">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`).join('')}</div>` : ''}${src ? `<p class="ph-src">${esc(src.label)}</p>` : ''}
+      ${isAI(a) ? `<p class="ph-mut ph-ainote"><span class="ph-tag">${esc(t('AI-assisted'))}</span> ${esc(a.ai.by === 'developer' ? tf('Its developer says AI tools helped with its {uses}.', { uses: aiUses(a) }) : tf('Its project on GitHub shows AI tools helped with its {uses}.', { uses: aiUses(a) }))}</p>` : ''}</div>`;
+  }
   const idx = () => Math.max(0, pref.tabs().indexOf(P.tab));
   const viewEl = (k) => document.getElementById('ph-v-' + k);
   // A page is patched in place once it has been drawn: covers stay and its place is kept.
@@ -874,6 +1069,7 @@
     const s = P.subs[P.subs.length - 1];
     if (s) { const y = el.sp.scrollTop; paint(el.sp, subHTML(s)); el.sp.scrollTop = y; consFlow(); }
     for (const box of root.querySelectorAll('[data-cta]')) { const a = appOf(box.dataset.cta); if (a) paint(box, ctaHTML(a)); }
+    for (const box of root.querySelectorAll('[data-rev]')) { const a = appOf(box.dataset.rev); if (a) paint(box, revSection(a)); }
     if (P.search) { const q = $('#ph-q', el.so); paint($('#ph-sores', el.so), searchResults(q ? q.value : '')); }
     drawMini();
     applyLook();
@@ -1011,6 +1207,40 @@
       case 'discord': return invoke('open_url', { url: discordUrl() }).catch(fail);
       case 'site': return invoke('open_url', { url: SITE }).catch(fail);
       case 'lang': return langSheet();
+      case 'url': return invoke('open_url', { url: b.dataset.url }).catch(fail);
+      case 'notes': return notesSheet(id);
+      case 'rels': return relsSheet(id);
+      case 'rev-say': buzz(); return window.askRun && window.askRun(id, (S.library[id] || {}).played_secs || 0, true);
+      case 'rev-all': return revAllSheet(id);
+      case 'rev-v': { const y = el.sheet.scrollTop; revAllSheet(id, b.dataset.v); el.sheet.scrollTop = y; return; }
+      case 'rv-v': buzz(); return rvPickIt(b.dataset.v);
+      case 'rv-send': return rvSend();
+      case 'rv-del': return rvDelete(b);
+      case 'rv-cancel': P.rv = null; return closeSheet();
+      case 'refresh-cat': {
+        buzz();
+        // Once a minute at most: the list is the same a moment later.
+        if (Date.now() - (S.refreshedAt || 0) < 60e3) return toast(t('The Catalog is up to date.'));
+        S.refreshedAt = Date.now();
+        toast(t('Getting the newest list…'));
+        await loadCatalog(true);
+        if (typeof androidSync === 'function') await androidSync();
+        S.rels = {};
+        toast(offNow() ? t('Can\'t reach recomplauncher.com right now. Try again in a bit.') : t('The Catalog is up to date.'));
+        return refresh();
+      }
+      case 'check-upd': {
+        buzz();
+        b.disabled = true;
+        const fresh = Date.now() - (S.updCheckedAt || 0) >= 60e3;
+        if (fresh) S.updCheckedAt = Date.now();
+        if (fresh) { await loadCatalog(true); if (typeof androidSync === 'function') await androidSync(); }
+        const ok = await checkUpdates(fresh);
+        b.disabled = false;
+        const n = updatesList().length;
+        toast(n ? tn(n, '1 update ready', '{n} updates ready') : ok && offNow() ? t('Can\'t reach recomplauncher.com right now. Try again in a bit.') : t('Everything is up to date.'));
+        return refresh();
+      }
       case 'tv': return toTV();
       case 'files': buzz(); try { await invoke('android_ask_files_access'); } catch (err) { fail(err); } return filesCheck();
       case 'copies': return copiesSheet(id);
@@ -1050,13 +1280,17 @@
     if (key === 'labels') { await save('phone_labels', on); return drawNav(); }
     if (key === 'haptics') return save('phone_haptics', on);
     if (key === 'padtv') return save('pad_tv', on);
+    if (key === 'padstick') return saveSettings({ pad_stick: on }, true);
     if (key === 'bpstart') return saveSettings({ start_in_tv: on }, true);
     if (key === 'lite' || key === 'still' || key === 'contrast') {
       await save({ lite: 'phone_lite', still: 'phone_still', contrast: 'phone_contrast' }[key], on);
       applyLook();
+      if (bp) bpDraw();
       return drawView('settings');
     }
     if (key === 'hideai') { await saveSettings({ hide_ai: on }, true); return refresh(); }
+    if (key === 'revask') return window.setReviewAsk && window.setReviewAsk(on);
+    if (key === 'revnever') return window.setReviewAsk && window.setReviewAsk(!on);
     if (key === 'cloudall') { await setCloudAll(on); return refresh(); }
   }
   async function pick(b) {
@@ -1105,7 +1339,7 @@
       return openSub({ t: d.sub });
     }
     if (d.con) { closeSearch(); return openSub({ t: 'con', k: d.con }); }
-    if (d.open) return openGame(d.open, b);
+    if (d.open) return bp ? bpGame(d.open) : openGame(d.open, b);
     if (b === el.mini) { if (P.stack.length) closeGame(true); closeSub(true); return go('downloads'); }
     if (d.tab) {
       if (P.stack.length) closeGame(true);
@@ -1117,6 +1351,9 @@
   });
   root.addEventListener('input', (e) => {
     if (e.target.id === 'ph-q') $('#ph-sores', el.so).innerHTML = searchResults(e.target.value);
+    if (e.target.classList.contains('ph-rvta')) rvCheck();
+    // Big Picture's Catalog narrows as the player types.
+    if (bp && e.target.closest('.ph-bpq')) { bp.q = e.target.value; bp.n = BP_STEP; bpDraw(); }
   });
   // A cover shows once it has loaded; one that can't be fetched leaves the game's name. A banner's
   // logo that can't be fetched leaves its written title.
@@ -1145,7 +1382,7 @@
         return;
       }
       if (n.id === 'ph-v-catalog') return moreGames(n);
-      if (n.classList.contains('ph-bpscroll')) return bpMore(n);
+      if (n.classList.contains('ph-bpscroll')) { if (bp) bpScrolled(n); return bpMore(n); }
       if (still()) return;
       if (n.id === 'ph-v-home') {
         const y = Math.min(n.scrollTop, 500);
@@ -1297,42 +1534,164 @@
   }
 
   // ---------- Big Picture mode ----------
-  // Full screen and sideways, for a controller and for fingers alike: the focused game's art behind
-  // a shelf of covers, four sections (Home, Library, Catalog, Settings), a game's page and its menu.
-  // It's drawn over the phone layout, which waits underneath as it was. Android TV (no touch screen)
-  // keeps the big-screen Big Picture mode instead (tv.js).
-  const BP_TABS = [N_('Home'), N_('Library'), N_('Catalog'), N_('Settings')];
+  // Full screen and sideways on a phone, for a controller and for fingers alike (a tablet, a handheld
+  // and a TV have the big-screen one, tv.js). The same sections as that one: Home (the focused game's
+  // art over a shelf of covers, and rows under it), Library, Catalog, Downloads, Achievements and
+  // Settings, a game's full page (reviews, what it is, its README, notes and updates) and its menu.
+  // Drawn over the phone layout, which waits underneath as it was.
+  const BP_TABS = [['home', N_('Home')], ['library', N_('Library')], ['catalog', N_('Catalog')], ['downloads', N_('Downloads')], ['ach', N_('Achievements')], ['settings', N_('Settings')]];
+  const BP_ICON = { home: 'home', library: 'library', catalog: 'catalog', downloads: 'downloads', ach: 'trophy', settings: 'settings' };
   const BP_STEP = 36;
+  const GLYPHS = [['', N_('Automatic')], ['xbox', 'Xbox'], ['ps', 'PlayStation'], ['nintendo', 'Nintendo'], ['steam', 'Steam']];
+  const bpTabKey = () => BP_TABS[bp.tab][0];
+  const bpTabOf = (k) => BP_TABS.findIndex(([x]) => x === k);
+  const dlIds = () => uniq([...Object.keys(S.jobs), ...Object.keys(S.paused || {})]);
   // Home's shelf: the player's own games first, then the week's top 10.
   function bpShelf() {
     const mine = mineList(), have = new Set(mine.map((a) => a.id));
     return mine.concat(ranked().filter((a) => !have.has(a.id))).slice(0, 24);
   }
-  const bpGrid = () => (bp.tab === 1 ? mineList() : [...pool()].sort((x, y) => x.name.localeCompare(y.name)));
+  function bpPool() {
+    let list = [...pool()].sort((x, y) => x.name.localeCompare(y.name));
+    if (bp.con) list = list.filter((a) => a.origin === bp.con);
+    const q = (bp.q || '').trim().toLowerCase();
+    if (q) list = list.filter((a) => [a.name, a.game, conName(a), devName(a)].join(' ').toLowerCase().includes(q));
+    return list;
+  }
+  const bpGrid = () => (bpTabKey() === 'library' ? mineList() : bpPool());
   // The controller's own button pictures (Xbox letters, PlayStation shapes), as in tv.js.
   const glyph = (n) => {
     if (!window.padArt) return '';
-    const p = padArt((S.settings.ui || {}).tv_glyphs || S.padKind || 'xbox', n);
+    const p = padArt(ui().tv_glyphs || (typeof padKind === 'function' ? padKind() : S.padKind) || 'xbox', n);
     return `<i class="glyph" style="--m:url(${p.url})" role="img" aria-label="${esc(t(p.name))}"></i>`;
   };
+  const bpCover = (a, key, sub) => `<button type="button" class="ph-bpc ph-press" data-bp="game" data-id="${esc(a.id)}" data-key="${esc(key)}" aria-label="${esc(a.name)}">${coverBox(a, isBusy(a) ? 'dim' : '')}${isBusy(a) ? `<span class="ph-ringp">${ring(a.id, 40)}</span>` : ''}${sub == null ? '' : `<span class="ph-gname" dir="auto">${esc(a.name)}</span><span class="ph-gsub">${sub}</span>`}</button>`;
   function bpInfo(a, full) {
     const id = esc(a.id), lib = S.library[a.id];
-    const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '');
+    const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '') + (stateOf(a) === 'update' ? `<span class="ph-tag acc">${esc(t('Update ready'))}</span>` : '');
     const title = a.logo ? img(media(a.logo), 'logo', 'data-logo') + `<h1 class="ph-disp" dir="auto" hidden>${esc(a.name)}</h1>` : `<h1 class="ph-disp" dir="auto">${esc(a.name)}</h1>`;
-    const line = [a.logo ? a.name : '', lib ? playedFor(lib) : devName(a) ? tf('by {who}', { who: devName(a) }) : '', lib ? '' : sizeOf(a)].filter(Boolean).join(' · ');
-    const tagsMore = full ? tagsOf(a).slice(0, 4) : [];
-    const about = full ? a.blurb || notesLine(a.description) : '';
-    return `<div class="ph-bpinfo${full ? ' full' : ''}" data-key="i:${id}"><div class="tags">${tags}</div>${title}<p class="line" dir="auto">${esc(line)}</p>
+    const by = devName(a) ? tf('by {who}', { who: devName(a) }) : '';
+    const line = [a.logo ? a.name : '', lib ? playedFor(lib) : by, lib ? '' : sizeOf(a)].filter(Boolean).join(' · ');
+    // The score players gave it, in a word: on Home and on its page.
+    const c = runTally((S.runCounts || {})[a.id]);
+    const score = c.n ? `<span class="ph-bpscore ${rvTone(c.pct('runs'))}">${esc(tf('{pct}% say it plays great', { pct: c.pct('runs') }))} · ${esc(tn(c.n, '1 review', '{n} reviews'))}</span>` : '';
+    const based = full && a.game ? `<p class="line" dir="auto">${esc(tf('Based on {game}', { game: a.game }))}${lib && by ? ' · ' + esc(by) : ''}</p>` : '';
+    return `<div class="ph-bpinfo${full ? ' full' : ''}" data-key="i:${id}"><div class="tags">${tags}</div>${title}<p class="line" dir="auto">${esc(line)}</p>${based}${score}
       <div class="ph-row ph-bpacts"><div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>${full ? '' : `<button type="button" class="ph-btn sec ph-press" data-bp="game" data-id="${id}">${esc(t('Details'))}</button>`}</div>
-      ${about ? `<p class="ph-bpab" dir="auto">${esc(about)}</p>` : ''}${tagsMore.length ? `<div class="ph-row ph-bpchips">${tagsMore.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}</div>`;
+      ${a.soon && full ? `<p class="ph-bpab" dir="auto">${esc(soonNoteText(a))}</p>` : ''}</div>`;
   }
   function bpSide(a) {
-    const facts = [[t('Console'), conName(a)], [t('Developer'), devName(a)], [t('version'), a.version ? String(verText(a.version)) : ''], [t('size'), sizeOf(a)], [t('players'), Number(a.players) > 0 ? fmtN(Number(a.players)) : ''], [t('Latest release'), a.released ? date(a.released) : '']].filter(([, v]) => v);
+    const facts = [[t('Console'), conName(a)], [t('Developer'), devName(a)], [t('version'), a.version ? String(verText(a.version)) : ''], [t('size'), sizeOf(a)], [t('players'), Number(a.players) > 0 ? fmtN(Number(a.players)) : ''], [t('downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Latest release'), a.released ? date(a.released) : ''], [t('Genre'), GENRES[a.genre] ? t(GENRES[a.genre]) : '']].filter(([, v]) => v);
     if (!facts.length) return '';
     return `<div class="ph-bpside" data-key="side:${esc(a.id)}">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`).join('')}</div>`;
   }
+  // Home: the shelf and the focused game, and the rows a press of down away.
+  function bpRows() {
+    const all = pool();
+    const played = mineList().filter((a) => S.library[a.id] && S.library[a.id].last_played);
+    const saved = savedItems().map((x) => x.a).filter((a) => a && forOS(a));
+    const rows = [
+      ['cont', t('Continue playing'), played, (a) => esc(playedFor(S.library[a.id]))],
+      ['trend', t('Trending this week'), ranked(), null],
+      ['saved', t('Saved for later'), saved, null],
+      ['upd', t('Recently updated'), recentlyUpdated(all), (a) => esc(a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '')],
+      ['new', t('Just added'), [...all].sort(byNew), null],
+      ['pop', t('Popular on Android'), [...all].sort(byDl), null],
+    ];
+    return rows.filter((r) => r[2].length).map(([k, title, list, sub]) => `<section class="ph-bpsec" data-key="row:${k}"><h3>${esc(title)}</h3><div class="ph-bpline" data-key="line:${k}">${list.slice(0, 14).map((a, i) => bpCover(a, `${k}:${a.id}`, sub ? sub(a) : k === 'trend' ? `#${i + 1}` : listLine(a))).join('')}</div></section>`).join('');
+  }
+  function bpHome() {
+    const sh = bpShelf();
+    if (!sh.length) return `<div class="ph-bpnone" data-key="none">${S.listGate ? gate() : `<span class="ph-spin"></span><span>${esc(S.offline ? t("Can't reach recomplauncher.com right now.") : t('Loading…'))}</span>`}</div>`;
+    if (!sh.some((a) => a.id === bp.focus)) bp.focus = sh[0].id;
+    const shelf = sh.map((a) => `<button type="button" class="ph-press${a.id === bp.focus ? ' f' : ''}" data-bp="focus" data-id="${esc(a.id)}" data-key="s:${esc(a.id)}" aria-label="${esc(a.name)}">${coverBox(a)}</button>`).join('');
+    return `<div class="ph-bpscroll home" data-key="home"><section class="ph-bphero" data-key="hero">${bpInfo(appOf(bp.focus))}<div class="ph-bpshelf" data-key="shelf">${shelf}</div></section><div class="ph-bprows" data-key="rows">${bpRows()}</div></div>`;
+  }
+  // Library and Catalog: covers in a grid, a few rows at a time. The Catalog narrows by console or
+  // by a search.
+  function bpGridHTML() {
+    const lib = bpTabKey() === 'library';
+    const list = bpGrid(), shown = list.slice(0, bp.n);
+    let head = '';
+    if (lib) {
+      const n = Object.keys(S.library).length;
+      head = `<div class="ph-bphead" data-key="lh"><h2>${esc(t('Library'))}</h2><span class="ph-mut">${esc(tn(n, '1 game', '{n} games'))}</span></div>`;
+    } else {
+      const cons = consoles();
+      const chip = (k, name) => `<button type="button" class="ph-chip ph-press${(bp.con || '') === k ? ' on' : ''}" data-bp="con" data-k="${esc(k)}" data-key="con:${esc(k)}">${k ? conDot(k) : ''}${esc(name)}</button>`;
+      head = `<div class="ph-bphead" data-key="ch"><h2>${esc(t('Catalog'))}</h2><span class="ph-mut">${esc(tn(list.length, '1 game', '{n} games'))}</span><span class="ph-grow"></span><label class="ph-bpq">${ic('search', 's')}<input type="search" enterkeyhint="search" data-key="q" placeholder="${esc(t('Search games, consoles, developers'))}" value="${esc(bp.q || '')}"></label></div>
+        <div class="ph-bpchips2" data-key="cons">${chip('', t('All'))}${cons.map((c) => chip(c.k, c.name)).join('')}</div>`;
+    }
+    const none = lib ? t('Your games show up here once you install one.') : pool().length ? t('Nothing matches that.') : t('Loading…');
+    const saved = lib ? savedItems().map((x) => x.a).filter((a) => a && forOS(a) && !a.soon) : [];
+    const later = saved.length ? `<div class="ph-bphead" data-key="sv"><h2>${esc(t('Saved for later'))}</h2></div><div class="ph-bpgrid" data-key="svg">${saved.map((a) => bpCover(a, 'sv:' + a.id, listLine(a))).join('')}</div>` : '';
+    return `<div class="ph-bpscroll" data-key="grid:${bp.tab}">${head}${shown.length ? `<div class="ph-bpgrid" data-key="gg">${shown.map((a) => bpCover(a, 'g:' + a.id, lib ? libLine(a) : listLine(a))).join('')}</div>${shown.length < list.length ? '<div class="ph-gridmore" data-key="more"><span class="ph-spin"></span></div>' : ''}` : `<div class="ph-bpnone">${esc(none)}</div>`}${later}</div>`;
+  }
+  // Downloads: what's coming down now, then the updates ready for the player's games.
+  function bpDownloads() {
+    const dls = dlIds().map(appOf).filter(Boolean), ups = updatesList();
+    const up = (a) => lrow(a, { sub: esc([a.version ? tf('Version {v}', { v: verText(a.version) }) : '', sizeOf(a)].filter(Boolean).join(' · ')), right: `<button type="button" class="ph-btn pri sm ph-press" data-act="update" data-id="${esc(a.id)}">${esc(t('Update'))}</button>` });
+    return `<div class="ph-bpscroll" data-key="dl"><div class="ph-bplist">
+      <div class="ph-bphead" data-key="dh"><h2>${esc(t('Downloads'))}</h2><span class="ph-mut">${esc(t('Downloads keep going while you browse.'))}</span></div>
+      ${dls.length ? dls.map(dlRow).join('') : `<div class="ph-bpempty" data-f data-key="dnone">${ic('downloads')}<span>${esc(t('Nothing is downloading.'))}</span></div>`}
+      <div class="ph-bphead" data-key="uh"><h2>${esc(t('Updates'))}</h2>${ups.length > 1 ? `<button type="button" class="ph-btn sec sm ph-press" data-act="update-all">${esc(t('Update all'))}</button>` : ''}</div>
+      ${ups.length ? ups.map(up).join('') : `<button type="button" class="ph-bpempty ph-press" data-act="check-upd" data-key="unone">${ic('check')}<span>${esc(t('Everything is up to date.'))}<small>${esc(t('Check for Game Updates'))}</small></span></button>`}
+    </div></div>`;
+  }
+  // Achievements: the player's profile, Beaten and Mastered games, recent unlocks and the
+  // leaderboard for testers; what it is and how to join for everyone else.
+  function bpAch() {
+    const AT = window.achTV, pg = AT ? AT.page() : { tester: false };
+    const signed = !!(S.account && S.account.signedIn);
+    const star = ic('star');
+    if (!pg.tester) {
+      const st = pg.status || {}, app = st.application, pending = signed && app && app.status === 'pending';
+      const feats = [[t('Unlocks While You Play'), t('Achievements pop up in the corner the moment you earn them, right over your recomp.')], [t('Your Profile and Rating'), t('Every achievement adds to your points and rank, on every PC you play on.')], [t('Leaderboards'), t('See how you stack up against other players, overall and game by game. Only Ranked unlocks count.')]];
+      const line = !signed ? t('Sign in, then apply to be a tester on the Achievements page in the desktop view.') : pending ? t('You\'re on the list. We approve testers in waves, and this page unlocks on its own once you\'re in.') : t('Apply to be a tester on the Achievements page in the desktop view.');
+      return `<div class="ph-bpscroll" data-key="ach"><div class="ph-bplist">
+        <div class="ph-bphead" data-key="ah"><h2>${esc(t('Achievements'))}</h2><span class="ph-tag acc">${esc(pending ? t('On the List') : t('Alpha'))}</span></div>
+        <p class="ph-mut ph-bplead">${esc(t('Earn achievements in your recomps, track them on your profile and climb the leaderboards.'))}</p>
+        <div class="ph-bpfeats">${feats.map(([h, d], i) => `<div class="ph-panel" data-f data-key="af:${i}">${star}<b>${esc(h)}</b><p>${esc(d)}</p></div>`).join('')}</div>
+        <p class="ph-bpnote" data-f data-key="aline">${esc(line)}</p>
+        ${signed ? '' : `<button type="button" class="ph-btn pri ph-press" data-act="signin" data-key="ain">${esc(t('Sign in'))}</button>`}</div></div>`;
+    }
+    const p = pg.profile || {}, u = (S.account && S.account.user) || {};
+    const box = (v, k) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`;
+    const ms = (p.mastered || []).map((m) => Object.assign({ kind: 'm' }, m));
+    const done = ms.concat((p.beaten || []).filter((b) => !ms.some((m) => m.id === b.id)).map((b) => Object.assign({ kind: 'b' }, b)));
+    const recent = (p.recent || []).slice(0, 6), rows = (pg.board || []).slice(0, 10);
+    const gm = (m) => { const a = appOf(m.id) || { id: m.id, name: m.name || m.id, cover: m.cover }; return bpCover(a, 'ad:' + m.id, esc(m.kind === 'm' ? t('Mastered') : t('Beaten'))); };
+    return `<div class="ph-bpscroll" data-key="ach"><div class="ph-bplist">
+      <div class="ph-bphead" data-key="ah"><h2>${esc(u.username || t('Tester'))}</h2><span class="ph-tag acc">${esc(t('Tester'))}</span></div>
+      <div class="ph-panel ph-bpstats" data-f data-key="aprof">${box(fmtN(p.points || 0), t('Points'))}${box(fmtN(p.score || 0), t('Score'))}${box(fmtN(p.beaten_count || (p.beaten || []).length || 0), t('Beaten'))}${box(fmtN(p.mastered_count || 0), t('Mastered'))}</div>
+      <div class="ph-bphead" data-key="adh"><h2>${esc(t('Beaten and Mastered'))}</h2></div>
+      ${done.length ? `<div class="ph-bpline" data-key="adl">${done.map(gm).join('')}</div>` : `<p class="ph-bpnote" data-f data-key="adn">${esc(t('Beat a game and it lands here; unlock every achievement and it\'s Mastered.'))}</p>`}
+      <div class="ph-bphead" data-key="arh"><h2>${esc(t('Recent Unlocks'))}</h2></div>
+      ${recent.length ? recent.map((r, i) => `<button type="button" class="ph-bprow ph-press" data-bp="game" data-id="${esc(r.game)}" data-key="ar:${i}">${star}<span class="ph-col ph-grow"><span>${esc(r.title || tf('Achievement {n}', { n: r.id }))}</span><small>${esc([r.name || (appOf(r.game) || {}).name || '', r.rarity != null && AT ? AT.rarityText(r.rarity) : ''].filter(Boolean).join(' · '))}</small></span></button>`).join('') : `<p class="ph-bpnote" data-f data-key="arn">${esc(t('Your unlocks show here the moment you earn them.'))}</p>`}
+      ${rows.length ? `<div class="ph-bphead" data-key="alh"><h2>${esc(t('Leaderboard'))}</h2></div><div class="ph-panel ph-bplb" data-f data-key="alb">${rows.map((r) => `<div class="${r.username === u.username ? 'you' : ''}"><span>${esc(String(r.rank || ''))}</span><b>${esc(r.username || '')}</b><em>${esc(fmtN(r.points || 0))}</em></div>`).join('')}</div>` : ''}
+    </div></div>`;
+  }
+  // A game's achievements, on its page: how far the player is and the list (testers only).
+  function bpAchGame(a) {
+    const AT = window.achTV, d = AT && AT.game(a.id);
+    const list = d && d.allowed !== false && d.list && Array.isArray(d.list.achievements) ? d.list.achievements.filter((x) => !AT.isBonus(x)) : [];
+    if (!list.length) return '';
+    const have = new Set((d.unlocked || []).map(Number)), got = list.filter((x) => have.has(Number(x.id))).length;
+    return `<div class="ph-panel ph-bpachg" data-f data-key="ag:${esc(a.id)}"><h2>${esc(t('Achievements'))}</h2><p class="ph-mut">${esc(tf('{n} of {all} unlocked', { n: got, all: list.length }))}</p><div class="ph-revbar"><i style="flex:${got}"></i><i class="v-none" style="flex:${list.length - got}"></i></div>
+      ${list.slice(0, 6).map((x) => `<div class="row${have.has(Number(x.id)) ? ' got' : ''}">${ic('star', 's')}<span class="ph-col"><b>${esc(x.title || '')}</b><small>${esc(x.description || '')}</small></span></div>`).join('')}</div>`;
+  }
+  // A game's own page: everything the phone layout's page has, laid out for a sideways screen.
+  function bpGameHTML(a) {
+    const id = esc(a.id), more = moreLike(a, 12), tags = tagsOf(a);
+    const right = `${pageRows(a)}${bpAchGame(a)}${tags.length ? `<div class="ph-chips ph-bpchips" data-key="tags">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}`;
+    return `<div class="ph-bpscroll game" data-key="gp:${id}">
+      <section class="ph-bpgtop" data-key="gtop">${bpInfo(a, true)}${bpSide(a)}</section>
+      <div class="ph-bpgbody" data-key="gbody"><div class="ph-col" data-key="gl">${gameAbout(a)}<div class="ph-revbox" data-rev="${id}">${revSection(a)}</div></div><div class="ph-col" data-key="gr">${right}</div></div>
+      ${more.length ? `<section class="ph-bpsec" data-key="row:like"><h3>${esc(t('More like this'))}</h3><div class="ph-bpline" data-key="line:like">${more.map((x) => bpCover(x, 'like:' + x.id, listLine(x))).join('')}</div></section>` : ''}
+    </div>`;
+  }
   function bpMenuHTML(a) {
-    const st = stateOf(a), id = esc(a.id);
+    const st = stateOf(a), id = esc(a.id), lib = S.library[a.id];
     const row = (icon, label, attr, cls = '') => `<button type="button" class="ph-bprow ph-press ${cls}" data-bpm="1" ${attr}>${ic(icon, 's')}<span>${esc(label)}</span></button>`;
     const rows = [];
     if (st === 'installed' || st === 'running') rows.push(row('play', t('Play'), `data-act="play" data-id="${id}"`));
@@ -1341,43 +1700,64 @@
     if (st === 'paused') rows.push(row('downloads', t('Resume'), `data-act="resume" data-id="${id}"`));
     if (st === 'busy' || st === 'paused') rows.push(row('x', t('Cancel'), `data-act="cancel" data-id="${id}"`));
     if (bp.game !== a.id) rows.push(`<button type="button" class="ph-bprow ph-press" data-bp="game" data-id="${id}">${ic('chev', 's')}<span>${esc(t('Details'))}</span></button>`);
-    if (!S.library[a.id] && !a.custom) rows.push(row('bookmark', isSaved(a.id) ? t('Remove from saved') : t('Save for later'), `data-act="save" data-id="${id}"`));
+    if (lib && reviewable(a)) rows.push(row('pen', myReviewOf(a.id) ? t('Edit Your Review') : t('Write a Review'), `data-act="rev-say" data-id="${id}"`));
+    if (reviewable(a) && S.reports[a.id] && (S.reports[a.id].items || []).length) rows.push(row('star', t('Reviews'), `data-act="rev-all" data-id="${id}"`));
+    if (a.repo && !a.local) rows.push(row('file', t('Read the README'), `data-readme="${id}"`), row('up', t('Updates'), `data-act="rels" data-id="${id}"`));
+    if (!lib && !a.custom) rows.push(row('bookmark', isSaved(a.id) ? t('Remove from saved') : t('Save for later'), `data-act="save" data-id="${id}"`));
     if (a.repo && !a.local) rows.push(row('globe', t('Open the project page'), `data-act="project" data-id="${id}"`));
-    if (S.library[a.id] && st !== 'busy' && st !== 'uninstalling') rows.push(row('trash', t('Uninstall'), `data-act="uninstall" data-id="${id}"`, 'red'));
+    if (lib && st !== 'busy' && st !== 'uninstalling') rows.push(row('trash', t('Uninstall'), `data-act="uninstall" data-id="${id}"`, 'red'));
+    revLoad(a);
     return `<div class="ph-bpmenu" data-key="m:${id}"><div class="ph-bpwho">${coverBox(a)}<b dir="auto">${esc(a.name)}</b><small>${esc([a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '', sizeOf(a)].filter(Boolean).join(' · '))}</small></div><div class="rows">${rows.join('')}</div></div>`;
   }
+  // Settings: the phone layout's, and the big-screen Big Picture mode's, that matter on a phone.
   function bpSettings() {
-    const row = (title, sub, key, on, off) => `<div class="ph-bprow set"><span class="ph-col ph-grow"><span>${esc(title)}</span><small>${esc(sub)}</small></span>${sw(key, on, off)}</div>`;
+    const acc = S.account || {}, user = acc.signedIn && acc.user ? acc.user : null;
+    const head = (k, title) => `<h3 class="ph-bph3" data-key="sh:${k}">${esc(title)}</h3>`;
+    const row = (title, sub, key, on, off) => `<div class="ph-bprow set"><span class="ph-col ph-grow"><span>${esc(title)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${sw(key, on, off)}</div>`;
+    const go = (icon, title, sub, attr, val = '') => `<button type="button" class="ph-bprow ph-press" ${attr}>${ic(icon, 's')}<span class="ph-col ph-grow"><span>${esc(title)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${val ? `<b class="val">${esc(val)}</b>` : ''}</button>`;
+    const g = GLYPHS.find(([k]) => k === (ui().tv_glyphs || '')) || GLYPHS[0];
+    const lang = (LANGS.find((l) => l[0] === ui().lang) || [])[1] || t('Same as your phone');
+    const ups = updatesList().length;
     return `<div class="ph-bpscroll" data-key="set"><div class="ph-bpset">
+      ${head('acc', t('Account'))}
+      ${user ? go('user', tf('Signed in as {name}', { name: user.username }), t('Your saved games and reviews follow you.'), 'data-act="account-site" data-key="s-acc"') : go('user', t('Sign in'), t('Keep your saved games with your account, and write reviews.'), 'data-act="signin" data-key="s-acc"')}
+      ${head('bp', t('Big Picture mode'))}
       ${row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), 'bpstart', !!S.settings.start_in_tv)}
       ${row(t('Open with a controller'), t('Switches when you press a button on one'), 'padtv', pref.padTv())}
+      ${go('pad', t('Button Icons'), t('Which controller\'s buttons are shown. Automatic follows the one you use.'), 'data-bp="glyphs" data-key="s-gl"', t(g[1]))}
+      ${row(t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), 'padstick', S.settings.pad_stick !== false)}
       ${row(t('Vibrate on taps'), '', 'haptics', pref.haptics())}
-      ${row(t('Performance mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
+      ${head('cat', t('Catalog and updates'))}
+      ${row(t('Hide AI-assisted Recomps'), t('They won\'t show in the Catalog'), 'hideai', !!S.settings.hide_ai)}
+      ${go('refresh', t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now'), 'data-act="refresh-cat" data-key="s-ref"')}
+      ${go('downloads', t('Check for Game Updates'), ups ? tn(ups, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd" data-key="s-upd"')}
+      ${row(t('Ask After Playing'), t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), 'revask', window.reviewAskOn ? window.reviewAskOn() : true)}
+      ${head('ease', t('Accessibility'))}
+      ${row(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
+      ${row(t('Reduce motion'), t('Pages change without sliding or zooming'), 'still', pref.still() || pref.lite(), pref.lite())}
+      ${row(t('High contrast'), t('Stronger text and edges'), 'contrast', pref.contrast())}
+      ${head('about', t('About'))}
+      ${go('globe', t('Language'), '', 'data-act="lang" data-key="s-lang"', lang)}
+      ${go('chat', 'Discord', t('Help, news and other players'), 'data-act="discord" data-key="s-dc"')}
+      ${go('home', 'recomplauncher.com', '', 'data-act="site" data-key="s-site"')}
+      <div class="ph-bprow set" data-f data-key="s-ver"><span class="ph-col ph-grow"><span>${esc(tf('RecompLauncher {v}', { v: S.version || '' }))}</span><small>${esc(engine())}</small></span></div>
       <button type="button" class="ph-bprow ph-press" data-bp="exit" data-key="exitrow">${ic('phone', 's')}<span>${esc(t('Leave Big Picture mode'))}</span></button></div></div>`;
   }
   function bpHTML() {
-    const pad = bp.pad;
+    const pad = bp.pad, k = bpTabKey();
     const back = `<button type="button" class="ph-btn sec sm ph-press ph-bpback" data-bp="back" data-key="back">${pad ? glyph('b') : ic('back', 's')}${esc(t('Back'))}</button>`;
-    const tabs = `<div class="ph-bptabs" data-key="tabs" style="--i:${bp.tab}">${pad ? glyph('lb') : ''}<div class="in"><span class="th"></span>${BP_TABS.map((k, i) => `<button type="button" class="${i === bp.tab ? 'on' : ''}" data-bp="tab" data-i="${i}" data-key="t:${i}">${esc(t(k))}</button>`).join('')}</div>${pad ? glyph('rb') : ''}</div>`;
-    const hints = pad ? `<div class="ph-bphints" data-key="hints">${[['a', t('Select')], ['b', t('Back')], ['y', t('Options')]].map(([k, l]) => `<span>${glyph(k)}${esc(l)}</span>`).join('')}</div>` : '';
+    const n = dlIds().length;
+    const tabs = `<div class="ph-bptabs" data-key="tabs">${pad ? glyph('lb') : ''}<div class="in"><span class="th"></span>${BP_TABS.map(([key, name], i) => `<button type="button" class="${i === bp.tab ? 'on' : ''}" data-bp="tab" data-i="${i}" data-key="t:${i}" aria-label="${esc(t(name))}">${ic(BP_ICON[key], 's')}<span>${esc(t(name))}</span>${key === 'downloads' && n ? `<em>${n}</em>` : ''}</button>`).join('')}</div>${pad ? glyph('rb') : ''}</div>`;
+    const hints = pad ? `<div class="ph-bphints" data-key="hints">${[['a', t('Select')], ['b', t('Back')], ['y', t('Options')]].map(([g, l]) => `<span>${glyph(g)}${esc(l)}</span>`).join('')}</div>` : '';
     const top = `<div class="ph-bptop" data-key="top">${bp.menu || bp.game ? back : tabs}<span class="ph-grow"></span>${hints}<button type="button" class="ph-ibtn glass ph-press" data-bp="exit" data-key="exit" aria-label="${esc(t('Leave Big Picture mode'))}">${ic('x', 's')}</button></div>`;
     let body;
-    const all = pool();
     if (bp.menu && appOf(bp.menu)) body = bpMenuHTML(appOf(bp.menu));
-    else if (bp.game && appOf(bp.game)) { const a = appOf(bp.game); body = bpInfo(a, true) + bpSide(a); }
-    else if (bp.tab === 3) body = bpSettings();
-    else if (bp.tab === 0) {
-      const sh = bpShelf();
-      if (!sh.length) body = `<div class="ph-bpnone" data-key="none">${S.listGate ? gate() : `<span class="ph-spin"></span><span>${esc(S.offline ? t("Can't reach recomplauncher.com right now.") : t('Loading…'))}</span>`}</div>`;
-      else {
-        if (!sh.some((a) => a.id === bp.focus)) bp.focus = sh[0].id;
-        body = bpInfo(appOf(bp.focus)) + `<div class="ph-bpshelf" data-key="shelf">${sh.map((a) => `<button type="button" class="ph-press${a.id === bp.focus ? ' f' : ''}" data-bp="focus" data-id="${esc(a.id)}" data-key="s:${esc(a.id)}" aria-label="${esc(a.name)}">${coverBox(a)}</button>`).join('')}</div>`;
-      }
-    } else {
-      const list = bpGrid(), shown = list.slice(0, bp.n);
-      const none = bp.tab === 1 ? t('Your games show up here once you install one.') : all.length ? '' : t('Loading…');
-      body = `<div class="ph-bpscroll" data-key="grid:${bp.tab}">${shown.length ? `<div class="ph-bpgrid">${shown.map((a) => `<button type="button" class="ph-press" data-bp="game" data-id="${esc(a.id)}" data-key="g:${esc(a.id)}">${coverBox(a)}<span class="ph-gname" dir="auto">${esc(a.name)}</span></button>`).join('')}</div>${shown.length < list.length ? '<div class="ph-gridmore" data-key="more"><span class="ph-spin"></span></div>' : ''}` : `<div class="ph-bpnone">${esc(none)}</div>`}</div>`;
-    }
+    else if (bp.game && appOf(bp.game)) body = bpGameHTML(appOf(bp.game));
+    else if (k === 'home') body = bpHome();
+    else if (k === 'downloads') body = bpDownloads();
+    else if (k === 'ach') body = bpAch();
+    else if (k === 'settings') body = bpSettings();
+    else body = bpGridHTML();
     return top + body;
   }
   // The focused game's art fades in over the last one.
@@ -1394,49 +1774,81 @@
     box.appendChild(pic);
     while (box.children.length > 2) box.firstChild.remove();
   }
+  // The section pill's light slides to the section picked, whatever its width.
+  function bpThumb() {
+    const tabs = $('.ph-bptabs .in', el.bpin), on = tabs && $('button.on', tabs), th = tabs && $('.th', tabs);
+    if (!on || !th) return;
+    th.style.transform = `translateX(${on.offsetLeft - 4}px)`;
+    th.style.width = on.offsetWidth + 'px';
+  }
   function bpDraw() {
-    if (!bp || !el.bpin) return;
-    const flat = !bp.menu && !bp.game && bp.tab !== 0;
+    if (!bp || !el.bpin || bp.busy) return;
+    // What players say about each game (once an hour at most), for the score under its name.
+    wantCounts();
+    const k = bpTabKey(), art = bp.menu || bp.game || (k === 'home' ? bp.focus : '');
     paint(el.bpin, bpHTML());
-    el.bp.classList.toggle('dim', flat || !!bp.menu);
+    el.bp.classList.toggle('dim', !art || !!bp.menu || bp.low);
     el.bp.classList.toggle('pad', bp.pad);
-    bpBg(appOf(bp.menu || bp.game || bp.focus));
+    root.classList.toggle('ph-bppad', bp.pad);
+    bpBg(appOf(art) || appOf(bp.focus));
+    bpThumb();
     bpLight(false);
   }
+  // Scrolled down Home or a game's page: the art behind dims, so the rows and words read.
+  function bpScrolled(n) {
+    const low = n.scrollTop > n.clientHeight * (n.classList.contains('home') ? 0.35 : 0.25);
+    if (low === !!bp.low) return;
+    bp.low = low;
+    el.bp.classList.toggle('dim', low || !!bp.menu || !(bp.game || bpTabKey() === 'home'));
+  }
   // ---------- moving around with a controller ----------
-  const bpItems = () => (el.bpin ? [...el.bpin.querySelectorAll('button:not(:disabled)')].filter((b) => b.offsetParent) : []);
-  const bpKey = (b) => b.dataset.key || [b.dataset.act || b.dataset.bp || (b.dataset.menu ? 'menu' : '') || (b.dataset.sw ? 'sw' : ''), b.dataset.id || b.dataset.menu || b.dataset.sw || b.dataset.i || ''].join(':');
+  // In the sheet when one is up (a README, the reviews, writing one), else on Big Picture's page.
+  const bpScope = () => (P.sheet ? el.sheet : el.bpin);
+  const bpItems = () => { const sc = bpScope(); return sc ? [...sc.querySelectorAll('button:not(:disabled),input,[data-f]')].filter((b) => b.offsetParent && !b.closest('[hidden]')) : []; };
+  const bpKey = (b) => b.dataset.key || [b.dataset.act || b.dataset.bp || (b.dataset.menu ? 'menu' : '') || (b.dataset.sw ? 'sw' : '') || (b.dataset.readme ? 'readme' : ''), b.dataset.id || b.dataset.menu || b.dataset.sw || b.dataset.i || b.dataset.v || b.dataset.readme || ''].join(':');
   function bpFirst(all) {
     const pick = (sel) => all.find((b) => b.matches(sel));
+    if (P.sheet) return pick('.ph-rvpick') || pick('button');
     if (bp.menu) return pick('.ph-bprow');
     if (bp.game) return pick('.ph-cta button');
-    if (bp.tab === 0) return pick('.ph-bpshelf .f') || pick('.ph-cta button');
-    return pick('.ph-bpgrid button,.ph-bpset button') || pick('.ph-bptabs .on');
+    const k = bpTabKey();
+    if (k === 'home') return pick('.ph-bpshelf .f') || pick('.ph-cta button');
+    if (k === 'catalog') return pick('.ph-bpgrid button') || pick('.ph-bpchips2 .on');
+    return pick('.ph-bpgrid button,.ph-bpset .ph-bprow button,.ph-bpset button.ph-bprow,.ph-bplist button,.ph-bplist [data-f]') || pick('.ph-bptabs .on');
   }
   function bpLight(scroll) {
-    const all = bpItems();
-    let f = all.find((b) => bpKey(b) === bp.f);
+    const all = bpItems(), sheetOn = !!P.sheet;
+    const want = sheetOn ? bp.sf : bp.f;
+    let f = all.find((b) => bpKey(b) === want);
     // A game's buttons change under the highlight (Install becomes the download's Cancel): it stays on them.
-    if (!f && bp.cta) f = all.find((b) => b.closest('.ph-cta'));
+    if (!f && !sheetOn && bp.cta) f = all.find((b) => b.closest('.ph-cta'));
     if (!f) f = bpFirst(all);
-    bp.f = f ? bpKey(f) : '';
-    bp.cta = !!(f && f.closest('.ph-cta'));
-    for (const b of all) b.classList.toggle('ph-bpon', b === f);
+    if (sheetOn) bp.sf = f ? bpKey(f) : '';
+    else { bp.f = f ? bpKey(f) : ''; bp.cta = !!(f && f.closest('.ph-cta')); }
+    for (const b of root.querySelectorAll('.ph-bpon')) if (b !== f) b.classList.remove('ph-bpon');
+    if (f) f.classList.add('ph-bpon');
     if (scroll && f) bpShow(f);
   }
   function bpShow(b) {
-    const sh = b.closest('.ph-bpshelf');
-    if (sh) return sh.scrollTo({ left: b.offsetLeft - (sh.clientWidth - b.offsetWidth) / 2, behavior: still() ? 'auto' : 'smooth' });
-    b.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: still() ? 'auto' : 'smooth' });
+    const how = still() ? 'auto' : 'smooth';
+    const line = b.closest('.ph-bpshelf,.ph-bpline');
+    if (line) line.scrollTo({ left: b.offsetLeft - (line.clientWidth - b.offsetWidth) / 2, behavior: how });
+    const sc = b.closest('.ph-bpscroll');
+    if (sc && b.closest('.ph-bphero')) return sc.scrollTo({ top: 0, behavior: how });
+    if (sc && b.closest('.ph-bpgtop')) return sc.scrollTo({ top: 0, behavior: how });
+    const sec = b.closest('.ph-bpsec');
+    if (sec) return sec.scrollIntoView({ block: 'center', behavior: how });
+    if (!line) b.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: how });
   }
   function bpFocus(b) {
-    bp.f = bpKey(b);
+    if (P.sheet) bp.sf = bpKey(b); else bp.f = bpKey(b);
     // On Home, the shelf's cover in focus is the game shown above it.
-    if (b.dataset.bp === 'focus' && b.dataset.id !== bp.focus) { bp.focus = b.dataset.id; bpDraw(); }
+    if (!P.sheet && b.dataset.bp === 'focus' && b.dataset.id !== bp.focus) { bp.focus = b.dataset.id; bpDraw(); }
     else bpLight(false);
     bpShow(b);
   }
-  // The nearest thing that way. Coming into the shelf or the tabs lands on the one picked there.
+  // The nearest thing that way. Coming into a row or the tabs lands on the one picked there. With
+  // nothing more that way, a long page (a README, a game's page) scrolls instead.
   function bpMove(dir) {
     const all = bpItems(), cur = all.find((b) => b.classList.contains('ph-bpon'));
     if (!cur) return bpLight(true);
@@ -1454,27 +1866,39 @@
       const s = ahead + off * 3;
       if (s < score) { score = s; best = b; }
     }
+    // Further than a screen away, or nothing at all: a long page scrolls a step first.
+    const sc = cur.closest('.ph-bpscroll,.ph-sheet,.rows');
+    const far = best && sc && !flat && Math.abs(best.getBoundingClientRect().top - r.top) > sc.getBoundingClientRect().height * 0.9;
+    if ((!best || far) && sc && !flat && sc.scrollHeight > sc.clientHeight + 2) {
+      const before = sc.scrollTop;
+      sc.scrollBy({ top: (dir === 'down' ? 1 : -1) * sc.clientHeight * 0.6, behavior: still() ? 'auto' : 'smooth' });
+      if (sc.scrollTop !== before || !still()) { if (!best || (dir === 'down' ? sc.scrollTop + sc.clientHeight < sc.scrollHeight - 2 : sc.scrollTop > 2)) return; }
+    }
     if (!best) return;
-    for (const sel of ['.ph-bpshelf', '.ph-bptabs']) {
+    for (const sel of ['.ph-bpshelf', '.ph-bptabs', '.ph-bpline', '.ph-bpchips2']) {
       const box = best.closest(sel);
-      if (box && !cur.closest(sel)) best = $(sel === '.ph-bpshelf' ? '.f' : '.on', box) || best;
+      if (box && !cur.closest(sel)) best = $(sel === '.ph-bptabs' || sel === '.ph-bpchips2' ? '.on' : '.f', box) || best;
     }
     bpFocus(best);
   }
   // ---------- the sections and pages ----------
   function bpTab(i) {
     if (i === bp.tab && !bp.game && !bp.menu) return;
-    Object.assign(bp, { tab: i, game: '', menu: '', f: '', n: BP_STEP });
+    Object.assign(bp, { tab: i, game: '', menu: '', f: '', n: BP_STEP, low: false });
     buzz();
     bpDraw();
     const sc = $('.ph-bpscroll', el.bpin);
     if (sc) sc.scrollTop = 0;
   }
   function bpGame(id) {
-    bp.back = { f: bp.menu ? bp.mback : bp.f };
-    Object.assign(bp, { game: id, menu: '', f: '' });
+    if (!appOf(id)) return;
+    const sc = $('.ph-bpscroll', el.bpin);
+    bp.back = { f: bp.menu ? bp.mback : bp.f, y: sc && !bp.game ? sc.scrollTop : 0, game: bp.game };
+    Object.assign(bp, { game: id, menu: '', f: '', low: false });
     buzz();
     bpDraw();
+    const g = $('.ph-bpscroll', el.bpin);
+    if (g) g.scrollTop = 0;
   }
   function bpMenu(id) {
     if (!appOf(id)) return;
@@ -1483,22 +1907,37 @@
     buzz();
     bpDraw();
   }
-  // Back a step: the menu, then a game's page, then to Home. False on Home itself.
+  // Back a step: a sheet, the menu, then a game's page, then to Home. False on Home itself.
   function bpBack() {
     if (!bp) return false;
     if (P.sheet) { closeSheet(); return true; }
+    if (document.activeElement && document.activeElement.matches && document.activeElement.matches('input,textarea')) { document.activeElement.blur(); return true; }
     if (bp.menu) { Object.assign(bp, { menu: '', f: bp.mback || '' }); bpDraw(); return true; }
-    if (bp.game) { const b = bp.back || {}; Object.assign(bp, { game: '', f: b.f || '' }); bpDraw(); return true; }
+    if (bp.game) {
+      const b = bp.back || {};
+      Object.assign(bp, { game: b.game || '', f: b.f || '', low: false, back: null });
+      bpDraw();
+      const sc = $('.ph-bpscroll', el.bpin);
+      if (sc && b.y) sc.scrollTop = b.y;
+      return true;
+    }
     if (bp.tab !== 0) { bpTab(0); return true; }
     return false;
   }
-  function bpAct(b) {
+  async function bpAct(b) {
     const d = b.dataset;
     switch (d.bp) {
       case 'tab': return bpTab(Number(d.i));
       case 'exit': return bpLeave();
       case 'back': return bpBack();
       case 'game': return bpGame(d.id);
+      case 'con': bp.con = d.k || ''; bp.n = BP_STEP; buzz(); return bpDraw();
+      case 'glyphs': {
+        const i = GLYPHS.findIndex(([k]) => k === (ui().tv_glyphs || ''));
+        buzz();
+        await saveUi({ tv_glyphs: GLYPHS[(i + 1) % GLYPHS.length][0] || null }, true);
+        return bpDraw();
+      }
       // A cover on the shelf: the first tap shows it, the next opens its page.
       case 'focus': if (d.id === bp.focus) return bpGame(d.id); bp.f = bpKey(b); bp.focus = d.id; buzz(); bpDraw(); return bpShow(b);
     }
@@ -1506,69 +1945,108 @@
   // A controller's button (from tv.js) or a key. True: Big Picture took it.
   function bpPad(b, kind) {
     if (!bp) return false;
+    if (bp.busy) return true;
     const was = bp.pad, k = S.padKind;
     bp.pad = true;
     if (!was || (kind && kind !== bp.kind)) { bp.kind = kind || k; bpDraw(); }
-    if (P.sheet) { if (b === 'b' || b === 'a') closeSheet(); return true; }
     const cur = bpItems().find((x) => x.classList.contains('ph-bpon'));
     switch (b) {
       case 'up': case 'down': case 'left': case 'right': bpMove(b); break;
-      case 'a': if (cur) cur.click(); else bpLight(true); break;
+      case 'a':
+        if (!cur) { bpLight(true); break; }
+        if (cur.matches('input')) { cur.focus(); break; }
+        cur.click();
+        break;
       case 'b': bpBack(); break;
       case 'x': case 'y': {
-        const id = bp.menu ? '' : (cur && cur.dataset.id && (cur.dataset.bp === 'focus' || cur.dataset.bp === 'game') ? cur.dataset.id : bp.game || (bp.tab === 0 ? bp.focus : ''));
+        if (P.sheet) break;
+        const id = bp.menu ? '' : (cur && cur.dataset.id && (cur.dataset.bp === 'focus' || cur.dataset.bp === 'game') ? cur.dataset.id : bp.game || (bpTabKey() === 'home' ? bp.focus : ''));
         if (bp.menu) bpBack(); else if (id) bpMenu(id);
         break;
       }
-      case 'lb': case 'rb': if (!bp.game && !bp.menu) bpTab((bp.tab + (b === 'rb' ? 1 : 3)) % 4); break;
-      case 'menu': bpTab(3); break;
+      case 'lb': case 'rb': if (!bp.game && !bp.menu && !P.sheet) bpTab((bp.tab + (b === 'rb' ? 1 : BP_TABS.length - 1)) % BP_TABS.length); break;
+      case 'menu': if (P.sheet) closeSheet(); bpTab(bpTabOf('settings')); break;
     }
     return true;
   }
   // The next covers of a long grid, once it's scrolled near its end.
   function bpMore(n) {
     if (!bp || n.scrollTop + n.clientHeight < n.scrollHeight - n.clientHeight) return;
-    if (bp.n >= bpGrid().length) return;
+    const k = bpTabKey();
+    if (bp.game || (k !== 'library' && k !== 'catalog') || bp.n >= bpGrid().length) return;
     bp.n += BP_STEP;
     bpDraw();
   }
   // ---------- in and out ----------
-  function bpEnter(byPad) {
+  // Turning the screen happens behind a dark cover: it fades in, the window turns (or a moment passes
+  // with nothing to turn) and settles at its new size, and only then is the next layout drawn and
+  // shown. Nothing is ever seen half-turned or drawn for the wrong shape.
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  function settle(landscape, idle) {
+    return new Promise((done) => {
+      const t0 = performance.now();
+      let w = innerWidth, h = innerHeight, moved = 0;
+      const right = () => landscape == null || (landscape ? innerWidth > innerHeight : innerWidth <= innerHeight);
+      const step = (now) => {
+        if (innerWidth !== w || innerHeight !== h) { w = innerWidth; h = innerHeight; moved = now; }
+        // After a turn, a short quiet (the bars can still come or go); with no turn, a little longer.
+        const quiet = now - (moved || t0) > (moved ? 160 : idle);
+        if ((quiet && right()) || now - t0 > 1600) return done();
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+  window.screenSettle = settle;
+  async function bpEnter(byPad) {
     if (bp) return;
     if (!P.on) enter();
     if (P.sheet) closeSheet();
     if (P.search) closeSearch();
     if (P.stack.length) closeGame(true);
     closeSub(true);
-    bp = { tab: 0, focus: '', game: '', menu: '', f: '', n: BP_STEP, pad: !!byPad || padHere(), byPad: !!byPad, kind: S.padKind };
+    bp = { tab: 0, focus: '', game: '', menu: '', f: '', sf: '', con: '', q: '', n: BP_STEP, pad: !!byPad || padHere(), byPad: !!byPad, kind: S.padKind, busy: 'in' };
     const box = document.createElement('div');
-    box.className = 'ph-bp';
+    box.className = 'ph-bp cover';
     box.innerHTML = '<div class="ph-bpbg"></div><i class="sc1"></i><i class="sc2"></i><div class="ph-bpin"></div>';
     // Under the start-up screen, when it's still up.
     el.ui.insertBefore(box, el.boot);
     Object.assign(el, { bp: box, bpbg: box.firstChild, bpin: box.lastChild });
-    root.classList.add('ph-bpon');
-    fit();
-    // Sideways, with the system's bars hidden; the edges follow once they have moved.
-    invoke('android_orientation', { landscape: true }).catch(() => {});
-    invoke('android_edges', { phone: false, light: false }).catch(() => {}).then(syncInsets);
-    bpDraw();
     buzz();
+    if (!still()) await wait(200);
+    if (!bp || el.bp !== box) return;
+    root.classList.add('ph-bpon');
+    // Sideways, with the system's bars hidden, behind the cover.
+    invoke('android_orientation', { landscape: true }).catch(() => {});
+    invoke('android_edges', { phone: false, light: false }).catch(() => {});
+    if (S.os === 'android') await settle(true, 220);
+    if (!bp || el.bp !== box) return;
+    await syncInsets();
+    bp.busy = '';
+    box.classList.remove('cover');
+    bpDraw();
   }
-  function bpLeave() {
-    if (!bp) return;
+  async function bpLeave() {
+    if (!bp || bp.busy === 'out') return;
     const box = el.bp;
+    bp.busy = 'out';
+    if (P.sheet) closeSheet();
+    // Big Picture's own things fade first; the dark stays while the phone turns back.
+    box.classList.add('cover', 'out');
+    if (!still()) await wait(190);
     bp = null;
     el.bp = el.bpbg = el.bpin = null;
-    root.classList.remove('ph-bpon');
+    box.lastChild.innerHTML = '';
     invoke('android_orientation', { landscape: false }).catch(() => {});
     // The bars back as the phone layout has them (applyLook sets them when the theme is new to it).
     delete root.dataset.theme;
     applyLook();
-    syncInsets();
+    if (S.os === 'android') await settle(null, 480);
+    await syncInsets();
     refresh();
-    if (still() || !box.animate) box.remove();
-    else box.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(1.04)' }], { duration: 260, easing: 'ease-in' }).onfinish = () => box.remove();
+    root.classList.remove('ph-bpon');
+    if (still() || !box.animate) return box.remove();
+    box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease-out', fill: 'forwards' }).onfinish = () => box.remove();
   }
   // The last controller gone: back to the phone layout, if a controller is what opened it.
   function bpPadGone() {

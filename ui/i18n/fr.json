@@ -3530,5 +3530,20 @@
  "Reduce motion": "Réduire les animations",
  "Pages change without sliding or zooming": "Les pages changent sans glisser ni zoomer",
  "High contrast": "Contraste élevé",
- "Stronger text and edges": "Texte et contours plus nets"
+ "Stronger text and edges": "Texte et contours plus nets",
+ "Be the first: after you play, say how it ran.": "Soyez le premier : après avoir joué, dites comment ça a tourné.",
+ "Catalog and updates": "Catalogue et mises à jour",
+ "Delete your review? This can't be undone.": "Supprimer votre avis ? C'est définitif.",
+ "Every release and what changed": "Chaque version et ce qui a changé",
+ "Get the newest list of recomps, their releases and their art now": "Récupérez maintenant la dernière liste des recomps, leurs versions et leurs images",
+ "Hide AI-assisted Recomps": "Masquer les Recomps faits avec l'aide de l'IA",
+ "Keep your saved games with your account, and write reviews.": "Gardez vos jeux enregistrés avec votre compte et écrivez des avis.",
+ "Latest release {when}": "Dernière version : {when}",
+ "Looks for new releases of your games now": "Cherche maintenant de nouvelles versions de vos jeux",
+ "Nothing matches that.": "Rien ne correspond.",
+ "Optimization mode": "Mode optimisation",
+ "What it is, what it needs, and who made it": "Ce que c'est, ce qu'il faut et qui l'a fait",
+ "Your saved games and reviews follow you.": "Vos jeux enregistrés et vos avis vous suivent.",
+ "{n} of {all} unlocked": "{n} sur {all} débloqués",
+ "{pct}% say it plays great": "{pct} % disent qu'il tourne très bien"
 }
