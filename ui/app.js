@@ -8824,8 +8824,9 @@ async function crashModal(p) {
   let su = S.setup[p.id] && S.setup[p.id] !== 'loading' ? S.setup[p.id] : null;
   if (gl && !su) { try { su = await invoke('game_setup', { id: p.id }); } catch (e) { /* none */ } }
   const glSetting = gl && su && (su.settings || []).find((o) => /renderer|graphics api|output|backend/i.test(o.label) && o.choices.length > 1);
-  // The graphics driver stopped answering while it drew (a driver reset): DXGI device removed/hung.
-  const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST/i.test(said);
+  // The graphics driver stopped answering while it drew (a driver reset): DXGI device removed/hung,
+  // or Vulkan's device lost, by its own name, the C++ wrapper's (ErrorDeviceLost) or in a Vulkan line.
+  const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST|ErrorDeviceLost|\b(?:vk|vulkan)\b[^\n]{0,60}\bdevice lost\b/i.test(said);
   // .NET it needs isn't on this PC (the .NET host says which, with a link).
   const net = /(?:To install missing framework, download|Download the \.NET runtime):\s*(https:\/\/\S+)/i.exec(said);
   const dotnet = !!net || [-2147450730, -2147450749].includes(Number(p.code)) || /You must install(?: or update)? \.NET|Failed to resolve hostfxr|hostfxr\.dll \[not found\]|\.NET location: Not found|app-launch-failed/i.test(said);
