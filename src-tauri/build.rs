@@ -47,8 +47,7 @@ fn main() {
         empty_pthread();
         // unrar is C++ built against the NDK's libc++, which Android doesn't have on the phone:
         // it goes into the launcher's library, or the app stops at start (length_error not found).
-        println!("cargo:rustc-link-lib=static=c++_static");
-        println!("cargo:rustc-link-lib=static=c++abi");
+        android_cxx();
     }
     tauri_build::build()
 }
@@ -75,6 +74,20 @@ fn empty_pthread() {
     if std::fs::write(dir.join("libpthread.a"), b"!<arch>\n").is_ok() {
         println!("cargo:rustc-link-search=native={}", dir.display());
     }
+}
+
+/// Links the NDK's static libc++ (and libc++abi), found where the NDK's own clang keeps them.
+fn android_cxx() {
+    let cc = cc::Build::new().get_compiler();
+    let out = std::process::Command::new(cc.path()).arg("-print-file-name=libc++_static.a").output();
+    let path = out.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let Some(dir) = path.as_deref().map(std::path::Path::new).filter(|p| p.is_file()).and_then(|p| p.parent()) else {
+        println!("cargo:warning=the NDK's libc++_static.a wasn't found; the app may stop at start");
+        return;
+    };
+    println!("cargo:rustc-link-search=native={}", dir.display());
+    println!("cargo:rustc-link-lib=static=c++_static");
+    println!("cargo:rustc-link-lib=static=c++abi");
 }
 
 /// unrar_sys's C++ sources, in Cargo's download folder.
