@@ -188,6 +188,11 @@ that isn't updated. Styles that an older engine doesn't know need a plain versio
 `tv.css` ends with one for every colour-mixing rule (a test checks none is missing), and
 `phone.css` has one for shapes. Settings → About in the phone layout shows the engine's version.
 
+The launcher sets nothing up for an Android game: no Easy Setup, no Game Settings, no checks of
+the PC's parts. A game there is an app of its own, and Android keeps its files out of every other
+app's reach, so the launcher can't put the player's copy where the game reads it. Play opens the
+game, and the game asks for what it needs itself (`profile::find` gives no profile on Android).
+
 Its game list is the website's Android list (`/api/pc.php?a=android`: the same shape as
 `pc-catalog.json`, with each game's Android download), not `pc-catalog.json`. While Android is
 hidden on the website only testers get it, so the request carries the player's sign-in; signed
