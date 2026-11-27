@@ -3616,5 +3616,14 @@
  "You have {v}": "لديك {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "طراز هاتفك، والألعاب التي تلعبها ومدتها، وما الذي فشل عندما لا تُثبَّت لعبة. بلا أسماء ولا ملفات.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "ألعابك المحفوظة ومراجعاتك تتبعك، والحفظ السحابي يحفظ تقدمك. يُفتح في متصفحك.",
- "{n} recomps are in your Library.": "لعبتان في مكتبتك.|{n} ألعاب في مكتبتك.|{n} لعبة في مكتبتك.|{n} لعبة في مكتبتك."
+ "{n} recomps are in your Library.": "لعبتان في مكتبتك.|{n} ألعاب في مكتبتك.|{n} لعبة في مكتبتك.|{n} لعبة في مكتبتك.",
+ "Back to the phone's own name.": "عاد إلى اسم الهاتف الأصلي.",
+ "Opens recomplauncher.com in your browser": "يفتح recomplauncher.com في متصفحك",
+ "Phone name": "اسم الهاتف",
+ "Saved. New saves from this phone carry that name.": "تم الحفظ. الحفظ الجديد من هذا الهاتف يحمل هذا الاسم.",
+ "Shortcuts": "اختصارات",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "يظهر بجانب الحفظ الذي ينشئه هذا الهاتف، لتميّز بين أجهزتك. اتركه فارغًا لاستخدام اسم الهاتف الأصلي.",
+ "Signed in on this phone": "تم تسجيل الدخول على هذا الهاتف",
+ "Signed in. The website can't be reached right now.": "تم تسجيل الدخول. لا يمكن الوصول إلى الموقع الآن.",
+ "This Phone's Name": "اسم هذا الهاتف"
 }

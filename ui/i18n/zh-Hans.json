@@ -3616,5 +3616,14 @@
  "You have {v}": "你装的是 {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "你的手机型号、你玩哪些游戏以及玩多久，还有游戏装不上时出了什么问题。不含姓名，不含文件。",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "你收藏的游戏和评价随你而行，云存档保存你的进度。会在浏览器中打开。",
- "{n} recomps are in your Library.": "游戏库里有 {n} 个重编译游戏。"
+ "{n} recomps are in your Library.": "游戏库里有 {n} 个重编译游戏。",
+ "Back to the phone's own name.": "已改回手机自己的名称。",
+ "Opens recomplauncher.com in your browser": "在浏览器中打开 recomplauncher.com",
+ "Phone name": "手机名称",
+ "Saved. New saves from this phone carry that name.": "已保存。这台手机的新存档会带上这个名称。",
+ "Shortcuts": "快捷方式",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "显示在这台手机的存档旁边，方便你区分设备。留空则使用手机自己的名称。",
+ "Signed in on this phone": "已在这台手机上登录",
+ "Signed in. The website can't be reached right now.": "已登录。暂时无法连接网站。",
+ "This Phone's Name": "这台手机的名称"
 }

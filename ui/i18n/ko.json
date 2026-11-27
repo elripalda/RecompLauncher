@@ -3616,5 +3616,14 @@
  "You have {v}": "현재 {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "휴대폰 모델, 어떤 게임을 얼마나 하는지, 게임이 설치되지 않을 때 무엇이 잘못됐는지. 이름도 파일도 없습니다.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "저장한 게임과 리뷰가 어디서나 함께하고, 클라우드 저장이 진행 상황을 지켜 줍니다. 브라우저에서 열립니다.",
- "{n} recomps are in your Library.": "라이브러리에 리컴프 {n}개가 있습니다."
+ "{n} recomps are in your Library.": "라이브러리에 리컴프 {n}개가 있습니다.",
+ "Back to the phone's own name.": "휴대폰 원래 이름으로 돌아갔습니다.",
+ "Opens recomplauncher.com in your browser": "브라우저에서 recomplauncher.com을 엽니다",
+ "Phone name": "휴대폰 이름",
+ "Saved. New saves from this phone carry that name.": "저장했습니다. 이 휴대폰의 새 세이브에 그 이름이 붙습니다.",
+ "Shortcuts": "바로가기",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "이 휴대폰이 만든 세이브 옆에 표시되어 기기를 구분할 수 있습니다. 비워 두면 휴대폰 원래 이름을 씁니다.",
+ "Signed in on this phone": "이 휴대폰에서 로그인됨",
+ "Signed in. The website can't be reached right now.": "로그인됨. 지금은 웹사이트에 연결할 수 없습니다.",
+ "This Phone's Name": "이 휴대폰의 이름"
 }

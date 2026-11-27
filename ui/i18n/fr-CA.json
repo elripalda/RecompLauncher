@@ -1587,5 +1587,14 @@
  "You have {v}": "Vous avez {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "Le modèle de votre téléphone, les jeux auxquels vous jouez et combien de temps, et ce qui a échoué quand un jeu ne s'installe pas. Pas de noms, pas de fichiers.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Vos jeux enregistrés et vos avis vous suivent, et les sauvegardes cloud gardent votre progression. Ça s'ouvre dans votre navigateur.",
- "{n} recomps are in your Library.": "{n} recomps sont dans votre Bibliothèque."
+ "{n} recomps are in your Library.": "{n} recomps sont dans votre Bibliothèque.",
+ "Back to the phone's own name.": "Retour au nom du téléphone.",
+ "Opens recomplauncher.com in your browser": "Ouvre recomplauncher.com dans votre navigateur",
+ "Phone name": "Nom du téléphone",
+ "Saved. New saves from this phone carry that name.": "Enregistré. Les nouvelles sauvegardes de ce téléphone portent ce nom.",
+ "Shortcuts": "Raccourcis",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Affiché à côté des sauvegardes de ce téléphone, pour distinguer vos appareils. Laissez vide pour utiliser le nom du téléphone.",
+ "Signed in on this phone": "Connecté sur ce téléphone",
+ "Signed in. The website can't be reached right now.": "Connecté. Le site est injoignable pour le moment.",
+ "This Phone's Name": "Nom de ce téléphone"
 }

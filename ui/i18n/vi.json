@@ -3737,5 +3737,14 @@
  "You have {v}": "Bạn đang có {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "Dòng máy điện thoại, bạn chơi game nào và bao lâu, và lỗi gì khi một game không cài được. Không có tên, không có tệp.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Game đã lưu và đánh giá đi theo bạn, và dữ liệu lưu đám mây giữ tiến trình của bạn. Mở trong trình duyệt.",
- "{n} recomps are in your Library.": "{n} bản recomp đang ở trong Thư viện của bạn."
+ "{n} recomps are in your Library.": "{n} bản recomp đang ở trong Thư viện của bạn.",
+ "Back to the phone's own name.": "Đã trở về tên gốc của điện thoại.",
+ "Opens recomplauncher.com in your browser": "Mở recomplauncher.com trong trình duyệt",
+ "Phone name": "Tên điện thoại",
+ "Saved. New saves from this phone carry that name.": "Đã lưu. Dữ liệu lưu mới từ điện thoại này sẽ mang tên đó.",
+ "Shortcuts": "Lối tắt",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Hiện cạnh dữ liệu lưu của điện thoại này, để bạn phân biệt các thiết bị. Để trống để dùng tên gốc của điện thoại.",
+ "Signed in on this phone": "Đã đăng nhập trên điện thoại này",
+ "Signed in. The website can't be reached right now.": "Đã đăng nhập. Hiện không kết nối được trang web.",
+ "This Phone's Name": "Tên điện thoại này"
 }

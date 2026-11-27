@@ -3616,5 +3616,14 @@
  "You have {v}": "Kamu punya {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "Model ponselmu, game apa yang kamu mainkan dan berapa lama, dan apa yang salah saat game gagal terpasang. Tanpa nama, tanpa file.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Game tersimpan dan ulasanmu ikut bersamamu, dan save cloud menjaga progresmu. Terbuka di browsermu.",
- "{n} recomps are in your Library.": "{n} recomp ada di Pustakamu."
+ "{n} recomps are in your Library.": "{n} recomp ada di Pustakamu.",
+ "Back to the phone's own name.": "Kembali ke nama asli ponsel.",
+ "Opens recomplauncher.com in your browser": "Membuka recomplauncher.com di browsermu",
+ "Phone name": "Nama ponsel",
+ "Saved. New saves from this phone carry that name.": "Tersimpan. Save baru dari ponsel ini memakai nama itu.",
+ "Shortcuts": "Pintasan",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Ditampilkan di samping save dari ponsel ini, agar kamu bisa membedakan perangkatmu. Biarkan kosong untuk memakai nama asli ponsel.",
+ "Signed in on this phone": "Masuk di ponsel ini",
+ "Signed in. The website can't be reached right now.": "Sudah masuk. Situs web tidak bisa dijangkau sekarang.",
+ "This Phone's Name": "Nama ponsel ini"
 }

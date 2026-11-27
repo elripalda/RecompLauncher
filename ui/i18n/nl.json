@@ -3616,5 +3616,14 @@
  "You have {v}": "Je hebt {v}",
  "Your phone's model, which games you play and for how long, and what went wrong when one won't install. No names, no files.": "Het model van je telefoon, welke games je speelt en hoe lang, en wat er misging als er een niet installeert. Geen namen, geen bestanden.",
  "Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.": "Je opgeslagen games en recensies gaan met je mee, en opslaan in de cloud bewaart je voortgang. Het opent in je browser.",
- "{n} recomps are in your Library.": "{n} recomps staan in je Bibliotheek."
+ "{n} recomps are in your Library.": "{n} recomps staan in je Bibliotheek.",
+ "Back to the phone's own name.": "Terug naar de eigen naam van de telefoon.",
+ "Opens recomplauncher.com in your browser": "Opent recomplauncher.com in je browser",
+ "Phone name": "Naam van de telefoon",
+ "Saved. New saves from this phone carry that name.": "Opgeslagen. Nieuwe opgeslagen spellen van deze telefoon krijgen die naam.",
+ "Shortcuts": "Snelkoppelingen",
+ "Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone's own name.": "Staat naast de opgeslagen spellen van deze telefoon, zodat je je apparaten uit elkaar houdt. Laat leeg voor de eigen naam van de telefoon.",
+ "Signed in on this phone": "Ingelogd op deze telefoon",
+ "Signed in. The website can't be reached right now.": "Ingelogd. De website is nu niet bereikbaar.",
+ "This Phone's Name": "Naam van deze telefoon"
 }
