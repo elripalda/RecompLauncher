@@ -7,6 +7,8 @@
 #![cfg_attr(mobile, allow(dead_code, unused_assignments))]
 
 pub mod ach;
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod adopt;
 pub mod xex;
 mod appimage;
@@ -393,7 +395,11 @@ fn replacement<'a>(fresh: &'a [Release], was_pre: bool, have: &str, fits: impl F
     (!same_tag(&r.tag_name, have)).then_some(r)
 }
 
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
+    // Android installs the game's app through Android itself.
+    #[cfg(target_os = "android")]
+    return android::install(app, st, id, cancel).await;
     let picked_tag = tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -1359,12 +1365,28 @@ pub(crate) fn files_busy(st: &App, id: &str) -> Option<&'static str> {
     None
 }
 
+/// Android: the Library brought in line with the games installed on the device. True when it changed.
+#[tauri::command(async)]
+fn android_sync(st: State<'_, App>) -> bool {
+    #[cfg(target_os = "android")]
+    return android::sync(&st);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = st;
+        false
+    }
+}
+
 #[tauri::command(async)]
 fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
     uninstall_game(&st, id, delete_files, run_uninstaller, keep_saves)
 }
 
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 fn uninstall_game(st: &App, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
+    // Android uninstalls the game's app, after its own question.
+    #[cfg(target_os = "android")]
+    return android::uninstall(st, &id);
     // Marked first, so a second call (test control, another window) can't start on the same folder.
     let Some(_uninstalling) = start_uninstalling(st, &id) else { return Err(Error::Msg(UNINSTALLING.into())) };
     if st.running.lock().unwrap().contains_key(&id) {
@@ -6380,7 +6402,15 @@ fn discord_info(st: &App, id: &str) -> (String, String, String) {
 // Async so it runs inside the async runtime, which starting and watching a process needs.
 // With `replace`, any other game that's running is closed first.
 #[tauri::command]
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Option<bool>, program: Option<String>) -> Res<()> {
+    // Android opens the game's app.
+    #[cfg(target_os = "android")]
+    {
+        let st = app.state::<App>();
+        let id = recomp_of(&st, &id);
+        return android::open(&st, &id);
+    }
     let from_big_picture = big_picture.unwrap_or(false);
     BIG_PICTURE.store(from_big_picture, Ordering::Relaxed);
     // One game of a recomp that carries several starts the recomp (start_game picks the game).
@@ -10266,6 +10296,9 @@ pub fn run() {
     // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
     sysenv::tune_allocator();
     let builder = tauri::Builder::default();
+    // Android: installing, opening and uninstalling the games through Android (android.rs).
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android::plugin());
     // Desktop only: a phone never starts a second copy of the launcher.
     #[cfg(desktop)]
     let builder = builder
@@ -10771,7 +10804,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,

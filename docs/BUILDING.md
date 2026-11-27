@@ -166,8 +166,16 @@ B. On a phone, Auto size draws the stage a little bigger (1600×900) so words st
 Its game list is the website's Android list (`/api/pc.php?a=android`: the same shape as
 `pc-catalog.json`, with each game's Android download), not `pc-catalog.json`. While Android is
 hidden on the website only testers get it, so the request carries the player's sign-in; signed
-out, or with an account that isn't a tester, Home says so and offers Sign In. Installing Android
-games isn't in the app yet.
+out, or with an account that isn't a tester, Home says so and offers Sign In. Each game's release
+and version are its Android app's (`android_tag`, `android_version`), so updates work as on PC.
+
+Install downloads the game's APK from that release (the file `assets.android` names), checks it is
+the app the store checked (`android_package`, and the SHA-256 of its signing certificate against
+`android_sig`), and hands it to Android's own installer, which asks the player to confirm
+(`src-tauri/src/android.rs`, `ApkPlugin.kt`). Play opens the app, and Uninstall asks Android to
+remove it. The Library follows what's installed on the device: it's checked at start and whenever
+the launcher comes back to the front, so a game installed or removed outside the launcher shows
+right. The first install asks the player to let RecompLauncher install apps.
 
 The Android workflow (`.github/workflows/android.yml`) builds the same APK on GitHub when the
 Android parts change, or when run by hand, and keeps it for a day. It also opens the APK on an

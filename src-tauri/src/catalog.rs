@@ -189,6 +189,7 @@ async fn cached_as(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64,
             }
         }
         Ok(Some((v, headers))) if check(&v) => {
+            let v = if url.contains(ANDROID_LIST) { android_view(v) } else { v };
             save(&file, &v);
             save_tag_from(&file, &headers);
             Ok(Fetched { archived: None, data: v, offline: false, age: 0 })
@@ -222,6 +223,44 @@ fn list_url() -> String {
     } else {
         format!("{}/pc-catalog.json", base())
     }
+}
+
+/// The Android list as the launcher reads it: each game's release and version are its Android
+/// app's (`android_tag`, `android_version`), which can differ from its PC release. Installed games
+/// are then up to date or not by the same rules as on PC.
+fn android_view(mut v: Value) -> Value {
+    for key in ["apps", "apps_min"] {
+        let Some(list) = v.get_mut(key).and_then(Value::as_array_mut) else { continue };
+        for e in list.iter_mut().filter_map(Value::as_object_mut) {
+            for (from, to) in [("android_tag", "tag"), ("android_version", "version")] {
+                if let Some(x) = e.get(from).and_then(Value::as_str).filter(|x| !x.is_empty()).map(String::from) {
+                    e.insert(to.into(), Value::String(x));
+                }
+            }
+        }
+    }
+    v
+}
+
+/// The game's APK in its release: the file the list's pattern names.
+pub fn android_asset<'a>(list: &'a [Asset], pattern: &str) -> Option<&'a Asset> {
+    let apk = |a: &&Asset| a.name.to_ascii_lowercase().ends_with(".apk");
+    list.iter().filter(apk).find(|a| crate::assets::wild(pattern, &a.name))
+}
+
+/// Why a downloaded APK isn't the one the list checked (`read`: what Android says is in it), or
+/// None when it is: the same package name, and the same signing certificate (SHA-256, lower-case
+/// hex). What the list doesn't say isn't checked.
+pub fn apk_mismatch(read: &Value, pkg: &str, sig: &str) -> Option<String> {
+    let got_pkg = read.get("pkg").and_then(Value::as_str).unwrap_or("");
+    if !pkg.is_empty() && got_pkg != pkg {
+        return Some(format!("the file is {got_pkg}, the list says {pkg}"));
+    }
+    let sigs: Vec<String> = read.get("sigs").and_then(Value::as_str).unwrap_or("").split(',').map(|x| x.trim().to_ascii_lowercase()).filter(|x| !x.is_empty()).collect();
+    if !sig.is_empty() && !sigs.iter().any(|x| x == &sig.to_ascii_lowercase()) {
+        return Some(format!("signed by {}, the list says {sig}", sigs.join(",")));
+    }
+    None
 }
 
 /// The sign-in sent with the list: only Android's needs it (testers only while Android is hidden).
@@ -259,6 +298,11 @@ pub fn catalog_now(dir: &Path) -> Option<(Fetched, bool)> {
     // Decided once per launch: after this, the list is only asked for again by Refresh or a push.
     let stale = f.age >= LIST_FRESH && !LIST_ASKED.swap(true, Ordering::Relaxed);
     Some((Fetched { data: with_mine(dir, f.data), ..f }, stale))
+}
+
+/// The list on disk, as it is (nothing asked, nothing marked).
+pub fn list_on_disk(dir: &Path) -> Option<Value> {
+    on_disk(&list_file(dir), list_ok).map(|f| f.data)
 }
 
 /// The list asked for again in the background (not the player's doing).
@@ -1935,6 +1979,30 @@ mod tests {
         assert!(list_url().ends_with("/pc-catalog.json"));
         assert!(list_token(&dir).is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn android_games_read_as_their_android_app() {
+        // Each game's release and version are its APK's.
+        let v = android_view(serde_json::json!({ "apps": [
+            { "id": "a", "tag": "v2.0", "version": "2.0", "android_tag": "v1.9-android", "android_version": "1.9" },
+            { "id": "b", "tag": "v1", "version": "1" } ],
+            "apps_min": [{ "id": "c", "tag": "", "android_tag": "c1" }] }));
+        assert_eq!((v["apps"][0]["tag"].as_str(), v["apps"][0]["version"].as_str()), (Some("v1.9-android"), Some("1.9")));
+        assert_eq!((v["apps"][1]["tag"].as_str(), v["apps"][1]["version"].as_str()), (Some("v1"), Some("1")));
+        assert_eq!(v["apps_min"][0]["tag"], "c1");
+        // The APK the pattern names, never another file.
+        let a = |n: &str| Asset { name: n.into(), size: 1, digest: None, browser_download_url: format!("https://x/{n}"), url: None };
+        let files = [a("Game-1.9-windows.zip"), a("Game-1.9-arm64.apk"), a("Game-1.9-x86.apk")];
+        assert_eq!(android_asset(&files, "Game-*-arm64.apk").map(|x| x.name.as_str()), Some("Game-1.9-arm64.apk"));
+        assert!(android_asset(&files, "Game-*-windows.zip").is_none());
+        // The downloaded app against the list: package and signing certificate.
+        let read = serde_json::json!({ "pkg": "com.dev.game", "sigs": "AB12,cd34" });
+        assert_eq!(apk_mismatch(&read, "com.dev.game", "ab12"), None);
+        assert_eq!(apk_mismatch(&read, "com.dev.game", "CD34"), None);
+        assert_eq!(apk_mismatch(&read, "", ""), None);
+        assert!(apk_mismatch(&read, "com.other", "ab12").is_some());
+        assert!(apk_mismatch(&read, "com.dev.game", "ffff").is_some());
     }
 
     #[test]

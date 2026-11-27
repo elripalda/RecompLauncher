@@ -6217,6 +6217,16 @@ async function loadCatalog(force, asked) {
     S.offline = !S.listGate;
   }
 }
+// Android: the Library follows the games installed on the device, checked at start and whenever the
+// launcher comes back to the front (after Android's installer, its Uninstall question, or a game).
+async function androidSync() {
+  if (S.os !== 'android') return false;
+  let changed = false;
+  try { changed = await invoke('android_sync'); } catch (e) { return false; }
+  if (changed) { try { await refreshState(); } catch (e) { /* shown on the next look */ } render(true); if (window.tvRefresh) window.tvRefresh(); }
+  return changed;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) androidSync(); });
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
 const approvedReleases = () => JSON.stringify(Object.keys(S.library).sort().map((id) => {
   const a = byId(id) || {};
@@ -7456,8 +7466,6 @@ async function packInstalled(id, name, games, open) {
   if (su && su.needs && !ready) setupModal(from);
 }
 async function startInstall(id, dir, tag, anyway) {
-  // Android installs its games through the system's own installer: that part of the test app comes next.
-  if (S.os === 'android') return toast(t('Installing Android games isn\'t in this test version yet.'));
   // A game of a recomp that carries several: the recomp installs (once), whichever game it's from.
   const from = subOf(id) ? id : '';
   id = parentId(id);
@@ -10786,6 +10794,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (droid && window.startTV) window.startTV();
   trayWords();
   await loadCatalog(false, catAsk);
+  if (droid) await androidSync();
   if (droid && window.tvRefresh) window.tvRefresh();
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
