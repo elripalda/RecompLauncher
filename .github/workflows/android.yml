@@ -35,10 +35,16 @@ jobs:
           node-version: 24
           cache: npm
 
+      # Gradle's downloads are kept between runs: fetching them all from Maven Central on every run
+      # gets the shared runners turned away (429 Too Many Requests).
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle.kts
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -55,6 +61,9 @@ jobs:
 
       # The runner has the Android SDK and NDK already (ANDROID_HOME, ANDROID_NDK_LATEST_HOME).
       - name: Build the APK
+        # When Maven Central still says "too many requests", Gradle waits longer between its tries.
+        env:
+          GRADLE_OPTS: -Dorg.gradle.internal.repository.max.retries=6 -Dorg.gradle.internal.repository.initial.backoff=2000
         run: |
           export NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           echo "NDK: $NDK_HOME"
