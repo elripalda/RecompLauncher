@@ -6183,7 +6183,8 @@ function paintSetupProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   S.removedPlayHistory = st.removedPlayHistory || {};
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
+  if (st.settings) S.settingsIn = true;
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || S.settings, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
   // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
   applyEasySkip();
@@ -6465,7 +6466,7 @@ async function checkUpdates(loud) {
 async function setLanguage(code) {
   const ui = Object.assign({}, S.settings.ui || {}, { lang: code });
   const next = Object.assign({}, S.settings, { ui });
-  try { await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { return fail(e); }
+  try { await settingsWrite(next); S.settings = next; } catch (e) { return fail(e); }
   await loadLang(code === 'auto' ? systemLang() : code);
   tDom();
   render(true);
@@ -6527,11 +6528,14 @@ function startAtLoginNote() {
   return t('RecompLauncher starts when you sign in and waits by the clock. It also shows in your system\'s startup apps.');
 }
 
+// Settings that never came in from the core (it couldn't be read when the launcher opened) are
+// only changed here, never written: a half-empty copy would be refused, or lose the real ones.
+const settingsWrite = (next) => (S.settingsIn ? invoke('save_settings', { settings: next }) : Promise.resolve());
 function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   applyEasySkip();
   setClock((S.settings.ui || {}).clock);
-  settingsSaving = settingsSaving.then(() => invoke('save_settings', { settings: S.settings })).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
+  settingsSaving = settingsSaving.then(() => settingsWrite(S.settings)).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
   return settingsSaving;
 }
 
@@ -10828,7 +10832,14 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The list on disk is asked for alongside the state, not after it: the first screen needs both.
   const catAsk = invoke('get_catalog', { force: false });
   catAsk.catch(() => {});
-  try { await refreshState(); } catch (e) { loaded = false; fail(e); }
+  // The window is opened before the core has finished starting, so the first look can come too
+  // early (a slow phone or emulator): asked again for a few seconds before it counts as failed.
+  for (let i = 0; ; i++) {
+    try { await refreshState(); break; } catch (e) {
+      if (i >= 8) { loaded = false; fail(e); break; }
+      await new Promise((ok) => setTimeout(ok, 120 * (i + 1)));
+    }
+  }
   // Settings that didn't load are never saved over (they'd be lost).
   if (loaded) { try { sideOnce(); } catch (e) { /* the sidebar keeps its order */ } sendLimits(); }
   const lang = (S.settings.ui || {}).lang;

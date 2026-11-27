@@ -373,5 +373,7 @@
  "{name} is already in the Catalog. Here it is.": "{name} is already in the Catalogue. Here it is.",
  "{name} is in the Catalog now. Your copy moved over to it.": "{name} is in the Catalogue now. Your copy moved over to it.",
  "Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.": "Optional. If you use LaunchBox, Customise can use the box art, logos, backgrounds and descriptions it already saved for your games.",
- "Saved. Customize can use your LaunchBox pictures now.": "Saved. Customise can use your LaunchBox pictures now."
+ "Saved. Customize can use your LaunchBox pictures now.": "Saved. Customise can use your LaunchBox pictures now.",
+ "Critic and Player Score": "Critic and Player Score",
+ "More Like This": "More Like This"
 }

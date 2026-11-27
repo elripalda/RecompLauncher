@@ -186,7 +186,15 @@ On Android there's no desktop view. There are two layouts instead:
   Pictures are fetched at the size they show on this screen (`sharpOf` in app.js: the width in CSS
   pixels times the screen's pixel density). Up to 960 pixels the site's smaller copy is used
   (`thumb.php`); bigger than that, the original, so backdrops and banners stay sharp on a phone's
-  dense screen and on tablets.
+  dense screen and on tablets. Covers a fast swipe is about to reach are asked for about a screen
+  ahead (an IntersectionObserver in phone.js turns their lazy loading off), and a game page's big
+  cover opens with the copy that was just tapped and swaps to the sharp one once it has decoded
+  (`shownFirst`, `sharpen`), so it never flashes empty. Labels, buttons and headings on the phone
+  are in title case (Display Size, Vibrate on Taps, Critic and Player Score); descriptions stay in
+  sentence case. About has Support Us (Ko-fi).
+  The launcher's window opens before the core has finished starting, so the first `get_state` can
+  come too early on a slow phone or emulator: app.js asks again for a few seconds. Settings that
+  never came in are never written back (`settingsWrite`): a half-empty copy would be refused.
   Home's top left shows the RecompLauncher mark and name. Held sideways, the search and profile
   buttons sit right above the side bar, and on a wide screen Settings lays its boxes out in two
   columns and the account page puts the profile beside its settings (cloud space, Back Up Every
@@ -270,7 +278,13 @@ stage): shorter side gaps, tighter tabs, every section name on one line. On Andr
 just the mark, not the name. The tab highlight is measured again whenever the bar changes size
 (a `ResizeObserver` on it, and once the font has loaded), so it always sits under the open
 section. Dragging a page or a row measures its size once when the finger lands, draws the move once
-a frame, gives a little past either end and springs back, and a flick carries on and slows down. Which way the window
+a frame, gives a little past either end and springs back, and a flick carries on and slows down.
+While the finger is down the page has no easing at all (`heldMax` in `setScroll`): touch moves
+that come slower than frames, as an emulator's do, used to switch the half-second ease back on
+between moves and the page trailed behind the finger. On Android the page's faded top and bottom
+edges are cut straight (no mask over the moving page), the focused game's glow is blurred less,
+wide cards fetch art sized for the screen (`wideArt`) and fewer full-size backdrops are kept
+ready. Which way the window
 turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
 as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
 (`MainActivity.kt`).

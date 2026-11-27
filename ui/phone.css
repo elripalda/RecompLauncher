@@ -544,7 +544,7 @@ body.phone-on .signin-qr{display:none}
 .ph-boot.out{opacity:0;transform:scale(1.08);pointer-events:none}
 .ph-wall{position:absolute;inset:-35% -45%;display:flex;gap:14px;justify-content:center;transform:rotate(-12deg);opacity:0;transition:opacity 900ms ease}
 .ph-wall.on{opacity:.34}
-.ph-wall .c{flex:none;width:118px;display:flex;flex-direction:column;gap:14px;animation:ph-up 26s linear infinite;will-change:transform}
+.ph-wall .c{flex:none;width:118px;display:flex;flex-direction:column;gap:14px;animation:ph-up 12s linear infinite;will-change:transform}
 .ph-wall .c:nth-child(even){animation-name:ph-down}
 .ph-wall .c img{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:#141f33}
 @keyframes ph-up{from{transform:translateY(0)}to{transform:translateY(-50%)}}
@@ -558,10 +558,10 @@ body.phone-on .signin-qr{display:none}
 .ph-boot .w{font-size:27px;animation:ph-word 900ms 550ms cubic-bezier(.2,.8,.2,1) both}
 @keyframes ph-word{from{opacity:0;letter-spacing:.3em}to{opacity:1;letter-spacing:.01em}}
 /* The loading bar and its words (not .ld: that marks a picture that has loaded). */
-.ph-bootbar{position:absolute;left:50%;bottom:calc(84px + var(--sb));width:140px;height:4px;margin-left:-70px;border-radius:99px;background:rgba(244,248,252,.12);overflow:hidden}
-.ph-land .ph-bootbar{bottom:52px}
-.ph-bootsay{position:absolute;left:0;right:0;bottom:calc(52px + var(--sb));text-align:center;font:600 12.5px var(--ff);color:rgba(244,248,252,.62);letter-spacing:.02em}
-.ph-land .ph-bootsay{bottom:22px}
+.ph-bootbar{position:absolute;left:50%;bottom:calc(17% + 30px + var(--sb));width:140px;height:4px;margin-left:-70px;border-radius:99px;background:rgba(244,248,252,.12);overflow:hidden}
+.ph-land .ph-bootbar{bottom:calc(14% + 26px)}
+.ph-bootsay{position:absolute;left:0;right:0;bottom:calc(17% + var(--sb));text-align:center;font:600 12.5px var(--ff);color:rgba(244,248,252,.62);letter-spacing:.02em}
+.ph-land .ph-bootsay{bottom:14%}
 .ph-bootbar i{position:absolute;top:0;bottom:0;left:0;width:40%;border-radius:99px;background:linear-gradient(90deg,rgba(52,242,232,0),#34F2E8,rgba(55,123,182,0));animation:ph-sweep 1.2s cubic-bezier(.4,0,.2,1) infinite}
 @keyframes ph-sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
 
@@ -913,3 +913,5 @@ body #phone.ph-lite .ph-glassy{-webkit-backdrop-filter:none !important;backdrop-
   .ph-land .ph-setcols>.ph-set{width:100%;margin:0 0 14px;break-inside:avoid;display:inline-block}
   .ph-land .ph-setcols{margin-top:14px}
 }
+/* Support Us (About): the heart in the website's pink. */
+.ph-srow[data-act="kofi"]>svg,.ph-bprow[data-act="kofi"]>svg{color:#FF5E7A}

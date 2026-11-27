@@ -316,6 +316,9 @@
   // ---------- pieces ----------
   // Full-screen art keeps its original resolution; the site's thumbnails stop at 960 pixels.
   const heroOf = (a) => (a ? media(a.hero || a.cover) : '');
+  // A wide card's picture (420 wide on the stage). On a phone or tablet it's sized for the screen
+  // as the stage is scaled (sharpOf), which is often a smaller copy that decodes far quicker.
+  const wideArt = (a) => (!a || !(a.hero || a.cover) ? '' : media(android() ? sharpOf(a.hero || a.cover, 460 * (TV.k || 1)) : thumbOf(a.hero || a.cover, 960)));
   // ---------- colour from the cover ----------
   // Each game's cover gives the page its colours: a light accent (buttons, the line over the
   // title, the glow) and a deep shade that tints the backdrop. Worked out once per cover from a
@@ -401,7 +404,7 @@
   function card(a, key, sub) {
     const g = S.library[a.id];
     return `<button type="button" class="tv-card" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}">
-      <span class="ph">${esc(a.name)}</span>${a.hero || a.cover ? `<img src="${esc(media(thumbOf(a.hero || a.cover, 960)))}" alt="">` : ''}
+      <span class="ph">${esc(a.name)}</span>${a.hero || a.cover ? `<img src="${esc(wideArt(a))}" alt="">` : ''}
       ${S.running.has(a.id) ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : S.updates[a.id] ? `<span class="tv-badge">${esc(t('Update'))}</span>` : sreqBadge(a)}
       <span class="cap"><b>${esc(a.name)}</b><span>${esc(sub != null ? sub : g ? timeLine(g) : a.game || '')}</span></span></button>`;
   }
@@ -741,7 +744,7 @@
     const dock = list.map((a) => {
       const st = status(a), j = S.jobs[a.id];
       const badge = st === 'running' ? `<span class="tv-badge">${esc(t('Playing'))}</span>` : st === 'update' ? `<span class="tv-badge">${esc(t('Update'))}</span>` : '';
-      const pic = wide ? (a.hero || a.cover ? media(thumbOf(a.hero || a.cover, 960)) : '') : a.cover ? media(thumbOf(a.cover, 400)) : '';
+      const pic = wide ? wideArt(a) : a.cover ? media(thumbOf(a.cover, 400)) : '';
       return `<button type="button" class="tv-dk${wide ? ' wide' : ''}${TV.sort && TV.sort.id === a.id ? ' moving' : ''}" data-f data-key="c:${esc(a.id)}" data-hero="${esc(a.id)}" data-dock="${esc(a.id)}" aria-label="${esc(a.name)}"><span class="ph">${esc(a.name)}</span>${pic ? `<img src="${esc(pic)}" alt="" decoding="async">` : ''}${wide ? `<span class="cap">${esc(a.name)}</span>` : ''}${badge}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}${TV.sort && TV.sort.id === a.id ? `<span class="tv-mv">${svg('chevL', 26)}${svg('chevR', 26)}</span>` : ''}</button>`;
     }).join('');
     const label = d.kind === 'pinned' ? t('Pinned') : d.kind === 'mine' ? t('Continue playing') : d.kind === 'banner' ? t('Featured') : t('Most played recomps');
@@ -938,7 +941,8 @@
     im.decoding = 'async';
     im.src = src;
     PRE.set(src, im);
-    if (PRE.size > 60) PRE.delete(PRE.keys().next().value);
+    // Full-size backdrops are big: a phone keeps fewer of them ready.
+    if (PRE.size > (android() ? 16 : 60)) PRE.delete(PRE.keys().next().value);
   }
   // Whether this window must leave controllers to the core; null until it answers. On Windows,
   // while SDL reads them, asking for gamepads starts WebView2's own controller reading, and the two
@@ -2890,7 +2894,7 @@
     if (!r) { r = document.createElement('div'); r.className = 'tv-rail'; r.setAttribute('aria-hidden', 'true'); r.innerHTML = '<i></i>'; reg.append(r); }
     r.hidden = false;
     const track = r.clientHeight || H - 40, th = Math.max(48, Math.round(track * (H / total))), max = Math.max(1, total - H);
-    r.firstChild.style.height = th + 'px';
+    if (r.firstChild.style.height !== th + 'px') r.firstChild.style.height = th + 'px';
     r.firstChild.style.transform = `translateY(${Math.round((track - th) * Math.min(1, Math.max(0, y) / max))}px)`;
   }
   // The same for a list that scrolls by itself (the folder browser, a sheet's list).
@@ -2908,13 +2912,17 @@
   }
   document.addEventListener('scroll', (e) => { const b = e.target; if (b && b.classList && (b.classList.contains('tb-list') || b.classList.contains('tb-side') || b.classList.contains('tv-sheet-in'))) railFor(b); }, true);
   window.tvRails = () => { rail(TV.scrollY || 0); for (const b of $$('.tb-list, .tb-side, .tv-sheet-in', root)) railFor(b); };
+  // A finger is dragging the page (touch, below): its size was measured when the drag began, and
+  // the page has no easing until it lets go, so each move is drawn as it comes.
+  let heldMax = null;
   function setScroll(y, instant) {
     const sc = $('#tv-scroll', root);
     if (!sc) return;
     const reg = sc.parentElement;
-    const max = Math.max(0, sc.scrollHeight - reg.clientHeight + 40);
+    const max = heldMax != null ? heldMax : Math.max(0, sc.scrollHeight - reg.clientHeight + 40);
     y = Math.max(0, Math.min(max, y));
     TV.scrollY = y;
+    if (heldMax != null) instant = false;
     if (instant) sc.style.transition = 'none';
     sc.style.transform = `translateY(${-y}px)`;
     rail(y);
@@ -2929,7 +2937,7 @@
       sp.style.transform = `translateY(${Math.round(Math.min(room, Math.max(0, y - wt + 24)))}px)`;
       if (instant) requestAnimationFrame(() => { sp.style.transition = ''; });
     }
-    if (instant) requestAnimationFrame(() => { sc.style.transition = ''; });
+    if (instant) requestAnimationFrame(() => { if (heldMax == null) sc.style.transition = ''; });
     const hero = $('#tv-hero', root);
     if (hero) hero.style.opacity = y > 60 ? '0' : '1';
     const down = $('.tv-down', root);
@@ -3646,8 +3654,7 @@
     const v = want < 0 ? -give(-want, room) : want > max ? max + give(want - max, room) : want;
     at.now = v;
     if (at.axis === 'y') {
-      if (v >= 0 && v <= max) return setScroll(v, true);
-      at.sc.style.transition = 'none';
+      if (v >= 0 && v <= max) return setScroll(v);
       at.sc.style.transform = `translateY(${-v}px)`;
       return;
     }
@@ -3679,8 +3686,9 @@
         if (!at.sc) { touch.at = null; return; }
         const reg = at.sc.parentElement;
         at.y0 = TV.scrollY || 0;
-        at.max = Math.max(0, at.sc.scrollHeight - reg.clientHeight + 40);
+        at.max = heldMax = Math.max(0, at.sc.scrollHeight - reg.clientHeight + 40);
         at.room = reg.clientHeight;
+        at.sc.style.transition = 'none';
       } else {
         const view = at.row.parentElement;
         at.x0 = rowX(at.row);
@@ -3694,6 +3702,7 @@
   const touchDone = () => {
     const at = touch.at;
     touch.at = null;
+    heldMax = null;
     if (touch.frame) { cancelAnimationFrame(touch.frame); touch.frame = 0; }
     if (!at || !at.axis) return;
     touch.dragEnd = performance.now();

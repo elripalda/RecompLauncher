@@ -75,6 +75,7 @@
     tv: '<rect x="2" y="5" width="20" height="13" rx="2.5"/><path d="M8 21h8"/>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    heart: '<path fill="currentColor" stroke="none" d="M12 21s-7.5-4.6-9.6-9.3C.9 8.2 3 4.5 6.6 4.5c2.1 0 3.5 1.2 4.4 2.6.9-1.4 2.3-2.6 4.4-2.6 3.6 0 5.7 3.7 4.2 7.2C19.5 16.4 12 21 12 21z"/>',
     chev: '<path d="m9 5 7 7-7 7"/>',
     chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
     discord: '<path fill="currentColor" stroke="none" d="M19.3 5.4A16.6 16.6 0 0 0 15.2 4l-.5 1a15.4 15.4 0 0 0-5.4 0l-.5-1a16.5 16.5 0 0 0-4.1 1.4C2.1 9.3 1.4 13.1 1.8 16.9a16.7 16.7 0 0 0 5 2.6l1.1-1.7a10.8 10.8 0 0 1-1.7-.8l.4-.3a11.9 11.9 0 0 0 10.8 0l.4.3c-.5.3-1.1.6-1.7.8l1.1 1.7a16.6 16.6 0 0 0 5-2.6c.5-4.4-.8-8.2-2.9-11.5zM8.7 14.6c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm6.6 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/>',
@@ -126,7 +127,20 @@
   // A page's backdrop: the wide art, or the cover blurred, where a small copy looks the same and decodes far quicker.
   const pageArt = (a) => heroUrl(a, a && a.hero ? screenW() : 60);
   // With Console Labels on Covers, the console's band across the top, as on a real game box.
-  const coverBox = (a, cls = '', id = '', css = 130) => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(coverUrl(a, css))}${coverLabel(a)}</span>`;
+  const coverBox = (a, cls = '', id = '', css = 130, url = coverUrl(a, css)) => `<span class="ph-cover ${cls}"${id ? ` id="${id}"` : ''}><i>${esc(a.name)}</i>${img(url)}${coverLabel(a)}</span>`;
+  // A big cover that opens with a smaller copy already on screen (the one just tapped), so it never
+  // shows empty, and takes the sharp one once that has loaded and decoded.
+  const shownFirst = (sharp, ...smaller) => (SEEN.has(sharp) ? sharp : smaller.find((u) => u && SEEN.has(u)) || sharp);
+  function sharpen(node, url) {
+    if (!node || !url || node.getAttribute('src') === url) return;
+    const i = new Image();
+    i.decoding = 'async';
+    i.src = url;
+    (i.decode ? i.decode() : new Promise((ok, no) => { i.onload = ok; i.onerror = no; })).then(() => {
+      SEEN.add(url);
+      if (node.isConnected) node.src = url;
+    }, () => {});
+  }
 
   // ---------- the games ----------
   // Each game once, as on the desktop: a game with several versions (the website's Versions) shows
@@ -217,7 +231,7 @@
   function gate() {
     if (!S.listGate) return '';
     const signed = S.account && S.account.signedIn;
-    return `<div class="ph-panel ph-box"><b>${esc(t('Android games'))}</b><p>${esc(t(S.listGate))}</p>${signed ? '' : `<button type="button" class="ph-btn pri sm" data-act="signin">${esc(t('Sign in'))}</button>`}</div>`;
+    return `<div class="ph-panel ph-box"><b>${esc(t('Android Games'))}</b><p>${esc(t(S.listGate))}</p>${signed ? '' : `<button type="button" class="ph-btn pri sm" data-act="signin">${esc(t('Sign In'))}</button>`}</div>`;
   }
 
   // ---------- Home ----------
@@ -244,7 +258,7 @@
   }
   function heroSlide(a) {
     const info = window.bannerInfo ? window.bannerInfo(a.id) : {};
-    const kick = [info.tag || (a.featured ? t('Featured') : t('Popular right now')), conName(a)].filter(Boolean).join(' · ');
+    const kick = [info.tag || (a.featured ? t('Featured') : t('Popular Right Now')), conName(a)].filter(Boolean).join(' · ');
     const text = info.text || a.blurb || '';
     const title = a.logo ? img(media(a.logo), 'hl', 'data-logo') + `<span class="ph-disp ht" hidden>${esc(a.name)}</span>` : `<span class="ph-disp ht">${esc(a.name)}</span>`;
     return `<button type="button" data-open="${esc(a.id)}" data-soft="1" data-key="h:${esc(a.id)}">${img(heroUrl(a), 'bg')}<span class="tint"></span>
@@ -255,7 +269,7 @@
     const mine = Object.values(S.library).sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map(libApp).filter(Boolean).slice(0, 14);
     if (!mine.length) return '';
     const one = (a) => `<button type="button" class="ph-wide ph-press" data-open="${esc(a.id)}" data-soft="1" data-key="w:${esc(a.id)}">${img(heroUrl(a, cardW()), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${esc(playedFor(S.library[a.id]))}</span></span><span class="ph-playdot">${ic('play', 's')}</span></span></button>`;
-    return `<section class="ph-sec" data-key="continue">${secHead(t('Continue playing'), `<button type="button" data-tab="library">${esc(t('Library'))}</button>`)}<div class="ph-hs">${mine.map(one).join('')}</div></section>`;
+    return `<section class="ph-sec" data-key="continue">${secHead(t('Continue Playing'), `<button type="button" data-tab="library">${esc(t('Library'))}</button>`)}<div class="ph-hs">${mine.map(one).join('')}</div></section>`;
   }
   function row(key, title, list, sub, more) {
     if (!list.length) return '';
@@ -268,17 +282,17 @@
       return `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">RecompLauncher</h1></header>${why}${continueRow()}`;
     }
     const feats = featured(), top = ranked();
-    const seeAll = `<button type="button" data-tab="catalog">${esc(t('See all'))}</button>`;
+    const seeAll = `<button type="button" data-tab="catalog">${esc(t('See All'))}</button>`;
     const chart = top.slice(0, 10).map((a, i) => `<button type="button" class="ph-rk ph-press" data-open="${esc(a.id)}" data-key="k:${esc(a.id)}" aria-label="${esc(a.name)}"><span class="num">${i + 1}</span>${coverBox(a)}</button>`).join('');
     return `<div class="ph-hhd" data-key="hd"><div>${mark(30)}<img class="ph-wm" src="img/${pref.theme() === 'light' ? 'wordmark-dark' : 'wordmark'}.svg" alt="RecompLauncher" draggable="false"><span class="ph-grow"></span>
       <button type="button" class="ph-ibtn glass ph-press" data-act="search" aria-label="${esc(t('Search'))}">${ic('search', 's')}</button>${avatarBtn()}</div></div>
       <div class="ph-hero" data-key="hero">${feats.map(heroSlide).join('')}</div>
       <div class="ph-dots" data-key="dots">${feats.map((a, i) => `<i class="${i === (P.slide || 0) ? 'on' : ''}"></i>`).join('')}</div>
       ${continueRow()}
-      <section class="ph-sec" data-key="trend">${secHead(t('Trending this week'), `<button type="button" data-sub="trend">${esc(tf('Top {n}', { n: top.length }))}</button>`)}<div class="ph-hs" style="gap:6px">${chart}</div></section>
+      <section class="ph-sec" data-key="trend">${secHead(t('Trending This Week'), `<button type="button" data-sub="trend">${esc(tf('Top {n}', { n: top.length }))}</button>`)}<div class="ph-hs" style="gap:6px">${chart}</div></section>
       ${row('popular', t('Popular on Android'), [...all].sort(byDl), null, seeAll)}
-      ${row('updated', t('Recently updated'), recentlyUpdated(all), (a) => esc(a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : ''), seeAll)}
-      ${row('new', t('Just added'), [...all].sort(byNew), null, seeAll)}`;
+      ${row('updated', t('Recently Updated'), recentlyUpdated(all), (a) => esc(a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : ''), seeAll)}
+      ${row('new', t('Just Added'), [...all].sort(byNew), null, seeAll)}`;
   }
 
   // ---------- Catalog ----------
@@ -297,9 +311,9 @@
     const tail = shown.length < az.length ? `<div class="ph-gridmore" data-key="allmore"><span class="ph-spin"></span></div>` : '';
     return `${head}
       <div class="ph-padx" data-key="find" style="margin-top:6px"><button type="button" class="ph-sfield ph-press" data-act="search">${ic('search')}<span>${esc(t('Search games, consoles, developers'))}</span></button></div>
-      <section class="ph-sec" data-key="cons">${secHead(t('Consoles'), `<button type="button" data-sub="cons">${esc(t('See all'))}</button>`)}<div class="ph-cons">${cons.slice(0, 4).map((c) => conTile(c)).join('')}</div></section>
-      <section class="ph-sec" data-key="trend">${secHead(t('Trending this week'), `<button type="button" data-sub="trend">${esc(tf('Top {n}', { n: top.length }))}</button>`)}${top.slice(0, 5).map((a, i) => lrow(a, { rank: i + 1 })).join('')}</section>
-      <section class="ph-sec" data-key="all">${secHead(t('All games'))}<div class="ph-grid long">${shown.map((a) => card(a)).join('')}</div>${tail}</section>`;
+      <section class="ph-sec" data-key="cons">${secHead(t('Consoles'), `<button type="button" data-sub="cons">${esc(t('See All'))}</button>`)}<div class="ph-cons">${cons.slice(0, 4).map((c) => conTile(c)).join('')}</div></section>
+      <section class="ph-sec" data-key="trend">${secHead(t('Trending This Week'), `<button type="button" data-sub="trend">${esc(tf('Top {n}', { n: top.length }))}</button>`)}${top.slice(0, 5).map((a, i) => lrow(a, { rank: i + 1 })).join('')}</section>
+      <section class="ph-sec" data-key="all">${secHead(t('All Games'))}<div class="ph-grid long">${shown.map((a) => card(a)).join('')}</div>${tail}</section>`;
   }
 
   // ---------- Library ----------
@@ -311,7 +325,7 @@
   }
   function libLine(a) {
     const st = stateOf(a);
-    if (st === 'update') return `<i class="ph-dot" style="--c:#34F2E8"></i> ${esc(t('Update ready'))}`;
+    if (st === 'update') return `<i class="ph-dot" style="--c:#34F2E8"></i> ${esc(t('Update Ready'))}`;
     if (st === 'busy') return esc(S.library[a.id] ? t('Updating') : t('Downloading'));
     if (st === 'paused') return esc(t('Paused'));
     return esc(playedFor(S.library[a.id]));
@@ -339,19 +353,19 @@
     const ups = updatesList();
     if (!ups.length) return empty('check', esc(t('Everything is up to date.')));
     const one = (a) => lrow(a, { sub: esc([a.version ? tf('Version {v}', { v: verText(a.version) }) : '', sizeOf(a)].filter(Boolean).join(' · ')), right: `<button type="button" class="ph-btn pri sm ph-press" data-act="update" data-id="${esc(a.id)}">${esc(t('Update'))}</button>` });
-    return `<div class="ph-libh"><span class="ph-mut">${esc(tn(ups.length, '1 update ready', '{n} updates ready'))}</span>${ups.length > 1 ? `<button type="button" class="ph-btn sec sm ph-press" data-act="update-all">${esc(t('Update all'))}</button>` : ''}</div>${ups.map(one).join('')}`;
+    return `<div class="ph-libh"><span class="ph-mut">${esc(tn(ups.length, '1 update ready', '{n} updates ready'))}</span>${ups.length > 1 ? `<button type="button" class="ph-btn sec sm ph-press" data-act="update-all">${esc(t('Update All'))}</button>` : ''}</div>${ups.map(one).join('')}`;
   }
   function paneGames() {
     const mine = mineList();
     const savedList = savedItems().map((x) => x.a).filter((a) => !a.soon && forOS(a));
     if (!mine.length && !savedList.length) return gate() + empty('library', esc(t('Your games show up here once you install one.')));
     const last = mine.find((a) => S.library[a.id] && S.library[a.id].last_played && a.hero && !isBusy(a));
-    const jump = last ? `<button type="button" class="ph-jump ph-press" data-open="${esc(last.id)}" data-soft="1" data-key="jump">${img(heroUrl(last), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="eye">${esc(t('Jump back in'))}</span><span class="ph-disp">${esc(last.name)}</span><small>${esc(playedFor(S.library[last.id]))}</small></span><span class="ph-btn pri sm">${ic('play', 's')}${esc(t('Play'))}</span></span></button>` : '';
+    const jump = last ? `<button type="button" class="ph-jump ph-press" data-open="${esc(last.id)}" data-soft="1" data-key="jump">${img(heroUrl(last), 'bg')}<span class="ph-shade"></span><span class="foot"><span class="ph-col ph-grow"><span class="eye">${esc(t('Jump Back In'))}</span><span class="ph-disp">${esc(last.name)}</span><small>${esc(playedFor(S.library[last.id]))}</small></span><span class="ph-btn pri sm">${ic('play', 's')}${esc(t('Play'))}</span></span></button>` : '';
     const grid = pref.libview() === 'grid';
     const tile = (a) => `<button type="button" class="ph-gcard ph-press" data-open="${esc(a.id)}" data-key="g:${esc(a.id)}"><span style="position:relative;display:block">${coverBox(a, isBusy(a) ? 'dim' : '', '', 180)}${libOver(a)}</span><span class="ph-gname">${esc(a.name)}</span><span class="ph-gsub">${libLine(a)}</span></button>`;
     const line = (a) => lrow(a, { sub: libLine(a) });
-    const games = mine.length ? `<div class="ph-libh" data-key="lh"><b>${esc(t('All games'))} <span>${mine.length}</span></b><button type="button" class="ph-ibtn solid ph-press" data-act="libview" aria-label="${esc(t('Change view'))}">${ic(grid ? 'list' : 'library', 's')}</button></div>${grid ? `<div class="ph-grid" data-key="lg">${mine.map(tile).join('')}</div>` : mine.map(line).join('')}` : '';
-    const later = savedList.length ? `<div class="ph-libh" data-key="sh"><b>${esc(t('Saved for later'))} <span>${savedList.length}</span></b></div>${savedList.map((a) => lrow(a)).join('')}` : '';
+    const games = mine.length ? `<div class="ph-libh" data-key="lh"><b>${esc(t('All Games'))} <span>${mine.length}</span></b><button type="button" class="ph-ibtn solid ph-press" data-act="libview" aria-label="${esc(t('Change View'))}">${ic(grid ? 'list' : 'library', 's')}</button></div>${grid ? `<div class="ph-grid" data-key="lg">${mine.map(tile).join('')}</div>` : mine.map(line).join('')}` : '';
+    const later = savedList.length ? `<div class="ph-libh" data-key="sh"><b>${esc(t('Saved for Later'))} <span>${savedList.length}</span></b></div>${savedList.map((a) => lrow(a)).join('')}` : '';
     return jump + games + later;
   }
   function viewLibrary() {
@@ -387,8 +401,8 @@
   function svBadge(x) {
     if (x.state === 'conflict') return `<span class="ph-svb warn">${esc(t('Sync Now'))}</span>`;
     if (x.cloudOn === true && x.pending && (S.account || {}).signedIn) return `<span class="ph-svb">${esc(t('Going up'))}</span>`;
-    if (x.cloudOn === true && (S.account || {}).signedIn) return `<span class="ph-svb ok">${ic('cloud', 'xs')}${esc(t('In the cloud'))}</span>`;
-    return `<span class="ph-svb">${esc(t('Only on this phone'))}</span>`;
+    if (x.cloudOn === true && (S.account || {}).signedIn) return `<span class="ph-svb ok">${ic('cloud', 'xs')}${esc(t('In the Cloud'))}</span>`;
+    return `<span class="ph-svb">${esc(t('Only on This Phone'))}</span>`;
   }
   function viewSaves() {
     const head = `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">${esc(t('Saves'))}</h1><p class="ph-vs">${esc(t('After every session the launcher keeps a copy. Restore an older one any time.'))}</p></header>`;
@@ -405,13 +419,13 @@
     const used = acc.used || 0, quota = acc.quota || 150 * 1024 * 1024;
     const meter = (frac, cls) => { const on = frac > 0 ? Math.max(1, Math.round(Math.min(1, frac) * 16)) : 0; return `<div class="ph-meter ${cls}">${Array.from({ length: 16 }, (_, i) => `<i${i < on ? ' class="on"' : ''} style="animation-delay:${i * 25}ms"></i>`).join('')}</div>`; };
     const access = known.length && P.files === false
-      ? `<div class="ph-panel ph-svacc" data-key="acc"><span class="ph-svi">${ic('key', 's')}</span><div class="ph-col ph-grow"><b>${esc(t('Allow All files access'))}</b><span class="ph-mut">${esc(t('Android asks first. Allow it once and the launcher can copy your games\' saves.'))}</span><button type="button" class="ph-btn pri sm ph-press" data-act="files">${esc(t('Open Settings'))}</button></div></div>` : '';
-    const phoneCard = `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('phone', 's')}</span><div class="ph-col"><b>${esc(t('On this phone'))}</b><small>${esc(tn(withSaves.length, '1 game with saves', '{n} games with saves'))}</small></div></div>${meter(known.length ? withSaves.length / known.length : 0, 'a')}<div class="ph-row ph-svn"><b>${esc(fmtB(size) || '0 KB')}</b><small>${esc(tn(copies, '1 copy kept', '{n} copies kept'))}</small></div></div>`;
+      ? `<div class="ph-panel ph-svacc" data-key="acc"><span class="ph-svi">${ic('key', 's')}</span><div class="ph-col ph-grow"><b>${esc(t('Allow All Files Access'))}</b><span class="ph-mut">${esc(t('Android asks first. Allow it once and the launcher can copy your games\' saves.'))}</span><button type="button" class="ph-btn pri sm ph-press" data-act="files">${esc(t('Open Settings'))}</button></div></div>` : '';
+    const phoneCard = `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('phone', 's')}</span><div class="ph-col"><b>${esc(t('On This Phone'))}</b><small>${esc(tn(withSaves.length, '1 game with saves', '{n} games with saves'))}</small></div></div>${meter(known.length ? withSaves.length / known.length : 0, 'a')}<div class="ph-row ph-svn"><b>${esc(fmtB(size) || '0 KB')}</b><small>${esc(tn(copies, '1 copy kept', '{n} copies kept'))}</small></div></div>`;
     const cloudCard = acc.signedIn
-      ? `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('cloud', 's')}</span><div class="ph-col"><b>${esc(t('Cloud saves'))}</b><small>${esc(tn(inCloud, '1 game backs up to your account', '{n} games back up to your account'))}</small></div></div>${meter(used / quota, 'b')}<div class="ph-row ph-svn"><b class="ph-svq">${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</b></div></div>`
-      : `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('cloud', 's')}</span><div class="ph-col"><b>${esc(t('Cloud saves'))}</b><small>${esc(t('Sign in to keep your saves in the cloud.'))}</small></div></div><button type="button" class="ph-btn pri sm wide ph-press" data-act="signin" style="margin-top:14px">${esc(t('Sign in'))}</button></div>`;
-    const auto = acc.signedIn ? `<div class="ph-panel ph-set" data-key="auto"><div class="ph-srow"><div class="t"><b>${esc(t('Back up to the cloud'))}</b><span>${esc(t('After you play, a copy goes to your account'))}</span></div>${sw('cloudall', ui().cloud_all === true)}</div></div>` : '';
-    const row = (x) => { const n = x.newest || {}; return `<div class="ph-panel ph-svrow" data-key="sv:${esc(x.id)}"><button type="button" class="ph-press" data-act="copies" data-id="${esc(x.id)}">${coverBox(x.a)}<span class="ph-col ph-grow" style="gap:4px;min-width:0"><span class="ph-gname">${esc(x.a.name)}</span><span class="ph-gsub">${esc(tf('Last saved {when}', { when: ago(n.when) }))}</span>${svBadge(x)}</span><span class="ph-col ph-svm"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button><button type="button" class="ph-ibtn solid ph-press" data-act="backup" data-id="${esc(x.id)}" aria-label="${esc(t('Back up now'))}"${S.running && S.running.has && S.running.has(x.id) ? ' disabled' : ''}>${ic('up', 's')}</button></div>`; };
+      ? `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('cloud', 's')}</span><div class="ph-col"><b>${esc(t('Cloud Saves'))}</b><small>${esc(tn(inCloud, '1 game backs up to your account', '{n} games back up to your account'))}</small></div></div>${meter(used / quota, 'b')}<div class="ph-row ph-svn"><b class="ph-svq">${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</b></div></div>`
+      : `<div class="ph-panel ph-svc"><div class="ph-row" style="gap:10px"><span class="ph-svi">${ic('cloud', 's')}</span><div class="ph-col"><b>${esc(t('Cloud Saves'))}</b><small>${esc(t('Sign in to keep your saves in the cloud.'))}</small></div></div><button type="button" class="ph-btn pri sm wide ph-press" data-act="signin" style="margin-top:14px">${esc(t('Sign In'))}</button></div>`;
+    const auto = acc.signedIn ? `<div class="ph-panel ph-set" data-key="auto"><div class="ph-srow"><div class="t"><b>${esc(t('Back Up to the Cloud'))}</b><span>${esc(t('After you play, a copy goes to your account'))}</span></div>${sw('cloudall', ui().cloud_all === true)}</div></div>` : '';
+    const row = (x) => { const n = x.newest || {}; return `<div class="ph-panel ph-svrow" data-key="sv:${esc(x.id)}"><button type="button" class="ph-press" data-act="copies" data-id="${esc(x.id)}">${coverBox(x.a)}<span class="ph-col ph-grow" style="gap:4px;min-width:0"><span class="ph-gname">${esc(x.a.name)}</span><span class="ph-gsub">${esc(tf('Last saved {when}', { when: ago(n.when) }))}</span>${svBadge(x)}</span><span class="ph-col ph-svm"><b>${esc(tn(x.copies, '1 copy', '{n} copies'))}</b><small>${esc(fmtB(x.size))}</small></span></button><button type="button" class="ph-ibtn solid ph-press" data-act="backup" data-id="${esc(x.id)}" aria-label="${esc(t('Back Up Now'))}"${S.running && S.running.has && S.running.has(x.id) ? ' disabled' : ''}>${ic('up', 's')}</button></div>`; };
     const quiet = (x) => `<div class="ph-lrow" data-key="sq:${esc(x.id)}"><button type="button" class="ph-lmain ph-press" data-open="${esc(x.id)}">${coverBox(x.a)}<span class="ph-col ph-grow"><span class="ph-gname">${esc(x.a.name)}</span><span class="ph-gsub">${esc(x.found ? t('Saves found, copied after you play') : t('Not played yet'))}</span></span></button></div>`;
     const list = withSaves.length ? `<section class="ph-sec ph-svsec" data-key="svh">${secHead(t('Games'))}${withSaves.map(row).join('')}</section>` : '';
     const later = rest.length ? `<section class="ph-sec ph-svsec" data-key="svq">${secHead(t('No saves yet'))}${rest.map(quiet).join('')}</section>` : '';
@@ -430,8 +444,8 @@
     if (P.copies !== id || !P.sheet) return;
     const line = (c, cloud) => `<button type="button" class="ph-step ph-press" data-act="restore" data-id="${esc(id)}" ${cloud ? `data-v="${esc(c.v)}"` : `data-name="${esc(c.name)}"`}>${ic(cloud ? 'cloud' : 'saves', 's')}<span class="ph-col ph-grow" style="gap:2px"><b>${esc(agoCap(cloud ? c.made : c.when))}</b><small class="ph-mut">${esc([c.device, fmtB(c.size)].filter(Boolean).join(' · '))}</small></span><span class="ph-mut" style="font-size:12.5px">${esc(t('Restore'))}</span></button>`;
     const local = info.local || [], cloud = (info.cloud || []).filter(() => (S.account || {}).signedIn);
-    const body = (local.length ? `<p class="ph-eyebrow">${esc(t('On this phone'))}</p>${local.map((c) => line(c, false)).join('')}` : '')
-      + (cloud.length ? `<p class="ph-eyebrow" style="margin-top:14px">${esc(t('Cloud saves'))}</p>${cloud.map((c) => line(c, true)).join('')}` : '')
+    const body = (local.length ? `<p class="ph-eyebrow">${esc(t('On This Phone'))}</p>${local.map((c) => line(c, false)).join('')}` : '')
+      + (cloud.length ? `<p class="ph-eyebrow" style="margin-top:14px">${esc(t('Cloud Saves'))}</p>${cloud.map((c) => line(c, true)).join('')}` : '')
       + (!local.length && !cloud.length ? `<p class="ph-mut">${esc(t('Not played yet'))}</p>` : '');
     paint(el.sheet, '<div class="ph-grab"></div>' + sheetHead(a) + body);
   }
@@ -452,35 +466,35 @@
     const mine = Object.keys(S.library).map(appOf).filter(Boolean);
     const bytes = mine.map((a) => parseSize(sizeOf(a)));
     const total = bytes.reduce((x, y) => x + y, 0);
-    const lang = (LANGS.find((l) => l[0] === ui().lang) || [])[1] || t('Same as your phone');
+    const lang = (LANGS.find((l) => l[0] === ui().lang) || [])[1] || t('Same as Your Phone');
     const srow = (title, sub, right) => `<div class="ph-srow"><div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div>${right || ''}</div>`;
     const link = (icon, title, sub, attr) => `<button type="button" class="ph-srow ph-press" ${attr}>${ic(icon, 's')}<div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div><span class="ph-mut">${ic('chev', 's')}</span></button>`;
     const tabs = pref.tabs();
     const tabRow = (k) => `<div class="ph-srow">${ic(k, 's')}<div class="t"><b>${esc(t(TABS[k]))}</b></div>${sw('tab:' + k, tabs.includes(k), TABS_FIXED.includes(k))}</div>`;
     const stor = (a, i) => `<div class="ph-srow" data-key="st:${esc(a.id)}"><span class="thumb">${img(coverUrl(a, 60))}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(sizeOf(a))}</span></div><button type="button" class="ph-ibtn ph-press ph-mut" data-act="uninstall" data-id="${esc(a.id)}" aria-label="${esc(tf('Uninstall {name}', { name: a.name }))}">${ic('trash', 's')}</button></div>`;
     return `<header class="ph-vhd" data-key="hd"><h1 class="ph-disp ph-vt">${esc(t('Settings'))}</h1></header>
-      <button type="button" class="ph-panel ph-set link ph-press" data-sub="account" data-key="acc"><span class="ph-ibtn ph-avatar big">${face}</span><span class="ph-col ph-grow"><b>${esc(user ? user.username : t('Sign in'))}</b><small>${esc(user ? t('Signed in. Your saved games follow you.') : t('Keep your saved games with your account.'))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>
+      <button type="button" class="ph-panel ph-set link ph-press" data-sub="account" data-key="acc"><span class="ph-ibtn ph-avatar big">${face}</span><span class="ph-col ph-grow"><b>${esc(user ? user.username : t('Sign In'))}</b><small>${esc(user ? t('Signed in. Your saved games follow you.') : t('Keep your saved games with your account.'))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button>
       <div class="ph-setcols" data-key="cols">
       <div class="ph-panel ph-set" data-key="look"><h3>${esc(t('Appearance'))}</h3>
         ${srow(t('Theme'), t('OLED is pure black to save battery'), `<div class="ph-pick" style="width:188px">${seg('theme', [esc(tc('Dark|theme')), 'OLED', esc(tc('Light|theme'))], THEMES.indexOf(pref.theme()))}</div>`)}
-        ${srow(t('Display size'), t('Bigger or smaller text, buttons and covers'), `<div class="ph-pick" style="width:190px">${seg('size', SIZE_LABELS, SIZE_KEYS.indexOf(pref.size()))}</div>`)}
-        ${srow(t('Menu labels'), t('Show names under the menu icons'), sw('labels', pref.labels()))}
-        ${srow(t('Vibrate on taps'), '', sw('haptics', pref.haptics()))}</div>
-      <div class="ph-panel ph-set" data-key="covers"><h3>${esc(t('Covers and names'))}</h3>
+        ${srow(t('Display Size'), t('Bigger or smaller text, buttons and covers'), `<div class="ph-pick" style="width:190px">${seg('size', SIZE_LABELS, SIZE_KEYS.indexOf(pref.size()))}</div>`)}
+        ${srow(t('Menu Labels'), t('Show names under the menu icons'), sw('labels', pref.labels()))}
+        ${srow(t('Vibrate on Taps'), '', sw('haptics', pref.haptics()))}</div>
+      <div class="ph-panel ph-set" data-key="covers"><h3>${esc(t('Covers and Names'))}</h3>
         ${srow(t('Covers Only'), t('Hide the names under game covers.'), sw('bare', !!ui().hide_names))}
         ${srow(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), sw('cvl', !!ui().cover_labels))}
         ${srow(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), sw('gnames', !!ui().game_names))}
         ${srow(t('Show Game Media'), t('Every version of a game shows the same cover, background and logo: the recommended version\'s.'), sw('gmedia', !!ui().game_media))}</div>
-      <div class="ph-panel ph-set" data-key="menu"><h3>${esc(t('Menu bar'))}</h3>
+      <div class="ph-panel ph-set" data-key="menu"><h3>${esc(t('Menu Bar'))}</h3>
         <div class="ph-srow" style="min-height:0;padding:8px 0 4px"><span class="ph-mut" style="font-size:12.5px">${esc(tf('Pick 3 to 5 tabs. {n} chosen.', { n: tabs.length }))}</span></div>
         ${Object.keys(TABS).map(tabRow).join('')}</div>
-      <div class="ph-panel ph-set" data-key="bp"><h3>${esc(t('Big Picture mode'))}</h3>
-        ${srow(t('Big Picture style'), t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'), `<div class="ph-pick" style="width:150px">${seg('bpstyle', [esc(t('Phone')), esc(t('Full'))], pref.bpStyle() === 'full' ? 1 : 0)}</div>`)}
-        ${pref.bpStyle() === 'phone' ? srow(t('Big Picture size'), t('Bigger or smaller text, buttons and covers in Big Picture'), `<div class="ph-pick" style="width:190px">${seg('bpsize', SIZE_LABELS, SIZE_KEYS.indexOf(pref.bpSize()))}</div>`) : ''}
-        ${srow(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('bpstart', !!S.settings.start_in_tv))}
-        ${srow(t('Open with a controller'), t('Switches when you press a button on one'), sw('padtv', pref.padTv()))}
-        <div class="ph-srow"><button type="button" class="ph-btn sec wide ph-press" data-act="tv">${ic('tv', 's')}${esc(t('Open Big Picture now'))}</button></div></div>
-      <div class="ph-panel ph-set" data-key="cat"><h3>${esc(t('Catalog and updates'))}</h3>
+      <div class="ph-panel ph-set" data-key="bp"><h3>${esc(t('Big Picture Mode'))}</h3>
+        ${srow(t('Big Picture Style'), t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'), `<div class="ph-pick" style="width:150px">${seg('bpstyle', [esc(t('Phone')), esc(t('Full'))], pref.bpStyle() === 'full' ? 1 : 0)}</div>`)}
+        ${pref.bpStyle() === 'phone' ? srow(t('Big Picture Size'), t('Bigger or smaller text, buttons and covers in Big Picture'), `<div class="ph-pick" style="width:190px">${seg('bpsize', SIZE_LABELS, SIZE_KEYS.indexOf(pref.bpSize()))}</div>`) : ''}
+        ${srow(t('Start in Big Picture Mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), sw('bpstart', !!S.settings.start_in_tv))}
+        ${srow(t('Open with a Controller'), t('Switches when you press a button on one'), sw('padtv', pref.padTv()))}
+        <div class="ph-srow"><button type="button" class="ph-btn sec wide ph-press" data-act="tv">${ic('tv', 's')}${esc(t('Open Big Picture Now'))}</button></div></div>
+      <div class="ph-panel ph-set" data-key="cat"><h3>${esc(t('Catalog and Updates'))}</h3>
         ${srow(t('Hide AI-assisted Recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in the Catalog.'), sw('hideai', !!S.settings.hide_ai))}
         ${link('refresh', t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now'), 'data-act="refresh-cat"')}
         ${link('downloads', t('Check for Game Updates'), updatesList().length ? tn(updatesList().length, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd"')}
@@ -492,21 +506,22 @@
       ${mine.length ? `<div class="ph-panel ph-set" data-key="stor"><h3>${esc(t('Storage'))}</h3><div class="ph-storh"><b>${esc(total ? fmtB(total) : '')}</b><span>${esc(tn(mine.length, '1 game', '{n} games'))}</span></div>
         ${total ? `<div class="ph-stor">${mine.map((a, i) => `<i style="flex:${(bytes[i] || 0) / total};--c:${conColor(a.origin)};animation-delay:${i * 60}ms"></i>`).join('')}</div>` : ''}${mine.map(stor).join('')}</div>` : ''}
       <div class="ph-panel ph-set" data-key="ease"><h3>${esc(t('Accessibility'))}</h3>
-        ${srow(t('Bold text'), t('Heavier letters everywhere, easier to read'), sw('bold', pref.bold()))}
-        ${srow(t('High contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}
-        ${srow(t('Reduce transparency'), t('Solid menus and buttons instead of see-through ones'), sw('solid', pref.solid()))}
-        ${srow(t('Reduce motion'), t('Pages change without sliding or zooming'), sw('still', pref.still() || pref.lite(), pref.lite()))}
-        ${srow(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}</div>
-      <div class="ph-panel ph-set" data-key="help"><h3>${esc(t('Help and privacy'))}</h3>
+        ${srow(t('Bold Text'), t('Heavier letters everywhere, easier to read'), sw('bold', pref.bold()))}
+        ${srow(t('High Contrast'), t('Stronger text and edges'), sw('contrast', pref.contrast()))}
+        ${srow(t('Reduce Transparency'), t('Solid menus and buttons instead of see-through ones'), sw('solid', pref.solid()))}
+        ${srow(t('Reduce Motion'), t('Pages change without sliding or zooming'), sw('still', pref.still() || pref.lite(), pref.lite()))}
+        ${srow(t('Optimization Mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), sw('lite', pref.lite()))}</div>
+      <div class="ph-panel ph-set" data-key="help"><h3>${esc(t('Help and Privacy'))}</h3>
         ${link('bug', t('Report a Problem'), t('Something broke, an idea, or what you think so far. It goes straight to the developer.'), 'data-act="report"')}
-        ${srow(t('Share usage and diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), sw('usage', !!S.settings.share_usage))}
-        ${srow(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('stats', !!S.settings.share_stats))}</div>
-      <div class="ph-panel ph-set" data-key="over"><h3>${esc(t('Start over'))}</h3>
-        ${link('undo', t('Reset settings'), t('Every setting goes back to how it started. Your games and saves stay.'), 'data-act="reset-set"')}
-        ${link('spark', t('Run first-time setup again'), t('Nothing is deleted.'), 'data-act="reset-setup"')}</div>
+        ${srow(t('Share Usage and Diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), sw('usage', !!S.settings.share_usage))}
+        ${srow(t('Share Anonymous Usage Stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('stats', !!S.settings.share_stats))}</div>
+      <div class="ph-panel ph-set" data-key="over"><h3>${esc(t('Start Over'))}</h3>
+        ${link('undo', t('Reset Settings'), t('Every setting goes back to how it started. Your games and saves stay.'), 'data-act="reset-set"')}
+        ${link('spark', t('Run First-Time Setup Again'), t('Nothing is deleted.'), 'data-act="reset-setup"')}</div>
       <div class="ph-panel ph-set" data-key="about"><h3>${esc(t('About'))}</h3>
         ${link('lang', t('Language'), lang, 'data-act="lang"')}
         ${link('discord', 'Discord', t('Help, news and other players'), 'data-act="discord"')}
+        ${link('heart', t('Support Us'), t('Help keep it running and growing, on Ko-fi'), 'data-act="kofi"')}
         ${link('globe', 'recomplauncher.com', '', 'data-act="site"')}
         ${srow(tf('RecompLauncher {v}', { v: S.version || '' }), engine(), '')}</div></div>`;
   }
@@ -517,45 +532,45 @@
   // The main button for a game: Install, the download's progress, Update, Play.
   function ctaHTML(a) {
     const id = esc(a.id), st = stateOf(a), j = jobOf(a.id);
-    const more = `<button type="button" class="ph-ibtn solid ph-press" data-menu="${id}" aria-label="${esc(t('More options'))}">${ic('more')}</button>`;
-    const saveBtn = `<button type="button" class="ph-ibtn solid ph-press${isSaved(a.id) ? ' on' : ''}" data-act="save" data-id="${id}" aria-label="${esc(isSaved(a.id) ? t('Saved') : t('Save for later'))}">${ic('bookmark')}</button>`;
+    const more = `<button type="button" class="ph-ibtn solid ph-press" data-menu="${id}" aria-label="${esc(t('More Options'))}">${ic('more')}</button>`;
+    const saveBtn = `<button type="button" class="ph-ibtn solid ph-press${isSaved(a.id) ? ' on' : ''}" data-act="save" data-id="${id}" aria-label="${esc(isSaved(a.id) ? t('Saved') : t('Save for Later'))}">${ic('bookmark')}</button>`;
     if (st === 'busy' && j && j.phase === 'download' && j.total) return `<div class="ph-dl"><i data-pw="${id}" style="width:${pct(j)}%"></i><span>${esc(t('Downloading'))}</span><span data-pt="${id}">${esc(jobText(a.id))}</span></div><button type="button" class="ph-rbtn ph-press" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}">${ring(a.id, 50)}${ic('x', 's')}</button>`;
     if (st === 'busy') return `<div class="ph-dl mid"><span class="ph-spin"></span><span data-pt="${id}">${esc(jobText(a.id) || t('Getting ready'))}</span></div><button type="button" class="ph-ibtn solid ph-press" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}">${ic('x', 's')}</button>`;
     if (st === 'paused') return `<button type="button" class="ph-btn pri ph-press" data-act="resume" data-id="${id}">${ic('downloads', 's')}${esc(t('Resume'))}</button><button type="button" class="ph-ibtn solid ph-press" data-act="cancel" data-id="${id}" aria-label="${esc(t('Cancel'))}">${ic('x', 's')}</button>`;
     if (st === 'installed' || st === 'running') return `<button type="button" class="ph-btn pri ph-press${P.just === a.id ? ' ph-burst' : ''}" data-act="play" data-id="${id}">${ic('play', 's')}${esc(t('Play'))}</button>${more}`;
     if (st === 'update') return `<button type="button" class="ph-btn pri ph-press" data-act="update" data-id="${id}">${ic('downloads', 's')}${esc(t('Update'))}</button><button type="button" class="ph-btn sec ph-press" data-act="play" data-id="${id}">${ic('play', 's')}${esc(t('Play'))}</button>`;
     if (st === 'uninstalling') return `<div class="ph-dl mid"><span class="ph-spin"></span><span>${esc(t('Uninstalling…'))}</span></div>`;
-    if (st === 'soon') return `<button type="button" class="ph-btn pri" disabled>${esc(t('Coming soon'))}</button>${saveBtn}`;
+    if (st === 'soon') return `<button type="button" class="ph-btn pri" disabled>${esc(t('Coming Soon'))}</button>${saveBtn}`;
     if (st === 'get') return `<button type="button" class="ph-btn pri ph-press" data-act="install" data-id="${id}">${ic('downloads', 's')}${esc([t('Install'), sizeOf(a)].filter(Boolean).join(' · '))}</button>${saveBtn}`;
     return `<button type="button" class="ph-btn pri" disabled>${esc(tf('No {os} version yet', { os: OS_NAME[S.os] || 'Android' }))}</button>`;
   }
   function gameHTML(a) {
     const id = esc(a.id), wide = !!a.hero;
     const stats = [
-      [Number(a.players) > 0 ? fmtN(Number(a.players)) : '', t('players')],
-      [sizeOf(a), t('size')],
-      [a.downloads ? fmtN(a.downloads) : '', t('downloads')],
-      [a.version ? String(verText(a.version)) : '', t('version')],
+      [Number(a.players) > 0 ? fmtN(Number(a.players)) : '', t('Players')],
+      [sizeOf(a), t('Size')],
+      [a.downloads ? fmtN(a.downloads) : '', t('Downloads')],
+      [a.version ? String(verText(a.version)) : '', t('Version')],
     ].filter(([v]) => v);
     const tags = tagsOf(a);
-    const facts = [[t('Developer'), devName(a)], [t('Console'), conName(a)], [t('Genre'), GENRES[a.genre] ? t(GENRES[a.genre]) : ''], [t('Latest release'), a.released ? date(a.released) : '']].filter(([, v]) => v);
+    const facts = [[t('Developer'), devName(a)], [t('Console'), conName(a)], [t('Genre'), GENRES[a.genre] ? t(GENRES[a.genre]) : ''], [t('Latest Release'), a.released ? date(a.released) : '']].filter(([, v]) => v);
     const more = moreLike(a, 8);
     const based = a.game ? htmlFill(t('Based on {game}'), { game: esc(a.game) }) : '';
     const by = devName(a) ? htmlFill(t('by {who}'), { who: `<b>${esc(devName(a))}</b>` }) : '';
-    return `<div class="ph-ptop"><button type="button" class="ph-ibtn glass ph-press" data-act="back" aria-label="${esc(t('Back'))}">${ic('back')}</button><button type="button" class="ph-ibtn glass ph-press" data-menu="${id}" aria-label="${esc(t('More options'))}">${ic('more', 's')}</button></div>
+    return `<div class="ph-ptop"><button type="button" class="ph-ibtn glass ph-press" data-act="back" aria-label="${esc(t('Back'))}">${ic('back')}</button><button type="button" class="ph-ibtn glass ph-press" data-menu="${id}" aria-label="${esc(t('More Options'))}">${ic('more', 's')}</button></div>
       <div class="ph-gph">${img(pageArt(a), wide ? '' : 'blur', 'id="ph-gphimg"')}<div class="tint"></div></div>
       <div class="ph-gpb">
-        <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover', 180)}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p>${verPillPh(a)}</div></div>
+        <div class="ph-gpt full">${coverBox(a, '', 'ph-gpcover', 180, shownFirst(coverUrl(a, 180), coverUrl(a), coverUrl(a, 60)))}<div class="ph-col ph-grow"><div class="tags">${a.origin ? `<span class="ph-tag">${conDot(a.origin)}${esc(conName(a))}</span>` : ''}${GENRES[a.genre] ? `<span class="ph-tag">${esc(t(GENRES[a.genre]))}</span>` : ''}</div><h1 class="ph-disp" dir="auto">${esc(a.name)}</h1><p>${[based, by].filter(Boolean).join(' · ')}</p>${verPillPh(a)}</div></div>
         ${stats.length ? `<div class="ph-stats">${stats.map(([v, k]) => `<div><b class="${v.length > 7 ? 'long' : ''}">${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>` : ''}
         <div class="ph-cta" data-cta="${id}">${ctaHTML(a)}</div>
         ${a.soon ? `<p class="ph-mut" style="font-size:13px;line-height:1.45">${esc(soonNoteText(a))}</p>` : ''}
         ${playBox(a)}
-        ${tags.length ? `<div class="ph-chips">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}
         ${gameAbout(a)}
         <div class="ph-revbox" data-rev="${id}">${revSection(a)}</div>
         ${pageRows(a)}
         ${facts.length ? `<div class="ph-panel ph-facts aside">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>` : ''}
-        ${more.length ? `<div class="ph-more full">${secHead(t('More like this'))}<div class="ph-hs">${more.map((x) => card(x)).join('')}</div></div>` : ''}
+        ${tags.length ? `<div class="ph-chips">${tags.map((x) => `<span class="ph-chip">${esc(x)}</span>`).join('')}</div>` : ''}
+        ${more.length ? `<div class="ph-more full">${secHead(t('More Like This'))}<div class="ph-hs">${more.map((x) => card(x)).join('')}</div></div>` : ''}
       </div>`;
   }
 
@@ -601,6 +616,11 @@
     gp.style.opacity = '1';
     gp.style.transform = 'none';
   }
+  // A game's page is in: its README is asked for, and its cover sharpened (see shownFirst).
+  function pageReady(a) {
+    loadReadme(a);
+    sharpen($('#ph-gpcover img', el.gp), coverUrl(a, 180));
+  }
   function openGame(id, from) {
     const a = appOf(id);
     if (!a) return toast(t('This recomp isn\'t listed anymore.'), true);
@@ -619,7 +639,7 @@
     depth();
     // A game's page always opens at its top (set once it's on screen: a hidden page can't scroll).
     gp.scrollTop = 0;
-    loadReadme(a);
+    pageReady(a);
     const target = $('#ph-gpcover', gp);
     P.src = null;
     if (srcCover) {
@@ -637,12 +657,12 @@
   // From one game's page to another (More like this), and back again.
   function swapGame(a, dir) {
     const gp = el.gp;
-    if (still()) { gp.innerHTML = gameHTML(a); gp.scrollTop = 0; loadReadme(a); return; }
+    if (still()) { gp.innerHTML = gameHTML(a); gp.scrollTop = 0; pageReady(a); return; }
     const out = gp.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-60 * dir}px) scale(.97)` }], { duration: 200, easing: 'ease-in' });
     out.onfinish = () => {
       gp.innerHTML = gameHTML(a);
       gp.scrollTop = 0;
-      loadReadme(a);
+      pageReady(a);
       gp.animate([{ opacity: 0, transform: `translateX(${90 * dir}px)` }, { opacity: 1, transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.3,1.2,.4,1)' });
     };
   }
@@ -694,9 +714,9 @@
   function accountHTML() {
     const acc = S.account || {}, user = acc.signedIn && acc.user ? acc.user : null;
     if (!user) {
-      return subHead(t('Account'), t('Not signed in.')) + `<div class="ph-in"><div class="ph-padx"><div class="ph-panel ph-acct"><span class="ph-ibtn ph-avatar huge">${ic('user')}</span><b>${esc(t('Your RecompStore account'))}</b><span class="ph-mut" style="font-size:13px;line-height:1.45;padding-bottom:14px">${esc(t('Sign in to keep your saved games with your account, on every device.'))}</span></div>
-        <button type="button" class="ph-btn pri wide ph-press" data-act="signin" style="margin-top:14px">${esc(t('Sign in'))}</button>
-        <button type="button" class="ph-btn sec wide ph-press" data-act="signup" style="margin-top:10px">${esc(t('Create your account'))}</button></div></div>`;
+      return subHead(t('Account'), t('Not signed in.')) + `<div class="ph-in"><div class="ph-padx"><div class="ph-panel ph-acct"><span class="ph-ibtn ph-avatar huge">${ic('user')}</span><b>${esc(t('Your RecompStore Account'))}</b><span class="ph-mut" style="font-size:13px;line-height:1.45;padding-bottom:14px">${esc(t('Sign in to keep your saved games with your account, on every device.'))}</span></div>
+        <button type="button" class="ph-btn pri wide ph-press" data-act="signin" style="margin-top:14px">${esc(t('Sign In'))}</button>
+        <button type="button" class="ph-btn sec wide ph-press" data-act="signup" style="margin-top:10px">${esc(t('Create Your Account'))}</button></div></div>`;
     }
     const face = user.avatar ? img(user.avatar) : esc((user.username || '?').slice(0, 1).toUpperCase());
     const mr = S.myReports, reviews = mr && Array.isArray(mr.list) ? mr.list.length : Array.isArray(mr) ? mr.length : 0;
@@ -707,17 +727,17 @@
     const link = (icon, title, sub, attr) => `<button type="button" class="ph-srow ph-press" ${attr}>${ic(icon, 's')}<div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div><span class="ph-mut">${ic('chev', 's')}</span></button>`;
     const me = `<div class="ph-panel ph-acct"><span class="ph-ibtn ph-avatar huge">${face}</span><b>${esc(user.username)}</b><small class="ph-mut">${esc(acc.offline ? t('Signed in. The website can\'t be reached right now.') : t('Signed in on this phone'))}</small>
       <div class="ph-stats">${stats.map(([v, k, attr]) => `<button type="button" class="ph-press" ${attr}><b>${fmtNum(v)}</b><span>${esc(k)}</span></button>`).join('')}</div></div>`;
-    const cloud = `<div class="ph-panel ph-set"><h3>${esc(t('Cloud saves'))}</h3>
+    const cloud = `<div class="ph-panel ph-set"><h3>${esc(t('Cloud Saves'))}</h3>
       <div class="ph-space"><div class="ph-bar"><i style="width:${pct}%"></i></div><span>${esc(tf('{used} of {quota} used', { used: fmtB(used) || '0 KB', quota: fmtB(quota) }))}</span></div>
       <div class="ph-srow"><div class="t"><b>${esc(t('Back Up Every Game'))}</b><span>${esc(all ? t('On. Cloud saves are activated for all games. Turning it off disables cloud saves for every game. Saves stay intact.') : t('Off. Cloud saves are only active for the games you turn on in their Manage tab. Turning it on activates them for every game.'))}</span></div>${sw('cloudall', all)}</div>
       <div class="ph-srow ph-devname"><div class="t"><b>${esc(t('This Phone\'s Name'))}</b><span>${esc(t('Shown next to the saves this phone makes, so you can tell your devices apart. Leave it empty to use the phone\'s own name.'))}</span></div></div>
-      <div class="ph-devin"><input id="ph-devname" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(ui().device_name || '')}" placeholder="${esc(P.model || t('Phone name'))}" aria-label="${esc(t('This Phone\'s Name'))}"><button type="button" class="ph-btn sec ph-press" data-act="dev-save">${esc(t('Save'))}</button></div></div>`;
+      <div class="ph-devin"><input id="ph-devname" type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(ui().device_name || '')}" placeholder="${esc(P.model || t('Phone Name'))}" aria-label="${esc(t('This Phone\'s Name'))}"><button type="button" class="ph-btn sec ph-press" data-act="dev-save">${esc(t('Save'))}</button></div></div>`;
     const more = `<div class="ph-panel ph-set"><h3>${esc(t('Shortcuts'))}</h3>
       ${link('star', t('Your Reviews'), t('Every review you wrote, with any answer from its developer'), 'data-act="my-revs"')}
       ${link('saves', t('Saves'), t('Back them up, or restore an older one'), 'data-tab="saves"')}
       ${link('bug', t('Report a Problem'), t('Something broke, an idea, or what you think so far. It goes straight to the developer.'), 'data-act="report"')}
-      ${link('globe', t('Manage account on the website'), t('Opens recomplauncher.com in your browser'), 'data-act="account-site"')}</div>`;
-    return subHead(t('Account'), '') + `<div class="ph-in"><div class="ph-accgrid"><div class="ph-accside">${me}</div><div class="ph-accmain">${cloud}${more}</div><div class="ph-accout"><button type="button" class="ph-btn wide red ph-press" data-act="signout">${esc(t('Sign out'))}</button></div></div></div>`;
+      ${link('globe', t('Manage Account on the Website'), t('Opens recomplauncher.com in your browser'), 'data-act="account-site"')}</div>`;
+    return subHead(t('Account'), '') + `<div class="ph-in"><div class="ph-accgrid"><div class="ph-accside">${me}</div><div class="ph-accmain">${cloud}${more}</div><div class="ph-accout"><button type="button" class="ph-btn wide red ph-press" data-act="signout">${esc(t('Sign Out'))}</button></div></div></div>`;
   }
   function subHTML(s) {
     if (s.t === 'con') {
@@ -730,7 +750,7 @@
     }
     if (s.t === 'account') return accountHTML();
     const top = ranked();
-    return subHead(t('Trending this week'), t('Ranked by players')) + `<div class="ph-in"><div style="padding:2px 0 40px">${top.map((a, i) => lrow(a, { rank: i + 1 })).join('')}</div></div>`;
+    return subHead(t('Trending This Week'), t('Ranked by players')) + `<div class="ph-in"><div style="padding:2px 0 40px">${top.map((a, i) => lrow(a, { rank: i + 1 })).join('')}</div></div>`;
   }
   // All consoles: the row nearest the middle stands out, with a light tick as each one passes.
   function consFlow(tick) {
@@ -806,7 +826,7 @@
       // Consoles are one row here (their own page has them all), not a wall of chips.
       const cons = consoles();
       const browse = cons.length ? `<div class="ph-in"><button type="button" class="ph-panel ph-note ph-press ph-socons" data-act="search-cons"><span class="ib">${ic('library', 's')}</span><span class="ph-col ph-grow"><b>${esc(t('Consoles'))}</b><small>${esc(cons.slice(0, 4).map((c) => c.name).join(' · '))}</small></span><span class="ph-mut">${ic('chev', 's')}</span></button></div>` : '';
-      return `${browse}<h2>${esc(t('People are playing'))}</h2><div class="ph-in">${ranked().slice(0, 6).map((a) => lrow(a, { right: '' })).join('')}</div>`;
+      return `${browse}<h2>${esc(t('People Are Playing'))}</h2><div class="ph-in">${ranked().slice(0, 6).map((a) => lrow(a, { right: '' })).join('')}</div>`;
     }
     const hay = (a) => `${a.name} ${a.game || ''} ${devName(a)} ${conName(a)} ${GENRES[a.genre] || ''}`;
     const found = pool().filter((a) => sMatch(hay(a), q)).sort(byDl);
@@ -860,8 +880,8 @@
     if (st === 'update') rows.push(item('downloads', t('Update'), `data-act="update" data-id="${eid}"`), item('play', t('Play'), `data-act="play" data-id="${eid}"`));
     if (st === 'get') rows.push(item('downloads', t('Install'), `data-act="install" data-id="${eid}"`));
     if (!P.stack.includes(a.id)) rows.push(item('chev', t('Details'), `data-open="${eid}"`));
-    if (!S.library[a.id] && !a.custom) rows.push(item('bookmark', isSaved(a.id) ? t('Remove from saved') : t('Save for later'), `data-act="save" data-id="${eid}"`, isSaved(a.id) ? 'on' : ''));
-    if (a.repo && !a.local) rows.push(item('globe', t('Open the project page'), `data-act="project" data-id="${eid}"`));
+    if (!S.library[a.id] && !a.custom) rows.push(item('bookmark', isSaved(a.id) ? t('Remove from Saved') : t('Save for Later'), `data-act="save" data-id="${eid}"`, isSaved(a.id) ? 'on' : ''));
+    if (a.repo && !a.local) rows.push(item('globe', t('Open the Project Page'), `data-act="project" data-id="${eid}"`));
     if (S.library[a.id] && st !== 'busy' && st !== 'uninstalling') rows.push(item('trash', t('Uninstall'), `data-act="uninstall" data-id="${eid}"`, 'red'));
     sheet(sheetHead(a) + rows.join(''));
   }
@@ -879,12 +899,12 @@
     const r = S.readme[a.repo];
     P.readme = id;
     const body = r === 'loading' || r === undefined ? `<div class="ph-row" style="gap:12px;padding:26px 0"><span class="ph-spin"></span><span class="ph-mut">${esc(t('Loading…'))}</span></div>` : r ? `<div class="ph-md md">${md(r)}</div>` : `<p class="ph-mut" style="margin-top:12px;line-height:1.5">${esc(t('This project has no README to show.'))}</p>`;
-    sheet(`<p class="ph-eyebrow">${esc(['README', devName(a)].filter(Boolean).join(' · '))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body}<button type="button" class="ph-btn sec wide ph-press" data-close="1" data-act="project" data-id="${esc(a.id)}" style="margin-top:18px">${ic('globe', 's')}${esc(t('Open the project page'))}</button>`);
+    sheet(`<p class="ph-eyebrow">${esc(['README', devName(a)].filter(Boolean).join(' · '))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body}<button type="button" class="ph-btn sec wide ph-press" data-close="1" data-act="project" data-id="${esc(a.id)}" style="margin-top:18px">${ic('globe', 's')}${esc(t('Open the Project Page'))}</button>`);
   }
   function langSheet() {
     const cur = ui().lang || 'auto';
     const item = (code, name) => `<button type="button" class="ph-step ph-press${code === cur ? ' on' : ''}" data-close="1" data-lang="${esc(code)}"><b class="ph-grow">${esc(name)}</b>${code === cur ? ic('check', 's') : ''}</button>`;
-    sheet(`<p class="ph-eyebrow">${esc(t('Language'))}</p>${item('auto', t('Same as your phone'))}${LANGS.map(([c, n]) => item(c, n)).join('')}`);
+    sheet(`<p class="ph-eyebrow">${esc(t('Language'))}</p>${item('auto', t('Same as Your Phone'))}${LANGS.map(([c, n]) => item(c, n)).join('')}`);
   }
 
   // ---------- the frame ----------
@@ -894,7 +914,9 @@
   // account; names never show with them.
   const RV_SYS = { windows: 'Windows', linux: 'Linux', macos: 'Mac', deck: 'Steam Deck', android: 'Android' };
   const rvTone = (p) => (p >= 75 ? 'good' : p >= 45 ? 'mid' : 'low');
-  const rvPill = (v) => `<span class="ph-rv v-${esc(v)}"><i></i>${esc(t(RUN_WORD[v] || ''))}</span>`;
+  // How a review says the game ran, in the phone's title case (the desktop keeps its own wording).
+  const RV_WORD = { runs: N_('Plays Great'), issues: N_('Has Problems'), broken: N_('Won\'t Run') };
+  const rvPill = (v) => `<span class="ph-rv v-${esc(v)}"><i></i>${esc(t(RV_WORD[v] || ''))}</span>`;
   const reviewable = (a) => !!a && !a.soon && !a.custom && !(S.library[a.id] && S.library[a.id].local);
   function revLoad(a, force) {
     if (!reviewable(a) || (!force && S.reports[a.id] !== undefined)) return;
@@ -944,7 +966,7 @@
     const items = written((rep.items || []).filter((x) => !P.rvAll.v || x.verdict === P.rvAll.v));
     const r = runTally(rep.counts);
     const chip = (k, label, n) => `<button type="button" class="ph-chip ph-press${P.rvAll.v === k ? ' on' : ''}" data-act="rev-v" data-id="${esc(id)}" data-v="${k}"${n || !k ? '' : ' disabled'}>${esc(label)}${k ? ` · ${fmtNum(n)}` : ''}</button>`;
-    const chips = chip('', t('All'), r.n) + chip('runs', t('Plays great'), r.runs) + chip('issues', t('Has problems'), r.issues) + chip('broken', t('Won\'t run'), r.broken);
+    const chips = chip('', t('All'), r.n) + chip('runs', t('Plays Great'), r.runs) + chip('issues', t('Has Problems'), r.issues) + chip('broken', t('Won\'t Run'), r.broken);
     const rest = r.n > (rep.items || []).length ? `<p class="ph-mut" style="font-size:12.5px">${esc(tf('The newest {n} are here. The rest are on recomplauncher.com.', { n: fmtNum((rep.items || []).length) }))}</p>` : '';
     sheet(`<p class="ph-eyebrow">${esc(tn(r.n, '1 review', '{n} reviews'))}</p><h2 class="ph-disp">${esc(a._name || a.name)}</h2>${revScore(rep)}<div class="ph-chips ph-rvchips">${chips}</div>
       <div class="ph-revl">${items.length ? items.map(revItem).join('') : `<p class="ph-mut">${esc(t('No reviews yet'))}</p>`}</div>${rest}
@@ -955,7 +977,7 @@
   function reviewSheet(o) {
     const a = appOf(o.id) || { id: o.id, name: o.name };
     P.rv = { o, verdict: o.prev ? o.prev.verdict : '', busy: false, del: false };
-    const pick = (k, n) => `<button type="button" class="ph-rvpick ph-press v-${k}" data-act="rv-v" data-v="${k}" role="radio" aria-checked="false"><span class="ic">${ic(k === 'runs' ? 'check' : k === 'issues' ? 'warn' : 'x')}</span><span class="ph-col"><b>${esc(t(n))}</b><small>${esc(t(window.VERDICT_SUB[k]))}</small></span></button>`;
+    const pick = (k, n) => `<button type="button" class="ph-rvpick ph-press v-${k}" data-act="rv-v" data-v="${k}" role="radio" aria-checked="false"><span class="ic">${ic(k === 'runs' ? 'check' : k === 'issues' ? 'warn' : 'x')}</span><span class="ph-col"><b>${esc(t(RV_WORD[k] || n))}</b><small>${esc(t(window.VERDICT_SUB[k]))}</small></span></button>`;
     const when = o.secs >= 60 ? tf('{time} this session', { time: fmtTime(o.secs) }) : o.prev ? t('Edit Your Review') : t('Write a Review');
     const extra = [o.specsLine ? `${t('This goes with your review')}: ${o.specsLine}` : '', t('Your name isn\'t shown with your review.')].filter(Boolean);
     sheet(`<div class="ph-shead"><span class="thumb">${img(coverUrl(a, 60))}</span><div class="ph-col ph-grow"><small>${esc(when)}</small><b>${esc(tf('How did {name} run?', { name: o.name || a.name }))}</b></div></div>
@@ -1039,7 +1061,7 @@
     if (!g) return;
     const row = (v) => {
       const tags = [v.id === g.pick ? `<span class="ph-tag acc">${esc(t('Recommended'))}</span>` : '', S.library[v.id] ? `<span class="ph-tag">${esc(t('Installed'))}</span>` : ''].join('');
-      const line = [devName(v), v.adds || '', v.downloads ? `${fmtN(v.downloads)} ${t('downloads')}` : ''].filter(Boolean).join(' · ');
+      const line = [devName(v), v.adds || '', v.downloads ? `${fmtN(v.downloads)} ${t('Downloads')}` : ''].filter(Boolean).join(' · ');
       return `<button type="button" class="ph-lmain ph-press ph-verrow${v.id === a.id ? ' on' : ''}" data-close="1" ${v.id === a.id ? '' : `data-open="${esc(v.id)}"`} data-key="v:${esc(v.id)}">${coverBox(v)}<span class="ph-col ph-grow"><span class="ph-gname">${esc(v.name)}</span><span class="ph-vtags">${tags}</span><span class="ph-gsub">${esc(line)}</span></span>${v.id === a.id ? ic('check', 's') : ic('chev', 's')}</button>`;
     };
     sheet(`<p class="ph-eyebrow">${esc(tn(g.list.length, '1 version', '{n} versions'))}</p><h2 class="ph-disp">${esc(g.name)}</h2>${g.why ? `<p class="ph-mut" style="font-size:13px;margin:4px 0 10px">${esc(g.why)}</p>` : ''}<div class="ph-verlist">${g.list.map(row).join('')}</div>`);
@@ -1049,7 +1071,7 @@
     const a = appOf(id);
     if (!a) return;
     const body = [a.description ? `<div class="ph-md md">${md(a.description)}</div>` : '', a.credits ? `<h3 class="ph-sh3">${esc(t('Credits'))}</h3><div class="ph-md md">${md(a.credits)}</div>` : ''].join('');
-    sheet(`<p class="ph-eyebrow">${esc(t('From the developer'))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body || `<p class="ph-mut">${esc(t('Nothing here yet.'))}</p>`}`);
+    sheet(`<p class="ph-eyebrow">${esc(t('From the Developer'))}</p><h2 class="ph-disp">${esc(a.name)}</h2>${body || `<p class="ph-mut">${esc(t('Nothing here yet.'))}</p>`}`);
   }
   // Its releases, newest first, each folded to its name until it's opened (the newest starts open),
   // as the desktop's Updates tab has them. One with an Android app in it can be installed from here:
@@ -1068,9 +1090,9 @@
     const row = (x, n) => {
       const latest = a.tag ? sameTag(x.tag_name, a.tag) : n === 0;
       const have = !!lib && !!lib.tag && sameTag(x.tag_name, lib.tag);
-      const tags = [latest ? `<span class="ph-tag acc">${esc(t('Latest version'))}</span>` : '', have ? `<span class="ph-tag">${esc(t('Installed'))}</span>` : '', x.prerelease ? `<span class="ph-tag">${esc(t('Pre-release'))}</span>` : ''].join('');
+      const tags = [latest ? `<span class="ph-tag acc">${esc(t('Latest Version'))}</span>` : '', have ? `<span class="ph-tag">${esc(t('Installed'))}</span>` : '', x.prerelease ? `<span class="ph-tag">${esc(t('Pre-release'))}</span>` : ''].join('');
       const can = !have && !a.local && (droid ? apkIn(x, a) : true);
-      const pick = can ? `<button type="button" class="ph-btn sec wide ph-press" data-act="rel-pick" data-id="${esc(id)}" data-tag="${esc(x.tag_name)}">${ic('downloads', 's')}${esc(latest ? t('Install this version') : lib ? t('Go back to this version') : t('Install this version'))}</button>` : '';
+      const pick = can ? `<button type="button" class="ph-btn sec wide ph-press" data-act="rel-pick" data-id="${esc(id)}" data-tag="${esc(x.tag_name)}">${ic('downloads', 's')}${esc(latest ? t('Install This Version') : lib ? t('Go Back to This Version') : t('Install This Version'))}</button>` : '';
       return `<div class="ph-relx${n ? '' : ' open'}"><button type="button" class="ph-relh ph-press" data-act="rel-t" aria-expanded="${n ? 'false' : 'true'}"><span class="ph-col ph-grow"><b dir="auto">${esc(x.name || x.tag_name)}</b><span class="ph-vtags">${tags}</span><small class="ph-mut">${esc([x.name && x.name !== x.tag_name ? x.tag_name : '', date(x.published_at)].filter(Boolean).join(' · '))}</small></span>${ic('chev', 's chv')}</button>
         <div class="ph-relb">${x.body ? `<div class="ph-md md">${md(x.body)}</div>` : `<p class="ph-mut">${esc(t('No notes for this one.'))}</p>`}${pick}</div></div>`;
     };
@@ -1146,16 +1168,16 @@
     const nav = (main, mainAct, skip) => `<div class="ph-ftsacts">${main ? `<button type="button" class="ph-btn pri wide ph-press" data-act="${mainAct}">${esc(main)}</button>` : ''}${skip ? `<button type="button" class="ph-btn sec wide ph-press" data-act="fts-next">${esc(skip)}</button>` : ''}</div>`;
     const swr = (key, title, sub, on) => `<div class="ph-srow"><div class="t"><b>${esc(title)}</b><span>${esc(sub)}</span></div>${sw(key, on)}</div>`;
     let body = '';
-    if (k === 'hello') body = `<div class="ph-ftsmark">${mark(92)}</div><h1 class="ph-disp">${esc(t('Welcome to RecompLauncher'))}</h1><p>${esc(t('Recompiled games, running natively on your phone. A few things to get ready first. It takes a minute.'))}</p>${nav(t('Get started'), 'fts-next')}`;
-    else if (k === 'installs') body = `<span class="ph-ei">${ic('shield')}</span><h1 class="ph-disp">${esc(t('Let RecompLauncher install games'))}</h1><p>${esc(t('Each game is its own app. Android asks once before RecompLauncher can install them: turn on Allow from this source, then come back here.'))}</p>${ok(info.installs, t('Allowed. Games install with one tap.'), t('Not allowed yet'))}${info.installs ? nav(t('Continue'), 'fts-next') : nav(t('Allow installing games'), 'perm-ask', t('Later'))}`;
-    else if (k === 'saves') body = `<span class="ph-ei">${ic('saves')}</span><h1 class="ph-disp">${esc(t('Back up your saves'))}</h1><p>${esc(t('Some games keep their saves in your phone\'s shared folders. With file access, the launcher copies them after you play, and keeps them with your account when cloud saves are on.'))}</p>${ok(info.files, t('File access is on.'), t('File access is off'))}${info.files ? nav(t('Continue'), 'fts-next') : nav(t('Allow file access'), 'files', t('Later'))}`;
-    else if (k === 'found') body = `<span class="ph-ei">${ic('box')}</span><h1 class="ph-disp">${esc(t('Games already on this phone'))}</h1><p>${esc(t('Recomps you installed some other way show up in your Library by themselves, and get updates like any other.'))}</p>${info.found < 0 ? `<p class="ph-ftsok"><span class="ph-spin s"></span>${esc(t('Looking…'))}</p>` : ok(info.found > 0, tn(info.found, '1 recomp is in your Library.', '{n} recomps are in your Library.'), t('None yet. Install one from the Catalog.'))}${nav(t('Continue'), 'fts-next')}`;
+    if (k === 'hello') body = `<div class="ph-ftsmark">${mark(92)}</div><h1 class="ph-disp">${esc(t('Welcome to RecompLauncher'))}</h1><p>${esc(t('Recompiled games, running natively on your phone. A few things to get ready first. It takes a minute.'))}</p>${nav(t('Get Started'), 'fts-next')}`;
+    else if (k === 'installs') body = `<span class="ph-ei">${ic('shield')}</span><h1 class="ph-disp">${esc(t('Let RecompLauncher Install Games'))}</h1><p>${esc(t('Each game is its own app. Android asks once before RecompLauncher can install them: turn on Allow from this source, then come back here.'))}</p>${ok(info.installs, t('Allowed. Games install with one tap.'), t('Not allowed yet'))}${info.installs ? nav(t('Continue'), 'fts-next') : nav(t('Allow Installing Games'), 'perm-ask', t('Later'))}`;
+    else if (k === 'saves') body = `<span class="ph-ei">${ic('saves')}</span><h1 class="ph-disp">${esc(t('Back Up Your Saves'))}</h1><p>${esc(t('Some games keep their saves in your phone\'s shared folders. With file access, the launcher copies them after you play, and keeps them with your account when cloud saves are on.'))}</p>${ok(info.files, t('File access is on.'), t('File access is off'))}${info.files ? nav(t('Continue'), 'fts-next') : nav(t('Allow File Access'), 'files', t('Later'))}`;
+    else if (k === 'found') body = `<span class="ph-ei">${ic('box')}</span><h1 class="ph-disp">${esc(t('Games Already on This Phone'))}</h1><p>${esc(t('Recomps you installed some other way show up in your Library by themselves, and get updates like any other.'))}</p>${info.found < 0 ? `<p class="ph-ftsok"><span class="ph-spin s"></span>${esc(t('Looking…'))}</p>` : ok(info.found > 0, tn(info.found, '1 recomp is in your Library.', '{n} recomps are in your Library.'), t('None yet. Install one from the Catalog.'))}${nav(t('Continue'), 'fts-next')}`;
     else if (k === 'share') body = `<span class="ph-ei">${ic('bug')}</span><h1 class="ph-disp">${esc(t('Help improve RecompLauncher?'))}</h1><p>${esc(t('Both are off unless you turn them on, and you can change this any time in Settings.'))}</p>
-      <div class="ph-panel ph-set">${swr('usage', t('Share usage and diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), !!S.settings.share_usage)}${swr('stats', t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), !!S.settings.share_stats)}</div>${nav(t('Continue'), 'fts-next')}`;
+      <div class="ph-panel ph-set">${swr('usage', t('Share Usage and Diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), !!S.settings.share_usage)}${swr('stats', t('Share Anonymous Usage Stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), !!S.settings.share_stats)}</div>${nav(t('Continue'), 'fts-next')}`;
     else if (k === 'account') {
       const user = (S.account || {}).signedIn && S.account.user;
-      body = `<span class="ph-ei">${ic('user')}</span><h1 class="ph-disp">${esc(user ? tf('Signed in as {name}', { name: user.username }) : t('Create an account'))}</h1><p>${esc(t('Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.'))}</p>${user ? nav(t('Continue'), 'fts-next') : nav(t('Sign in or create an account'), 'signin', t('Maybe later'))}`;
-    } else body = `<span class="ph-ei">${ic('check')}</span><h1 class="ph-disp">${esc(t('You\'re all set'))}</h1><p>${esc(t('Everything here can be changed in Settings, and first-time setup can run again from there.'))}</p>${nav(t('Start playing'), 'fts-done')}`;
+      body = `<span class="ph-ei">${ic('user')}</span><h1 class="ph-disp">${esc(user ? tf('Signed in as {name}', { name: user.username }) : t('Create an Account'))}</h1><p>${esc(t('Your saved games and reviews follow you, and cloud saves keep your progress. It opens in your browser.'))}</p>${user ? nav(t('Continue'), 'fts-next') : nav(t('Sign In or Create an Account'), 'signin', t('Maybe Later'))}`;
+    } else body = `<span class="ph-ei">${ic('check')}</span><h1 class="ph-disp">${esc(t('You\'re all set'))}</h1><p>${esc(t('Everything here can be changed in Settings, and first-time setup can run again from there.'))}</p>${nav(t('Start Playing'), 'fts-done')}`;
     const dots = FTS.map((_, n) => `<i class="${n === P.fts ? 'on' : n < P.fts ? 'done' : ''}"></i>`).join('');
     box.innerHTML = `<div class="ph-ftstop">${P.fts ? `<button type="button" class="ph-ibtn ph-press" data-act="fts-back" aria-label="${esc(t('Back'))}">${ic('back')}</button>` : '<span></span>'}<div class="ph-ftsdots">${dots}</div><span></span></div><div class="ph-ftsbody" data-step="${k}">${body}</div>`;
   }
@@ -1180,7 +1202,7 @@
     if (!v) return toast(bad ? t('Couldn\'t check for updates right now.') : t('You have the newest RecompLauncher.'), bad);
     sheet(`<p class="ph-eyebrow">${esc(t('Update'))}</p><h2 class="ph-disp">${esc(tf('RecompLauncher {v}', { v: v.version || '' }))}</h2>${v.notes ? `<div class="ph-md md">${md(String(v.notes))}</div>` : ''}
       <p class="ph-mut" style="margin:12px 0;line-height:1.5">${esc(t('It downloads in your browser. Open the file when it\'s done and Android installs it over this one. Your games and settings stay.'))}</p>
-      <button type="button" class="ph-btn pri wide ph-press" data-close="1" data-act="url" data-url="${esc(v.url || '')}">${ic('downloads', 's')}${esc(t('Download the update'))}</button>`);
+      <button type="button" class="ph-btn pri wide ph-press" data-close="1" data-act="url" data-url="${esc(v.url || '')}">${ic('downloads', 's')}${esc(t('Download the Update'))}</button>`);
   }
   // Recomps installed some other way (a download, another app) that the store lists: into the Library.
   async function findRecomps() {
@@ -1220,7 +1242,7 @@
       ${m.error && !list.length ? `<p class="ph-mut">${esc(t('Your reviews couldn\'t be loaded'))}</p>` : !list.length ? `<p class="ph-mut" style="line-height:1.5">${esc(t('When you review a project, it shows here with any answer from its developer.'))}</p>` : `<div class="ph-revl">${list.map(item).join('')}</div>`}`);
   }
   // Report a Problem: what kind, which game (its log goes along), and a few words. Marked as from Android.
-  const REP_KINDS = [['bug', N_('Something broke')], ['install', N_('Won\'t install')], ['idea', N_('An idea')], ['other', N_('Something else')]];
+  const REP_KINDS = [['bug', N_('Something Broke')], ['install', N_('Won\'t Install')], ['idea', N_('An Idea')], ['other', N_('Something Else')]];
   function reportSheet(game) {
     P.rep = { kind: 'bug', game: game && S.library[game] ? game : '' };
     const r = P.rep;
@@ -1228,10 +1250,10 @@
     const chip = (act, k, label, on) => `<button type="button" class="ph-chip ph-press${on ? ' on' : ''}" data-act="${act}" ${act === 'rep-k' ? 'data-k' : 'data-g'}="${esc(k)}">${esc(label)}</button>`;
     sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('bug')}</span><h2 class="ph-disp">${esc(t('Report a Problem'))}</h2><p class="ph-mut" style="line-height:1.5;margin:6px 0 14px">${esc(t('It goes straight to the developer. Pick the game if it\'s about one: its last log and how the launcher started it go along.'))}</p>
       <div class="ph-chips ph-repk">${REP_KINDS.map(([k, n]) => chip('rep-k', k, t(n), r.kind === k)).join('')}</div>
-      ${mine.length ? `<b class="ph-reph">${esc(t('Which game?'))}</b><div class="ph-chips ph-repk">${chip('rep-g', '', t('Not about a game'), !r.game)}${mine.map((a) => chip('rep-g', a.id, a.name, r.game === a.id)).join('')}</div>` : ''}
-      <b class="ph-reph">${esc(t('Tell us about it'))}</b><textarea class="ph-rvta ph-repta" rows="5" maxlength="1800" placeholder="${esc(t('What you did and what happened'))}"></textarea>
+      ${mine.length ? `<b class="ph-reph">${esc(t('Which game?'))}</b><div class="ph-chips ph-repk">${chip('rep-g', '', t('Not About a Game'), !r.game)}${mine.map((a) => chip('rep-g', a.id, a.name, r.game === a.id)).join('')}</div>` : ''}
+      <b class="ph-reph">${esc(t('Tell Us About It'))}</b><textarea class="ph-rvta ph-repta" rows="5" maxlength="1800" placeholder="${esc(t('What you did and what happened'))}"></textarea>
       <p class="ph-rverr" hidden></p>
-      <div class="ph-row ph-rvacts"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-act="rep-send">${esc(t('Send it'))}</button></div>`);
+      <div class="ph-row ph-rvacts"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-act="rep-send">${esc(t('Send It'))}</button></div>`);
   }
   async function reportSend() {
     const r = P.rep, ta = el.sheet && $('.ph-repta', el.sheet), go = el.sheet && $('[data-act="rep-send"]', el.sheet), err = el.sheet && $('.ph-rverr', el.sheet);
@@ -1251,7 +1273,7 @@
     } catch (e) {
       r.busy = false;
       go.disabled = false;
-      go.textContent = t('Send it');
+      go.textContent = t('Send It');
       err.textContent = t(String(e && e.message ? e.message : e));
       err.hidden = false;
     }
@@ -1260,7 +1282,7 @@
   function resetAsk(setup) {
     sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic(setup ? 'spark' : 'undo')}</span><h2 class="ph-disp">${esc(setup ? t('Run first-time setup again?') : t('Reset settings?'))}</h2>
       <p class="ph-mut" style="line-height:1.5;margin:8px 0 18px">${esc(setup ? t('The launcher starts over in first-time setup. Your games, saves and settings stay as they are.') : t('Every setting goes back to how it started. Your games and saves stay.'))}</p>
-      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-close="1" data-act="reset-go" data-k="${setup ? 'setup' : 'settings'}">${esc(setup ? t('Run it again') : t('Reset settings'))}</button></div>`);
+      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Cancel'))}</button><button type="button" class="ph-btn pri ph-press" data-close="1" data-act="reset-go" data-k="${setup ? 'setup' : 'settings'}">${esc(setup ? t('Run It Again') : t('Reset Settings'))}</button></div>`);
   }
   async function resetGo(setup) {
     try {
@@ -1279,9 +1301,9 @@
   // with Android's page a tap away, and the install carries on by itself once it's allowed.
   let permWait = null;
   function permSheet() {
-    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('shield')}</span><h2 class="ph-disp">${esc(t('Allow installing games'))}</h2>
+    sheet(`<span class="ph-ei" style="margin:10px 0 6px">${ic('shield')}</span><h2 class="ph-disp">${esc(t('Allow Installing Games'))}</h2>
       <p class="ph-mut" style="line-height:1.5;margin:8px 0 18px">${esc(t('Android asks once before an app can install other apps. Turn on Allow from this source for RecompLauncher, then come back: the install carries on by itself.'))}</p>
-      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Not Now'))}</button><button type="button" class="ph-btn pri ph-press" data-act="perm-ask">${esc(t('Open settings'))}</button></div>`);
+      <div class="ph-row" style="gap:10px"><button type="button" class="ph-btn sec ph-press" data-close="1">${esc(t('Not Now'))}</button><button type="button" class="ph-btn pri ph-press" data-act="perm-ask">${esc(t('Open Settings'))}</button></div>`);
     el.sheet.classList.add('ph-perm');
   }
   window.droidInstallGate = async (resume) => {
@@ -1316,7 +1338,7 @@
     const id = esc(a.id);
     return [
       a.repo && !a.local ? pageRow('file', t('Read the README'), t('Notes, controls and known issues from the developer'), `data-readme="${id}" data-key="readme:${id}"`) : '',
-      a.description || a.credits ? pageRow('notes', t('From the developer'), t('What it is, what it needs, and who made it'), `data-act="notes" data-id="${id}" data-key="notes:${id}"`) : '',
+      a.description || a.credits ? pageRow('notes', t('From the Developer'), t('What it is, what it needs, and who made it'), `data-act="notes" data-id="${id}" data-key="notes:${id}"`) : '',
       a.repo && !a.local ? pageRow('up', t('Updates'), a.released ? tf('Latest release {when}', { when: date(a.released) }) : t('Every release and what changed'), `data-act="rels" data-id="${id}" data-key="rels:${id}"`) : '',
     ].join('');
   }
@@ -1330,8 +1352,8 @@
     const now = Date.now() / 1000, sum = (from) => recent.filter((x) => x[0] >= from).reduce((n, x) => n + x[1], 0);
     const nums = [
       [PT_IC.all, t('Played'), g.played_secs >= 60 ? fmtTimeShort(g.played_secs) : t('Under a minute')],
-      [PT_IC.week, t('This week'), fmtTimeShort(sum(now - 7 * 86400))],
-      [PT_IC.month, t('This month'), fmtTimeShort(sum(now - 30 * 86400))],
+      [PT_IC.week, t('This Week'), fmtTimeShort(sum(now - 7 * 86400))],
+      [PT_IC.month, t('This Month'), fmtTimeShort(sum(now - 30 * 86400))],
       [PT_IC.ses, t('Sessions'), fmtNum(count)],
       [PT_IC.long, t('Longest'), fmtTimeShort(longest)],
     ];
@@ -1353,7 +1375,7 @@
     const paras = (txt) => { const all = String(txt).split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); return full ? all : all.slice(0, 1); };
     const said = ab && ab.summary ? paras(ab.summary) : wiki ? paras(wiki.text) : [];
     const score = ab && ab.rating !== null && ab.rating !== '' && Number.isFinite(Number(ab.rating)) ? Math.round(Number(ab.rating)) : null;
-    return `<div class="ph-about" data-key="about:${esc(a.id)}" data-f><h2>${esc(t('About'))}${score !== null ? `<span class="ph-score" title="${esc(t('Critic and player score'))}"><b>${score}</b>${esc(t('Critic and player score'))}</span>` : ''}</h2>${own.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}${said.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}
+    return `<div class="ph-about" data-key="about:${esc(a.id)}" data-f><h2>${esc(t('About'))}${score !== null ? `<span class="ph-score" title="${esc(t('Critic and Player Score'))}"><b>${score}</b>${esc(t('Critic and Player Score'))}</span>` : ''}</h2>${own.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}${said.map((p) => `<p dir="auto">${esc(p)}</p>`).join('')}
       ${facts.length ? `<div class="ph-panel ph-facts">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`).join('')}</div>` : ''}${src ? `<p class="ph-src">${esc(src.label)}</p>` : ''}
       ${isAI(a) ? `<p class="ph-mut ph-ainote"><span class="ph-tag">${esc(t('AI-assisted'))}</span> ${esc(a.ai.by === 'developer' ? tf('Its developer says AI tools helped with its {uses}.', { uses: aiUses(a) }) : tf('Its project on GitHub shows AI tools helped with its {uses}.', { uses: aiUses(a) }))}</p>` : ''}</div>`;
   }
@@ -1523,7 +1545,8 @@
   }
 
   // ---------- starting up ----------
-  // The logo over a slow wall of covers, while the list comes in. Shown once, when the app opens.
+  // The logo over a wall of covers sliding up and down, while the list comes in. Each column starts
+  // part way through its loop, so the wall is already moving on the first frame. Shown once, when the app opens.
   function boot() {
     const b = el.boot;
     b.hidden = false;
@@ -1540,7 +1563,7 @@
         const set = [];
         for (let i = 0; i < 5; i++) set.push(urls[(c * 3 + i * 4) % urls.length]);
         const pics = set.concat(set).map((u) => `<img src="${esc(u)}" alt="" draggable="false">`).join('');
-        cols += `<div class="c" style="animation-duration:${22 + (c % 3) * 5}s">${pics}</div>`;
+        cols += `<div class="c" style="animation-duration:${11 + (c % 3) * 2.5}s;animation-delay:-${(c * 2.7).toFixed(1)}s">${pics}</div>`;
       }
       const w = $('.ph-wall', b);
       w.innerHTML = cols;
@@ -1605,6 +1628,7 @@
       }
       case 'discord': return invoke('open_url', { url: discordUrl() }).catch(fail);
       case 'site': return invoke('open_url', { url: SITE }).catch(fail);
+      case 'kofi': return invoke('open_url', { url: KOFI }).catch(fail);
       case 'lang': return langSheet();
       case 'bpsize-roll': { const k = SIZE_KEYS[(SIZE_KEYS.indexOf(pref.bpSize()) + 1) % SIZE_KEYS.length]; buzz(); await save('phone_bp_size', k); fit(); return bp ? bpDraw() : null; }
       case 'bpstyle-roll': return bpStyleSwap();
@@ -1791,6 +1815,19 @@
     SEEN.add(e.target.getAttribute('src'));
     e.target.classList.add('ld');
   }, true);
+  // Pictures a fast swipe is about to reach are asked for ahead of time: lazy loading on its own
+  // waits until they're close, and a quick fling outruns it and shows empty boxes. About a screen
+  // ahead down the page and along rows that scroll sideways (scrollMargin, where the engine has it).
+  const ahead = window.IntersectionObserver ? new IntersectionObserver((es) => {
+    for (const e of es) if (e.isIntersecting) { ahead.unobserve(e.target); e.target.loading = 'eager'; }
+  }, { rootMargin: '900px 500px', scrollMargin: '900px 700px' }) : null;
+  const imgsIn = (n, f) => { if (n.nodeType !== 1) return; if (n.tagName === 'IMG') f(n); else for (const i of n.getElementsByTagName('img')) f(i); };
+  if (ahead) new MutationObserver((ms) => {
+    for (const m of ms) {
+      for (const n of m.removedNodes) imgsIn(n, (i) => ahead.unobserve(i));
+      for (const n of m.addedNodes) imgsIn(n, (i) => { if (i.loading === 'lazy') ahead.observe(i); });
+    }
+  }).observe(root, { childList: true, subtree: true });
   root.addEventListener('error', (e) => {
     const n = e.target;
     if (n.tagName !== 'IMG') return;
@@ -2032,7 +2069,7 @@
   const bpCover = (a, key, sub) => `<button type="button" class="ph-bpc ph-press" data-bp="game" data-id="${esc(a.id)}" data-key="${esc(key)}" aria-label="${esc(a.name)}">${coverBox(a, isBusy(a) ? 'dim' : '', '', 180)}${isBusy(a) ? `<span class="ph-ringp">${ring(a.id, 40)}</span>` : ''}${sub == null ? '' : `<span class="ph-gname" dir="auto">${esc(a.name)}</span><span class="ph-gsub">${sub}</span>`}</button>`;
   function bpInfo(a, full) {
     const id = esc(a.id), lib = S.library[a.id];
-    const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '') + (stateOf(a) === 'update' ? `<span class="ph-tag acc">${esc(t('Update ready'))}</span>` : '');
+    const tags = (a.origin ? `<span class="ph-tag lt">${esc(conName(a))}</span>` : '') + (GENRES[a.genre] ? `<span class="ph-tag dark">${esc(t(GENRES[a.genre]))}</span>` : '') + (stateOf(a) === 'update' ? `<span class="ph-tag acc">${esc(t('Update Ready'))}</span>` : '');
     const title = a.logo ? img(media(a.logo), 'logo', 'data-logo') + `<h1 class="ph-disp" dir="auto" hidden>${esc(a.name)}</h1>` : `<h1 class="ph-disp" dir="auto">${esc(a.name)}</h1>`;
     const by = devName(a) ? tf('by {who}', { who: devName(a) }) : '';
     // On its page: what it's based on and who made it, with the play time in its own boxes below.
@@ -2046,7 +2083,7 @@
       ${a.soon && full ? `<p class="ph-bpab" dir="auto">${esc(soonNoteText(a))}</p>` : ''}</div>`;
   }
   function bpSide(a) {
-    const facts = [[t('Console'), conName(a)], [t('Developer'), devName(a)], [t('version'), a.version ? String(verText(a.version)) : ''], [t('size'), sizeOf(a)], [t('players'), Number(a.players) > 0 ? fmtN(Number(a.players)) : ''], [t('downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Latest release'), a.released ? date(a.released) : ''], [t('Genre'), GENRES[a.genre] ? t(GENRES[a.genre]) : '']].filter(([, v]) => v);
+    const facts = [[t('Console'), conName(a)], [t('Developer'), devName(a)], [t('Version'), a.version ? String(verText(a.version)) : ''], [t('Size'), sizeOf(a)], [t('Players'), Number(a.players) > 0 ? fmtN(Number(a.players)) : ''], [t('Downloads'), a.downloads ? fmtN(a.downloads) : ''], [t('Latest Release'), a.released ? date(a.released) : ''], [t('Genre'), GENRES[a.genre] ? t(GENRES[a.genre]) : '']].filter(([, v]) => v);
     if (!facts.length) return '';
     return `<div class="ph-bpside" data-key="side:${esc(a.id)}">${facts.map(([k, v]) => `<div><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`).join('')}</div>`;
   }
@@ -2056,11 +2093,11 @@
     const played = mineList().filter((a) => S.library[a.id] && S.library[a.id].last_played);
     const saved = savedItems().map((x) => x.a).filter((a) => a && forOS(a));
     const rows = [
-      ['cont', t('Continue playing'), played, (a) => esc(playedFor(S.library[a.id]))],
-      ['trend', t('Trending this week'), ranked(), null],
-      ['saved', t('Saved for later'), saved, null],
-      ['upd', t('Recently updated'), recentlyUpdated(all), (a) => esc(a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '')],
-      ['new', t('Just added'), [...all].sort(byNew), null],
+      ['cont', t('Continue Playing'), played, (a) => esc(playedFor(S.library[a.id]))],
+      ['trend', t('Trending This Week'), ranked(), null],
+      ['saved', t('Saved for Later'), saved, null],
+      ['upd', t('Recently Updated'), recentlyUpdated(all), (a) => esc(a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '')],
+      ['new', t('Just Added'), [...all].sort(byNew), null],
       ['pop', t('Popular on Android'), [...all].sort(byDl), null],
     ];
     return rows.filter((r) => r[2].length).map(([k, title, list, sub]) => `<section class="ph-bpsec" data-key="row:${k}"><h3>${esc(title)}</h3><div class="ph-bpline" data-key="line:${k}">${list.slice(0, 14).map((a, i) => bpCover(a, `${k}:${a.id}`, sub ? sub(a) : k === 'trend' ? `#${i + 1}` : listLine(a))).join('')}</div></section>`).join('');
@@ -2089,7 +2126,7 @@
     }
     const none = lib ? t('Your games show up here once you install one.') : pool().length ? t('Nothing matches that.') : t('Loading…');
     const saved = lib ? savedItems().map((x) => x.a).filter((a) => a && forOS(a) && !a.soon) : [];
-    const later = saved.length ? `<div class="ph-bphead" data-key="sv"><h2>${esc(t('Saved for later'))}</h2></div><div class="ph-bpgrid" data-key="svg">${saved.map((a) => bpCover(a, 'sv:' + a.id, listLine(a))).join('')}</div>` : '';
+    const later = saved.length ? `<div class="ph-bphead" data-key="sv"><h2>${esc(t('Saved for Later'))}</h2></div><div class="ph-bpgrid" data-key="svg">${saved.map((a) => bpCover(a, 'sv:' + a.id, listLine(a))).join('')}</div>` : '';
     return `<div class="ph-bpscroll" data-key="grid:${bp.tab}">${head}${shown.length ? `<div class="ph-bpgrid" data-key="gg">${shown.map((a) => bpCover(a, 'g:' + a.id, lib ? libLine(a) : listLine(a))).join('')}</div>${shown.length < list.length ? '<div class="ph-gridmore" data-key="more"><span class="ph-spin"></span></div>' : ''}` : `<div class="ph-bpnone">${esc(none)}</div>`}${later}</div>`;
   }
   // Downloads: what's coming down now, then the updates ready for the player's games.
@@ -2099,7 +2136,7 @@
     return `<div class="ph-bpscroll" data-key="dl"><div class="ph-bplist">
       <div class="ph-bphead" data-key="dh"><h2>${esc(t('Downloads'))}</h2><span class="ph-mut">${esc(t('Downloads keep going while you browse.'))}</span></div>
       ${dls.length ? dls.map(dlRow).join('') : `<div class="ph-bpempty" data-f data-key="dnone">${ic('downloads')}<span>${esc(t('Nothing is downloading.'))}</span></div>`}
-      <div class="ph-bphead" data-key="uh"><h2>${esc(t('Updates'))}</h2>${ups.length > 1 ? `<button type="button" class="ph-btn sec sm ph-press" data-act="update-all">${esc(t('Update all'))}</button>` : ''}</div>
+      <div class="ph-bphead" data-key="uh"><h2>${esc(t('Updates'))}</h2>${ups.length > 1 ? `<button type="button" class="ph-btn sec sm ph-press" data-act="update-all">${esc(t('Update All'))}</button>` : ''}</div>
       ${ups.length ? ups.map(up).join('') : `<button type="button" class="ph-bpempty ph-press" data-act="check-upd" data-key="unone">${ic('check')}<span>${esc(t('Everything is up to date.'))}<small>${esc(t('Check for Game Updates'))}</small></span></button>`}
     </div></div>`;
   }
@@ -2118,7 +2155,7 @@
         <p class="ph-mut ph-bplead">${esc(t('Earn achievements in your recomps, track them on your profile and climb the leaderboards.'))}</p>
         <div class="ph-bpfeats">${feats.map(([h, d], i) => `<div class="ph-panel" data-f data-key="af:${i}">${star}<b>${esc(h)}</b><p>${esc(d)}</p></div>`).join('')}</div>
         <p class="ph-bpnote" data-f data-key="aline">${esc(line)}</p>
-        ${signed ? '' : `<button type="button" class="ph-btn pri ph-press" data-act="signin" data-key="ain">${esc(t('Sign in'))}</button>`}</div></div>`;
+        ${signed ? '' : `<button type="button" class="ph-btn pri ph-press" data-act="signin" data-key="ain">${esc(t('Sign In'))}</button>`}</div></div>`;
     }
     const p = pg.profile || {}, u = (S.account && S.account.user) || {};
     const box = (v, k) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`;
@@ -2154,7 +2191,7 @@
     return `<div class="ph-bpscroll game" data-key="gp:${id}">
       <section class="ph-bpgtop" data-key="gtop">${bpInfo(a, true)}${bpSide(a)}</section>
       <div class="ph-bpgbody" data-key="gbody"><div class="ph-col" data-key="gl">${gameAbout(a, true)}<div class="ph-revbox" data-rev="${id}">${revSection(a)}</div></div><div class="ph-col" data-key="gr">${right}</div></div>
-      ${more.length ? `<section class="ph-bpsec" data-key="row:like"><h3>${esc(t('More like this'))}</h3><div class="ph-bpline" data-key="line:like">${more.map((x) => bpCover(x, 'like:' + x.id, listLine(x))).join('')}</div></section>` : ''}
+      ${more.length ? `<section class="ph-bpsec" data-key="row:like"><h3>${esc(t('More Like This'))}</h3><div class="ph-bpline" data-key="line:like">${more.map((x) => bpCover(x, 'like:' + x.id, listLine(x))).join('')}</div></section>` : ''}
     </div>`;
   }
   function bpMenuHTML(a) {
@@ -2170,8 +2207,8 @@
     if (lib && reviewable(a)) rows.push(row('pen', myReviewOf(a.id) ? t('Edit Your Review') : t('Write a Review'), `data-act="rev-say" data-id="${id}"`));
     if (reviewable(a) && S.reports[a.id] && (S.reports[a.id].items || []).length) rows.push(row('star', t('Reviews'), `data-act="rev-all" data-id="${id}"`));
     if (a.repo && !a.local) rows.push(row('file', t('Read the README'), `data-readme="${id}"`), row('up', t('Updates'), `data-act="rels" data-id="${id}"`));
-    if (!lib && !a.custom) rows.push(row('bookmark', isSaved(a.id) ? t('Remove from saved') : t('Save for later'), `data-act="save" data-id="${id}"`));
-    if (a.repo && !a.local) rows.push(row('globe', t('Open the project page'), `data-act="project" data-id="${id}"`));
+    if (!lib && !a.custom) rows.push(row('bookmark', isSaved(a.id) ? t('Remove from Saved') : t('Save for Later'), `data-act="save" data-id="${id}"`));
+    if (a.repo && !a.local) rows.push(row('globe', t('Open the Project Page'), `data-act="project" data-id="${id}"`));
     if (lib && st !== 'busy' && st !== 'uninstalling') rows.push(row('trash', t('Uninstall'), `data-act="uninstall" data-id="${id}"`, 'red'));
     revLoad(a);
     return `<div class="ph-bpmenu" data-key="m:${id}"><div class="ph-bpwho">${coverBox(a)}<b dir="auto">${esc(a.name)}</b><small>${esc([a.version ? 'v' + String(verText(a.version)).replace(/^v/i, '') : '', sizeOf(a)].filter(Boolean).join(' · '))}</small></div><div class="rows">${rows.join('')}</div></div>`;
@@ -2183,25 +2220,25 @@
     const row = (title, sub, key, on, off) => `<div class="ph-bprow set"><span class="ph-col ph-grow"><span>${esc(title)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${sw(key, on, off)}</div>`;
     const go = (icon, title, sub, attr, val = '') => `<button type="button" class="ph-bprow ph-press" ${attr}>${ic(icon, 's')}<span class="ph-col ph-grow"><span>${esc(title)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${val ? `<b class="val">${esc(val)}</b>` : ''}</button>`;
     const g = GLYPHS.find(([k]) => k === (ui().tv_glyphs || '')) || GLYPHS[0];
-    const lang = (LANGS.find((l) => l[0] === ui().lang) || [])[1] || t('Same as your phone');
+    const lang = (LANGS.find((l) => l[0] === ui().lang) || [])[1] || t('Same as Your Phone');
     const ups = updatesList().length;
     return `<div class="ph-bpscroll" data-key="set"><div class="ph-bpset">
       ${head('acc', t('Account'))}
-      ${user ? go('user', tf('Signed in as {name}', { name: user.username }), t('Your saved games and reviews follow you.'), 'data-act="account-site" data-key="s-acc"') : go('user', t('Sign in'), t('Keep your saved games with your account, and write reviews.'), 'data-act="signin" data-key="s-acc"')}
-      ${head('bp', t('Big Picture mode'))}
-      ${go('tv', t('Big Picture style'), t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'), 'data-act="bpstyle-roll" data-key="s-style"', pref.bpStyle() === 'full' ? t('Full') : t('Phone'))}
-      ${go('text', t('Big Picture size'), t('Bigger or smaller text, buttons and covers in Big Picture'), 'data-act="bpsize-roll" data-key="s-size"', SIZE_LABELS[SIZE_KEYS.indexOf(pref.bpSize())])}
-      ${row(t('Start in Big Picture mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), 'bpstart', !!S.settings.start_in_tv)}
-      ${row(t('Open with a controller'), t('Switches when you press a button on one'), 'padtv', pref.padTv())}
+      ${user ? go('user', tf('Signed in as {name}', { name: user.username }), t('Your saved games and reviews follow you.'), 'data-act="account-site" data-key="s-acc"') : go('user', t('Sign In'), t('Keep your saved games with your account, and write reviews.'), 'data-act="signin" data-key="s-acc"')}
+      ${head('bp', t('Big Picture Mode'))}
+      ${go('tv', t('Big Picture Style'), t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'), 'data-act="bpstyle-roll" data-key="s-style"', pref.bpStyle() === 'full' ? t('Full') : t('Phone'))}
+      ${go('text', t('Big Picture Size'), t('Bigger or smaller text, buttons and covers in Big Picture'), 'data-act="bpsize-roll" data-key="s-size"', SIZE_LABELS[SIZE_KEYS.indexOf(pref.bpSize())])}
+      ${row(t('Start in Big Picture Mode'), t('Opens full screen, ready for a controller. Good for a TV or a handheld.'), 'bpstart', !!S.settings.start_in_tv)}
+      ${row(t('Open with a Controller'), t('Switches when you press a button on one'), 'padtv', pref.padTv())}
       ${go('pad', t('Button Icons'), t('Which controller\'s buttons are shown. Automatic follows the one you use.'), 'data-bp="glyphs" data-key="s-gl"', t(g[1]))}
       ${row(t('Move with the left stick'), t('Turn it off if your stick drifts. The d-pad still works.'), 'padstick', S.settings.pad_stick !== false)}
-      ${row(t('Vibrate on taps'), '', 'haptics', pref.haptics())}
-      ${head('covers', t('Covers and names'))}
+      ${row(t('Vibrate on Taps'), '', 'haptics', pref.haptics())}
+      ${head('covers', t('Covers and Names'))}
       ${row(t('Covers Only'), t('Hide the names under game covers.'), 'bare', !!ui().hide_names)}
       ${row(t('Console Labels on Covers'), t('A strip across the top of each cover with its console, like the band on a real game box.'), 'cvl', !!ui().cover_labels)}
       ${row(t('Show Game Names'), t('Name every recomp after its game, like Tears of the Kingdom instead of TotK Recomp. Names you gave games yourself stay.'), 'gnames', !!ui().game_names)}
       ${row(t('Show Game Media'), t('Every version of a game shows the same cover, background and logo: the recommended version\'s.'), 'gmedia', !!ui().game_media)}
-      ${head('cat', t('Catalog and updates'))}
+      ${head('cat', t('Catalog and Updates'))}
       ${row(t('Hide AI-assisted Recomps'), t('They won\'t show in the Catalog'), 'hideai', !!S.settings.hide_ai)}
       ${go('refresh', t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now'), 'data-act="refresh-cat" data-key="s-ref"')}
       ${go('downloads', t('Check for Game Updates'), ups ? tn(ups, '1 update ready', '{n} updates ready') : t('Looks for new releases of your games now'), 'data-act="check-upd" data-key="s-upd"')}
@@ -2211,24 +2248,25 @@
       ${row(t('Ask After Playing'), t('After you play a game for a while, the launcher asks how it ran. Never again for a game you\'ve reviewed.'), 'revask', window.reviewAskOn ? window.reviewAskOn() : true)}
       ${go('star', t('Your Reviews'), t('Every review you wrote, with any answer from its developer'), 'data-act="my-revs" data-key="s-myrev"')}
       ${head('ease', t('Accessibility'))}
-      ${row(t('Bold text'), t('Heavier letters everywhere, easier to read'), 'bold', pref.bold())}
-      ${row(t('High contrast'), t('Stronger text and edges'), 'contrast', pref.contrast())}
-      ${row(t('Reduce transparency'), t('Solid menus and buttons instead of see-through ones'), 'solid', pref.solid())}
-      ${row(t('Reduce motion'), t('Pages change without sliding or zooming'), 'still', pref.still() || pref.lite(), pref.lite())}
-      ${row(t('Optimization mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
-      ${head('help', t('Help and privacy'))}
+      ${row(t('Bold Text'), t('Heavier letters everywhere, easier to read'), 'bold', pref.bold())}
+      ${row(t('High Contrast'), t('Stronger text and edges'), 'contrast', pref.contrast())}
+      ${row(t('Reduce Transparency'), t('Solid menus and buttons instead of see-through ones'), 'solid', pref.solid())}
+      ${row(t('Reduce Motion'), t('Pages change without sliding or zooming'), 'still', pref.still() || pref.lite(), pref.lite())}
+      ${row(t('Optimization Mode'), t('Flat and still: no blurs, glows or moving extras. Smoother on older phones.'), 'lite', pref.lite())}
+      ${head('help', t('Help and Privacy'))}
       ${go('bug', t('Report a Problem'), t('Something broke, an idea, or what you think so far. It goes straight to the developer.'), 'data-act="report" data-key="s-rep"')}
-      ${row(t('Share usage and diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), 'usage', !!S.settings.share_usage)}
-      ${row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), 'stats', !!S.settings.share_stats)}
-      ${head('over', t('Start over'))}
-      ${go('undo', t('Reset settings'), t('Every setting goes back to how it started. Your games and saves stay.'), 'data-act="reset-set" data-key="s-reset"')}
-      ${go('spark', t('Run first-time setup again'), t('Nothing is deleted.'), 'data-act="reset-setup" data-key="s-setup"')}
+      ${row(t('Share Usage and Diagnostics'), t('Your phone\'s model, which games you play and for how long, and what went wrong when one won\'t install. No names, no files.'), 'usage', !!S.settings.share_usage)}
+      ${row(t('Share Anonymous Usage Stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), 'stats', !!S.settings.share_stats)}
+      ${head('over', t('Start Over'))}
+      ${go('undo', t('Reset Settings'), t('Every setting goes back to how it started. Your games and saves stay.'), 'data-act="reset-set" data-key="s-reset"')}
+      ${go('spark', t('Run First-Time Setup Again'), t('Nothing is deleted.'), 'data-act="reset-setup" data-key="s-setup"')}
       ${head('about', t('About'))}
       ${go('lang', t('Language'), '', 'data-act="lang" data-key="s-lang"', lang)}
       ${go('discord', 'Discord', t('Help, news and other players'), 'data-act="discord" data-key="s-dc"')}
+      ${go('heart', t('Support Us'), t('Help keep it running and growing, on Ko-fi'), 'data-act="kofi" data-key="s-kofi"')}
       ${go('globe', 'recomplauncher.com', '', 'data-act="site" data-key="s-site"')}
       <div class="ph-bprow set" data-f data-key="s-ver"><span class="ph-col ph-grow"><span>${esc(tf('RecompLauncher {v}', { v: S.version || '' }))}</span><small>${esc(engine())}</small></span></div>
-      <button type="button" class="ph-bprow ph-press" data-bp="exit" data-key="exitrow">${ic('phone', 's')}<span>${esc(t('Leave Big Picture mode'))}</span></button></div></div>`;
+      <button type="button" class="ph-bprow ph-press" data-bp="exit" data-key="exitrow">${ic('phone', 's')}<span>${esc(t('Leave Big Picture Mode'))}</span></button></div></div>`;
   }
   function bpHTML() {
     const pad = bp.pad, k = bpTabKey();
@@ -2236,7 +2274,7 @@
     const n = dlIds().length;
     const tabs = `<div class="ph-bptabs" data-key="tabs">${pad ? glyph('lb') : ''}<div class="in"><span class="th"></span>${BP_TABS.map(([key, name], i) => `<button type="button" class="${i === bp.tab ? 'on' : ''}" data-bp="tab" data-i="${i}" data-key="t:${i}" aria-label="${esc(t(name))}">${ic(BP_ICON[key], 's')}<span>${esc(t(name))}</span>${key === 'downloads' && n ? `<em>${n}</em>` : ''}</button>`).join('')}</div>${pad ? glyph('rb') : ''}</div>`;
     const hints = pad ? `<div class="ph-bphints" data-key="hints">${[['a', t('Select')], ['b', t('Back')], ['y', t('Options')]].map(([g, l]) => `<span>${glyph(g)}${esc(l)}</span>`).join('')}</div>` : '';
-    const top = `<div class="ph-bptop" data-key="top">${bp.menu || bp.game ? back : tabs}<span class="ph-grow"></span>${hints}<button type="button" class="ph-ibtn glass ph-press" data-bp="exit" data-key="exit" aria-label="${esc(t('Leave Big Picture mode'))}">${ic('x', 's')}</button></div>`;
+    const top = `<div class="ph-bptop" data-key="top">${bp.menu || bp.game ? back : tabs}<span class="ph-grow"></span>${hints}<button type="button" class="ph-ibtn glass ph-press" data-bp="exit" data-key="exit" aria-label="${esc(t('Leave Big Picture Mode'))}">${ic('x', 's')}</button></div>`;
     let body;
     if (bp.menu && appOf(bp.menu)) body = bpMenuHTML(appOf(bp.menu));
     else if (bp.game && appOf(bp.game)) body = bpGameHTML(appOf(bp.game));
