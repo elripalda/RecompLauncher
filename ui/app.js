@@ -8691,10 +8691,13 @@ async function fixFound(id) {
 }
 
 // What a program's exit code means, when it's one of the usual Windows ones.
-function codeMeaning(code) {
+function codeMeaning(code, secs) {
   const c = Number(code);
   if (!Number.isFinite(c) || c === 0) return '';
   const u = c < 0 ? c + 4294967296 : c;
+  // A processor missing an instruction fails as the game starts. Later, the code is the game
+  // stopping itself on purpose (Azahar after losing its Vulkan device, say), so it says nothing.
+  if (u === 0xC000001D && secs >= 10) return '';
   const M = {
     0xC0000005: N_('it read or wrote memory it shouldn\'t (access violation)'),
     0xC0000409: N_('it stopped itself after a serious error'),
@@ -8800,7 +8803,7 @@ async function crashModal(p) {
   // something the player can fix, so no crash window.
   const tail = String((log && log[1]) || '').split('\n').slice(-8).join('\n');
   if (p.secs > 20 && /destruct ResourceManager|shutting down|shutdown complete|clean exit|exiting\.\.\./i.test(tail)) return;
-  const meaning = codeMeaning(p.code);
+  const meaning = codeMeaning(p.code, p.secs);
   const codeShown = meaning ? `${p.code}: ${meaning}` : String(p.code);
   const details = `${g.name} ${g.tag || ''} closed with code ${codeShown} after ${p.secs} s on ${OS_NAME[S.os]} (RecompLauncher ${S.version}).` + (log ? `\n\n${log[0]}:\n${log[1]}` : '');
   // The game said it couldn't open one of its own files (the player's copy isn't where it looks).
