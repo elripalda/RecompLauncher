@@ -315,6 +315,9 @@ pub struct Settings {
     pub proxy_user: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub proxy_pass: String,
+    /// Settings → Networking, Hide the Site's Name: "" (Automatic), "always" or "never" (ech.rs).
+    #[serde(default)]
+    pub hide_name: String,
     #[serde(default)]
     pub hide_ai: bool,
     /// Look for updates when the launcher opens.
@@ -453,6 +456,7 @@ impl Default for Settings {
             proxy_url: String::new(),
             proxy_user: String::new(),
             proxy_pass: String::new(),
+            hide_name: String::new(),
             hide_ai: false,
             check_updates: true,
             keep_downloads: false,

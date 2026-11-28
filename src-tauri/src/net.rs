@@ -340,7 +340,8 @@ pub async fn send_allowing(rb: reqwest::RequestBuilder, url: &str, player: bool,
     }
     tried(url);
     let started = Instant::now();
-    // Over Encrypted Client Hello when the site has a key for it (ech.rs).
+    // With its name hidden (Encrypted Client Hello) when the usual way is blocked by name, or as
+    // Settings → Networking says (ech.rs).
     match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
@@ -816,6 +817,14 @@ pub fn tls_failed(e: &reqwest::Error) -> bool {
     ios.flat_map(io_kinds).any(|k| k == std::io::ErrorKind::InvalidData)
 }
 
+/// The connection opened and was then closed or reset before the secure handshake finished: the
+/// other way a filter that blocks a site by name cuts it. A refused or unanswered connection isn't.
+pub fn handshake_cut(e: &reqwest::Error) -> bool {
+    use std::io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
+    let ios = causes(e).into_iter().filter_map(|s| s.downcast_ref::<std::io::Error>());
+    ios.flat_map(io_kinds).any(|k| matches!(k, ConnectionReset | ConnectionAborted | UnexpectedEof))
+}
+
 /// An io error's kind and the kinds of the io errors it wraps. reqwest wraps rustls's InvalidData
 /// in one of kind Other, and an io error's `source()` skips the error it wraps, so `get_ref` it is.
 fn io_kinds(e: &std::io::Error) -> Vec<std::io::ErrorKind> {
@@ -899,6 +908,23 @@ mod connection_failure_tests {
         let e = get_error(&format!("https://127.0.0.1:{}/", closed_port()));
         assert!(e.is_connect());
         assert!(!tls_failed(&e));
+        assert!(!handshake_cut(&e));
+    }
+
+    #[test]
+    fn a_connection_closed_in_the_handshake_is_cut() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                // The greeting is read, then the connection closed without a word, as a filter does.
+                let _ = s.read(&mut [0u8; 1024]);
+            }
+        });
+        let e = get_error(&format!("https://127.0.0.1:{port}/"));
+        assert!(e.is_connect());
+        assert!(handshake_cut(&e), "{}", cause(&e));
     }
 
     #[test]

@@ -9492,6 +9492,7 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     l.settings.start_at_login = start_at_login;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
+    ech::set_mode(&l.settings.hide_name);
     saves::use_chosen_device(&l.settings.ui);
     let discord_now = l.settings.discord;
     l.save(&st.dir)?;
@@ -9700,6 +9701,7 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
         "setup" => l.settings.setup_done = false,
         _ => return Err(Error::Msg("Nothing to reset.".into())),
     }
+    ech::set_mode(&l.settings.hide_name);
     l.save(&st.dir)?;
     Ok(l.settings.clone())
 }
@@ -10724,6 +10726,8 @@ pub fn run() {
                 if let Err(e) = net::set_proxy(&l.settings.proxy, &l.settings.proxy_url, &l.settings.proxy_user, &pass) {
                     trail::note(format!("Proxy setting not used: {e}"));
                 }
+                // Hide the Site's Name (Settings → Networking): Automatic, Always or Never.
+                ech::set_mode(&l.settings.hide_name);
             }
             let http = net::client_builder().build()?;
             #[allow(unused_mut)]
