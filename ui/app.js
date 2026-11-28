@@ -123,7 +123,9 @@ const isAI = (a) => !!(a && a.ai);
 // reports, only when the player allows them.
 function profileSaid(id, step, ok, err) { invoke('profile_report', { id, step, ok, error: err ? String(err && err.message ? err.message : err) : null }).catch(() => {}); }
 window.profileSaid = profileSaid;
-function builtinBoot() { return (S.cat && S.cat.boot_all) ? {} : (S.bootBuiltin || {}); }
+// The launcher carries no profiles of its own any more: only the catalog's (a.boot). Kept as one place
+// the window asks, until the core says it all.
+function builtinBoot() { return {}; }
 const isServer = (a) => !!(((a && a.boot) || builtinBoot()[a && a.id] || {}).server);
 // A line on what the player's copy should look like, by the console it's from (How to Set Up).
 function setupGuide(a) {
@@ -177,7 +179,6 @@ function moreLike(a, max = 12) {
     .slice(0, max).map(([x]) => x);
 }
 const bootNote = (a) => String(((a && a.boot) || builtinBoot()[a && a.id] || {}).player_note || '');
-invoke('boot_builtin').then((b) => { S.bootBuiltin = b || {}; }).catch(() => {});
 const LOADED = new Set();
 // A picture through the disk cache; one that has loaded before shows at once instead of fading in again.
 const pic = (u, cls = '', more = '') => { const s = media(u); if (!s) return ''; const c = [cls, LOADED.has(s) ? 'ld' : ''].filter(Boolean).join(' '); return `<img src="${esc(s)}" alt=""${c ? ` class="${c}"` : ''}${more ? ' ' + more : ''} decoding="${LOADED.has(s) ? 'sync' : 'async'}">`; };
