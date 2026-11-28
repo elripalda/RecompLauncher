@@ -770,7 +770,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
 
     // The settings the player picked on the game's page, put back after the update's files.
-    let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.tag, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
+    let kept = prev.as_ref().and_then(|p| profile::find_for(p, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
     // Unpacked beside the game's folder first: a full drive or a bad download stops here, with the
     // game untouched.
@@ -950,6 +950,9 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         installer_tag: String::new(),
         boot_hash: prev.as_ref().map(|p| p.boot_hash.clone()).unwrap_or_default(),
         one_road: prev.as_ref().map(|p| p.one_road.clone()).unwrap_or_default(),
+        // A new release: the copies kept for the old one don't apply (kept again from the catalog).
+        release_file: None,
+        ours_file: None,
         unpacked: prev.as_ref().map(|p| p.unpacked).unwrap_or(false),
         from_appimage: prev.as_ref().map(|p| p.from_appimage.clone()).unwrap_or_default(),
         input_checks: prev.as_ref().map(|p| p.input_checks.clone()).unwrap_or_default(),
@@ -5118,16 +5121,17 @@ pub(crate) fn player_sets_up(st: &App, id: &str) -> bool {
 fn easy_setup(st: State<'_, App>) -> Vec<String> {
     let cat = cached_catalog(&st);
     // An installed game is asked about the release it has; one that isn't, about the one it'd get.
-    let dirs: HashMap<String, (PathBuf, String)> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), (g.path.clone(), g.tag.clone()))).collect();
-    let none = (PathBuf::new(), String::new());
+    let installed: HashMap<String, Installed> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.clone())).collect();
     cat.get("apps")
         .and_then(Value::as_array)
         .map(|a| {
             a.iter()
                 .filter_map(|x| {
                     let id = x.get("id")?.as_str()?;
-                    let (dir, tag) = dirs.get(id).unwrap_or(&none);
-                    let p = profile::find(dir, tag, x)?;
+                    let p = match installed.get(id) {
+                        Some(g) => profile::find_for(g, x)?,
+                        None => profile::find(Path::new(""), "", x)?,
+                    };
                     p.easy_setup().then(|| id.to_string())
                 })
                 .collect()
@@ -5715,7 +5719,7 @@ fn recomp_games(st: State<'_, App>) -> std::collections::BTreeMap<String, GameSe
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    profile::find(&g.path, &g.tag, &entry).map(|mut p| {
+    profile::find_for(g, &entry).map(|mut p| {
         p.windows_build = Some(is_windows_build(g));
         // Optional inputs this launcher can't use (newer shared types, DLSS without an RTX card).
         inputs::prepare(&mut p, dlss::applies(&st.dir));
@@ -7925,15 +7929,28 @@ fn back_online(app: &AppHandle) {
 /// own, once each (one_road.rs). Only an entry that says the profile is ours counts, so a catalog
 /// from before `launcher_from` moves nothing.
 fn move_to_one_road(st: &App, cat: &Value) {
+    let mut changed = false;
+    // While the catalog is at an install's own release, its copies of that release's file (and of
+    // our profile pinned to it) are kept with the install, for when a newer release is out.
+    {
+        let mut l = st.lib.lock().unwrap();
+        for g in l.installed.values_mut() {
+            let Some(entry) = catalog::app(cat, &g.id) else { continue };
+            if let Some((release, ours)) = profile::copies_to_keep(g, entry) {
+                g.release_file = release;
+                g.ours_file = ours;
+                changed = true;
+            }
+        }
+    }
     let ids: Vec<String> = {
         let l = st.lib.lock().unwrap();
         l.installed.values().filter(|g| g.one_road.is_empty() && !g.local && !g.player_sets_up()).map(|g| g.id.clone()).collect()
     };
-    let mut changed = false;
     for id in ids {
         let Some(entry) = catalog::app(cat, &id).filter(|e| one_road::ours_to_move(e)) else { continue };
         let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { continue };
-        let Some(p) = profile::find(&g.path, &g.tag, entry) else { continue };
+        let Some(p) = profile::find_for(&g, entry) else { continue };
         let copy = inputs::main_path(&p, &g);
         let outcome = one_road::plan(&g, &p, copy.as_deref(), is_windows_build(&g));
         let mut l = st.lib.lock().unwrap();

@@ -399,7 +399,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     // What's actually used: embedded metadata, the folder file, then catalog/built-in.
     let cat = crate::cached_catalog(&st);
     let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
-    let used = profile::find(&dir, &g.tag, &entry);
+    let used = profile::find_for(&g, &entry);
     // Where it comes from is find's own answer (profile::Origin); the catalog's copy of the
     // release's file and our profiles both come from recomplauncher.com.
     let source = match used.as_ref().map(|p| p.origin) {
