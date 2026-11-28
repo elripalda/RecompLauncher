@@ -2037,13 +2037,8 @@ fn support_in(dir: &Path) -> Option<Value> {
 /// Each Launcher Support feature a recomplauncher.json sets up itself.
 fn profile_covers(p: &profile::Profile) -> Value {
     let game = p.game.as_ref();
-    // The player's copy asked for through named inputs (no `game` block) is Easy Setup too: a
-    // required input of role game or disc that isn't a shared key. The site counts it the same way
-    // (rs_sdk_easy), so the card agrees with the catalog.
-    let copy_input = p.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
-    // A `game` block alone sets nothing up: Easy Setup (Profile::easy_setup) also needs a program
-    // to start, so without one the box would tick what Install doesn't offer.
-    let easy_setup = (p.start.is_some() && game.is_some()) || copy_input;
+    // The one rule (Profile::easy_setup), so the box agrees with Install and with the catalog.
+    let easy_setup = p.easy_setup();
     json!({
         "easy_setup": easy_setup,
         "settings": !p.settings.is_empty(),

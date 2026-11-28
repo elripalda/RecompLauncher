@@ -38,7 +38,10 @@ Game pages have a Launcher Support box. Each feature in it is marked as coming f
 doesn't reach players, except on a Forgejo or Gitea server (see
 [Where the file goes](#where-the-file-goes)). Only what the launcher can use counts: a file that
 doesn't fit the format is skipped whole (the box says the launcher can't read it), Easy Setup
-needs `start` with `game` (or a required game input), and Verified Copies needs `game.dumps` or
+needs `start` and the player's copy: `game`, or a required input of role `game` or `disc` that
+isn't a shared key, never one without `start` (the cases are in
+[easy-setup-cases.json](easy-setup-cases.json), which the launcher and recomplauncher.com both
+test against), and Verified Copies needs `game.dumps` or
 `game.check.ids`, not only a `check.file`. When everything you can control comes from
 your own file, the box says Full Support. A free
 [developer account](https://recomplauncher.com/developers?signup=1) puts the verified tick next to

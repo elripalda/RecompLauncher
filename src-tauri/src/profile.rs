@@ -1793,10 +1793,12 @@ impl Profile {
         picked().find(|i| i.role == "game").or_else(|| picked().next())
     }
 
-    /// Easy Setup, the same rule as the website's: it starts a program and takes the player's copy
-    /// of the game, or it asks for the game or its disc as a required input.
+    /// Easy Setup, the one rule (the website's rs_sdk_easy is the same, and both are tested against
+    /// docs/easy-setup-cases.json): it starts a program, and it takes the player's copy, as the older
+    /// `game` block or as a required input of role game or disc that isn't a shared key.
     pub fn easy_setup(&self) -> bool {
-        (self.start.is_some() && self.main_copy().is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
+        let copy_input = self.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
+        self.start.is_some() && (self.game.is_some() || copy_input)
     }
 
     pub fn config_file(&self, id: &str, install: &Path) -> Option<File> {
@@ -3055,10 +3057,28 @@ mod tests {
         assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "game": {} })));
         assert!(!p(serde_json::json!({ "game": {} })));
         assert!(!p(serde_json::json!({ "start": { "program": ["Game.exe"] } })));
-        assert!(p(serde_json::json!({ "inputs": [{ "id": "d", "label": "Disc", "role": "disc", "formats": [{ "type": "file" }] }] })));
-        assert!(p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
+        assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "d", "label": "Disc", "role": "disc", "formats": [{ "type": "file" }] }] })));
+        assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
+        // Without a program to start, the launcher can't set it up from the copy.
+        assert!(!p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
         assert!(!p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "optional": true, "formats": [{ "type": "file" }] }] })));
         assert!(!p(serde_json::json!({ "inputs": [{ "id": "k", "label": "K", "role": "key", "shared": "switch.prod-keys" }] })));
+    }
+
+    /// The cases the website's rs_sdk_easy runs too, so the two can't drift apart.
+    #[test]
+    fn easy_setup_matches_the_shared_cases() {
+        let all: serde_json::Value = serde_json::from_str(include_str!("../../docs/easy-setup-cases.json")).unwrap();
+        let cases = all["cases"].as_array().unwrap();
+        assert!(cases.len() >= 10);
+        for c in cases {
+            let p: super::Profile = serde_json::from_value(c["profile"].clone()).unwrap();
+            assert_eq!(p.easy_setup(), c["easy"].as_bool().unwrap(), "{}", c["name"]);
+            // Read the way find reads it (the older game block as an input), it's the same answer.
+            let mut lifted = p.clone();
+            lifted.lift_game();
+            assert_eq!(lifted.easy_setup(), c["easy"].as_bool().unwrap(), "{} (lifted)", c["name"]);
+        }
     }
 
     #[test]
