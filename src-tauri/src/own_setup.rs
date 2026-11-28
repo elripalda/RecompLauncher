@@ -347,12 +347,13 @@ pub fn run(app: &AppHandle, id: &str, g: &Installed, setup: &Path, copy: Option<
     }
     let (app, id, name) = (app.clone(), id.to_string(), g.name.clone());
     let folder = g.path.clone();
+    let ran = setup.to_path_buf();
     std::thread::spawn(move || {
         let code = child.wait();
         // A setup that's only a starter (TotK-Setup.exe opens its Python window and quits): the
         // setup isn't over until every program from the download it started has closed too.
         let places = wait_for_rest(&folder);
-        let (state, candidates) = finish(&app, &id, code, since, &places);
+        let (state, candidates) = finish(&app, &id, &ran, code, since, &places);
         OPEN.lock().unwrap().retain(|x| x != &id);
         if from_bp {
             crate::show_main(&app);
@@ -501,7 +502,7 @@ fn player_places(st: &App) -> Vec<PathBuf> {
 /// again).
 /// Returns how it went ("done", "confirm", "lost" or "cancelled") and, for "confirm", the programs
 /// the player can pick from (the launcher's own pick first).
-fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said: &[String]) -> (&'static str, Vec<String>) {
+fn finish(app: &AppHandle, id: &str, ran: &Path, code: Option<i32>, since: SystemTime, said: &[String]) -> (&'static str, Vec<String>) {
     let st = app.state::<App>();
     let Some(mut g) = st.lib.lock().unwrap().installed.get(id).cloned() else { return ("cancelled", vec![]) };
     let os = crate::assets::os_now();
@@ -560,7 +561,7 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
     if want.is_some() && !usable(&g) {
         g.exe = None;
     }
-    let found = usable(&g);
+    let found = usable(&g) && !failed_unbuilt(ran, code, &g.path, g.exe.as_deref(), since);
     // Only a game whose profile names the program its setup makes is known for sure. Otherwise
     // the player says which program starts the game (an installer's tools, a translator or a
     // builder left beside it, aren't the game), from the launcher's pick and the programs the
@@ -608,6 +609,19 @@ fn finish(app: &AppHandle, id: &str, code: Option<i32>, since: SystemTime, said:
     }
     st.save();
     (state, candidates)
+}
+
+/// Whether a setup that just closed failed before making anything to start: a Linux or Mac setup
+/// (a script, whose error code is its answer) ended with one, and the program the game starts is
+/// one the download already had (a play script that starts the build its setup makes). Counted as
+/// set up, the next Play would start a game that was never built. A Windows setup isn't judged by
+/// its code: one whose window was closed after it finished ends with an error code too.
+fn failed_unbuilt(ran: &Path, code: Option<i32>, dir: &Path, exe: Option<&Path>, since: SystemTime) -> bool {
+    if crate::proton::is_windows_program(ran) || code.unwrap_or(0) == 0 {
+        return false;
+    }
+    let Some(e) = exe.filter(|e| !e.is_absolute()) else { return false };
+    std::fs::metadata(dir.join(e)).and_then(|m| m.modified()).is_ok_and(|made| made < since)
 }
 
 /// Programs made since `since` (with two minutes' grace) in these folders, a few levels down: what
@@ -1295,6 +1309,43 @@ mod tests {
 #[cfg(test)]
 mod place_tests {
     use super::*;
+
+    /// A game folder whose download came with play.sh, and a moment after it was written.
+    fn with_play_script(tag: &str) -> (PathBuf, SystemTime) {
+        let d = std::env::temp_dir().join(format!("rl-failed-setup-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("play.sh"), b"#!/bin/sh\n").unwrap();
+        (d, SystemTime::now() + std::time::Duration::from_secs(5))
+    }
+
+    #[test]
+    fn a_script_setup_that_failed_leaves_the_game_not_set_up() {
+        let (d, since) = with_play_script("failed");
+        assert!(failed_unbuilt(Path::new("setup.sh"), Some(1), &d, Some(Path::new("play.sh")), since));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_script_setup_that_finished_sets_the_game_up() {
+        let (d, since) = with_play_script("finished");
+        assert!(!failed_unbuilt(Path::new("setup.sh"), Some(0), &d, Some(Path::new("play.sh")), since));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_program_the_setup_made_counts_whatever_its_code() {
+        let (d, _) = with_play_script("made");
+        assert!(!failed_unbuilt(Path::new("setup.sh"), Some(1), &d, Some(Path::new("play.sh")), SystemTime::UNIX_EPOCH));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_windows_setups_code_isnt_judged() {
+        let (d, since) = with_play_script("windows");
+        assert!(!failed_unbuilt(Path::new("Setup.cmd"), Some(1), &d, Some(Path::new("play.sh")), since));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn finds_the_folder_a_setup_was_told() {
