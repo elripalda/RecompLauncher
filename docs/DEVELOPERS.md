@@ -206,6 +206,9 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
 - A release with several AppImages unpacks each into a folder named after it
   (`MyGame-Editor-x86_64.AppImage` into `MyGame-Editor-x86_64/`, started from its `AppRun`). Ship
   one when you can.
+- A file named like an AppImage that isn't one (a start script you keep under an older name, say)
+  stays a plain file: it isn't unpacked, and Play never takes it for the game's AppImage. A
+  download that is itself such a file isn't installed: the release's tarball is, when it has one.
 - An AppImage a player already has comes in the same way: Bring Your Recomps unpacks it into their
   Recomp Library and leaves their file where it is.
 

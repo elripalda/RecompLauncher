@@ -132,20 +132,30 @@ pub(crate) fn validate_runtime(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// A file named `….AppImage` that is one: every AppImage (type 2 of either kind, or an old type 1)
+/// starts like a Linux program. A start script some releases keep under an older AppImage name
+/// doesn't, so it is a plain file. Only its first 4 bytes are read. A file whose start can't be read
+/// (no permission, still being written) goes by its name, as it always did.
+pub(crate) fn is_real_appimage(path: &Path) -> bool {
+    use std::io::Read;
+    if !path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
+        return false;
+    }
+    let mut magic = [0u8; 4];
+    match fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)) {
+        Ok(()) => &magic == b"\x7fELF",
+        Err(_) => true,
+    }
+}
+
 /// Only an unambiguous, regular AppImage at the install root is eligible.
 /// Never follow a symlink or guess between several independent game builds.
 pub(crate) fn installed_image(dir: &Path) -> Option<PathBuf> {
     let mut image = None;
     for entry in fs::read_dir(dir).ok()?.flatten() {
         let path = entry.path();
-        if path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.eq_ignore_ascii_case("appimage"))
-            != Some(true)
-            || !entry.file_type().ok()?.is_file()
-            || crate::install::mac_metadata(&path)
-        {
+        let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
+        if !named || !entry.file_type().ok()?.is_file() || crate::install::mac_metadata(&path) || !is_real_appimage(&path) {
             continue;
         }
         if image.is_some() {
@@ -531,7 +541,7 @@ pub(crate) mod tests {
         let d = std::env::temp_dir().join(format!("rl-appledouble-image-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("Game.AppImage"), b"image").unwrap();
+        std::fs::write(d.join("Game.AppImage"), b"\x7fELF image").unwrap();
         std::fs::write(d.join("._Game.AppImage"), b"\x00\x05\x16\x07AppleDouble").unwrap();
         let got = installed_image(&d);
         let _ = std::fs::remove_dir_all(&d);
@@ -736,6 +746,58 @@ pub(crate) mod tests {
         assert_eq!(installed_image(&dir.0), Some(a));
         fs::write(dir.0.join("another.AppImage"), []).unwrap();
         assert!(installed_image(&dir.0).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_script_named_like_an_appimage_isnt_one() {
+        let dir = TempDir::new();
+        let real = dir.0.join("Game.AppImage");
+        fs::write(&real, game_image()).unwrap();
+        let dwarfs = dir.0.join("Game-anylinux.appimage");
+        fs::write(&dwarfs, dwarfs_game_image()).unwrap();
+        let script = dir.0.join("OldName.AppImage");
+        fs::write(&script, b"#!/bin/sh\nexec ./Game.AppImage\n").unwrap();
+        let type1 = dir.0.join("Old.AppImage");
+        fs::write(&type1, b"\x7fELF\x02\x01\x01\x00AI\x01").unwrap();
+        assert!(is_real_appimage(&real));
+        assert!(is_real_appimage(&dwarfs));
+        assert!(is_real_appimage(&type1), "a type-1 AppImage is still one, and still stops at unpack");
+        assert!(!is_real_appimage(&script));
+        assert!(!is_real_appimage(&dir.0.join("Game.sh")), "only a file named like one");
+    }
+
+    #[test]
+    fn an_appimage_whose_start_cant_be_read_goes_by_its_name() {
+        let dir = TempDir::new();
+        // Shorter than a header (one still being written): its name says what it is.
+        let short = dir.0.join("Partial.AppImage");
+        fs::write(&short, b"\x7f").unwrap();
+        assert!(is_real_appimage(&short));
+        assert!(is_real_appimage(&dir.0.join("Gone.AppImage")));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let locked = dir.0.join("Locked.AppImage");
+            fs::write(&locked, b"#!/bin/sh\n").unwrap();
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+            // Root reads it anyway, and then it is the script it is.
+            if fs::File::open(&locked).is_err() {
+                assert!(is_real_appimage(&locked));
+            }
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_installed_image_is_the_real_one_beside_a_script() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("OldName.AppImage"), b"#!/bin/sh\nexec ./Game.AppImage\n").unwrap();
+        assert_eq!(installed_image(&dir.0), None, "a script alone is no image");
+        let real = dir.0.join("Game.AppImage");
+        fs::write(&real, game_image()).unwrap();
+        assert_eq!(installed_image(&dir.0), Some(real));
     }
 
     #[test]
