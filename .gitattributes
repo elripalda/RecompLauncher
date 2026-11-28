@@ -4,4 +4,4 @@ packaging/** text eol=lf
 src-tauri/src/*.sh text eol=lf
 # UI tests read JavaScript and Rust source with LF line endings on every platform.
 ui/*.js text eol=lf
-src-tauri/src/*.rs text eol=lf
+src-tauri/src/**/*.rs text eol=lf
