@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "所需时间比预期长",
  "Players": "玩家",
  "On Disk": "磁盘占用",
  "Not added yet": "尚未添加",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "登录 GitHub，然后点右上角的 Star。",
  "Thanks! Press Star at the top right.": "谢谢！请点右上角的 Star。",
  "Or star it later from your PC.": "也可以稍后在电脑上点星。",
- "Glad you like it, and thanks for the star on GitHub.": "很高兴你喜欢它，也感谢你在 GitHub 上点的星。"
+ "Glad you like it, and thanks for the star on GitHub.": "很高兴你喜欢它，也感谢你在 GitHub 上点的星。",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "如需同时为游戏设置变量，请像 Steam 一样写在 %command% 前面：NAME=value %command% --option。",
+ "Put %command% in your launch options only once.": "启动选项中只能写一次 %command%。",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% 前面只能设置变量，例如 NAME=value。",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "变量名只能包含字母、数字和 _，且不能以数字开头。",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "以 RECOMPLAUNCHER 开头的名称属于启动器本身，启动选项不能设置。",
+ "This game's launch options can't be read. Change them on its Manage tab.": "无法读取此游戏的启动选项。请在其“管理”标签页中修改。"
 }

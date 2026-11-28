@@ -98,6 +98,21 @@ fn has_bytes(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
+/// How much of a file it takes to tell a Mega Drive game: its header ends at 0x110.
+const MEGA_DRIVE_HEAD: usize = 0x110;
+
+/// A Mega Drive or Genesis cartridge names its console at 0x100 ("SEGA MEGA DRIVE", " SEGA
+/// GENESIS"): the console itself checks for SEGA there before it boots one.
+fn mega_drive_header(head: &[u8]) -> bool {
+    head.get(0x100..MEGA_DRIVE_HEAD).is_some_and(|console| has_bytes(console, b"SEGA"))
+}
+
+fn mega_drive_file(p: &Path) -> bool {
+    let mut head = [0u8; MEGA_DRIVE_HEAD];
+    let read = fs::File::open(p).and_then(|mut f| f.read_exact(&mut head));
+    read.is_ok() && mega_drive_header(&head)
+}
+
 /// Which console a disc image is for, from what's inside it: an Xbox or Xbox 360 disc (its XDVDFS
 /// volume, and default.xbe or default.xex at its root), a GameCube or Wii disc (their magic
 /// numbers), a PlayStation disc (ISO 9660 saying PLAYSTATION; its SYSTEM.CNF's BOOT2 line makes it a
@@ -217,7 +232,8 @@ pub fn id_key(s: &str) -> String {
 }
 
 /// The game's own ID, read off the player's copy: an N64 cartridge's game code ("NZSE"), a
-/// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a PlayStation or
+/// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a DS or Game Boy
+/// Advance cartridge's game code ("ACVE", "BPEE"), a PlayStation or
 /// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"), a Switch game's title ID
 /// ("0100F2C0115B6000"), an extracted PS3, PS4 or PS5 game's title ID ("CUSA00242"). None when the file doesn't carry one this reads (a CHD, another console).
 pub fn copy_id(p: &Path) -> Option<String> {
@@ -267,6 +283,16 @@ pub fn copy_id(p: &Path) -> Option<String> {
             _ => return None,
         }
         return game_code(&h[0x3B..0x3F]);
+    }
+    // A DS or Game Boy Advance cartridge: its 4-letter game code, at 0x0C or 0xAC of the header.
+    // Only by extension: neither header has a magic number to tell it from any other file.
+    let cart_code_at = match ext.as_str() {
+        "nds" => Some(0x0C),
+        "gba" => Some(0xAC),
+        _ => None,
+    };
+    if let Some(at) = cart_code_at {
+        return cart_game_code(&mut f, at);
     }
     if let Some((disc, _)) = nintendo_disc(&mut f) {
         return game_code(&disc[..6]);
@@ -386,9 +412,9 @@ fn stfs_name(field: &[u8]) -> String {
     String::from_utf16_lossy(&units).trim().to_string()
 }
 
-/// An Xbox 360 title update or downloadable content package, as its header says.
+/// An Xbox 360 Arcade game, title update or downloadable content package, as its header says.
 struct Package {
-    /// "update" or "dlc".
+    /// "game" (an Arcade game), "update" or "dlc".
     kind: &'static str,
     /// The game's name, which is what it's matched to its game by.
     title: String,
@@ -396,13 +422,15 @@ struct Package {
     display: String,
 }
 
-/// Title updates and DLC are kept as files named only by a content ID, with no file type, so their
-/// header says what they are. Its content type tells an update from DLC; other packages (Arcade
-/// games, saves, profiles, demos) aren't extra content for a game and are left out.
+/// Arcade (XBLA) games, title updates and DLC are kept as files named only by a content ID, with no
+/// file type, so their header says what they are. Its content type tells them apart; other
+/// packages (saves, profiles, demos, themes) are neither a game nor extra content and are left out.
 fn x360_package(p: &Path) -> Option<Package> {
     let h = stfs_header(&mut fs::File::open(p).ok()?)?;
     let content_type = u32::from_be_bytes([h[0x344], h[0x345], h[0x346], h[0x347]]);
     let kind = match content_type {
+        // The whole game is in this one file, so it's the player's copy, not something added to one.
+        0x000D_0000 => "game",
         0x000B_0000 => "update",
         0x0000_0002 => "dlc",
         _ => return None,
@@ -415,7 +443,7 @@ fn x360_package(p: &Path) -> Option<Package> {
 
 /// An Xbox 360 update or DLC package: named for its game, but never a copy of the game itself.
 pub fn is_extra_package(r: &RomFile) -> bool {
-    r.system == "x360" && r.path.is_file() && x360_package(&r.path).is_some()
+    r.system == "x360" && r.path.is_file() && x360_package(&r.path).is_some_and(|p| p.kind != "game")
 }
 
 /// The start of a PS3 package, up to the end of its content ID. It's plain, so no keys are needed.
@@ -439,6 +467,14 @@ fn ps3_pkg_content_id(h: &[u8]) -> Option<&str> {
 /// The game's title ID inside a content ID that `ps3_pkg_content_id` accepted.
 fn ps3_pkg_title_id(content_id: &str) -> String {
     content_id[7..16].to_string()
+}
+
+/// The 4-letter game code at `at` of a cartridge's header, or None when the file is too short or
+/// the code is blank (homebrew leaves it zeroed or fills it with '#').
+fn cart_game_code(f: &mut fs::File, at: u64) -> Option<String> {
+    let mut code = [0u8; 4];
+    read_at(f, at, &mut code).ok()?;
+    game_code(&code)
 }
 
 /// Letters and digits only, or None.
@@ -807,7 +843,9 @@ fn identify_by_type(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
-    let is_cart = CART.contains(&ext.as_str());
+    // .md is also Markdown, and READMEs and licenses sit in every recomp's folder: one only counts
+    // when it has a Mega Drive header.
+    let is_cart = CART.contains(&ext.as_str()) && (ext != "md" || mega_drive_file(p));
     if !is_n64 && !is_disc && !is_cart && ext != "xex" {
         return None;
     }
@@ -837,7 +875,8 @@ fn identify_by_type(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     }
 }
 
-/// An Xbox 360 title update or DLC package, matched to its game by the game's name in its header.
+/// An Xbox 360 Arcade game, title update or DLC package, matched to its game by the game's name in
+/// its header.
 /// Only a file big enough to hold the header is opened, and only its first four bytes are read
 /// unless they're a package's.
 fn identify_package(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
@@ -976,6 +1015,48 @@ fn rom_ext(name: &str) -> Option<String> {
     is_rom.then_some(ext)
 }
 
+/// A 7z can't skip to a file: to read a .md's header, what comes before it in its block is
+/// unpacked too. A Mega Drive game never sits behind this much.
+const SEVENZ_HEAD_REACH: u64 = 64 * 1024 * 1024;
+
+/// A .md in an archive that isn't a Mega Drive game (a README, a license), by its header.
+fn markdown_in_archive(p: &Path, ext: &str, name: &str) -> bool {
+    let is_md = Path::new(name).extension().is_some_and(|e| e.eq_ignore_ascii_case("md"));
+    is_md && !archive_head(p, ext, name).is_some_and(|head| mega_drive_header(&head))
+}
+
+/// The start of a file in a zip or 7z, as far as a Mega Drive header goes.
+fn archive_head(p: &Path, ext: &str, name: &str) -> Option<Vec<u8>> {
+    let n = MEGA_DRIVE_HEAD as u64;
+    let mut head = Vec::new();
+    if ext != "7z" {
+        let mut zip = zip::ZipArchive::new(fs::File::open(p).ok()?).ok()?;
+        zip.by_name(name).ok()?.take(n).read_to_end(&mut head).ok()?;
+        return Some(head);
+    }
+    let archive = sevenz_rust::Archive::open(p).ok()?;
+    let at = archive.files.iter().position(|f| f.name() == name)?;
+    let block = archive.stream_map.file_folder_index[at]?;
+    let first = archive.stream_map.folder_first_file_index[block];
+    let before: u64 = archive.files[first..at].iter().map(|f| f.size()).sum();
+    if before > SEVENZ_HEAD_REACH {
+        return None;
+    }
+    let mut source = fs::File::open(p).ok()?;
+    let decoder = sevenz_rust::BlockDecoder::new(block, &archive, &[], &mut source);
+    let mut each = |entry: &sevenz_rust::SevenZArchiveEntry, data: &mut dyn Read| -> Result<bool, sevenz_rust::Error> {
+        if entry.name() != name {
+            // The files of a block are one stream: the next one starts where this one is read to.
+            std::io::copy(data, &mut std::io::sink())?;
+            return Ok(true);
+        }
+        data.take(n).read_to_end(&mut head)?;
+        Ok(false)
+    };
+    decoder.for_each_entries(&mut each).ok()?;
+    Some(head)
+}
+
 /// A MAME-style set name ("hopr", "racr2ce", "hopr_x"): short, with no spaces or brackets. A zip
 /// named like a game ("Some Game (USA).zip") with no ROM inside is something else.
 fn is_set_name(stem: &str) -> bool {
@@ -989,7 +1070,7 @@ fn is_set_name(stem: &str) -> bool {
 /// set's short name.
 fn identify_archive(p: &Path, ext: &str, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
     let names = archive_names(p, ext)?;
-    let roms: Vec<String> = names.iter().filter_map(|n| rom_ext(n)).collect();
+    let roms: Vec<String> = names.iter().filter(|n| !markdown_in_archive(p, ext, n)).filter_map(|n| rom_ext(n)).collect();
     let stem = p.file_stem()?.to_str()?.to_string();
     if let [inner] = roms.as_slice() {
         let system = system_for(inner);
@@ -1612,6 +1693,25 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn an_arcade_package_is_the_game() {
+        // XBLA games are one package with no file type, kept next to their update and DLC.
+        let d = tmp("x360-xbla");
+        let game = d.join("SkyRacer/17EE90959CCE5C680E1B7D3DB92A616D807CFA8358");
+        fs::create_dir_all(game.parent().unwrap()).unwrap();
+        fs::write(&game, stfs(0x000D_0000, "SkyRacer", "")).unwrap();
+        fs::write(d.join("SkyRacer/TU_1C422BA_0000104000000.00000000000G1"), stfs(0x000B_0000, "SkyRacer", "")).unwrap();
+        fs::write(d.join("SkyRacer/C995E87FB46F446F58E194647202F4ABB3BD77E958"), stfs(0x0000_0002, "SkyRacer", "Bonus Track Pack")).unwrap();
+        let found = scan(&[d.clone()]);
+        assert_eq!(found.len(), 3);
+        assert_eq!(part_of_file(&game).kind, "game");
+        assert_eq!(copy_id(&game).as_deref(), Some("4D5307E6"));
+        let cat = serde_json::json!({ "apps": [{ "id": "skyracer", "game": "SkyRacer", "origin": "x360" }] });
+        assert_eq!(match_catalog(&cat, &found).get("skyracer").map(|r| r.path.clone()), Some(game));
+        assert_eq!(files_of(&cat["apps"][0], &found).len(), 3);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn ignores_files_without_a_package_magic() {
         let d = tmp("x360-none");
         let mut other = stfs(0x000B_0000, "SkyRacer", "");
@@ -1665,6 +1765,74 @@ pub(crate) mod tests {
             z.write_all(&[0u8; 64]).unwrap();
         }
         z.finish().unwrap();
+    }
+
+    fn mega_drive_rom() -> Vec<u8> {
+        let mut cart = vec![0u8; 8192];
+        cart[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        cart
+    }
+
+    /// A 7z of the files `names` in `src`, packed in that order into one solid block.
+    fn write_solid_7z(p: &Path, src: &Path, names: &[&str]) {
+        let mut w = sevenz_rust::SevenZWriter::create(p).unwrap();
+        let entries = names.iter().map(|n| sevenz_rust::SevenZArchiveEntry::from_path(src.join(n), n.to_string())).collect();
+        let readers: Vec<_> = names.iter().map(|n| sevenz_rust::SourceReader::from(fs::File::open(src.join(n)).unwrap())).collect();
+        w.push_archive_entries(entries, sevenz_rust::SeqReader::from(readers)).unwrap();
+        w.finish().unwrap();
+    }
+
+    #[test]
+    fn a_zip_with_a_rom_and_a_readme_md_is_the_rom() {
+        let d = tmp("zip-readme");
+        let p = d.join("ActRaiser (USA).zip");
+        write_zip(&p, &["ActRaiser (USA).sfc", "README.md"]);
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("snes".to_string()));
+    }
+
+    #[test]
+    fn a_zip_with_a_mega_drive_md_rom_is_a_genesis_copy() {
+        use std::io::Write;
+        let d = tmp("zip-mega-drive");
+        let p = d.join("Sonic.zip");
+        let mut z = zip::ZipWriter::new(fs::File::create(&p).unwrap());
+        z.start_file("Sonic.md", zip::write::SimpleFileOptions::default()).unwrap();
+        z.write_all(&mega_drive_rom()).unwrap();
+        z.finish().unwrap();
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("genesis".to_string()));
+    }
+
+    #[test]
+    fn a_7z_with_a_rom_and_a_readme_md_is_the_rom() {
+        let d = tmp("7z-readme");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("README.md"), "# Game\n".repeat(64)).unwrap();
+        fs::write(src.join("Game.gba"), [0u8; 64]).unwrap();
+        let p = d.join("Game.7z");
+        write_solid_7z(&p, &src, &["README.md", "Game.gba"]);
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("gba".to_string()));
+    }
+
+    #[test]
+    fn a_7z_with_a_mega_drive_md_rom_behind_a_readme_is_a_genesis_copy() {
+        // The readme is unpacked first: the header has to be read from the ROM's own bytes.
+        let d = tmp("7z-mega-drive");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("readme.txt"), "Unzip and play.\n".repeat(512)).unwrap();
+        fs::write(src.join("Sonic.md"), mega_drive_rom()).unwrap();
+        let p = d.join("Sonic.7z");
+        write_solid_7z(&p, &src, &["readme.txt", "Sonic.md"]);
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("genesis".to_string()));
     }
 
     #[test]
@@ -2049,6 +2217,73 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_ds_cartridge_has_its_game_code() {
+        let d = tmp("nds-code");
+        let p = d.join("castlevania.nds");
+        let mut rom = vec![0u8; 0x200];
+        rom[..12].copy_from_slice(b"CASTLEVANIA ");
+        rom[0x0C..0x10].copy_from_slice(b"ACVE");
+        fs::write(&p, rom).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("ACVE"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_gba_cartridge_has_its_game_code() {
+        let d = tmp("gba-code");
+        let p = d.join("emerald.gba");
+        let mut rom = vec![0u8; 0x200];
+        rom[0xA0..0xAC].copy_from_slice(b"POKEMON EMER");
+        rom[0xAC..0xB0].copy_from_slice(b"BPEE");
+        fs::write(&p, rom).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("BPEE"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cartridge_too_short_for_its_code_has_no_id() {
+        let d = tmp("gba-short");
+        let p = d.join("short.gba");
+        fs::write(&p, [0u8; 0x60]).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_zeroed_cartridge_code_is_no_id() {
+        let d = tmp("nds-zeroed");
+        let p = d.join("homebrew.nds");
+        fs::write(&p, [0u8; 0x200]).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_hash_filled_cartridge_code_is_no_id() {
+        let d = tmp("nds-hashes");
+        let p = d.join("homebrew.nds");
+        let mut rom = vec![0u8; 0x200];
+        rom[0x0C..0x10].copy_from_slice(b"####");
+        fs::write(&p, rom).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ds_game_code_fits_only_its_listed_id() {
+        let d = tmp("nds-fits");
+        let p = d.join("game.nds");
+        let mut rom = vec![0u8; 0x200];
+        rom[0x0C..0x10].copy_from_slice(b"ACVE");
+        fs::write(&p, rom).unwrap();
+        let usa = serde_json::json!({ "copy_ids": ["acve"] });
+        let eur = serde_json::json!({ "copy_ids": ["ACVP"] });
+        assert!(fits_copy_ids(&usa, &p).is_ok());
+        assert_eq!(fits_copy_ids(&eur, &p), Err("ACVE".to_string()));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn an_nsp_that_says_nothing_has_no_id() {
         let d = tmp("switch-none");
         let p = d.join("Metroid Dread.nsp");
@@ -2115,6 +2350,29 @@ pub(crate) mod tests {
         assert!(fits(&found[0], "switch2"));
         assert!(fits(&found[0], "switch"));
         assert!(!fits(&found[0], "ps3"));
+    }
+
+    #[test]
+    fn skips_markdown_files() {
+        let root = tmp("markdown-scan");
+        fs::write(root.join("README.md"), "# Some Recomp\n".repeat(1024)).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn scans_mega_drive_md_roms() {
+        let root = tmp("mega-drive-scan");
+        let sonic = root.join("Sonic the Hedgehog (USA, Europe).md");
+        fs::write(&sonic, mega_drive_rom()).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, sonic);
+        assert_eq!(found[0].system, "genesis");
     }
 
     #[test]

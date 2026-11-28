@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "예상보다 오래 걸리고 있습니다",
  "Players": "플레이어",
  "On Disk": "디스크 사용량",
  "Not added yet": "아직 추가되지 않음",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "GitHub에 로그인한 다음 오른쪽 위의 Star를 누르세요.",
  "Thanks! Press Star at the top right.": "감사합니다! 오른쪽 위의 Star를 누르세요.",
  "Or star it later from your PC.": "또는 나중에 PC에서 별을 줄 수 있습니다.",
- "Glad you like it, and thanks for the star on GitHub.": "마음에 드셨다니 기쁩니다. GitHub에서 별을 주셔서 감사합니다."
+ "Glad you like it, and thanks for the star on GitHub.": "마음에 드셨다니 기쁩니다. GitHub에서 별을 주셔서 감사합니다.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "게임에 변수도 설정하려면 Steam처럼 %command% 앞에 쓰세요: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "실행 옵션에 %command%는 한 번만 쓰세요.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% 앞에는 NAME=value 같은 변수만 쓸 수 있습니다.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "변수 이름에는 문자, 숫자, _만 쓸 수 있으며 숫자로 시작할 수 없습니다.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER로 시작하는 이름은 런처 전용이라 실행 옵션에서 설정할 수 없습니다.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "이 게임의 실행 옵션을 읽을 수 없습니다. 관리 탭에서 바꾸세요."
 }

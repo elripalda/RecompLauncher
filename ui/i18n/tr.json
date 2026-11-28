@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Beklenenden uzun sürüyor",
  "Players": "Oyuncular",
  "On Disk": "Diskte",
  "Not added yet": "Henüz eklenmedi",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "GitHub'a giriş yap, ardından sağ üstteki Star düğmesine bas.",
  "Thanks! Press Star at the top right.": "Teşekkürler! Sağ üstteki Star düğmesine bas.",
  "Or star it later from your PC.": "Ya da daha sonra bilgisayarından yıldız ver.",
- "Glad you like it, and thanks for the star on GitHub.": "Beğenmene sevindik, GitHub'daki yıldız için de teşekkürler."
+ "Glad you like it, and thanks for the star on GitHub.": "Beğenmene sevindik, GitHub'daki yıldız için de teşekkürler.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Oyun için değişken de ayarlamak isterseniz, Steam'deki gibi %command% öncesine yazın: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Başlatma seçeneklerine %command% yalnızca bir kez yazın.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% öncesinde başlatma seçenekleri yalnızca NAME=value gibi değişkenler ayarlayabilir.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Bir değişkenin adı yalnızca harf, rakam ve _ içerebilir ve rakamla başlayamaz.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER ile başlayan adlar başlatıcıya aittir, bu yüzden başlatma seçenekleri bunları ayarlayamaz.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Bu oyunun başlatma seçenekleri okunamıyor. Yönet sekmesinden değiştirin."
 }

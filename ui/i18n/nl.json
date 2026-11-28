@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Duurt langer dan verwacht",
  "Players": "Spelers",
  "On Disk": "Op schijf",
  "Not added yet": "Nog niet toegevoegd",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "Log in bij GitHub en druk rechtsboven op Star.",
  "Thanks! Press Star at the top right.": "Bedankt! Druk rechtsboven op Star.",
  "Or star it later from your PC.": "Of geef het later een ster vanaf je pc.",
- "Glad you like it, and thanks for the star on GitHub.": "Fijn dat je het leuk vindt, en bedankt voor de ster op GitHub."
+ "Glad you like it, and thanks for the star on GitHub.": "Fijn dat je het leuk vindt, en bedankt voor de ster op GitHub.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Om ook variabelen voor de game in te stellen, zet je ze vóór %command%, net als in Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Zet %command% maar één keer in de startopties.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Vóór %command% kunnen startopties alleen variabelen instellen, zoals NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "De naam van een variabele mag alleen letters, cijfers en _ hebben en mag niet met een cijfer beginnen.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Namen die met RECOMPLAUNCHER beginnen zijn van de launcher, dus startopties kunnen ze niet instellen.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "De startopties van deze game kunnen niet worden gelezen. Pas ze aan op het tabblad Beheren."
 }

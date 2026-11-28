@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Mất nhiều thời gian hơn dự kiến",
  "Players": "Người chơi",
  "On Disk": "Trên ổ đĩa",
  "Not added yet": "Chưa được thêm",
@@ -3786,5 +3787,11 @@
  "Sign in to GitHub, then press Star at the top right.": "Đăng nhập GitHub, rồi bấm Star ở góc trên bên phải.",
  "Thanks! Press Star at the top right.": "Cảm ơn bạn! Bấm Star ở góc trên bên phải.",
  "Or star it later from your PC.": "Hoặc gắn sao sau trên PC của bạn.",
- "Glad you like it, and thanks for the star on GitHub.": "Rất vui vì bạn thích nó, và cảm ơn bạn đã gắn sao trên GitHub."
+ "Glad you like it, and thanks for the star on GitHub.": "Rất vui vì bạn thích nó, và cảm ơn bạn đã gắn sao trên GitHub.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Để đặt thêm biến cho trò chơi, hãy viết chúng trước %command%, giống như Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Chỉ đặt %command% một lần trong tùy chọn khởi chạy.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Trước %command%, tùy chọn khởi chạy chỉ có thể đặt biến, như NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Tên biến chỉ được có chữ cái, chữ số và _, và không được bắt đầu bằng chữ số.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Các tên bắt đầu bằng RECOMPLAUNCHER thuộc về trình khởi chạy, nên tùy chọn khởi chạy không thể đặt chúng.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Không đọc được tùy chọn khởi chạy của trò chơi này. Hãy sửa chúng ở thẻ Quản lý."
 }

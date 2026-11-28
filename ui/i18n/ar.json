@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "يستغرق وقتًا أطول من المتوقع",
  "Players": "اللاعبون",
  "On Disk": "على القرص",
  "Not added yet": "لم تُضف بعد",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "سجّل الدخول إلى GitHub، ثم اضغط Star في أعلى اليمين.",
  "Thanks! Press Star at the top right.": "شكرًا! اضغط Star في أعلى اليمين.",
  "Or star it later from your PC.": "أو ضع نجمة لاحقًا من جهاز الكمبيوتر.",
- "Glad you like it, and thanks for the star on GitHub.": "يسعدنا أنه أعجبك، وشكرًا على النجمة على GitHub."
+ "Glad you like it, and thanks for the star on GitHub.": "يسعدنا أنه أعجبك، وشكرًا على النجمة على GitHub.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "لتعيين متغيرات للعبة أيضًا، اكتبها قبل %command% كما في Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "ضع %command% في خيارات التشغيل مرة واحدة فقط.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "قبل %command%، لا يمكن لخيارات التشغيل إلا تعيين متغيرات، مثل NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "لا يمكن أن يحتوي اسم المتغير إلا على أحرف وأرقام و_، ولا يمكن أن يبدأ برقم.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "الأسماء التي تبدأ بـ RECOMPLAUNCHER خاصة بالمشغّل، لذا لا يمكن لخيارات التشغيل تعيينها.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "تعذّرت قراءة خيارات تشغيل هذه اللعبة. غيّرها من تبويب الإدارة."
 }

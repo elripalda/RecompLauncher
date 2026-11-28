@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Занимает больше времени, чем ожидалось",
  "Players": "Игроки",
  "On Disk": "На диске",
  "Not added yet": "Пока не добавлены",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "Войдите в GitHub и нажмите Star справа вверху.",
  "Thanks! Press Star at the top right.": "Спасибо! Нажмите Star справа вверху.",
  "Or star it later from your PC.": "Или поставьте звезду позже со своего ПК.",
- "Glad you like it, and thanks for the star on GitHub.": "Рады, что вам нравится, и спасибо за звезду на GitHub."
+ "Glad you like it, and thanks for the star on GitHub.": "Рады, что вам нравится, и спасибо за звезду на GitHub.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Чтобы задать игре ещё и переменные, напишите их перед %command%, как в Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Укажите %command% в параметрах запуска только один раз.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "До %command% параметры запуска могут только задавать переменные, например NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Имя переменной может содержать только буквы, цифры и _ и не может начинаться с цифры.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Имена, начинающиеся с RECOMPLAUNCHER, принадлежат лаунчеру, поэтому параметры запуска не могут их задавать.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Не удаётся прочитать параметры запуска этой игры. Измените их на вкладке «Управление»."
 }

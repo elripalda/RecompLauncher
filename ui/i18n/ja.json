@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "予想より時間がかかっています",
  "Players": "プレイヤー",
  "On Disk": "ディスク使用量",
  "Not added yet": "まだ追加されていません",
@@ -3665,5 +3666,11 @@
  "Sign in to GitHub, then press Star at the top right.": "GitHub にサインインして、右上の Star を押してください。",
  "Thanks! Press Star at the top right.": "ありがとう！右上の Star を押してください。",
  "Or star it later from your PC.": "あとで PC からスターを付けることもできます。",
- "Glad you like it, and thanks for the star on GitHub.": "気に入ってもらえてうれしいです。GitHub でのスターもありがとう！"
+ "Glad you like it, and thanks for the star on GitHub.": "気に入ってもらえてうれしいです。GitHub でのスターもありがとう！",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "ゲームに環境変数も設定するには、Steam と同じように %command% の前に書きます: NAME=value %command% --option。",
+ "Put %command% in your launch options only once.": "起動オプションに %command% は一度だけ書いてください。",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% より前には、NAME=value のような変数しか書けません。",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "変数名に使えるのは英字、数字、_ だけで、数字で始めることはできません。",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER で始まる名前はランチャー専用のため、起動オプションでは設定できません。",
+ "This game's launch options can't be read. Change them on its Manage tab.": "このゲームの起動オプションを読み取れません。管理タブで変更してください。"
 }

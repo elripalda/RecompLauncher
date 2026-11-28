@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Está demorando mais que o esperado",
  "Cloud Saves": "Saves na nuvem",
  "Game Settings": "Configurações do jogo",
  "Verified Copies": "Cópias verificadas",
@@ -3655,5 +3656,11 @@
  "Sign in to GitHub, then press Star at the top right.": "Entre no GitHub e clique em Star, no canto superior direito.",
  "Thanks! Press Star at the top right.": "Valeu! Clique em Star, no canto superior direito.",
  "Or star it later from your PC.": "Ou dê uma estrela mais tarde pelo seu PC.",
- "Glad you like it, and thanks for the star on GitHub.": "Que bom que você curtiu, e valeu pela estrela no GitHub."
+ "Glad you like it, and thanks for the star on GitHub.": "Que bom que você curtiu, e valeu pela estrela no GitHub.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Para definir também variáveis para o jogo, escreva-as antes de %command%, como no Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Coloque %command% só uma vez nas opções de inicialização.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Antes de %command%, as opções de inicialização só podem definir variáveis, como NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "O nome de uma variável só pode ter letras, números e _, e não pode começar com número.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Nomes que começam com RECOMPLAUNCHER são do launcher, então as opções de inicialização não podem defini-los.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Não foi possível ler as opções de inicialização deste jogo. Altere-as na aba Gerenciar."
 }
