@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Prima di %command%, le opzioni di avvio possono solo impostare variabili, come NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Il nome di una variabile può contenere solo lettere, cifre e _, e non può iniziare con una cifra.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "I nomi che iniziano con RECOMPLAUNCHER sono del launcher, quindi le opzioni di avvio non possono impostarli.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Non si riescono a leggere le opzioni di avvio di questo gioco. Cambiale nella sua scheda Gestisci."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Non si riescono a leggere le opzioni di avvio di questo gioco. Cambiale nella sua scheda Gestisci.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Configuralo di nuovo: la vecchia configurazione di RecompLauncher non si è potuta mantenere",
+ "Its setup isn't one of RecompLauncher's older profiles.": "La sua configurazione non è uno dei vecchi profili di RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Questo recomp contiene più giochi e le opzioni di avvio non si possono tenere per ciascuno.",
+ "Your launch options for it already set variables.": "Le tue opzioni di avvio per questo gioco impostano già delle variabili.",
+ "It wasn't set up yet.": "Non era ancora configurato.",
+ "Its program isn't in the game's folder.": "Il suo programma non è nella cartella del gioco.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Con Proton il percorso della tua copia verrebbe salvato alla maniera di Windows, e smette di funzionare appena sposti la libreria o la copia.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Uno dei suoi argomenti contiene una virgoletta, che le opzioni di avvio non possono contenere.",
+ "Its program is outside the game's folder.": "Il suo programma è fuori dalla cartella del gioco.",
+ "How it starts can't be written as launch options exactly.": "Il modo in cui si avvia non si può scrivere esattamente come opzioni di avvio."
 }

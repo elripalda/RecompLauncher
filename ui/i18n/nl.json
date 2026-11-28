@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Vóór %command% kunnen startopties alleen variabelen instellen, zoals NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "De naam van een variabele mag alleen letters, cijfers en _ hebben en mag niet met een cijfer beginnen.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Namen die met RECOMPLAUNCHER beginnen zijn van de launcher, dus startopties kunnen ze niet instellen.",
- "This game's launch options can't be read. Change them on its Manage tab.": "De startopties van deze game kunnen niet worden gelezen. Pas ze aan op het tabblad Beheren."
+ "This game's launch options can't be read. Change them on its Manage tab.": "De startopties van deze game kunnen niet worden gelezen. Pas ze aan op het tabblad Beheren.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Stel het opnieuw in: de oudere instelling van RecompLauncher ervoor kon niet blijven",
+ "Its setup isn't one of RecompLauncher's older profiles.": "De instelling is niet een van de oudere profielen van RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Deze recomp heeft meerdere games, en startopties kunnen niet voor elk apart bewaard worden.",
+ "Your launch options for it already set variables.": "Je startopties ervoor stellen al variabelen in.",
+ "It wasn't set up yet.": "Het was nog niet ingesteld.",
+ "Its program isn't in the game's folder.": "Het programma staat niet in de map van de game.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Via Proton zou het pad naar je exemplaar op de Windows-manier bewaard worden, en dat werkt niet meer zodra de bibliotheek of je exemplaar verhuist.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Een van de argumenten bevat een aanhalingsteken, dat startopties niet kunnen bevatten.",
+ "Its program is outside the game's folder.": "Het programma staat buiten de map van de game.",
+ "How it starts can't be written as launch options exactly.": "Hoe het start, kan niet precies als startopties geschreven worden."
 }

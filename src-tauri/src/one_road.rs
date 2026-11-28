@@ -32,17 +32,29 @@ pub fn ours_to_move(entry: &Value) -> bool {
     }
 }
 
+// Why a game can't be moved exactly, kept with it ("again: <why>") and shown by Troubleshoot once
+// the catalog stops carrying our profile, so each is said to the player.
+pub const NOT_OURS: &str = "Its setup isn't one of RecompLauncher's older profiles.";
+pub const SEVERAL: &str = "This recomp has several games, and launch options can't be kept for each one.";
+pub const HAS_VARS: &str = "Your launch options for it already set variables.";
+pub const NOT_SET_UP: &str = "It wasn't set up yet.";
+pub const NO_PROGRAM: &str = "Its program isn't in the game's folder.";
+pub const PROTON: &str = "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.";
+pub const QUOTE: &str = "One of its arguments has a quote in it, which launch options can't hold.";
+pub const OUTSIDE: &str = "Its program is outside the game's folder.";
+pub const INEXACT: &str = "How it starts can't be written as launch options exactly.";
+
 /// How `p` (ours) started the game, as the player's own settings. Err: why it can't be moved exactly.
 pub fn plan(g: &Installed, p: &Profile, copy: Option<&Path>, windows_build: bool) -> Result<Moved, String> {
     if !matches!(p.origin, Origin::Store | Origin::Boot) {
-        return Err("its profile isn't ours".into());
+        return Err(NOT_OURS.into());
     }
     if !g.games.is_empty() {
-        return Err("a recomp with several games keeps no launch options of its own for each".into());
+        return Err(SEVERAL.into());
     }
     let existing = g.args.trim();
     if existing.contains(crate::launch_options::COMMAND) {
-        return Err("its launch options already set variables".into());
+        return Err(HAS_VARS.into());
     }
     let save_place = save_folder(g, p);
     let Some(_) = p.start.as_ref() else {
@@ -50,17 +62,17 @@ pub fn plan(g: &Installed, p: &Profile, copy: Option<&Path>, windows_build: bool
         return Ok(Moved { exe: None, args: existing.to_string(), save_place });
     };
     if copy.is_none() && p.start_uses_game() {
-        return Err("it isn't set up yet: the player sets it up".into());
+        return Err(NOT_SET_UP.into());
     }
-    let (exe, args) = p.command_for(&g.path, copy, &g.picks, windows_build).ok_or("its program isn't in the game's folder")?;
+    let (exe, args) = p.command_for(&g.path, copy, &g.picks, windows_build).ok_or(NO_PROGRAM)?;
     let env = p.env_vars(&g.path, copy);
     if proton_passes_copy(copy, windows_build, &args, &env) {
-        return Err("through Proton the copy's path is written the Windows way, which a moved library or copy would break".into());
+        return Err(PROTON.into());
     }
     if args.iter().chain(env.iter().map(|(_, v)| v)).any(|a| a.contains('"')) {
-        return Err("an argument has a quote in it, which launch options can't carry".into());
+        return Err(QUOTE.into());
     }
-    let rel = exe.strip_prefix(&g.path).map(Path::to_path_buf).map_err(|_| "its program is outside the game's folder".to_string())?;
+    let rel = exe.strip_prefix(&g.path).map(Path::to_path_buf).map_err(|_| OUTSIDE.to_string())?;
     let ours = args.iter().map(|a| quoted(a)).collect::<Vec<_>>().join(" ");
     let vars = env.iter().map(|(k, v)| format!("{k}={}", quoted(v))).collect::<Vec<_>>().join(" ");
     let text = if vars.is_empty() { format!("{ours} {existing}") } else { format!("{vars} {} {ours} {existing}", crate::launch_options::COMMAND) };
@@ -70,7 +82,7 @@ pub fn plan(g: &Installed, p: &Profile, copy: Option<&Path>, windows_build: bool
     let mut want = args.clone();
     want.extend(crate::split_args(existing));
     if back.env != env || back.args != want {
-        return Err("its start can't be written as launch options exactly".into());
+        return Err(INEXACT.into());
     }
     Ok(Moved { exe: Some(rel), args: text, save_place })
 }

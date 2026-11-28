@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Antes de %command%, as opções de arranque só podem definir variáveis, como NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "O nome de uma variável só pode ter letras, algarismos e _, e não pode começar por um algarismo.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Os nomes que começam por RECOMPLAUNCHER são do launcher, por isso as opções de arranque não os podem definir.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Não foi possível ler as opções de arranque deste jogo. Altera-as no separador Gerir."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Não foi possível ler as opções de arranque deste jogo. Altera-as no separador Gerir.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Configura-o de novo: não foi possível manter a configuração antiga do RecompLauncher",
+ "Its setup isn't one of RecompLauncher's older profiles.": "A configuração não é um dos perfis antigos do RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Este recomp tem vários jogos e as opções de arranque não podem ser guardadas para cada um.",
+ "Your launch options for it already set variables.": "As tuas opções de arranque para ele já definem variáveis.",
+ "It wasn't set up yet.": "Ainda não estava configurado.",
+ "Its program isn't in the game's folder.": "O programa não está na pasta do jogo.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Através do Proton, o caminho para a tua cópia ficaria guardado à maneira do Windows, o que deixa de funcionar quando a biblioteca ou a cópia mudam de sítio.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Um dos argumentos tem aspas, que as opções de arranque não conseguem guardar.",
+ "Its program is outside the game's folder.": "O programa está fora da pasta do jogo.",
+ "How it starts can't be written as launch options exactly.": "A forma como arranca não pode ser escrita exatamente como opções de arranque."
 }

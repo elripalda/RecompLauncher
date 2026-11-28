@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% öncesinde başlatma seçenekleri yalnızca NAME=value gibi değişkenler ayarlayabilir.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Bir değişkenin adı yalnızca harf, rakam ve _ içerebilir ve rakamla başlayamaz.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER ile başlayan adlar başlatıcıya aittir, bu yüzden başlatma seçenekleri bunları ayarlayamaz.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Bu oyunun başlatma seçenekleri okunamıyor. Yönet sekmesinden değiştirin."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Bu oyunun başlatma seçenekleri okunamıyor. Yönet sekmesinden değiştirin.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Yeniden kurun: RecompLauncher'ın onun için eski kurulumu korunamadı",
+ "Its setup isn't one of RecompLauncher's older profiles.": "Kurulumu RecompLauncher'ın eski profillerinden biri değil.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Bu recomp birkaç oyun içeriyor ve başlatma seçenekleri her biri için ayrı tutulamıyor.",
+ "Your launch options for it already set variables.": "Onun için başlatma seçenekleriniz zaten değişken ayarlıyor.",
+ "It wasn't set up yet.": "Henüz kurulmamıştı.",
+ "Its program isn't in the game's folder.": "Programı oyunun klasöründe değil.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Proton üzerinden kopyanızın yolu Windows biçiminde tutulur; bu da kitaplık ya da kopyanız taşındığında bozulur.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Bağımsız değişkenlerinden biri tırnak işareti içeriyor; başlatma seçenekleri bunu taşıyamaz.",
+ "Its program is outside the game's folder.": "Programı oyunun klasörünün dışında.",
+ "How it starts can't be written as launch options exactly.": "Nasıl başladığı başlatma seçenekleri olarak birebir yazılamıyor."
 }

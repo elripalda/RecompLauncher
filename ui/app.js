@@ -9331,6 +9331,7 @@ const TS_FIX = {
 };
 // What Troubleshoot can say (from troubleshoot in lib.rs), so they get translated.
 const TS_TEXT = [
+  N_('Set it up again: RecompLauncher\'s older setup for it couldn\'t be kept'),
   N_('It hasn\'t been built from your copy yet'),
   N_('Press Play and pick your copy. The launcher builds the game from it before it starts.'),
   N_('The game built from your copy isn\'t there anymore'),

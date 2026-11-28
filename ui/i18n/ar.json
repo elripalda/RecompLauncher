@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "قبل %command%، لا يمكن لخيارات التشغيل إلا تعيين متغيرات، مثل NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "لا يمكن أن يحتوي اسم المتغير إلا على أحرف وأرقام و_، ولا يمكن أن يبدأ برقم.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "الأسماء التي تبدأ بـ RECOMPLAUNCHER خاصة بالمشغّل، لذا لا يمكن لخيارات التشغيل تعيينها.",
- "This game's launch options can't be read. Change them on its Manage tab.": "تعذّرت قراءة خيارات تشغيل هذه اللعبة. غيّرها من تبويب الإدارة."
+ "This game's launch options can't be read. Change them on its Manage tab.": "تعذّرت قراءة خيارات تشغيل هذه اللعبة. غيّرها من تبويب الإدارة.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "أعدّ إعدادها من جديد: تعذّر الإبقاء على إعداد RecompLauncher القديم لها",
+ "Its setup isn't one of RecompLauncher's older profiles.": "إعدادها ليس من ملفات تعريف RecompLauncher القديمة.",
+ "This recomp has several games, and launch options can't be kept for each one.": "يضم هذا المشروع عدة ألعاب، ولا يمكن حفظ خيارات التشغيل لكل واحدة منها.",
+ "Your launch options for it already set variables.": "خيارات التشغيل الخاصة بها تعيّن متغيرات بالفعل.",
+ "It wasn't set up yet.": "لم يتم إعدادها بعد.",
+ "Its program isn't in the game's folder.": "برنامجها ليس في مجلد اللعبة.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "عبر Proton سيُحفظ مسار نسختك بطريقة Windows، وهذا يتعطل عند نقل المكتبة أو نسختك.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "أحد معاملاتها يحتوي على علامة اقتباس، ولا يمكن لخيارات التشغيل حملها.",
+ "Its program is outside the game's folder.": "برنامجها خارج مجلد اللعبة.",
+ "How it starts can't be written as launch options exactly.": "لا يمكن كتابة طريقة تشغيلها كخيارات تشغيل بدقة."
 }

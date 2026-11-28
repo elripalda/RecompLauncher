@@ -7068,6 +7068,17 @@ fn copy_check(st: State<'_, App>, id: String, path: String) -> Option<Value> {
     Some(serde_json::json!({ "found": found, "want": roms::copy_ids(a) }))
 }
 
+/// A game set up with an older profile of ours that couldn't be moved to the player's own settings
+/// (one_road.rs), once the catalog no longer carries that profile: the player sets it up again, and
+/// why it wasn't moved.
+fn set_up_again(g: &Installed, prof: Option<&profile::Profile>) -> Option<Check> {
+    let why = g.one_road.strip_prefix("again: ")?;
+    if prof.is_some() || g.player_sets_up() {
+        return None;
+    }
+    Some(check("warn", "Set it up again: RecompLauncher's older setup for it couldn't be kept", why.to_string(), "setexe"))
+}
+
 /// What could be keeping a game from starting: its files, Windows, what it needs on the PC, the
 /// player's copy, its setup, its folder, and what it printed last time.
 #[tauri::command(async)]
@@ -7092,6 +7103,7 @@ fn troubleshoot(st: State<'_, App>, id: String, code: Option<i64>) -> Res<Vec<Ch
     }
     // The program it starts.
     let prof = profile_of(&st, &id, &g);
+    out.extend(set_up_again(&g, prof.as_ref()));
     let exe = prof.as_ref().and_then(|p| p.command_for(&g.path, inputs::main_path(p, &g).as_deref(), &g.picks, is_windows_build(&g)).map(|(e, _)| e))
         .or_else(|| g.exe.as_ref().map(|e| g.path.join(e)));
     let Some(exe) = exe.filter(|e| e.is_file()) else {
@@ -7975,7 +7987,8 @@ fn move_to_one_road(st: &App, cat: &Value) {
     for id in ids {
         let Some(entry) = catalog::app(cat, &id).filter(|e| one_road::ours_to_move(e)) else { continue };
         let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { continue };
-        let Some(p) = profile::find_for(&g, entry) else { continue };
+        // Nothing of ours to move: the installed release has the project's own file.
+        let Some(p) = profile::find_for(&g, entry).filter(|p| matches!(p.origin, profile::Origin::Store | profile::Origin::Boot)) else { continue };
         let copy = inputs::main_path(&p, &g);
         let outcome = one_road::plan(&g, &p, copy.as_deref(), is_windows_build(&g));
         let mut l = st.lib.lock().unwrap();
@@ -11363,6 +11376,21 @@ mod tests {
         assert_eq!((found["from"].as_str(), found["tag"].as_bool()), (Some("folder"), Some(true)));
         assert_eq!((found["easy_setup"].as_str(), found["saves"].as_str()), (Some("p"), Some("l")));
         assert_eq!(found["ours"], serde_json::json!(["saves"]));
+    }
+
+    #[test]
+    fn troubleshoot_says_to_set_up_again_once_our_older_profile_is_gone() {
+        let g = crate::library::Installed { id: "game".into(), one_road: format!("again: {}", crate::one_road::SEVERAL), ..Default::default() };
+        let c = super::set_up_again(&g, None).unwrap();
+        assert_eq!((c.level, c.detail.as_str(), c.fix), ("warn", crate::one_road::SEVERAL, "setexe"));
+        // While the catalog still carries it, the game still plays as it did.
+        let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({ "format": 1 })).unwrap();
+        assert!(super::set_up_again(&g, Some(&p)).is_none());
+        // Moved, or never ours: nothing to say.
+        for done in ["moved", ""] {
+            let g = crate::library::Installed { one_road: done.into(), ..g.clone() };
+            assert!(super::set_up_again(&g, None).is_none());
+        }
     }
 
     #[test]

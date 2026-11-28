@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Перед %command% параметри запуску можуть лише задавати змінні, наприклад NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Ім'я змінної може містити лише літери, цифри та _ і не може починатися з цифри.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Імена, що починаються з RECOMPLAUNCHER, належать лаунчеру, тож параметри запуску не можуть їх задавати.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Не вдається прочитати параметри запуску цієї гри. Зміни їх на вкладці «Керування»."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Не вдається прочитати параметри запуску цієї гри. Зміни їх на вкладці «Керування».",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Налаштуй її знову: попереднє налаштування RecompLauncher для неї зберегти не вдалося",
+ "Its setup isn't one of RecompLauncher's older profiles.": "Її налаштування не є одним із попередніх профілів RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "У цій рекомпіляції кілька ігор, і параметри запуску не можна зберегти для кожної.",
+ "Your launch options for it already set variables.": "Твої параметри запуску для неї вже задають змінні.",
+ "It wasn't set up yet.": "Її ще не було налаштовано.",
+ "Its program isn't in the game's folder.": "Її програми немає в теці гри.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Через Proton шлях до твоєї копії зберігся б у форматі Windows, а він ламається, щойно бібліотека чи копія переїжджають.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Один з її аргументів містить лапки, яких параметри запуску не можуть зберегти.",
+ "Its program is outside the game's folder.": "Її програма лежить поза текою гри.",
+ "How it starts can't be written as launch options exactly.": "Те, як вона запускається, не можна точно записати параметрами запуску."
 }

@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "ก่อน %command% ตัวเลือกการเปิดเกมตั้งค่าได้แค่ตัวแปร เช่น NAME=value",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "ชื่อตัวแปรมีได้แค่ตัวอักษร ตัวเลข และ _ และขึ้นต้นด้วยตัวเลขไม่ได้",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "ชื่อที่ขึ้นต้นด้วย RECOMPLAUNCHER เป็นของตัวเปิดเกมเอง ตัวเลือกการเปิดเกมจึงตั้งค่าไม่ได้",
- "This game's launch options can't be read. Change them on its Manage tab.": "อ่านตัวเลือกการเปิดเกมของเกมนี้ไม่ได้ แก้ไขได้ที่แท็บจัดการของเกม"
+ "This game's launch options can't be read. Change them on its Manage tab.": "อ่านตัวเลือกการเปิดเกมของเกมนี้ไม่ได้ แก้ไขได้ที่แท็บจัดการของเกม",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "ตั้งค่าใหม่อีกครั้ง: เก็บการตั้งค่าเดิมของ RecompLauncher ไว้ไม่ได้",
+ "Its setup isn't one of RecompLauncher's older profiles.": "การตั้งค่าของเกมนี้ไม่ใช่โปรไฟล์เดิมของ RecompLauncher",
+ "This recomp has several games, and launch options can't be kept for each one.": "Recomp นี้มีหลายเกม จึงเก็บตัวเลือกการเปิดเกมแยกให้แต่ละเกมไม่ได้",
+ "Your launch options for it already set variables.": "ตัวเลือกการเปิดเกมของคุณสำหรับเกมนี้ตั้งค่าตัวแปรไว้แล้ว",
+ "It wasn't set up yet.": "ยังไม่ได้ตั้งค่าเกมนี้",
+ "Its program isn't in the game's folder.": "โปรแกรมของเกมไม่ได้อยู่ในโฟลเดอร์ของเกม",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "ผ่าน Proton พาธไปยังสำเนาของคุณจะถูกเก็บแบบ Windows ซึ่งจะใช้ไม่ได้เมื่อย้ายคลังหรือสำเนาของคุณ",
+ "One of its arguments has a quote in it, which launch options can't hold.": "อาร์กิวเมนต์ตัวหนึ่งมีเครื่องหมายคำพูด ซึ่งตัวเลือกการเปิดเกมเก็บไม่ได้",
+ "Its program is outside the game's folder.": "โปรแกรมของเกมอยู่นอกโฟลเดอร์ของเกม",
+ "How it starts can't be written as launch options exactly.": "วิธีเปิดเกมนี้เขียนเป็นตัวเลือกการเปิดเกมให้ตรงทุกอย่างไม่ได้"
 }

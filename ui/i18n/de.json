@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Vor %command% können Startoptionen nur Variablen setzen, etwa NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Der Name einer Variablen darf nur Buchstaben, Ziffern und _ enthalten und nicht mit einer Ziffer beginnen.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Namen, die mit RECOMPLAUNCHER beginnen, gehören dem Launcher, deshalb können Startoptionen sie nicht setzen.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Die Startoptionen dieses Spiels können nicht gelesen werden. Ändere sie im Tab Verwalten."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Die Startoptionen dieses Spiels können nicht gelesen werden. Ändere sie im Tab Verwalten.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Richte es neu ein: Die ältere Einrichtung von RecompLauncher dafür ließ sich nicht übernehmen",
+ "Its setup isn't one of RecompLauncher's older profiles.": "Seine Einrichtung ist keines der älteren Profile von RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Dieser Recomp enthält mehrere Spiele, und Startoptionen lassen sich nicht für jedes einzeln behalten.",
+ "Your launch options for it already set variables.": "Deine Startoptionen dafür setzen schon Variablen.",
+ "It wasn't set up yet.": "Es war noch nicht eingerichtet.",
+ "Its program isn't in the game's folder.": "Sein Programm ist nicht im Ordner des Spiels.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Über Proton würde der Pfad zu deiner Kopie auf Windows-Art gespeichert, und das bricht, sobald die Bibliothek oder deine Kopie verschoben wird.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Eines seiner Argumente enthält ein Anführungszeichen, das Startoptionen nicht aufnehmen können.",
+ "Its program is outside the game's folder.": "Sein Programm liegt außerhalb des Spielordners.",
+ "How it starts can't be written as launch options exactly.": "Wie es startet, lässt sich nicht genau als Startoptionen schreiben."
 }

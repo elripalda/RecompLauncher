@@ -3782,5 +3782,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Trước %command%, tùy chọn khởi chạy chỉ có thể đặt biến, như NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Tên biến chỉ được có chữ cái, chữ số và _, và không được bắt đầu bằng chữ số.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Các tên bắt đầu bằng RECOMPLAUNCHER thuộc về trình khởi chạy, nên tùy chọn khởi chạy không thể đặt chúng.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Không đọc được tùy chọn khởi chạy của trò chơi này. Hãy sửa chúng ở thẻ Quản lý."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Không đọc được tùy chọn khởi chạy của trò chơi này. Hãy sửa chúng ở thẻ Quản lý.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Hãy thiết lập lại: không giữ được thiết lập cũ của RecompLauncher cho trò chơi này",
+ "Its setup isn't one of RecompLauncher's older profiles.": "Thiết lập của nó không phải là một hồ sơ cũ của RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Recomp này có nhiều trò chơi, nên không thể giữ tùy chọn khởi chạy riêng cho từng trò.",
+ "Your launch options for it already set variables.": "Tùy chọn khởi chạy của bạn cho trò này đã đặt biến.",
+ "It wasn't set up yet.": "Trò chơi này chưa được thiết lập.",
+ "Its program isn't in the game's folder.": "Chương trình của nó không nằm trong thư mục trò chơi.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Qua Proton, đường dẫn tới bản sao của bạn sẽ được lưu theo kiểu Windows, và sẽ hỏng ngay khi thư viện hoặc bản sao bị di chuyển.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Một đối số của nó có dấu ngoặc kép, thứ mà tùy chọn khởi chạy không chứa được.",
+ "Its program is outside the game's folder.": "Chương trình của nó nằm ngoài thư mục trò chơi.",
+ "How it starts can't be written as launch options exactly.": "Cách nó khởi động không thể viết chính xác thành tùy chọn khởi chạy."
 }

@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% 前面只能設定變數，例如 NAME=value。",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "變數名稱只能包含字母、數字和 _，且不能以數字開頭。",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "以 RECOMPLAUNCHER 開頭的名稱屬於啟動器本身，啟動選項不能設定。",
- "This game's launch options can't be read. Change them on its Manage tab.": "無法讀取此遊戲的啟動選項。請在其「管理」分頁中修改。"
+ "This game's launch options can't be read. Change them on its Manage tab.": "無法讀取此遊戲的啟動選項。請在其「管理」分頁中修改。",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "請重新設定：RecompLauncher 先前為它做的設定無法保留",
+ "Its setup isn't one of RecompLauncher's older profiles.": "它的設定不是 RecompLauncher 以前的設定檔。",
+ "This recomp has several games, and launch options can't be kept for each one.": "這個重新編譯版本包含多款遊戲，無法為每款遊戲分別保留啟動選項。",
+ "Your launch options for it already set variables.": "你為它設定的啟動選項已經設定了變數。",
+ "It wasn't set up yet.": "它還沒有設定過。",
+ "Its program isn't in the game's folder.": "它的程式不在遊戲資料夾裡。",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "透過 Proton 時，你的副本路徑會以 Windows 的方式儲存，一旦遊戲收藏庫或副本移動就會失效。",
+ "One of its arguments has a quote in it, which launch options can't hold.": "它的某個參數裡有引號，啟動選項無法儲存。",
+ "Its program is outside the game's folder.": "它的程式在遊戲資料夾之外。",
+ "How it starts can't be written as launch options exactly.": "它的啟動方式無法準確寫成啟動選項。"
 }

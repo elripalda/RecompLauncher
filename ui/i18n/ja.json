@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% より前には、NAME=value のような変数しか書けません。",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "変数名に使えるのは英字、数字、_ だけで、数字で始めることはできません。",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER で始まる名前はランチャー専用のため、起動オプションでは設定できません。",
- "This game's launch options can't be read. Change them on its Manage tab.": "このゲームの起動オプションを読み取れません。管理タブで変更してください。"
+ "This game's launch options can't be read. Change them on its Manage tab.": "このゲームの起動オプションを読み取れません。管理タブで変更してください。",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "もう一度セットアップしてください：RecompLauncher の以前のセットアップを引き継げませんでした",
+ "Its setup isn't one of RecompLauncher's older profiles.": "このゲームのセットアップは RecompLauncher の以前のプロファイルではありません。",
+ "This recomp has several games, and launch options can't be kept for each one.": "このリコンパイル版には複数のゲームが入っていて、起動オプションをそれぞれに保存できません。",
+ "Your launch options for it already set variables.": "このゲームの起動オプションですでに変数を設定しています。",
+ "It wasn't set up yet.": "まだセットアップされていませんでした。",
+ "Its program isn't in the game's folder.": "プログラムがゲームのフォルダーにありません。",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Proton 経由では、コピーへのパスが Windows 形式で保存され、ライブラリやコピーを移動すると使えなくなります。",
+ "One of its arguments has a quote in it, which launch options can't hold.": "引数のひとつに引用符が含まれていて、起動オプションでは扱えません。",
+ "Its program is outside the game's folder.": "プログラムがゲームのフォルダーの外にあります。",
+ "How it starts can't be written as launch options exactly.": "起動のしかたを起動オプションとして正確に書けません。"
 }

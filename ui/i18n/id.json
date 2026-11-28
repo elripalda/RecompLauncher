@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Sebelum %command%, opsi peluncuran hanya bisa mengatur variabel, seperti NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Nama variabel hanya boleh berisi huruf, angka, dan _, dan tidak boleh diawali angka.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Nama yang diawali RECOMPLAUNCHER milik launcher, jadi opsi peluncuran tidak bisa mengaturnya.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Opsi peluncuran game ini tidak bisa dibaca. Ubah di tab Kelola-nya."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Opsi peluncuran game ini tidak bisa dibaca. Ubah di tab Kelola-nya.",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Siapkan lagi: penyiapan lama RecompLauncher untuknya tidak bisa dipertahankan",
+ "Its setup isn't one of RecompLauncher's older profiles.": "Penyiapannya bukan salah satu profil lama RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "Recomp ini berisi beberapa game, dan opsi peluncuran tidak bisa disimpan untuk masing-masing.",
+ "Your launch options for it already set variables.": "Opsi peluncuranmu untuknya sudah mengatur variabel.",
+ "It wasn't set up yet.": "Game ini belum disiapkan.",
+ "Its program isn't in the game's folder.": "Programnya tidak ada di folder game.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Lewat Proton, jalur ke salinanmu akan disimpan dengan cara Windows, yang rusak begitu pustaka atau salinanmu dipindah.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "Salah satu argumennya berisi tanda kutip, yang tidak bisa dimuat opsi peluncuran.",
+ "Its program is outside the game's folder.": "Programnya ada di luar folder game.",
+ "How it starts can't be written as launch options exactly.": "Cara game ini dimulai tidak bisa ditulis persis sebagai opsi peluncuran."
 }

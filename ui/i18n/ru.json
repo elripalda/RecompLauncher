@@ -3661,5 +3661,15 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "До %command% параметры запуска могут только задавать переменные, например NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Имя переменной может содержать только буквы, цифры и _ и не может начинаться с цифры.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Имена, начинающиеся с RECOMPLAUNCHER, принадлежат лаунчеру, поэтому параметры запуска не могут их задавать.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Не удаётся прочитать параметры запуска этой игры. Измените их на вкладке «Управление»."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Не удаётся прочитать параметры запуска этой игры. Измените их на вкладке «Управление».",
+ "Set it up again: RecompLauncher's older setup for it couldn't be kept": "Настройте её заново: прежнюю настройку RecompLauncher для неё сохранить не удалось",
+ "Its setup isn't one of RecompLauncher's older profiles.": "Её настройка не из прежних профилей RecompLauncher.",
+ "This recomp has several games, and launch options can't be kept for each one.": "В этой рекомпиляции несколько игр, и параметры запуска нельзя сохранить для каждой.",
+ "Your launch options for it already set variables.": "Ваши параметры запуска для неё уже задают переменные.",
+ "It wasn't set up yet.": "Она ещё не была настроена.",
+ "Its program isn't in the game's folder.": "Её программы нет в папке игры.",
+ "Through Proton, the path to your copy would be kept the Windows way, which breaks once the library or your copy moves.": "Через Proton путь к вашей копии сохранился бы в формате Windows, а он ломается, как только библиотека или копия переезжают.",
+ "One of its arguments has a quote in it, which launch options can't hold.": "В одном из её аргументов есть кавычка, а параметры запуска не могут её хранить.",
+ "Its program is outside the game's folder.": "Её программа находится вне папки игры.",
+ "How it starts can't be written as launch options exactly.": "То, как она запускается, нельзя точно записать параметрами запуска."
 }
