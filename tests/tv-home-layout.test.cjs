@@ -39,7 +39,7 @@ function ctx(S) {
     HOME_ROW: 14, favs: () => c._favs || [], follows: () => c._follows || [], libApp: (g) => ({ id: g.id, dev: 'dev1' }), devOf: () => ({ name: 'Dev' }),
   });
   vm.runInContext(line(app, 'const HOME_ROWS') + line(app, 'const HOME_GO') + line(app, 'const homeClosed') + line(app, 'const HOME_ICONS = {').replace('{', '{};'), c);
-  vm.runInContext(line(app, 'const homeIcon') + line(app, 'const HOME_TR_BASE'), c);
+  vm.runInContext(line(app, 'const homeIcon') + line(app, 'const HOME_TR_BASE') + '\n' + line(app, 'const sponsOff'), c);
   vm.runInContext(fnApp('homePlan') + fnApp('homeBoxShows') + fnApp('homeWord') + fnApp('homeBoxAct'), c);
   vm.runInContext(line(tv, 'const TV_HOME_ROWS') + fnTv('tvHomeRows') + fnTv('tvFoundBox') + fnTv('tvHomeBox') + fnTv('tvHomeBanner'), c);
   return c;
@@ -139,6 +139,11 @@ test('A banner from the list is a tile A opens, counted like the desktop\'s', ()
 
 test('A banner with nothing booked in it isn\'t drawn', () => {
   assert.equal(page({ v: 1, items: [{ k: 'banner', id: 1, slot: 'hb1' }], hide: ALL }), '');
+});
+
+test('Show sponsored content off: a booked banner isn\'t drawn in Big Picture either', () => {
+  const home = { v: 1, items: [{ k: 'banner', id: 1, slot: 'app_home', sp: { id: 9, img: '/a.png' } }], hide: ALL };
+  assert.equal(page(home, 'mine', { settings: { ui: { hide_buy: true } } }), '');
 });
 
 test('A box\'s button does the same thing in Big Picture and on the desktop', () => {
