@@ -162,6 +162,8 @@
  "In Today's Format": "Theo định dạng hiện nay",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Nó chưa có chương trình để khởi động. Hãy chọn bằng “Đặt tệp thực thi của trò chơi” trong menu Quản lý của nó.",
  "Its setup step stopped answering: it printed nothing for an hour.": "Bước thiết lập của nó không còn phản hồi: nó không in ra gì trong một giờ.",
+ "Its setup step's program finished, but the files it was building never appeared.": "Chương trình của bước thiết lập đã kết thúc, nhưng các tệp nó đang dựng không bao giờ xuất hiện.",
+ "Still building…": "Vẫn đang dựng…",
  "This game still needs your files, so they stay.": "Trò chơi này vẫn cần tệp của bạn, nên chúng được giữ lại.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "Bước thiết lập của trò chơi này là một chương trình Windows và cần Proton để chạy trên Linux. Cài đặt → Chung → GE-Proton cài nó chỉ với một lần nhấn, rồi thiết lập lại trò chơi.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "Tệp của bạn với game đã chuyển vào inputs, bỏ những gì launcher giờ bỏ qua. Hãy dùng nó trong bản phát hành tới.",

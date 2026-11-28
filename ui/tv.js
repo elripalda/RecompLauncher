@@ -2602,7 +2602,7 @@
   function tsLines() {
     const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
     const s = TS.steps;
-    const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+    const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && t(s.extras.text)) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
     const left = stepLeft(s[TS.step]);
     if (left) sub[TS.step] += ` · ${left}`;
     return { order, sub };

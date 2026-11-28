@@ -4331,7 +4331,7 @@ function suLines() {
   const sub = {
     read: st.read && st.read.text ? st.read.text : baseName(SU.path),
     verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
-    extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
+    extras: (st.extras && t(st.extras.text)) || t('What the game needs from your copy'),
     setup: t('Its settings, your controller and where your copy is'),
   };
   const left = stepLeft(st[SU.step]);

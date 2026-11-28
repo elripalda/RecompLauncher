@@ -162,6 +162,8 @@
  "In Today's Format": "В нынешнем формате",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "У неё пока нет программы для запуска. Выберите её через «Указать исполняемый файл игры» в меню «Управление».",
  "Its setup step stopped answering: it printed nothing for an hour.": "Шаг настройки перестал отвечать: он ничего не выводил целый час.",
+ "Its setup step's program finished, but the files it was building never appeared.": "Программа шага настройки завершилась, но файлы, которые она собирала, так и не появились.",
+ "Still building…": "Всё ещё идёт сборка…",
  "This game still needs your files, so they stay.": "Этой игре всё ещё нужны ваши файлы, поэтому они остаются.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "Шаг настройки этой игры — программа для Windows, и для работы на Linux ей нужен Proton. В разделе Настройки → Общие → GE-Proton он ставится одним нажатием, затем настройте игру заново.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "Ваш файл, где game перенесён в inputs, а то, что лаунчер теперь пропускает, убрано. Используйте его в следующем релизе.",

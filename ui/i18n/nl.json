@@ -162,6 +162,8 @@
  "In Today's Format": "In het huidige formaat",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Het heeft nog geen programma om te starten. Kies het met ‘Uitvoerbaar spelbestand instellen’ in het menu Beheren.",
  "Its setup step stopped answering: it printed nothing for an hour.": "De installatiestap reageert niet meer: hij heeft een uur lang niets laten zien.",
+ "Its setup step's program finished, but the files it was building never appeared.": "Het programma van zijn installatiestap is klaar, maar de bestanden die het aan het bouwen was, zijn nooit verschenen.",
+ "Still building…": "Nog aan het bouwen…",
  "This game still needs your files, so they stay.": "Dit spel heeft je bestanden nog nodig, dus die blijven.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "De installatiestap van dit spel is een Windows-programma en heeft Proton nodig om op Linux te draaien. Instellingen → Algemeen → GE-Proton installeert het met één druk, en stel het spel daarna opnieuw in.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "Je bestand met game verplaatst naar inputs, zonder wat de launcher nu negeert. Gebruik het in je volgende release.",

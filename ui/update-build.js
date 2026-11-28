@@ -36,7 +36,7 @@ function updRun(a, su) {
     read: st.read && st.read.text ? st.read.text : baseName(SU.path),
     verify: verifyLine(st.verify, ''),
     // The builder's own line (Compiling, 112 of 611 files changed): what it's doing right now.
-    extras: (st.extras && st.extras.text) || '',
+    extras: (st.extras && t(st.extras.text)) || '',
     setup: (st.setup && st.setup.text) || '',
   };
   const weight = { read: 5, verify: 40, extras: 50, setup: 5 };

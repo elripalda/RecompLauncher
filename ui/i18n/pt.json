@@ -162,6 +162,8 @@
  "In Today's Format": "No formato atual",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Ainda não tem um programa para iniciar. Escolhe-o com «Definir executável do jogo» no menu Gerir.",
  "Its setup step stopped answering: it printed nothing for an hour.": "A etapa de configuração deixou de responder: não mostrou nada durante uma hora.",
+ "Its setup step's program finished, but the files it was building never appeared.": "O programa do passo de configuração terminou, mas os ficheiros que estava a compilar nunca apareceram.",
+ "Still building…": "Ainda a compilar…",
  "This game still needs your files, so they stay.": "Este jogo ainda precisa dos teus ficheiros, por isso eles ficam.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "A etapa de configuração deste jogo é um programa do Windows e precisa do Proton para correr no Linux. Em Definições → Geral → GE-Proton instalas o Proton com um toque; depois configura o jogo outra vez.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "O teu ficheiro com game passado para inputs e sem o que o launcher agora ignora. Usa-o na tua próxima versão.",

@@ -162,6 +162,8 @@
  "In Today's Format": "بالتنسيق الحالي",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "ليس لديها بعد برنامج لتشغيله. اختره من «تعيين الملف التنفيذي للعبة» في قائمة «إدارة» الخاصة بها.",
  "Its setup step stopped answering: it printed nothing for an hour.": "توقفت خطوة الإعداد عن الاستجابة: لم تطبع شيئًا لمدة ساعة.",
+ "Its setup step's program finished, but the files it was building never appeared.": "انتهى برنامج خطوة الإعداد الخاصة بها، لكن الملفات التي كان يبنيها لم تظهر أبدًا.",
+ "Still building…": "لا يزال البناء جاريًا…",
  "This game still needs your files, so they stay.": "لا تزال هذه اللعبة تحتاج إلى ملفاتك، لذا تبقى.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "خطوة الإعداد في هذه اللعبة برنامج Windows، وتحتاج إلى Proton لتعمل على Linux. ثبّته بضغطة واحدة من الإعدادات → عام → GE-Proton، ثم أعد إعداد اللعبة.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "ملفك بعد نقل game إلى inputs وحذف ما يتجاهله المشغّل الآن. استخدمه في إصدارك القادم.",

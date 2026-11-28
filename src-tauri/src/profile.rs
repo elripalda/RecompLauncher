@@ -185,6 +185,19 @@ impl PrepareOption {
 }
 
 impl Prepare {
+    /// Its finished files (`done`): None when it lists none, else whether every one is there.
+    pub fn done_in(&self, install: &Path) -> Option<bool> {
+        if self.done.is_empty() {
+            return None;
+        }
+        Some(self.done_paths(install).iter().all(|d| d.exists()))
+    }
+
+    /// Its finished files (`done`), filled in.
+    pub fn done_paths(&self, install: &Path) -> Vec<PathBuf> {
+        self.done.iter().map(|d| PathBuf::from(fill(d, install, None))).collect()
+    }
+
     /// The options this PC is offered.
     pub fn options_here(&self, os: &str, nvidia_rtx: bool, amd: bool) -> Vec<&PrepareOption> {
         self.options.iter().filter(|o| !o.id.is_empty() && !o.label.is_empty() && o.applies(os, nvidia_rtx, amd)).collect()
@@ -1849,11 +1862,7 @@ impl Profile {
     /// Its setup step's finished files (`prepare.done`): None when it lists none, else whether
     /// every one is there.
     pub fn build_done(&self, install: &Path) -> Option<bool> {
-        let done = &self.prepare.as_ref()?.done;
-        if done.is_empty() {
-            return None;
-        }
-        Some(done.iter().all(|d| Path::new(&fill(d, install, None)).exists()))
+        self.prepare.as_ref()?.done_in(install)
     }
 
     /// Whether starting the game hands it the player's copy ({game} in its arguments or

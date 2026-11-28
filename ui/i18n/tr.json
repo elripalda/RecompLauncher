@@ -162,6 +162,8 @@
  "In Today's Format": "Bugünkü Biçimde",
  "It doesn't have a program to start yet. Pick it with Set Game Executable in its Manage menu.": "Henüz başlatılacak bir programı yok. Yönet menüsündeki “Oyunun çalıştırılabilir dosyasını ayarla” ile seç.",
  "Its setup step stopped answering: it printed nothing for an hour.": "Kurulum adımı yanıt vermiyor: bir saattir hiçbir şey yazmadı.",
+ "Its setup step's program finished, but the files it was building never appeared.": "Kurulum adımının programı bitti, ancak oluşturduğu dosyalar hiç ortaya çıkmadı.",
+ "Still building…": "Hâlâ oluşturuluyor…",
  "This game still needs your files, so they stay.": "Bu oyun dosyalarına hâlâ ihtiyaç duyuyor, bu yüzden kalıyorlar.",
  "This game's setup step is a Windows program, and it needs Proton to run on Linux. Settings → General → GE-Proton installs it in one press, then set the game up again.": "Bu oyunun kurulum adımı bir Windows programı ve Linux'ta çalışması için Proton gerekiyor. Ayarlar → Genel → GE-Proton onu tek tuşla yükler, sonra oyunu yeniden kur.",
  "Your file with game moved into inputs, and what the launcher ignores now left out. Use it in your next release.": "game, inputs içine taşınmış ve başlatıcının artık yok saydıkları çıkarılmış hâliyle dosyan. Bir sonraki sürümünde kullan.",
