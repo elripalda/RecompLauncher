@@ -12,7 +12,8 @@ The English comes from t('…'), tf('…'), tn(n, '…', '…') and N_('…') in
 data-t in ui/*.html, the looks in ui/looks.json and the fixed messages the core shows (Rust string
 literals given back as errors). A translation goes in ui/i18n/<code>.json as {"English": "text"}.
 Texts with {n} in them take one form per count in Polish, Russian and Ukrainian
-("one|few|many") and Arabic ("two|few|many|other"); other languages give a single form.
+("one|few|many") and Arabic ("two|few|many|other"), or a single form written so it doesn't depend
+on the count; other languages give a single form.
 """
 import html.parser
 import json
@@ -160,8 +161,10 @@ def check():
                 print(f'{code}: not text: {en!r}')
                 bad += 1
                 continue
+            # A text the launcher doesn't show anymore can't show wrong: it's only listed.
             if en not in have:
                 print(f'{code}: no longer used: {en!r}')
+                continue
             parts = tr.split('|')
             want = FORMS.get(base, 1) if en in plural else 1
             code_prefix = coded(en)
@@ -170,11 +173,14 @@ def check():
             if code_prefix and parts[0] != code_prefix:
                 print(f'{code}: starts {parts[0]!r}, wants {code_prefix!r}: {en!r} -> {tr!r}')
                 bad += 1
-            if len(parts) != want and not (en in plural and base == 'ar' and len(parts) == 1):
+            # One form is fine when the sentence doesn't agree with the count ("Disc {n}",
+            # "Updates ready: {n}"): pickForm leaves a text without bars as it is.
+            if len(parts) != want and not (en in plural and len(parts) == 1):
                 print(f'{code}: {len(parts)} forms, wants {want}: {en!r} -> {tr!r}')
                 bad += 1
             for p in parts:
-                if holes(p) != holes(en) and not (en in plural and holes(p) == []):
+                # A form can say the count in its words and leave {n} out (Arabic's dual).
+                if holes(p) != holes(en) and not (en in plural and holes(p) == [h for h in holes(en) if h != 'n']):
                     print(f'{code}: placeholders {holes(p)} vs {holes(en)}: {en!r} -> {tr!r}')
                     bad += 1
     return bad
