@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 /// What to tell the player when a library folder's drive can't hold a Linux game.
 pub const BAD_DRIVE: &str = "Your library folder is on a drive Linux games can't play from: it's formatted for Windows (exFAT, NTFS or FAT), or set up so programs can't run from it. Games there lose their run permission and their links. Pick a library folder on a Linux drive, like your home folder, in Settings → Games and folders.";
 
-/// Kinds of drive that can't keep a program's run permission or a link (fuseblk is how NTFS-3G
-/// and exFAT-FUSE show up).
+/// Kinds of drive that often can't keep a program's run permission or a link, so they're tried
+/// before a game goes there (fuseblk is how NTFS-3G and exFAT-FUSE show up).
 const WINDOWS_DRIVES: [&str; 7] = ["exfat", "vfat", "msdos", "fat", "ntfs", "ntfs3", "fuseblk"];
 
 /// Why the drive `dir` is on can't hold a Linux game, for the trail; None when it can, or when it
@@ -23,10 +23,38 @@ pub fn drive_problem(dir: &Path) -> Option<String> {
     let info = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
     let at = nearest_existing(dir)?;
     let (kind, noexec) = mount_of(&info, &at)?;
-    if WINDOWS_DRIVES.contains(&kind.as_str()) {
-        return Some(format!("it's on a {kind} drive"));
+    if noexec {
+        return Some("its drive is mounted noexec".to_string());
     }
-    noexec.then(|| "its drive is mounted noexec".to_string())
+    if !WINDOWS_DRIVES.contains(&kind.as_str()) {
+        return None;
+    }
+    // A Windows-formatted drive mounted to keep permissions (ntfs3, or NTFS-3G with
+    // `permissions`) plays Linux games fine, so the drive is tried rather than judged by its kind.
+    if keeps_programs(&at) {
+        return None;
+    }
+    Some(format!("it's on a {kind} drive that can't keep a run permission or a link"))
+}
+
+/// Whether a program made in `dir` keeps its run permission and a link to it can be made there:
+/// tried with two throwaway files, removed after.
+fn keeps_programs(dir: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let name = format!(".recomplauncher-drive-test-{}", std::process::id());
+    let file = dir.join(&name);
+    let link = dir.join(format!("{name}-link"));
+    let tried = || -> std::io::Result<bool> {
+        std::fs::write(&file, b"#!/bin/sh\n")?;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755))?;
+        let runs = std::fs::metadata(&file)?.permissions().mode() & 0o100 != 0;
+        std::os::unix::fs::symlink(&name, &link)?;
+        Ok(runs && std::fs::read_link(&link)? == Path::new(&name))
+    };
+    let kept = tried().unwrap_or(false);
+    let _ = std::fs::remove_file(&link);
+    let _ = std::fs::remove_file(&file);
+    kept
 }
 
 /// Err with `BAD_DRIVE` when a game can't play from `dir`'s drive.
@@ -304,6 +332,21 @@ mod tests {
         assert_eq!(unescape("/run/media/me/SD\\040Card"), PathBuf::from("/run/media/me/SD Card"));
         assert_eq!(unescape("/a\\134b"), PathBuf::from("/a\\b"));
         assert_eq!(unescape("/plain\\0"), PathBuf::from("/plain\\0"));
+    }
+
+    #[test]
+    fn a_drive_that_keeps_programs_and_links_passes_and_is_left_clean() {
+        let d = std::env::temp_dir().join(format!("rl-plain-drive-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert!(keeps_programs(&d));
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_folder_that_cant_be_written_doesnt_pass() {
+        assert!(!keeps_programs(Path::new("/nonexistent-rl-drive-test")));
     }
 
     #[test]
