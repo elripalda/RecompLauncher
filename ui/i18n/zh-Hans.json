@@ -3657,5 +3657,11 @@
  "Won't Run": "无法运行",
  "Your RecompStore Account": "你的 RecompStore 账户",
  "Go Back to This Version": "回到这个版本",
- "Android Games": "Android 游戏"
+ "Android Games": "Android 游戏",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "如需同时为游戏设置变量，请像 Steam 一样写在 %command% 前面：NAME=value %command% --option。",
+ "Put %command% in your launch options only once.": "启动选项中只能写一次 %command%。",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% 前面只能设置变量，例如 NAME=value。",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "变量名只能包含字母、数字和 _，且不能以数字开头。",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "以 RECOMPLAUNCHER 开头的名称属于启动器本身，启动选项不能设置。",
+ "This game's launch options can't be read. Change them on its Manage tab.": "无法读取此游戏的启动选项。请在其“管理”标签页中修改。"
 }

@@ -35,6 +35,7 @@ pub mod info;
 pub mod inputs;
 pub mod ingame;
 pub mod install;
+pub mod launch_options;
 pub mod launchbox;
 pub mod library;
 pub mod library_convert;
@@ -2538,7 +2539,12 @@ fn direct_start(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, Vec<Strin
     if !exe.is_file() {
         return None;
     }
-    args.extend(join_paths(split_args(&g.args)));
+    // A shortcut can only carry arguments: variables in the launch options need the launcher.
+    let player = launch_options::parse(&g.args).ok()?;
+    if !player.env.is_empty() {
+        return None;
+    }
+    args.extend(player.args);
     Some((exe, args))
 }
 
@@ -3355,9 +3361,10 @@ fn start_game_with_monitor_context(
         let wine = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
         games::add_args(&mut args, &pk.game, paths, wine);
     }
-    if !clean {
-        args.extend(join_paths(split_args(&g.args)));
-    }
+    // The player's launch options: their arguments go last, their variables are set after everyone
+    // else's below, so what they typed wins.
+    let player = if clean { launch_options::Options::default() } else { launch_options::parse(&g.args).map_err(|_| Error::Msg(launch_options::UNREADABLE.into()))? };
+    args.extend(player.args.iter().cloned());
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -3547,6 +3554,13 @@ fn start_game_with_monitor_context(
     // A program in an unpacked AppImage: what its runtime would have set (APPDIR, OWD, ...).
     #[cfg(target_os = "linux")]
     appimage_env(&mut cmd, &exe, &g.path);
+    if !player.env.is_empty() {
+        let names: Vec<&str> = player.env.iter().map(|(k, _)| k.as_str()).collect();
+        trail::note(format!("Play {id}: variables from its launch options: {}", names.join(", ")));
+    }
+    for (k, v) in &player.env {
+        cmd.env(k, v);
+    }
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
     let mut ach_id = full_id.clone();
     let ach_session = {
@@ -3875,7 +3889,7 @@ fn start_game_with_monitor_context(
 // ---------- setting a recomp up ----------
 
 /// Launch options as typed: words, with "quoted words" kept together.
-fn split_args(s: &str) -> Vec<String> {
+pub(crate) fn split_args(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
     let (mut quoted, mut any) = (false, false);
@@ -3906,7 +3920,7 @@ fn split_args(s: &str) -> Vec<String> {
 /// A path with spaces typed without quotes (`D:\Games\CTR Nitro-Fueled\boot.bin`) comes out of
 /// split_args in pieces: put them back together when together they're a file or folder that's there
 /// and the first piece alone isn't.
-fn join_paths(args: Vec<String>) -> Vec<String> {
+pub(crate) fn join_paths(args: Vec<String>) -> Vec<String> {
     let looks_path = |s: &str| {
         let p = s.rsplit_once('=').map(|(_, v)| v).filter(|_| s.starts_with('-')).unwrap_or(s);
         let b = p.as_bytes();
@@ -5137,6 +5151,7 @@ fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_u
             return Err(Error::Msg("Untracked installations don't get automatic updates. Choose a project first.".into()));
         }
         if let Some(a) = args {
+            launch_options::parse(&a).map_err(Error::Msg)?;
             g.args = a.trim().to_string();
         }
         if let Some(a) = auto_update {

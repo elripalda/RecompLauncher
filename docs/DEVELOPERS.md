@@ -489,6 +489,8 @@ with role `update`. The launcher asks for it with the copy and puts it in your f
 - `args`: always passed. Players can add their own launch options after yours.
 - `env`: environment variables for your game, written as names and values. Paths fill in like
   everywhere else. Names are letters, digits and `_`; system ones like `PATH` can't be set.
+  Players can set their own variables in their launch options (`NAME=value %command%`); theirs
+  come after yours, so a player's value wins.
 
 ```json
 "start": {

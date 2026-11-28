@@ -3657,5 +3657,11 @@
  "Won't Run": "لا تعمل",
  "Your RecompStore Account": "حسابك في RecompStore",
  "Go Back to This Version": "العودة إلى هذا الإصدار",
- "Android Games": "ألعاب Android"
+ "Android Games": "ألعاب Android",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "لتعيين متغيرات للعبة أيضًا، اكتبها قبل %command% كما في Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "ضع %command% في خيارات التشغيل مرة واحدة فقط.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "قبل %command%، لا يمكن لخيارات التشغيل إلا تعيين متغيرات، مثل NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "لا يمكن أن يحتوي اسم المتغير إلا على أحرف وأرقام و_، ولا يمكن أن يبدأ برقم.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "الأسماء التي تبدأ بـ RECOMPLAUNCHER خاصة بالمشغّل، لذا لا يمكن لخيارات التشغيل تعيينها.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "تعذّرت قراءة خيارات تشغيل هذه اللعبة. غيّرها من تبويب الإدارة."
 }
