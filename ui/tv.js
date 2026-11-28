@@ -2437,6 +2437,7 @@
   function tsDraw() {
     const st = stage();
     if (!st || !TS.id) return;
+    if (TS.stage !== 'run') { clearInterval(TS.tick); TS.tick = 0; }
     const id = TS.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
     let el = $('.tv-setup:not(.out)', st);
     const prevKey = (focused() || {}).dataset?.key;
@@ -2451,10 +2452,10 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
-      const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
+      const { order, sub } = tsLines();
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
-      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+      if (!TS.tick) TS.tick = setInterval(tsTick, TS_TICK);
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;
@@ -2466,7 +2467,7 @@
       }
       el.dataset.step = TS.step + order.length;
       body = `${med(cur <= 0 ? 'is-in' : 'is-busy')}<div class="tt"><div class="pct">${esc(tf('{pct}%', { pct: Math.floor((have / tot) * 100) }))}</div><p>${esc(tf('Setting up {name}', { name: a.name }))}</p></div>
-        <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
+        <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : i === cur ? ' now' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
         <div class="two" style="margin-top:20px"><button type="button" class="tv-btn" data-f data-key="ts:0" data-sheet="0"><span>${esc(t('Run in Background'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Cancel Setup'))}</span></button></div>`;
       items = [
         { run: () => {
@@ -2567,6 +2568,7 @@
         setupClosed(id);
         TS.id = null;
         TS.upd = false;
+        clearInterval(TS.tick); TS.tick = 0;
       }
     };
     // The same control again after a redraw; on a new step, its main button (Next or Set Up).
@@ -2576,6 +2578,25 @@
     const retry = TS.stage === 'error' ? $('[data-key="ts:0"]', el) : null;
     const f = same || main || retry || $('[data-sheet]', el);
     if (f) focus(f, true);
+  }
+  // The running setup's steps and the line under each, the running one with its time left.
+  function tsLines() {
+    const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
+    const s = TS.steps;
+    const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+    const left = stepLeft(s[TS.step]);
+    if (left) sub[TS.step] += ` · ${left}`;
+    return { order, sub };
+  }
+  // As on the desktop (suTick): a quiet step sends no events, so its line is looked at again every
+  // TS_TICK while setup runs on this screen, and the check stops with the run or the sheet.
+  const TS_TICK = 10000;
+  function tsTick() {
+    const el = TV.on && TS.id && TS.stage === 'run' && $('.tv-setup:not(.out)', stage() || document);
+    if (!el) { clearInterval(TS.tick); TS.tick = 0; return; }
+    const { order, sub } = tsLines();
+    const line = $$('.tk span', el)[order.indexOf(TS.step)];
+    if (line) line.textContent = sub[TS.step];
   }
   // A button of the steps, pressed with A: the same actions as the desktop window's (ssAct).
   async function tsStep(id, act, input) {
@@ -2629,7 +2650,8 @@
       }
       TS.q.shift();
       TS.extras = ev.extras;
-      TS.steps[ev.step] = Object.assign({}, TS.steps[ev.step], ev);
+      // Its time left, as on the desktop (stepEvent and stepLeft, app.js).
+      TS.steps[ev.step] = stepEvent(TS.steps[ev.step], ev);
       if (ev.step === 'done') {
         TS.result = ev;
         const sid = TS.id;

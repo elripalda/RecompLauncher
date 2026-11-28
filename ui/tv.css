@@ -335,6 +335,8 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-setup .tk i{display:block;height:6px;border-radius:3px;background:rgba(var(--tvinkrgb,244,248,252),.12);overflow:hidden}
 .tv-setup .tk i u{display:block;height:100%;background:#34F2E8;transition:width .2s linear}
 .tv-setup .tk b{font-size:22px}.tv-setup .tk span{font-size:18px;color:var(--tvdim,#8f9cb0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The running step's line has its time left (or "Taking longer than expected") after it: two lines, not cut. */
+.tv-setup .tk.now span{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .tv-setup .tk.w b{color:var(--tvdim,#8f9cb0)}
 .tv-setup .opts{position:relative;display:grid;gap:18px;width:1000px}
 .tv-setup .opts .tv-item{min-height:96px}
