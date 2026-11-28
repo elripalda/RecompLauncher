@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "Ersteinrichtung noch einmal starten?",
  "Run it again": "Noch einmal",
  "Run its setup": "Setup starten",
+ "Run Setup Again": "Setup erneut starten",
+ "Opens {file}, the program that sets this game up or builds it.": "Öffnet {file}, das Programm, das dieses Spiel einrichtet oder baut.",
  "Runs on": "Läuft unter",
  "Runs on {os}": "Läuft unter {os}",
  "Safety": "Sicherheit",

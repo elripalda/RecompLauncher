@@ -9114,6 +9114,29 @@ fn run_program(st: State<'_, App>, id: String, rel: String) -> Res<()> {
     Ok(())
 }
 
+/// A game's own setup or installer, opened again from its Manage tab: a builder whose new release
+/// builds the game again, say (#266). It runs as on the first Play, which finds the game it made.
+#[tauri::command(async)]
+fn run_own_setup(app: AppHandle, st: State<'_, App>, id: String) -> Res<()> {
+    if let Some(why) = files_busy(&st, &id) {
+        return Err(Error::Msg(why.into()));
+    }
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned().ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    let setup = own_setup_in(&g).ok_or_else(|| Error::Msg("Its setup program is missing. Reinstall the game.".into()))?;
+    // A setup that takes the player's copy gets the one they picked, as on Play.
+    let copy = profile_of(&st, &id, &g).and_then(|p| p.main_input().filter(|i| i.for_setup).and_then(|m| inputs::picked(&g, &m.id)));
+    own_setup::run(&app, &id, &g, &setup, copy.as_deref())
+}
+
+/// The setup program the launcher found in a game's own folder, while it's still there.
+fn own_setup_in(g: &Installed) -> Option<PathBuf> {
+    let rel = g.setup.as_ref()?;
+    if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return None;
+    }
+    Some(g.path.join(rel)).filter(|p| p.is_file())
+}
+
 /// The PC, the installed games and a few settings, as launcher-and-pc.txt: in a report with
 /// "Include my PC and launcher info" on, and in the logs zip.
 pub(crate) fn launcher_and_pc(st: &App, pc: &usage::PcInfo) -> String {
@@ -11114,7 +11137,7 @@ pub fn run() {
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, pads_window_off, pad_right_stick, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, run_own_setup, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
@@ -12672,6 +12695,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn its_own_setup_opens_again_only_from_inside_its_folder() {
+        let d = fresh_dir("own-setup-again");
+        std::fs::write(d.join("HookshotBuilder.exe"), b"MZ").unwrap();
+        let with = |setup: &str| Installed { path: d.clone(), setup: Some(PathBuf::from(setup)), ..Default::default() };
+        assert_eq!(own_setup_in(&with("HookshotBuilder.exe")), Some(d.join("HookshotBuilder.exe")));
+        assert_eq!(own_setup_in(&with("Gone-Setup.exe")), None);
+        assert_eq!(own_setup_in(&with("../HookshotBuilder.exe")), None);
+        let outside = d.join("HookshotBuilder.exe").to_string_lossy().to_string();
+        assert_eq!(own_setup_in(&with(&outside)), None);
+        assert_eq!(own_setup_in(&Installed { path: d.clone(), ..Default::default() }), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// An unpacked AppImage like mkw-recomp's: AppRun, the program beside it, and lib/.

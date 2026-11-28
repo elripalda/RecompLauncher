@@ -3319,6 +3319,8 @@ function manageStartRows(id, inst) {
     const copy = typeof picked === 'string' ? picked : t('Easy Setup builds the game from it.');
     rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Your Copy'))}</b><span>${esc(copy)}</span></div><div class="acts"><button type="button" class="btn" data-act="setup" data-id="${esc(id)}">${esc(picked ? t('Change') : t('Add'))}</button></div></div>`);
   }
+  // Its own setup or builder, opened again: a new release of it may have to build the game again (#266).
+  if (inst.setup) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Run Setup Again'))}</b><span>${esc(tf('Opens {file}, the program that sets this game up or builds it.', { file: baseName(inst.setup) }))}</span></div><button type="button" class="btn" data-act="own-setup" data-id="${esc(id)}">${esc(t('Open'))}</button></div>`);
   if (S.os === 'linux' && inst.proton) rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Wine Tools'))}</b><span>${esc(t('Winetricks and installers for the Wine prefix every Windows game here shares, for when a game says something is missing.'))}</span></div><button type="button" class="btn" data-act="wine-tools">${esc(t('Open'))}</button></div>`);
   return rows;
 }
@@ -9927,6 +9929,7 @@ async function act(el, e) {
     case 'reinstall-new': return startInstall(id, null, null, true);
     case 'goback': return startInstall(id, undefined, el.dataset.tag);
     case 'wine-tools': return wineTools();
+    case 'own-setup': try { await invoke('run_own_setup', { id }); } catch (err) { fail(err); } return;
     case 'have-it': return haveIt(id);
     case 'update-all': for (const u of Object.keys(S.updates)) if (S.library[u] && !S.jobs[u] && !S.running.has(u) && !(S.paused || {})[u]) updateGame(u); return;
     case 'cancel': return cancelDownload(id);

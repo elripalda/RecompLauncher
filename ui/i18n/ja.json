@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "初回セットアップをもう一度行いますか？",
  "Run it again": "もう一度行う",
  "Run its setup": "セットアップを実行",
+ "Run Setup Again": "セットアップをもう一度実行",
+ "Opens {file}, the program that sets this game up or builds it.": "{file} を開きます。このゲームをセットアップまたはビルドするプログラムです。",
  "Runs on": "対応 OS",
  "Runs on {os}": "{os} で動作",
  "Safety": "安全",

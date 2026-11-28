@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "처음 설정을 다시 진행할까요?",
  "Run it again": "다시 진행",
  "Run its setup": "설치 프로그램 실행",
+ "Run Setup Again": "설치 프로그램 다시 실행",
+ "Opens {file}, the program that sets this game up or builds it.": "이 게임을 설정하거나 빌드하는 프로그램인 {file}을(를) 엽니다.",
  "Runs on": "실행 환경",
  "Runs on {os}": "{os}에서 실행",
  "Safety": "안전",

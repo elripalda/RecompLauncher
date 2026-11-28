@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "重新进行首次设置？",
  "Run it again": "重新进行",
  "Run its setup": "运行安装程序",
+ "Run Setup Again": "再次运行安装程序",
+ "Opens {file}, the program that sets this game up or builds it.": "打开 {file}，即设置或构建此游戏的程序。",
  "Runs on": "运行平台",
  "Runs on {os}": "在 {os} 上运行",
  "Safety": "安全",

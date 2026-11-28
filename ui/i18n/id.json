@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "Jalankan penyiapan awal lagi?",
  "Run it again": "Jalankan lagi",
  "Run its setup": "Jalankan setup-nya",
+ "Run Setup Again": "Jalankan setup lagi",
+ "Opens {file}, the program that sets this game up or builds it.": "Membuka {file}, program yang menyiapkan atau membangun game ini.",
  "Runs on": "Jalan di",
  "Runs on {os}": "Jalan di {os}",
  "Safety": "Keamanan",
