@@ -63,3 +63,35 @@ test('desktop and Big Picture Home use the same found-game selection', () => {
   assert.match(fn('pageHome'), /const found = foundInFolders\(\);/);
   assert.match(tv, /const owned = foundInFolders\(\);/);
 });
+
+// addOwned with the Add Found Games to the Library switch (found_lib_off is the switch off).
+function ownedContext(ui, library = {}) {
+  const apps = new Map(['a', 'b', 'mine'].map(id => [id, game(id)]));
+  const S = { owned: { a: {}, b: {} }, ownedOk: true, library, settings: { rom_dirs: ['/roms'], ui } };
+  const c = vm.createContext({ S, byId: id => apps.get(id), index: () => ({ titles: new Map() }), forOS: () => true,
+    saveUi: async (patch) => { S.settings.ui = Object.assign({}, S.settings.ui, patch); } });
+  vm.runInContext(app.match(/^const saved = .*;$/m)[0], c);
+  vm.runInContext('async ' + fn('addOwned'), c);
+  return c;
+}
+const ids = (o) => Object.keys(o || {}).sort();
+
+test('found games go into the Library while the switch is on', async () => {
+  const c = ownedContext({});
+  assert.equal(await vm.runInContext('addOwned()', c), 2);
+  assert.deepEqual(ids(c.S.settings.ui.saved), ['a', 'b']);
+  assert.deepEqual([...c.S.settings.ui.found_saved].sort(), ['a', 'b']);
+});
+
+test('found games stay out of the Library while the switch is off', async () => {
+  const c = ownedContext({ found_lib_off: true });
+  assert.equal(await vm.runInContext('addOwned()', c), 0);
+  assert.deepEqual(ids(c.S.settings.ui.saved), []);
+});
+
+test('turning the switch off takes out what a look added, but not installed or player-added games', async () => {
+  const c = ownedContext({ saved: { a: 1, b: 1, mine: 1 }, found_saved: ['a', 'b'], found_lib_off: true }, { b: { id: 'b' } });
+  assert.equal(await vm.runInContext('addOwned()', c), 0);
+  assert.deepEqual(ids(c.S.settings.ui.saved), ['b', 'mine']);
+  assert.deepEqual([...c.S.settings.ui.found_saved], []);
+});

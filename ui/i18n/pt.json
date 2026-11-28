@@ -3664,5 +3664,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Antes de %command%, as opções de arranque só podem definir variáveis, como NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "O nome de uma variável só pode ter letras, algarismos e _, e não pode começar por um algarismo.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Os nomes que começam por RECOMPLAUNCHER são do launcher, por isso as opções de arranque não os podem definir.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Não foi possível ler as opções de arranque deste jogo. Altera-as no separador Gerir."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Não foi possível ler as opções de arranque deste jogo. Altera-as no separador Gerir.",
+ "Add Found Games to the Library": "Adicionar jogos encontrados à biblioteca",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "Ligado: os recomps dos jogos que encontra vão para a tua Biblioteca, prontos a configurar. Desligado: aparecem no Início e tu adicionas os que quiseres."
 }

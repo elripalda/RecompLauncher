@@ -3664,5 +3664,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% 前面只能設定變數，例如 NAME=value。",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "變數名稱只能包含字母、數字和 _，且不能以數字開頭。",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "以 RECOMPLAUNCHER 開頭的名稱屬於啟動器本身，啟動選項不能設定。",
- "This game's launch options can't be read. Change them on its Manage tab.": "無法讀取此遊戲的啟動選項。請在其「管理」分頁中修改。"
+ "This game's launch options can't be read. Change them on its Manage tab.": "無法讀取此遊戲的啟動選項。請在其「管理」分頁中修改。",
+ "Add Found Games to the Library": "將找到的遊戲加入收藏庫",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "開啟：找到的遊戲的重新編譯版本會加入你的收藏庫，隨時可以設定。關閉：它們會顯示在首頁，由你自己加入想要的。"
 }

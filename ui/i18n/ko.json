@@ -3664,5 +3664,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% 앞에는 NAME=value 같은 변수만 쓸 수 있습니다.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "변수 이름에는 문자, 숫자, _만 쓸 수 있으며 숫자로 시작할 수 없습니다.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER로 시작하는 이름은 런처 전용이라 실행 옵션에서 설정할 수 없습니다.",
- "This game's launch options can't be read. Change them on its Manage tab.": "이 게임의 실행 옵션을 읽을 수 없습니다. 관리 탭에서 바꾸세요."
+ "This game's launch options can't be read. Change them on its Manage tab.": "이 게임의 실행 옵션을 읽을 수 없습니다. 관리 탭에서 바꾸세요.",
+ "Add Found Games to the Library": "찾은 게임을 라이브러리에 추가",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "켜기: 찾은 게임의 리컴프가 라이브러리에 들어가 바로 설정할 수 있습니다. 끄기: 홈에 표시되며 원하는 것만 직접 추가합니다."
 }
