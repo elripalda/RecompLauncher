@@ -5298,14 +5298,21 @@ fn run_prepare_idle(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, 
             if left {
                 temp.leave();
             }
-            if s.success() {
+            // Ended well, nothing left running, and what it says it builds isn't there: set up as it
+            // is, the next Play would only run it again, so it's said now with what it printed.
+            let unbuilt = s.success() && !left && pr.done_in(install) == Some(false);
+            if s.success() && !unbuilt {
                 return Ok(());
             }
             // The last of what it printed, which can arrive just after it closed.
             std::thread::sleep(std::time::Duration::from_millis(150));
             read(&mut said, &mut too_long, &mut heard);
-            let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
             let said = said.text();
+            if unbuilt {
+                trail::note(format!("Setup step ended well without its done files; it said last: {}", said.replace('\n', " | ")));
+                return Err(with_said(HANDOFF_UNFINISHED, &said));
+            }
+            let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "a signal".into());
             trail::note(format!("Setup step stopped with code {code}; it said last: {}", said.replace('\n', " | ")));
             if cfg!(windows) && too_long {
                 return Err(setup_temp::too_long_with(&said));
@@ -13248,6 +13255,48 @@ mod prepare_env_tests {
     /// The step run with a hand-off that may sit idle for `idle` (seconds, not the real minutes).
     fn run_waiting(dir: &Path, pr: &profile::Prepare, idle: u64, stopped: &dyn Fn() -> bool, report: &dyn Fn(f32, String)) -> Result<(), String> {
         run_prepare_idle(pr, dir, None, &[], report, stopped, &|| {}, None, std::time::Duration::from_secs(idle))
+    }
+
+    /// A step that prints `line`, runs `sh` (or `win` on Windows) and ends well, with `built.txt` as
+    /// its `done` file.
+    fn ends_well(dir: &Path, line: &str, win: &str, sh: &str) -> profile::Prepare {
+        #[cfg(windows)]
+        let mut pr = step_named(dir, "step.bat", &format!("@echo off\r\necho {line}\r\n{win}\r\nexit /b 0\r\n"));
+        #[cfg(not(windows))]
+        let mut pr = step_named(dir, "step.sh", &format!("#!/bin/sh\necho \"{line}\"\n{sh}\nexit 0\n"));
+        let _ = (win, sh);
+        pr.done = vec![dir.join("built.txt").to_string_lossy().to_string()];
+        pr
+    }
+
+    #[test]
+    fn a_step_that_ends_well_without_making_its_done_files_is_an_error() {
+        let dir = fresh_dir("nothing-built");
+        let pr = ends_well(&dir, "nothing to build here", "rem", ":");
+        let res = run_step(&dir, &pr);
+        let _ = std::fs::remove_dir_all(&dir);
+        let e = res.unwrap_err();
+        assert_eq!(e.lines().next(), Some(HANDOFF_UNFINISHED));
+        assert!(e.contains("nothing to build here"), "with what it printed last: {e}");
+    }
+
+    #[test]
+    fn a_step_that_ends_well_with_its_done_files_made_is_set_up() {
+        let dir = fresh_dir("built-now");
+        let pr = ends_well(&dir, "building", "echo built>built.txt", "echo built > built.txt");
+        let res = run_step(&dir, &pr);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
+    }
+
+    #[test]
+    fn a_step_that_ends_well_with_the_last_builds_done_files_is_set_up() {
+        let dir = fresh_dir("built-before");
+        std::fs::write(dir.join("built.txt"), "last build").unwrap();
+        let pr = ends_well(&dir, "up to date", "rem", ":");
+        let res = run_step(&dir, &pr);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
     }
 
     #[test]
