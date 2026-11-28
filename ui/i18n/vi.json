@@ -3777,5 +3777,6 @@
  "Won't Run": "Không chạy được",
  "Your RecompStore Account": "Tài khoản RecompStore của bạn",
  "Go Back to This Version": "Quay về phiên bản này",
- "Android Games": "Trò chơi Android"
+ "Android Games": "Trò chơi Android",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Để đặt thêm biến cho trò chơi, hãy viết chúng trước %command%, giống như Steam: NAME=value %command% --option."
 }

@@ -3656,5 +3656,6 @@
  "Won't Run": "เปิดไม่ได้",
  "Your RecompStore Account": "บัญชี RecompStore ของคุณ",
  "Go Back to This Version": "กลับไปใช้รุ่นนี้",
- "Android Games": "เกม Android"
+ "Android Games": "เกม Android",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "หากต้องการตั้งค่าตัวแปรให้เกมด้วย ให้เขียนไว้ก่อน %command% แบบเดียวกับ Steam: NAME=value %command% --option"
 }
