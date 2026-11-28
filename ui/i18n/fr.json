@@ -3450,5 +3450,6 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Il reste dans votre bibliothèque, dans Non installés. Vous choisissez si son dossier est supprimé aussi.",
  "Its files stay, and it stays in your Library under Not Installed": "Ses fichiers restent, et il reste dans votre bibliothèque, dans Non installés",
  "Without it, its folder stays where it is: {path}": "Sinon, son dossier reste où il est : {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} est désinstallé. Son dossier reste dans {path}."
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} est désinstallé. Son dossier reste dans {path}.",
+ "Taking longer than expected": "Cela prend plus de temps que prévu"
 }

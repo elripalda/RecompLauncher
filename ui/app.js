@@ -3705,7 +3705,7 @@ async function ssAct(b) {
   try { await invoke('setup_inputs_run', { id }); } catch (e) { if (SU.el && SU.id === id) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); } }
 }
 async function closeSetup(quiet) {
-  suDrive.stop();
+  suDrive.stop(); suTickStop();
   if (!SU.el) return;
   // The update window's build hidden (Hide, the X, Escape): it goes on, and says when it's ready.
   if (SU.upd && SU.stage === 'run' && SU.id && !quiet) {
@@ -3756,7 +3756,7 @@ async function closeSetup(quiet) {
 }
 // Run in Background, from its button or the X's question: the window goes, the setup goes on.
 function suBackground() {
-  suDrive.stop();
+  suDrive.stop(); suTickStop();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id };
   setupClosed(id);
   if (SU.el) { SU.el.remove(); SU.el = null; }
@@ -4232,7 +4232,7 @@ function suDraw() {
   if (!SU.el) return;
   // The update window's run: drawn small (update-build.js).
   if (SU.upd) return updDraw();
-  if (SU.stage !== 'run') suDrive.stop();
+  if (SU.stage !== 'run') { suDrive.stop(); suTickStop(); }
   if (SU.stage === 'steps') return ssDraw();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
   const box = $('.modal', SU.el);
@@ -4241,16 +4241,8 @@ function suDraw() {
   const mdState = SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
   if (SU.stage === 'run') {
-    const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
+    const { order, sub } = suLines();
     const st = SU.steps;
-    const sub = {
-      read: st.read && st.read.text ? st.read.text : baseName(SU.path),
-      verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
-      extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
-      setup: t('Its settings, your controller and where your copy is'),
-    };
-    const left = stepLeft(st[SU.step]);
-    if (left) sub[SU.step] += ` · ${left}`;
     // Under the title: the file it's reading now (Disc 3's, while it checks the discs), else the copy.
     const reading = SU.step === 'verify' && st.verify && st.verify.file && !st.verify.text ? st.verify.file : SU.path;
     const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Setting it up') };
@@ -4316,6 +4308,31 @@ function suDraw() {
     if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('is-busy')) mediaState(d, 'is-busy');
   }
   if (SU.stage === 'run') suDrive.start($('.drive i', box));
+  if (SU.stage === 'run' && !SU.tick) SU.tick = setInterval(suTick, SU_TICK);
+}
+// The running setup's steps, and the line under each: the running one with its time left.
+function suLines() {
+  const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
+  const st = SU.steps;
+  const sub = {
+    read: st.read && st.read.text ? st.read.text : baseName(SU.path),
+    verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
+    extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
+    setup: t('Its settings, your controller and where your copy is'),
+  };
+  const left = stepLeft(st[SU.step]);
+  if (left) sub[SU.step] += ` · ${left}`;
+  return { order, sub };
+}
+// A step that goes quiet sends no events, so nothing would redraw it: while setup runs, its line is
+// looked at again every SU_TICK, for "Taking longer than expected". Stops with the run or the window.
+const SU_TICK = 10000;
+function suTickStop() { clearInterval(SU.tick); SU.tick = 0; }
+function suTick() {
+  if (!SU.el || SU.stage !== 'run' || SU.upd) return suTickStop();
+  const { order, sub } = suLines();
+  const line = $$('.su-r .step .k span', SU.el)[order.indexOf(SU.step)];
+  if (line) line.textContent = sub[SU.step];
 }
 T.event.listen('tauri://drag-drop', ({ payload: p }) => {
   const paths = (p && p.paths) || [];
@@ -4900,22 +4917,26 @@ async function loadDlHist() {
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
 // A setup step's time left, from how fast its pct has moved since `from` (stepEvent): said only after
 // a few seconds and a bit of progress, so the first jumps don't promise too much. A step that sends
-// no pct (Setting it up, a build that prints no progress) says nothing.
+// no pct (Setting it up, a build that prints no progress) says nothing. A step whose pct hasn't
+// moved for STEP_QUIET says it's taking longer than expected instead, until it moves again.
+const STEP_QUIET = 120000;
 function stepLeft(s, now = Date.now()) {
   const f = s && s.from;
   if (!f || !(s.pct < 1)) return '';
+  if (s.pct > 0 && now - (s.moved || f.at) >= STEP_QUIET) return t('Taking longer than expected');
   const moved = s.pct - f.pct, secs = (now - f.at) / 1000;
   if (moved < 0.02 || secs < 5) return '';
   return tf('{time} left', { time: took(Math.max(1, Math.round((secs * (1 - s.pct)) / moved))) });
 }
 // A setup event merged into its step, desktop and Big Picture alike. `from`: where and when the
 // time left counts from, started again when the pct goes back or the step's text changes (Getting
-// the extras can run several phases, each from 0).
+// the extras can run several phases, each from 0). `moved`: when its pct last moved.
 function stepEvent(prev, ev, now = Date.now()) {
   const pct = ev.pct || 0;
   const again = !prev || !prev.from || pct < (prev.pct || 0) || (ev.text != null && ev.text !== prev.text);
   const from = again ? { at: now, pct } : prev.from;
-  return Object.assign({}, prev, ev, { from });
+  const moved = again || pct !== prev.pct ? now : prev.moved || from.at;
+  return Object.assign({}, prev, ev, { from, moved });
 }
 // (0.91) Each download's speed over its last minute and a half; its newest point gives the time left on Downloads.
 // A short download barely drew a line with one point a second, so the speed is worked out here from

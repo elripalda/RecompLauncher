@@ -3571,5 +3571,6 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Trò chơi vẫn ở trong Thư viện, mục Chưa cài đặt. Bạn chọn có xóa luôn thư mục hay không.",
  "Its files stay, and it stays in your Library under Not Installed": "Các tệp vẫn được giữ, và trò chơi vẫn ở trong Thư viện, mục Chưa cài đặt",
  "Without it, its folder stays where it is: {path}": "Nếu không, thư mục của nó vẫn ở nguyên chỗ cũ: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "Đã gỡ cài đặt {name}. Thư mục của nó vẫn ở {path}."
+ "{name} is uninstalled. Its folder stays in {path}.": "Đã gỡ cài đặt {name}. Thư mục của nó vẫn ở {path}.",
+ "Taking longer than expected": "Mất nhiều thời gian hơn dự kiến"
 }

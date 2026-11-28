@@ -3450,5 +3450,6 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Game tetap ada di Pustaka, di Belum terpasang. Kamu pilih apakah folder-nya ikut dihapus.",
  "Its files stay, and it stays in your Library under Not Installed": "File-nya tetap ada, dan game tetap di Pustaka-mu, di Belum terpasang",
  "Without it, its folder stays where it is: {path}": "Tanpa itu, folder-nya tetap di tempatnya: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} sudah dicopot. Folder-nya tetap di {path}."
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} sudah dicopot. Folder-nya tetap di {path}.",
+ "Taking longer than expected": "Memakan waktu lebih lama dari perkiraan"
 }

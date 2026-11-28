@@ -3450,5 +3450,6 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Она останется в библиотеке, в разделе «Не установлены». Удалять ли её папку, решаете вы.",
  "Its files stay, and it stays in your Library under Not Installed": "Её файлы останутся, а сама она останется в библиотеке, в разделе «Не установлены»",
  "Without it, its folder stays where it is: {path}": "Без этого её папка останется на месте: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name}: удалено. Папка остаётся в {path}."
+ "{name} is uninstalled. Its folder stays in {path}.": "{name}: удалено. Папка остаётся в {path}.",
+ "Taking longer than expected": "Занимает больше времени, чем ожидалось"
 }

@@ -3450,5 +3450,6 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "เกมยังอยู่ในคลังของคุณในหมวดยังไม่ได้ติดตั้ง คุณเลือกได้ว่าจะลบโฟลเดอร์ของเกมด้วยหรือไม่",
  "Its files stay, and it stays in your Library under Not Installed": "ไฟล์ยังอยู่ และเกมยังอยู่ในคลังในหมวดยังไม่ได้ติดตั้ง",
  "Without it, its folder stays where it is: {path}": "ถ้าไม่เปิด โฟลเดอร์ของเกมจะอยู่ที่เดิม: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "ถอนการติดตั้ง {name} แล้ว โฟลเดอร์ของเกมยังอยู่ใน {path}"
+ "{name} is uninstalled. Its folder stays in {path}.": "ถอนการติดตั้ง {name} แล้ว โฟลเดอร์ของเกมยังอยู่ใน {path}",
+ "Taking longer than expected": "ใช้เวลานานกว่าที่คาดไว้"
 }
