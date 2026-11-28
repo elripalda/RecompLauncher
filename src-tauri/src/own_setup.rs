@@ -5,6 +5,9 @@
 //! installer) where Windows says the installer put it, by its entry in Settings > Apps and the
 //! shortcuts it made.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use crate::install;
 use crate::library::Installed;
 use crate::{App, Error, Res};

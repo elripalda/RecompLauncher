@@ -308,4 +308,9 @@ pub fn to_trash(path: &Path) -> Result<(), String> {
         }
         Ok(())
     }
+    // Android has no Recycle Bin for app files, so nothing is deleted from here.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        Err("there's no Recycle Bin on this device".into())
+    }
 }

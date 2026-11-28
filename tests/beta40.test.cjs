@@ -72,3 +72,66 @@ test('light themes get their own grain so gradients stay smooth', () => {
   assert.match(css, /body\.light\{--noise:url\(img\/noise-light\.png\)/);
   assert.ok(fs.existsSync(path.join(__dirname, '../ui/img/noise-light.png')));
 });
+
+test('a home folder under /var (Bazzite, Silverblue) becomes ~ as a whole', () => {
+  const file = '/var/home/someone/.local/share/com.recomplauncher.app/game-output/g.log';
+  const { body } = parts(ghCrashUrl(crash(['Error while copying to "/var/home/someone/.local/share/x/a.dll"'], { file })));
+  assert.ok(body.includes('Last 1 lines of ~/.local/share/com.recomplauncher.app/game-output/g.log:'));
+  assert.ok(body.includes('"~/.local/share/x/a.dll"'));
+});
+
+test('a Windows user folder seen from Linux becomes ~ as a whole', () => {
+  const { body } = parts(ghCrashUrl(crash(['loading /mnt/c/Users/someone/AppData/game.bin'])));
+  assert.ok(body.includes('loading ~/AppData/game.bin'));
+});
+
+// This PC's home folder as Rust hands it over (see home_forms in usage.rs).
+const onLinux = { forms: ['Z:\\var\\home\\ruben', '/var/home/ruben', 'C:\\users\\ruben', 'Z:\\home\\ruben', '/home/ruben'], names: ['ruben'] };
+const onWindows = { forms: ['\\\\?\\C:\\Users\\Ruben', 'C:\\Users\\Ruben'], names: ['Ruben'] };
+const report = (lines, home, extra = {}) => parts(ghCrashUrl(crash(lines, { home, ...extra }))).body;
+
+test('a Linux home folder goes from a crash report in every form a log shows it', () => {
+  const body = report([
+    'at /var/home/ruben/.local/share/x.so', 'at /home/ruben/Games/a.bin', 'open file:///home/ruben/x.html',
+    'cc -I/home/ruben/inc', 'wine: Z:\\home\\ruben\\Games\\a.exe', 'wine: Z:\\var\\home\\ruben\\b.exe',
+    'prefix C:\\users\\ruben\\AppData\\c.dll', 'mixed Z:/home/ruben\\d.dll',
+  ], onLinux, { file: '/var/home/ruben/.local/share/g.log' });
+  assert.ok(!/ruben/i.test(body), body);
+  for (const s of ['Last 8 lines of ~/.local/share/g.log:', 'at ~/.local/share/x.so', 'at ~/Games/a.bin', 'open file://~/x.html', 'cc -I~/inc',
+    'wine: ~\\Games\\a.exe', 'wine: ~\\b.exe', 'prefix ~\\AppData\\c.dll', 'mixed ~\\d.dll']) assert.ok(body.includes(s), s);
+});
+
+test('a Windows home folder goes in any case and in its long form', () => {
+  const body = report(['load \\\\?\\C:\\Users\\Ruben\\AppData\\x.dll', 'load c:\\users\\ruben\\y.dll', 'load C:/Users/Ruben/z.dll', 'open file:///C:/Users/Ruben/x.html'], onWindows);
+  assert.ok(!/ruben/i.test(body), body);
+  for (const s of ['load ~\\AppData\\x.dll','load ~\\y.dll', 'load ~/z.dll', 'open file:///~/x.html', 'Last 4 lines of ~\\Games']) assert.ok(body.includes(s), s);
+});
+
+test('a removable drive under /run/media hides whose it is', () => {
+  const body = report(['games on /run/media/ruben/SD/a.bin', 'and /run/media/deck/SD/b.bin', 'wine: Z:\\run\\media\\deck\\SD\\c.exe'], onLinux);
+  for (const s of ['/run/media/~/SD/a.bin', '/run/media/~/SD/b.bin', 'Z:\\run\\media\\~\\SD\\c.exe']) assert.ok(body.includes(s), s);
+});
+
+test('the user name goes as a whole word, in any case, and common names stay', () => {
+  assert.ok(report(['Hello Ruben, RUBEN signed in; rubenesque stays'], onLinux).includes('Hello ~, ~ signed in; rubenesque stays'));
+  // A short name or a word a log uses anyway would change ordinary text.
+  for (const n of ['deck', 'steam', 'user', 'admin', 'home', 'al']) {
+    assert.ok(report([`the ${n} said hi`], { forms: [], names: [n] }).includes(`the ${n} said hi`), n);
+  }
+});
+
+test('a path from another PC still loses its home folder by its shape', () => {
+  const body = report([
+    'a /var/home/someone/x', 'b Z:\\home\\someone\\x', 'c Z:\\var\\home\\someone\\x', 'd file:///home/someone/x',
+    'e -I/home/someone/inc', 'f \\\\?\\C:\\Users\\someone\\x', 'g /Users/someone/x',
+  ], onLinux);
+  assert.ok(!body.includes('someone'), body);
+});
+
+test('web addresses in a crash report stay as they are', () => {
+  const urls = ['https://github.com/Users/foo', 'https://example.com/home/ruben/page', 'http://host/run/media/ruben/x'];
+  const body = report(urls.map((u) => `see ${u}`), onLinux);
+  for (const u of urls) assert.ok(body.includes(`see ${u}`), u);
+  // And without this PC's home folder too.
+  assert.ok(report(['see https://github.com/Users/foo'], undefined).includes('see https://github.com/Users/foo'));
+});

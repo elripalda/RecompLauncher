@@ -28,7 +28,19 @@ body.tv-on #app{visibility:hidden}
 .tv-tab.on{color:var(--tvbg);background:var(--tvink,#F4F8FC);font-weight:700}
 .tv-tab.soon:not(.on):not(.f){opacity:.5}
 .tv-status{justify-self:end;display:flex;align-items:center;gap:22px;color:var(--tvsoft,#dbe5ee)}
-.tv-clock{font-size:22px;font-weight:600}
+.tv-clock{font-size:22px;font-weight:600;white-space:nowrap}
+.tv-tab{white-space:nowrap}
+/* A narrower stage (a phone or small tablet sideways): the mark without the name, tighter tabs, the
+   bar's ends sized to what they hold so the sections get the room. Android shows just the mark too. */
+.tv-stage.narrow .tv-bar{left:56px;right:56px;grid-template-columns:auto 1fr auto;gap:18px}
+.tv-stage.narrow .tv-nav{justify-self:center}
+.tv-stage.narrow .tv-tab{padding:0 18px}
+.tv-stage.narrow .tv-wm,html.droid .tv-wm{display:none}
+/* Phones and tablets: the page's top and bottom edges are cut straight instead of faded. The fade is
+   a mask over the whole moving page, redrawn on every frame of a drag, and a phone's graphics chip
+   (or an emulator's) feels it. The focused game's glow is blurred less, as on Linux. */
+html.droid .tv-region{-webkit-mask-image:none;mask-image:none}
+html.droid .tv-cell .aura{filter:blur(18px) saturate(1.5)}
 .tv-padico{display:grid;place-items:center;color:var(--tvmuted,#a7b3c4)}
 .tv-back{height:58px;padding:0 26px 0 12px;border-radius:999px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:21px;background:rgba(var(--tvrgb),.55);border:1px solid rgba(var(--tvinkrgb,244,248,252),.16);justify-self:start;backdrop-filter:blur(16px)}
 
@@ -103,8 +115,11 @@ body.tv-on #app{visibility:hidden}
 
 /* long names glide across when focused */
 .tv-stage .long{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent)}
-.tv-stage .f .long .glide,.tv-cell:has(.f) .long .glide,.tv-hero .long .glide{transform:translateX(var(--shift,0))}
-.tv-stage .f .long,.tv-cell:has(.f) .long{-webkit-mask-image:none;mask-image:none}
+.tv-stage .f .long .glide,.tv-hero .long .glide{transform:translateX(var(--shift,0))}
+.tv-stage .f .long{-webkit-mask-image:none;mask-image:none}
+/* On their own lines: a web engine that doesn't know :has() skips only these, not the two above. */
+.tv-cell:has(.f) .long .glide{transform:translateX(var(--shift,0))}
+.tv-cell:has(.f) .long{-webkit-mask-image:none;mask-image:none}
 
 /* grid pages */
 .tv-head{margin:0 0 22px}
@@ -320,6 +335,8 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-setup .tk i{display:block;height:6px;border-radius:3px;background:rgba(var(--tvinkrgb,244,248,252),.12);overflow:hidden}
 .tv-setup .tk i u{display:block;height:100%;background:#34F2E8;transition:width .2s linear}
 .tv-setup .tk b{font-size:22px}.tv-setup .tk span{font-size:18px;color:var(--tvdim,#8f9cb0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The running step's line has its time left (or "Taking longer than expected") after it: two lines, not cut. */
+.tv-setup .tk.now span{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .tv-setup .tk.w b{color:var(--tvdim,#8f9cb0)}
 .tv-setup .opts{position:relative;display:grid;gap:18px;width:1000px}
 .tv-setup .opts .tv-item{min-height:96px}
@@ -665,6 +682,8 @@ body.cpu-draw .tv-down{animation:none}
 /* Going into Big Picture mode and out of it: a fade to dark over the launcher while the window
    changes size. */
 #tv.tv-cover{animation:tv-fade .24s ease both}
+/* On Android the phone layout is under it, and the dark goes over that while the screen turns. */
+.droid #tv.tv-cover{z-index:110}
 #tv.tv-cover.out{animation:tv-cover-out .22s ease both}
 #tv.tv-cover.out>*{opacity:0;transition:opacity .2s}
 @keyframes tv-cover-out{from{background:#070b14}to{background:#070b14}}
@@ -1002,7 +1021,7 @@ body.light .tv-badge.soon{color:#1a1400}
 .tv-hbox .tv-hbox-x{width:60px;padding:0;justify-content:center}
 .tv-hban{margin:18px 0 30px}
 .tv-spb{position:relative;display:block;width:100%;padding:0;border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.14);border-radius:24px;overflow:hidden;background:var(--tvcard)}
-.tv-spb img{display:block;width:100%;height:auto;max-height:260px;object-fit:cover}
+.tv-spb img{display:block;width:100%;height:auto;aspect-ratio:1456/180;object-fit:cover}
 .tv-spb .sp-tag{position:absolute;right:14px;bottom:14px;font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(244,248,252,.9);background:rgba(11,18,32,.74);padding:6px 10px;border-radius:8px}
 .tv-spb.f{transform:scale(1.015)}
 /* Easy Setup's steps (setup-steps.js) in Big Picture: the desktop's layout at TV size. One height
@@ -1092,3 +1111,29 @@ body.light .tv-badge.soon{color:#1a1400}
 .tv-svp-set.ours{color:#34F2E8}
 /* The named folder while the player's own is used instead: greyed, as on the desktop. */
 .tv-item.tv-svp-unused .k{opacity:.6}
+
+/* ===== Older web engines ===================================================================
+   An Android phone, TV box or emulator can have a web engine from before 2023, which can't mix
+   colours (color-mix). A rule that tries isn't just skipped there: it draws nothing, so menus were
+   see-through, the Play button had no shape, the focused button had no ring and a game's backdrop
+   had no shade under the words. Those engines get the same pieces in the launcher's own colours
+   (not tinted by the game in view). Engines that can mix colours never read this. */
+@supports not (color:color-mix(in srgb,red,blue)){
+  .tv-full.home::after,.tv-full.game::after,.tv-full.flowbg::after{background:var(--noise),linear-gradient(90deg,rgba(var(--tvrgb),.93) 0%,rgba(var(--tvrgb),.7) 38%,rgba(var(--tvrgb),.14) 74%),linear-gradient(180deg,rgba(var(--tvrgb),.7) 0%,transparent 22%,transparent 40%,rgba(var(--tvrgb),.88) 70%,var(--tvbg) 100%)}
+  .tv-full.flowbg::after{background:var(--noise),linear-gradient(180deg,rgba(var(--tvrgb),.72) 0%,rgba(var(--tvrgb),.4) 40%,rgba(var(--tvrgb),.92) 78%,var(--tvbg) 100%)}
+  .tv-full.amb::after{background:var(--noise),radial-gradient(60% 65% at 85% 20%,rgba(52,242,232,.2),transparent 72%),radial-gradient(55% 60% at 10% 95%,rgba(52,242,232,.14),transparent 72%),linear-gradient(180deg,transparent 62%,rgba(var(--tvrgb),.5))}
+  .tv-flow::before{background:radial-gradient(closest-side,rgba(52,242,232,.24),rgba(52,242,232,.09) 55%,transparent)}
+  .tv-hints{background:rgba(var(--tvrgb),.92)}
+  .tv-btn.main{background:var(--acc);color:var(--accink)}
+  .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--tvink,#F4F8FC),0 18px 44px rgba(0,0,0,.5),0 0 34px rgba(52,242,232,.42)!important}
+  body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--acc),0 18px 44px rgba(14,22,38,.18),0 0 34px rgba(7,117,112,.3)!important}
+  .tv-stage .tv-tag.f{box-shadow:0 0 0 3px var(--acc)!important}
+  .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#0e1729,#0b1220)}
+  body.oled .tv-sheet-in{background:#05070a}
+  body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#F7F8FA,#ECEEF2)}
+  .tv-fcase.f .plate{box-shadow:0 0 30px 4px rgba(52,242,232,.5)}
+  .tv-chip.act{box-shadow:inset 0 0 0 2px var(--acc)}
+  .tv-sheet.kb .tv-item.key.done{background:rgba(52,242,232,.18)}
+  .tv-kb-field{border:2px solid var(--acc)}
+  .tv-ach-toast{border:1px solid rgba(242,193,78,.4)}
+}

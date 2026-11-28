@@ -119,6 +119,25 @@ goes along; what it writes anywhere else is left behind. So:
   game's folder, so the other one goes stale.
 - **Don't depend on `$APPIMAGE`.** On Linux the launcher always unpacks your AppImage and runs it
   from a plain folder, so `APPIMAGE` is never set (see [AppImages](#appimages)).
+- **Beside your program is `{install}/usr/bin`.** A game that finds its folder from its own
+  program's path (`SDL_GetBasePath()`, `/proc/self/exe`, `argv[0]`, or `dirname $APPIMAGE` falling
+  back to the program's folder) gets `{install}/usr/bin` under the launcher. An update replaces
+  every file your release ships there, and only the files your manifest names (`saves`, `config`)
+  are kept by backups, cloud saves and Uninstall. Write to `RECOMPLAUNCHER_DATA` when it's set,
+  otherwise to your game's usual per-user place.
+  Not to `APPDIR` either: that's `{install}` itself, next to your release's own
+  files. What your game makes goes in `{data}` (`RECOMPLAUNCHER_DATA`), the one data path the
+  launcher moves, backs up and keeps through updates. The same goes for a portable mode marker
+  (`portable.txt` beside the program): when `RECOMPLAUNCHER_DATA` is set, it wins over portable
+  mode.
+
+  ```c
+  const char *data = SDL_getenv("RECOMPLAUNCHER_DATA");  /* set by the launcher */
+  char *dir;
+  if (data && *data) dir = SDL_strdup(data);             /* wins over portable.txt */
+  else if (portable) dir = portable_dir();               /* your own check and folder */
+  else dir = SDL_GetPrefPath("MyStudio", "MyRecomp");    /* the usual per-user place */
+  ```
 - **Never update yourself when `RECOMPLAUNCHER=1`.** Your game and your setup step both get it,
   and the launcher brings players every release you publish, by itself once they turn on
   automatic updates. If only a flag turns your updater off, put it in `start.args`, like
@@ -188,9 +207,12 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
   `recomplauncher.json`) become the game's folder.
 - The game starts from `AppRun`, with `APPDIR` set to the game's folder, `OWD` to the folder it
   starts in and `ARGV0` to `AppRun`, as the AppImage runtime would set them. **`APPIMAGE` is not
-  set**, since there's no AppImage file. Find your files from `APPDIR` or your own program's path
-  (`/proc/self/exe`), never from `APPIMAGE` or a mount point, and don't update yourself through
-  `APPIMAGE`: updates come from your releases through the launcher.
+  set**, since there's no AppImage file. Read your release's own files from `APPDIR` or your own
+  program's path (`/proc/self/exe`), never from `APPIMAGE` or a mount point, but write nothing
+  there: beside your program is `{install}/usr/bin`, where an update replaces every file your
+  release ships and backups, cloud saves and Uninstall keep only what your manifest names (see
+  [Where your game writes](#where-your-game-writes)). Don't update yourself through `APPIMAGE`:
+  updates come from your releases through the launcher.
 - A `start.program` or `prepare.program` that names a program inside the AppImage instead (`mkw`,
   `usr/bin/game`) starts without your `AppRun`. It gets `APPDIR` and `OWD` the same way, and the
   library folders your AppImage brings (`lib`, `lib64`, `usr/lib`, `usr/lib64` and
@@ -206,6 +228,9 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
 - A release with several AppImages unpacks each into a folder named after it
   (`MyGame-Editor-x86_64.AppImage` into `MyGame-Editor-x86_64/`, started from its `AppRun`). Ship
   one when you can.
+- A file named like an AppImage that isn't one (a start script you keep under an older name, say)
+  stays a plain file: it isn't unpacked, and Play never takes it for the game's AppImage. A
+  download that is itself such a file isn't installed: the release's tarball is, when it has one.
 - An AppImage a player already has comes in the same way: Bring Your Recomps unpacks it into their
   Recomp Library and leaves their file where it is.
 
@@ -385,7 +410,9 @@ Which input for which file:
     and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Give
     it both formats, file and folder.
   - `ids`: the IDs your game reads, as on the copy: a GameCube or Wii disc's (`"GZ2E01"`, or
-    `"GZ2"` for every region), an N64 cartridge's game code, a PlayStation or PS2 disc's serial,
+    `"GZ2"` for every region), an N64 cartridge's game code, a DS or Game Boy Advance cartridge's
+    4-letter game code from a `.nds` or `.gba` file (`"ACVE"`, the whole code with its region letter),
+    a PlayStation or PS2 disc's serial,
     an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`), or an Xbox
     360 game's title ID (`"4D5307FA"`), read from the `default.xex` in a disc image or an extracted
     folder, and from a DLC or Games on Demand package. Another game's copy is refused with the ID it
@@ -398,6 +425,7 @@ Which input for which file:
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found. A copy is checked when the player picks it, never again on Play.
+Which files and IDs the launcher reads for each console is in [GAME-SCANNER.md](GAME-SCANNER.md).
 
 **One file per input, one argument per file.** Each disc image, DLC package or update is an input
 of its own, and your game gets each one through an argument of its own, the flag and the file
@@ -461,6 +489,8 @@ with role `update`. The launcher asks for it with the copy and puts it in your f
 - `args`: always passed. Players can add their own launch options after yours.
 - `env`: environment variables for your game, written as names and values. Paths fill in like
   everywhere else. Names are letters, digits and `_`; system ones like `PATH` can't be set.
+  Players can set their own variables in their launch options (`NAME=value %command%`); theirs
+  come after yours, so a player's value wins.
 
 ```json
 "start": {
@@ -1089,11 +1119,16 @@ Things that make a recomp feel finished in the launcher. None are required; each
   changes (some games tie physics or cutscenes to it) and keep the console's rate as an option.
 - **Say where saves go** with `saves`, so backups and cloud saves pick up exactly the right files.
 - **Write a log.** A `.log` in a `logs` folder (or next to your program) goes with the crash
-  report a player sends, so you get it without asking.
+  report a player sends, so you get it without asking. Under the launcher on Linux, next to your
+  program is `{install}/usr/bin`, so put it under `RECOMPLAUNCHER_DATA` when it's set (see
+  [Where your game writes](#where-your-game-writes)).
 - **Explain your exit codes** with `exit_codes`. A clear "Your copy is the European release; this
   needs the USA one" saves you a bug report.
 - **Support `portable.txt`.** If a `portable.txt` next to your program makes your recomp keep
-  everything in its own folder, mod installs from the launcher follow it.
+  everything in its own folder, mod installs from the launcher follow it. Under the launcher on
+  Linux that folder is `{install}/usr/bin`, so `RECOMPLAUNCHER_DATA` wins over portable mode
+  when it's set (see [Where your game writes](#where-your-game-writes)). Mod installs from the
+  launcher don't follow `RECOMPLAUNCHER_DATA` yet.
 - **Check the copy, then trust it.** With `check` (and `dumps`), the launcher has already checked the
   player's copy before your program starts, so your own check can be quick.
 - **Ship a `recomplauncher.json` in every release**, and keep it in step with your settings when

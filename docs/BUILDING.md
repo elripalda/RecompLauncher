@@ -5,7 +5,7 @@ plain HTML, CSS and JavaScript (`ui/`).
 
 ## What you need
 
-You need [Rust](https://rustup.rs) 1.85 or newer, Node.js 20 or newer and
+You need [Rust](https://rustup.rs) 1.90 or newer, Node.js 20 or newer and
 [CMake](https://cmake.org). CMake builds SDL 3, which reads controllers; it's compiled into the
 launcher, so there is no SDL library to ship or install. On Windows you also need Rust's default
 MSVC toolchain, with the Visual Studio C++ build tools it asks for. The Build Tools come with a
@@ -112,13 +112,20 @@ does not fix it. The launcher preserves the developer's game bundle and does not
 A build you make yourself won't be byte-for-byte the same file as a release (the compiler stamps
 times and paths into it), so its checksum won't match. The code it's built from is this code.
 
-### Building in a container
+### Building and running with a boundary around it
 
-`sandbox/build-in-container.sh` runs the same `npm ci`, `npm run build` and `cargo build` inside a
-container: the checkout is mounted read-only, everything the build writes lives in a volume of its
-own, and the pass that produces the artifacts runs with the network off. It is optional and
-Linux-only, and the commands above are still the normal way to build. See
-[sandbox/README.md](../sandbox/README.md), which also covers running the launcher in a sandbox.
+The Flatpak build already runs inside a sandbox with a fixed list of what it may reach. `sandbox/`
+is the same idea for the other builds — a `.deb`, an AppImage, or this checkout — with the list in
+a JSON file you can read:
+
+- `sandbox/build-in-container.sh` builds the Linux bundles in a container that sees this checkout
+  read-only, with the pass that produces the artifacts running with the network off;
+- `sandbox/rl-sandbox` starts the launcher under bubblewrap with only the folders named in a small
+  JSON config — the game library and disc images you list, and nothing else from your home.
+
+It is optional and Linux-only, and the commands above are still the normal way to build. See
+[sandbox/README.md](../sandbox/README.md), which includes scripts that check the boundary instead of
+assuming it.
 
 ### Testing against a copy of the site
 
@@ -130,6 +137,211 @@ Set `RL_API` to point the launcher somewhere other than recomplauncher.com, for 
 
 Start the launcher with `RECOMPLAUNCHER_TEST_CONTROL` set to a token of your own, and an MCP client
 (an AI agent, or a script) can drive it: see [TEST-CONTROL.md](TEST-CONTROL.md). It's off otherwise.
+
+## Android (test builds)
+
+The Android app is in early testing and isn't released. It needs Android 8.0 or newer (the RAR unpacker and installing other apps both need it). It's the same Rust core and window as
+the PC launcher, built with Tauri's Android support; the Android Studio project is
+`src-tauri/gen/android`.
+
+The Android build leaves out what only a PC has: the tray icon, global shortcuts, a second copy
+handing over to the first, Discord status and the picture clipboard. Controllers are read by the
+window (`navigator.getGamepads`) instead of SDL. Window calls a phone doesn't have (minimise,
+full screen, frameless windows) do nothing there; `src-tauri/src/mobile.rs` keeps the shared code
+the same for both. `pads_mobile.rs` and `tray_mobile.rs` stand in for `pads.rs` and `tray.rs`.
+
+To build it yourself you need Android Studio (its SDK and NDK), Java 17 and the Rust target:
+
+```
+rustup target add aarch64-linux-android
+export ANDROID_HOME=<your Android SDK>   NDK_HOME=$ANDROID_HOME/ndk/<version>
+npx tauri android build --apk --split-per-abi --target aarch64
+```
+
+The release build is optimized and stripped (about a third of the old debug build's size). Test
+builds sign it with the machine's debug key (`build.gradle.kts`); the workflow keeps that key
+between runs, so a new test APK installs over the last one.
+
+On Android there's no desktop view. There are two layouts instead:
+
+- **The phone layout** (`ui/phone.js`, `ui/phone.css`) when no controller is in use: an app made for
+  fingers, upright or sideways. Home, Catalog, Library and Settings are tabs on a floating menu (at
+  the bottom upright, down the side away from the camera sideways); the player picks 3 to 5 of them
+  in Settings, and can add Downloads or Coming Soon. A swipe moves between tabs, a cover grows into
+  its game page, and pages inside pages slide in from the right (a swipe from the left edge goes
+  back). Get installs in place, like an app store, and turns into Open. No button hints. Android's
+  Back closes the topmost thing (a sheet, search, the game page, a page inside a page), then goes
+  to Home, and from Home puts the launcher in the background.
+  The design is drawn for a phone about 433 points wide. A narrower phone scales it down; a tablet
+  (or anything whose short side is over 560) draws it bigger in proportion, up to 1.7 times, so
+  words, buttons and covers keep their size against the screen. Settings, Display size (XS to XL,
+  `phone_size`) scales it from there, and Big Picture size (`phone_bp_size`) does the same for the
+  phone's Big Picture mode. The screen is drawn with CSS `zoom`, not a scaled picture of it, so text
+  and edges stay sharp (`rin()` reads boxes in the design's own pixels). Android tells the page
+  how tall the status bar and gesture line are (`android_insets`, and again whenever they change),
+  the page draws behind them, and nothing readable sits under the clock or the camera. The bars'
+  icons follow the theme (`android_edges`), and taps can buzz (`android_haptic`, Settings, Vibrate
+  on taps). The player's choices are kept in settings.ui (`phone_tabs`, `phone_labels`,
+  `phone_haptics`, `phone_size`, `phone_libview`, `pad_tv`, and the Accessibility switches below).
+  Pictures are fetched at the size they show on this screen (`sharpOf` in app.js: the width in CSS
+  pixels times the screen's pixel density). Up to 960 pixels the site's smaller copy is used
+  (`thumb.php`); bigger than that, the original, so backdrops and banners stay sharp on a phone's
+  dense screen and on tablets. Covers a fast swipe is about to reach are asked for about a screen
+  ahead (an IntersectionObserver in phone.js turns their lazy loading off), and a game page's big
+  cover opens with the copy that was just tapped and swaps to the sharp one once it has decoded
+  (`shownFirst`, `sharpen`), so it never flashes empty. Labels, buttons and headings on the phone
+  are in title case (Display Size, Vibrate on Taps, Critic and Player Score); descriptions stay in
+  sentence case. About has Support Us (Ko-fi).
+  The launcher's window opens before the core has finished starting, so the first `get_state` can
+  come too early on a slow phone or emulator: app.js asks again for a few seconds. Settings that
+  never came in are never written back (`S.settingsMissing`): a half-empty copy would be refused.
+  Home's top left shows the RecompLauncher mark and name. Held sideways, the search and profile
+  buttons sit right above the side bar, and on a wide screen Settings lays its boxes out in two
+  columns and the account page puts the profile beside its settings (cloud space, Back Up Every
+  Game, this phone's name for its save copies, and shortcuts).
+  Catalog's All games comes in 30 at a time as the page scrolls, and Trending is the week's top 10
+  (filled from the most played when the chart is short).
+  Only the tab on screen is redrawn when something changes; the others are marked stale and drawn
+  when the browser is idle or a swipe starts towards them (`fresh`, `drawLater`). Tabs that aren't
+  on screen or next to it, and the tabs under an open game page, are left out of layout
+  (`content-visibility`), as are a game page's lower parts until they come near. Wide art loads at
+  about the size it's shown (`heroUrl(a, w)`, the site's 960 and 640 copies), and a blurred cover
+  standing in for it at 160. Lists pulled past their top or end give a little and spring back
+  (touch events only listened to, never held, so scrolling stays native).
+  Settings: Account, Appearance, Covers and names (Covers Only `hide_names`, Console Labels on
+  Covers `cover_labels`, Show Game Names `game_names`, Show Game Media `game_media`: the desktop's own
+  settings), Menu bar, Big Picture (style, size), Catalog and updates (Hide AI-assisted Recomps,
+  Refresh Catalog, Check for Game Updates, Check for Launcher Updates, Bring Your Own Recomps),
+  Reviews (Ask After Playing, Your Reviews), Storage, Accessibility, Help and privacy (Report a
+  Problem, the two sharing switches), Start over (Reset settings, Run first-time setup again), About.
+  Big Picture's Settings has the same rows. Check for Launcher Updates reads `version.json`'s
+  `android` entry (`url`, `version`, `notes`); the APK downloads in the browser and Android installs
+  it over this one. Bring Your Own Recomps runs the Library check now: any listed game installed
+  some other way (a download, another app) joins the Library. Report a Problem sends
+  `beta_feedback` with the area `Android`, and the game's log when one is picked.
+  First-time setup (`ftsOpen`, when `setup_done` is false): Welcome, Allow installing games, Back up
+  your saves (All files access), Games already on this phone, the two sharing switches, the account
+  (sign-in opens the browser), done. No language step (the phone's) and no "how will you play". Big
+  Picture on a TV or with a controller skips it.
+  Installing: Android must allow RecompLauncher to install apps. Before anything downloads,
+  `startInstall` asks `android_install_allowed`; when it isn't allowed a sheet offers Android's
+  page, and the install carries on by itself when the player comes back allowed (`droidInstallGate`).
+  Accessibility: **Bold text** (`phone_bold`: the text face points at heavier font files,
+  `--ff` in `phone.css`), **Reduce transparency** (`phone_solid`), **Optimization mode** (`phone_lite`: no frosted glass, glows, shadows,
+  start-up cover wall or moving extras, and no animations, for older phones), **Reduce motion**
+  (`phone_still`: pages change in place, no slides or zooms; the phone's own reduce-motion setting
+  does the same) and **High contrast** (`phone_contrast`: brighter secondary text and edges).
+  Each game shows once in every list, as on the desktop (`oneEach` over the website's Versions,
+  worked out again only when the catalog, the library or what's hidden changes): the version you
+  play, else the recommended one. Its page has an "{n} versions" pill (a row in Big Picture mode)
+  that opens a sheet listing them all.
+  A game's page has the same player reviews as the desktop (`loadReports`, score, filters, write,
+  edit and delete, sheets in `phone.js` "Reviews"; reviews with words in them come first), the IGDB
+  about text, score and facts (Wikipedia's when the catalog has none), and rows for the README,
+  From the developer (description and credits) and Updates. Updates lists the releases folded to
+  their names (the newest open), tagged Latest version and Installed; one with an Android app in it
+  can be installed from there. Going back to an older one uninstalls the game first (Android won't
+  put an older app over a newer one), then installs it once the player is back; `android::install`
+  takes the picked tag and marks it `pinned`. Android doesn't say when a game closes, so `more.js`
+  notes when a game is opened and, when the launcher comes back, counts the session in its play
+  time (`android_played`, under 12 hours) and, after 10 minutes or more, asks how it ran. The page
+  shows Played, This week, This month, Sessions and Longest (`playBox`), in both layouts.
+- **Big Picture mode** with a controller, or picked in Settings. Which one depends on the device
+  (`droidPhone()` / `droidHandheld()` in `app.js`, from `android_device`: smallest screen width and
+  a built-in controller, `ScreenPlugin.kt` `device`). A phone (narrower than 600dp, no built-in
+  controller) gets the phone layout's own (`phone.js`, Big Picture section; `.ph-bp` in
+  `phone.css`): full screen and sideways, always dark, six sections like the desktop (Home,
+  Library, Catalog with search and console chips, Downloads, Achievements, Settings; LB and RB),
+  Home is the focused game's art over a centred shelf of covers, then rows (Continue playing,
+  Trending, Saved, Recently updated, Just added, Popular on Android). A game's page has its facts,
+  About, reviews, README, notes, updates, achievements and More like this, and its menu (Y). The
+  d-pad moves to the nearest thing that way, A presses it, B goes back (sheet, menu, game, Home).
+  Button hints show only while a controller or keyboard is in use; a finger taps (on the shelf,
+  the first tap shows a game, the next opens it). Any button pressed on a controller switches to
+  it, unless Settings, Open with a controller is off (Android tells the page about a controller
+  only once a button is pressed). Unplugging the last controller goes back to the phone layout when
+  a controller is what opened it. Settings, Start in Big Picture mode (`start_in_tv`) opens the
+  launcher in it; then Android's Back on Home puts the launcher in the background, otherwise it
+  goes back to the phone layout. tv.js hands every way in to it (`window.phoneBp`): its `enter()`,
+  the controller (`pad()`), Back and the unplug.
+  A tablet, a handheld (a built-in controller; it starts in Big Picture mode) and an Android TV get
+  the desktop's Big Picture mode (`ui/tv.js`). Settings, Big Picture style (`bp_style`) lets any
+  touch screen pick: Phone (this one) or Full (tv.js); both settings pages switch it.
+  Going in or out never shows a half-turned page: a dark cover fades in, the screen turns (Android
+  crossfades the turn), `settle()` waits until the page size stops changing, the new layout draws
+  under the cover, and the cover fades away. tv.js uses the same wait (`window.screenSettle`).
+
+In the desktop's Big Picture mode on Android, Settings leaves out what only a PC has (monitor, tray, start with your PC, Discord, controller as
+a mouse), and on Auto size draws the stage a little bigger (1600×900) so words stay readable.
+Below a 1800-wide stage (that phone size, or a small tablet) the bar tightens (`narrow` on the
+stage): shorter side gaps, tighter tabs, every section name on one line. On Android the bar shows
+just the mark, not the name. The tab highlight is measured again whenever the bar changes size
+(a `ResizeObserver` on it, and once the font has loaded), so it always sits under the open
+section. Dragging a page or a row measures its size once when the finger lands, draws the move once
+a frame, gives a little past either end and springs back, and a flick carries on and slows down.
+While the finger is down the page has no easing at all (`heldMax` in `setScroll`): touch moves
+that come slower than frames, as an emulator's do, used to switch the half-second ease back on
+between moves and the page trailed behind the finger. On Android the page's faded top and bottom
+edges are cut straight (no mask over the moving page), the focused game's glow is blurred less,
+wide cards fetch art sized for the screen (`wideArt`) and fewer full-size backdrops are kept
+ready. Which way the window
+turns follows the layout: Big Picture mode only sideways, the phone layout as the phone is held and
+as its rotation lock says (`ScreenPlugin.kt`). Nothing is drawn under the camera hole
+(`MainActivity.kt`).
+
+The app icon is an adaptive icon (`mipmap-anydpi-v26`): a transparent mark inside the middle
+66dp every launcher shape keeps, over a dark gradient, plus a one-colour version for themed icons.
+Android 12 and newer always show a splash screen; it's the start-up screen's dark blue with no
+icon (`values-v31/themes.xml`), so it hands straight over to the launcher's own start-up screen
+(the logo over a wall of covers, the last ones seen kept for an instant start; none in
+Optimization mode).
+
+Cloud saves on Android: a phone's games are Android apps, and Android keeps each app's own folders
+(`Android/data`, its private storage) away from every other app. The launcher can copy only saves a
+game keeps in the phone's shared storage, and only after the player allows All files access
+(`MANAGE_EXTERNAL_STORAGE`; read and write storage on Android 10 and older), asked for from the
+Saves tab (`filesAccess` and `askFilesAccess` in `ApkPlugin.kt`). Where a game keeps them comes
+from the catalog's `android_saves` (set per game on the website), each starting `{storage}/`, which
+`saves.rs` fills with the shared storage folder once access is allowed (`storage_place_ok` turns
+away anything else). Android doesn't say when a game closes, so Play marks the session open and the
+copy is made when the launcher is back in front (`android_back`, which finishes open sessions the
+way the PC's play watcher does). Phone copies go to the account under the cloud id `<id>.android`,
+apart from a PC's copies of the same game, since the two keep different files. Before Play the
+cloud check works as on a PC; without All files access the game just plays with the phone's save.
+
+The desktop view isn't drawn at all on Android: `ui/droid.js` marks the page from `<head>` so it
+never shows at start-up, and `render()` builds nothing for it. Android also draws lighter by default
+(no moving backdrop, no blurs), as a handheld PC does. The phone layout patches the page that's
+showing instead of rebuilding it, and each page keeps its place when you come back to it.
+
+Android's web engine (Android System WebView) can be years old on a TV box, an emulator or a phone
+that isn't updated. Styles that an older engine doesn't know need a plain version beside them:
+`tv.css` ends with one for every colour-mixing rule (a test checks none is missing), and
+`phone.css` has one for shapes. Settings → About in the phone layout shows the engine's version.
+
+The launcher sets nothing up for an Android game: no Easy Setup, no Game Settings, no checks of
+the PC's parts. A game there is an app of its own, and Android keeps its files out of every other
+app's reach, so the launcher can't put the player's copy where the game reads it. Play opens the
+game, and the game asks for what it needs itself (`profile::find` gives no profile on Android).
+
+Its game list is the website's Android list (`/api/pc.php?a=android`: the same shape as
+`pc-catalog.json`, with each game's Android download), not `pc-catalog.json`. While Android is
+hidden on the website only testers get it, so the request carries the player's sign-in; signed
+out, or with an account that isn't a tester, Home says so and offers Sign In. Each game's release
+and version are its Android app's (`android_tag`, `android_version`), so updates work as on PC.
+
+Install downloads the game's APK from that release (the file `assets.android` names), checks it is
+the app the store checked (`android_package`, and the SHA-256 of its signing certificate against
+`android_sig`), and hands it to Android's own installer, which asks the player to confirm
+(`src-tauri/src/android.rs`, `ApkPlugin.kt`). Play opens the app, and Uninstall asks Android to
+remove it. The Library follows what's installed on the device: it's checked at start and whenever
+the launcher comes back to the front, so a game installed or removed outside the launcher shows
+right. The first install asks the player to let RecompLauncher install apps.
+
+The Android workflow (`.github/workflows/android.yml`) builds the same APK on GitHub when the
+Android parts change, or when run by hand, and keeps it for a week (time to put it on a phone). It also opens the APK on an
+Android emulator and prints a few small screenshots (base64 JPEG between `=====SHOT` lines) and
+the app's log into the job's log (`.github/scripts/android-smoke.sh`).
 
 ## Pull request builds
 

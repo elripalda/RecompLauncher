@@ -704,7 +704,7 @@ fn untar(file: &Path, to: &Path, k: &str) -> Result<(), Error> {
     let f = io::BufReader::new(fs::File::open(file)?);
     let read: Box<dyn io::Read> = match k {
         // Several xz streams one after another (parallel compressors write them) are one file.
-        "tar.xz" => Box::new(xz2::read::XzDecoder::new_multi_decoder(f)),
+        "tar.xz" => Box::new(liblzma::read::XzDecoder::new_multi_decoder(f)),
         "tar.zst" => Box::new(zstd::stream::read::Decoder::with_buffer(f)?),
         _ => Box::new(flate2::read::GzDecoder::new(f)),
     };
@@ -840,7 +840,7 @@ pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathB
         return (exe, None);
     }
     let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-    let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+    let new_appimage = files.iter().find(|f| !mac_metadata(f) && f.to_string_lossy().to_lowercase().ends_with(".appimage"));
     if let (true, Some(n)) = (is_appimage, new_appimage) {
         if *n != old {
             return (Some(n.clone()), Some(old));
@@ -1054,7 +1054,7 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
     // On Linux every game plays from a plain folder: the release's AppImages are unpacked here, so
     // their files are the game's files from now on.
     #[cfg(target_os = "linux")]
-    unpack_appimages(&from, staging)?;
+    unpack_appimages(&from, staging, k == "appimage")?;
     validate_links(&from, &from)?;
     // Bundles must be self-contained when moved or replaced as a unit.
     for entry in fs::read_dir(&from)? {
@@ -1077,8 +1077,8 @@ pub const APPIMAGE_UNPACK: &str = "APPIMAGE_UNPACK|";
 /// of a zip), becomes the top, its AppRun beside the rest. Any other unpacks into a folder named
 /// after it. Err names the one that didn't unpack, and why.
 #[cfg(target_os = "linux")]
-pub(crate) fn unpack_appimages(dir: &Path, staging: &Path) -> Result<(), Error> {
-    let images = appimages_in(dir);
+pub(crate) fn unpack_appimages(dir: &Path, staging: &Path, downloaded: bool) -> Result<(), Error> {
+    let images = real_appimages(appimages_in(dir), downloaded);
     let alone_at_top = images.len() == 1 && images[0].parent() == Some(dir);
     let work = staging.with_extension("appdir");
     for image in &images {
@@ -1127,6 +1127,24 @@ fn unpack_one(image: &Path, work: &Path, into: &Path) -> io::Result<()> {
     merge_into(work, into)
 }
 
+/// The AppImages to unpack. A file that's only named like one, such as a start script a release
+/// keeps under an older name beside its real AppImage, stays as it is: it isn't unpacked, and it
+/// installs as one of the game's files (see appimage::is_real_appimage). A download that is itself
+/// an AppImage (`downloaded`) is unpacked whatever it holds, so one that isn't stops the install as
+/// before and the release's tarball is installed instead.
+#[cfg(target_os = "linux")]
+fn real_appimages(named: Vec<PathBuf>, downloaded: bool) -> Vec<PathBuf> {
+    if downloaded {
+        return named;
+    }
+    let (programs, others): (Vec<PathBuf>, Vec<PathBuf>) = named.into_iter().partition(|p| crate::appimage::is_real_appimage(p));
+    for other in &others {
+        let name = other.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        crate::trail::note(format!("Install: {name} isn't an AppImage, so it stays a plain file"));
+    }
+    programs
+}
+
 /// The AppImages anywhere in `dir`: regular files named `….AppImage`, never through a link.
 #[cfg(target_os = "linux")]
 fn appimages_in(dir: &Path) -> Vec<PathBuf> {
@@ -1141,7 +1159,7 @@ fn appimages_in(dir: &Path) -> Vec<PathBuf> {
                 continue;
             }
             let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
-            if ty.is_file() && named {
+            if ty.is_file() && named && !mac_metadata(&path) {
                 out.push(path);
             }
         }
@@ -1497,7 +1515,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
                 }
                 continue;
             }
-            if !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
+            if mac_metadata(&p) || !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
                 continue;
             }
             let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
@@ -1532,7 +1550,16 @@ pub fn looks_like_setup(p: &Path) -> bool {
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
 
+/// A Mac's metadata file ("._Game.exe"), which a Mac writes beside each file on a drive formatted
+/// for Windows, or into an archive it packs. It's never a program, whatever its name ends in.
+pub fn mac_metadata(p: &Path) -> bool {
+    p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))
+}
+
 pub fn is_program(p: &Path, os: &str) -> bool {
+    if mac_metadata(p) {
+        return false;
+    }
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     if os == "windows" {
         return n.ends_with(".exe");
@@ -1948,6 +1975,18 @@ mod tests {
     }
 
     #[test]
+    fn an_update_never_takes_a_macs_metadata_file_for_its_appimage() {
+        let target = tmp("update-appledouble-appimage");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let (got, _) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["._Game-v2.AppImage", "Game-v2.AppImage"]), true);
+
+        assert_eq!(got, Some("Game-v2.AppImage".into()));
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
     fn updating_follows_a_managed_program_into_its_new_folder() {
         let target = tmp("update-managed-exe");
         fs::create_dir_all(target.join("bin")).unwrap();
@@ -2072,6 +2111,31 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    /// What a Mac writes beside a file on a drive or in an archive: "._" and the file's name.
+    fn mac_metadata_beside(p: &Path) {
+        let name = format!("._{}", p.file_name().unwrap().to_string_lossy());
+        fs::write(p.with_file_name(name), b"\x00\x05\x16\x07AppleDouble").unwrap();
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_the_setup() {
+        let d = tmp("appledouble-setup");
+        put(&d.join("Game.exe"), 2_000_000);
+        put(&d.join("Game-setup.exe"), 1_000_000);
+        mac_metadata_beside(&d.join("Game-setup.exe"));
+        assert_eq!(find_setup(&d, "windows", Some(Path::new("Game.exe"))), Some(PathBuf::from("Game-setup.exe")));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_linux_program() {
+        assert!(!is_program(Path::new("/games/x/._game.x86_64"), "linux"));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_windows_program() {
+        assert!(!is_program(Path::new("/games/x/._Game.exe"), "windows"));
     }
 
     #[test]
@@ -2251,9 +2315,29 @@ mod tests {
     fn tar_xz_unpacks() {
         let d = tmp("txz");
         let tpath = d.join("Game-Linux.tar.xz");
-        let mut xz = xz2::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
+        let mut xz = liblzma::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
         tarball_into(&mut xz);
         xz.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+        assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");
+    }
+
+    /// Parallel xz compressors write several streams one after another: all of them are read.
+    #[test]
+    fn a_tar_xz_in_several_streams_unpacks_whole() {
+        let d = tmp("txzm");
+        let mut tarball = vec![];
+        tarball_into(&mut tarball);
+        let (first, rest) = tarball.split_at(512);
+        let mut bytes = vec![];
+        for part in [first, rest] {
+            let mut xz = liblzma::write::XzEncoder::new(vec![], 1);
+            io::Write::write_all(&mut xz, part).unwrap();
+            bytes.extend(xz.finish().unwrap());
+        }
+        let tpath = d.join("Game-Linux.tar.xz");
+        fs::write(&tpath, bytes).unwrap();
         let staged = stage(&tpath, &d.join("st")).unwrap();
         assert_eq!(staged.files, paths(&["run.sh"]));
         assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");
@@ -2319,6 +2403,60 @@ mod tests {
         assert!(staged.files.contains(&PathBuf::from("Game/AppRun")));
         assert!(staged.files.contains(&PathBuf::from("Editor/AppRun")));
         assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_script_named_like_an_appimage_beside_a_real_one_stays_a_plain_file() {
+        let d = tmp("stage-appimage-script");
+        let image = crate::appimage::tests::game_image();
+        let script = b"#!/bin/sh\nexec \"$(dirname \"$0\")/Game.AppImage\" \"$@\"\n";
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game/Game.AppImage", image.as_slice()), ("Game/OldName.AppImage", script.as_slice())])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("OldName.AppImage")));
+        assert!(!staged.files.contains(&PathBuf::from("Game.AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_script_named_like_an_appimage_alone_in_a_release_stays_a_plain_file() {
+        let d = tmp("stage-appimage-script-alone");
+        let script = b"#!/bin/sh\nexec \"$(dirname \"$0\")/game\" \"$@\"\n";
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game/Game.AppImage", script.as_slice()), ("Game/game", b"\x7fELF program")])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("Game.AppImage")));
+        assert_eq!(fs::read(staged.root.join("Game.AppImage")).unwrap(), script);
+        assert!(!staged.files.contains(&PathBuf::from("AppRun")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_damaged_appimage_beside_a_script_still_stops_the_install() {
+        let d = tmp("stage-appimage-damaged-script");
+        let script = b"#!/bin/sh\nexec ./Game.AppImage\n";
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game/Game.AppImage", b"\x7fELF but damaged"), ("Game/OldName.AppImage", script.as_slice())])).unwrap();
+        let Err(Error::Msg(m)) = stage(&zpath, &d.join("st")) else { panic!("it must not install") };
+        assert!(m.starts_with(APPIMAGE_UNPACK) && m.contains("Game.AppImage"), "{m}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_update_to_a_real_appimage_still_unpacks_the_new_one() {
+        let d = tmp("stage-appimage-update");
+        let image = d.join("Game-v2-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::game_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+        let target = tmp("stage-appimage-update-target");
+        fs::write(target.join("Game-v1-x86_64.AppImage"), b"\x7fELF old release").unwrap();
+        let (got, replaced) = updated_exe("game", &target, Some("Game-v1-x86_64.AppImage".into()), &staged.files, true);
+        assert_eq!(got, Some("AppRun".into()));
+        assert_eq!(replaced, Some("Game-v1-x86_64.AppImage".into()));
     }
 
     #[cfg(target_os = "linux")]

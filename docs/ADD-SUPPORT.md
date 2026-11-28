@@ -46,6 +46,15 @@ For raw copies, put the file name after
    release workflow or packaging script so it's always included. Players only get the file in a
    release: one that's only in the repo does nothing for them. In DEVELOPERS.md: "Where the file
    goes".
+   - **Turn off every self-update.** Before you open a pull request, find each way the game or its
+     setup step can update or replace itself: a check at start-up, a "check for updates" button,
+     any download-and-replace, repair or self-patch path. Search the code, not only the menus.
+     Each must be off when `RECOMPLAUNCHER=1` is set: the launcher installs and updates the game,
+     so a self-update replaces files under it and breaks its version tracking. A line like
+     "RecompLauncher keeps this up to date" in place of the update button is the usual way. Check
+     Windows and Linux both: `APPIMAGE` isn't set under the launcher, so an AppImage-only updater
+     may already be off on Linux, but the Windows one usually isn't. In DEVELOPERS.md: "Where your
+     game writes".
 4. **Check the project against the Recomp Standards** (the "Recomp Standards" section of
    DEVELOPERS.md). Fix the ones that are small and safe, most of all accepting the standard file
    formats for its console (CHD for disc-based consoles, decrypted dumps for PS3, PS4, PS5 and
@@ -64,7 +73,13 @@ For raw copies, put the file name after
 6. **Check your work.** Validate `recomplauncher.json` against the schema with a JSON schema tool.
    Build the project if you can, and start it once without the new arguments to make sure nothing
    changed for players who don't use the launcher. In DEVELOPERS.md: "Checking your file".
-7. **Finish with the report** below, for the developer.
+7. **Trace every Linux path** before you open a pull request. For each path in
+   `recomplauncher.json` (`saves`, `config` files, `folders` such as logs, and `prepare.done`), find
+   where the game really writes on Linux when the launcher starts it: unpacked, with `APPIMAGE`
+   unset and `APPDIR` set to `{install}`. None may land under `{install}/usr/`, or on any other file
+   or folder the release ships: every update replaces those. In DEVELOPERS.md: "Where your game
+   writes".
+8. **Finish with the report** below, for the developer.
 
 ## Rules
 
@@ -94,8 +109,8 @@ End with a message to the developer, in this shape:
 > **What I added**: the parts in `recomplauncher.json`, the code changes, the packaging changes and
 > the badge, in a few lines.
 >
-> **What I checked, and how**: the schema check, the build, the start without new arguments, and
-> where the `dumps` values came from.
+> **What I checked, and how**: the schema check, the build, the start without new arguments, each
+> self-update and how it's turned off, and where the `dumps` values came from.
 >
 > **Things that would make your recomp better**: one line each for every Recomp Standard the
 > project doesn't meet yet and wasn't changed: what it is, why players care, and roughly how big a

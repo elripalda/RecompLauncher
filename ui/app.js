@@ -13,7 +13,7 @@ function screenLabels(su) {
 }
 
 const GENRES = { action: N_('Action'), adventure: N_('Adventure'), platformer: N_('Platformers'), racing: N_('Racing'), fighting: N_('Fighting'), shooter: N_('Shooters'), sports: N_('Sports'), rpg: N_('RPG'), puzzle: N_('Puzzle') };
-const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux' };
+const OS_NAME = { windows: 'Windows', macos: 'Mac', linux: 'Linux', android: 'Android' };
 // Text for searching: lower case and without accents, so "pokemon" finds Pokémon.
 const fold = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 // Search: accents folded and punctuation as spaces, so "sky racer", "skyracer" and "Sky-Racer!!"
@@ -33,7 +33,9 @@ const AI_USE = { code: N_('code'), art: N_('art'), text: N_('writing'), audio: N
 
 const S = {
   os: 'windows', arch: 'x64', version: '', site: 'https://recomplauncher.com',
-  library: {}, arts: {}, settings: {}, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
+  // settingsMissing: the settings haven't come in from the core yet, so they're changed here but never
+  // written back (a half-empty copy would be refused, or lose the real ones).
+  library: {}, arts: {}, settings: {}, settingsMissing: true, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
   cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), easyAll: new Set(), shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
@@ -57,6 +59,9 @@ const THUMB_RE = /^https:\/\/(?:www\.)?recomp(?:store|launcher)\.com\/media\/([A
 const THUMB_W = [160, 256, 320, 400, 640, 960];
 const thumbW = (w) => THUMB_W.find((x) => x >= (Number(w) || 400)) || 960;
 const thumbOf = (u, w = 400) => { if (!u || !S.thumbs) return u; const m = THUMB_RE.exec(webUrl(u)); return m ? `${S.thumbs}?f=${encodeURIComponent(m[1])}&w=${thumbW(w)}` : u; };
+// A picture shown `css` pixels wide, sharp on this screen: the site's copy when one is big enough for
+// the screen's pixel density (a phone has about three pixels per CSS pixel), otherwise the original.
+const sharpOf = (u, css) => { const px = Math.ceil((Number(css) || 400) * Math.min(window.devicePixelRatio || 1, 3)); return px > THUMB_W[THUMB_W.length - 1] ? u : thumbOf(u, px); };
 // The site makes covers 160, 400 or 640 pixels wide. A tile shows about 160: the smallest copy
 // is exact on a normal screen and a sixth of the pixels of the 400 one; high-DPI screens keep 400.
 const tileThumb = () => (devicePixelRatio || 1) > 1.1 ? 400 : 160;
@@ -285,8 +290,9 @@ const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
 // A game of a multi-game recomp is set up as its recomp is.
 // The launcher hands the player's copy to the game (Easy Setup, or a boot profile that puts it where
 // the game reads it). Otherwise the game asks for it itself on its first start.
-const feedsCopy = (a) => S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || ''));
-const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
+// (Never on Android: a game there is an app that keeps its own files, out of the launcher's reach.)
+const feedsCopy = (a) => S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
 // Turnkey recomps first, each group in the order it had. Nothing is left out.
 const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
@@ -310,6 +316,12 @@ addEventListener('keydown', (e) => {
 });
 const saved = () => ((S.settings && S.settings.ui) || {}).saved || {};
 const isSaved = (id) => !!saved()[id];
+// Games only a scan of the player's folders put in the Library, not the player.
+const foundOnly = (id) => (((S.settings && S.settings.ui) || {}).found_saved || []).includes(id);
+// Whether a game stays in the Library, under Not Installed, once it's uninstalled: it does when the
+// player put it there (Add to Library, Save, their account or its setup). One a scan found leaves
+// with its files (keepOut). What Uninstall says it does comes from here, so it can't drift.
+const staysInLibrary = (id) => isSaved(id) && !!byId(id) && !foundOnly(id);
 const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 async function addToLibrary(id) {
   // Added by the player: it stays, whatever a scan finds later.
@@ -1678,6 +1690,9 @@ function readyRows(a) {
     fix: own || (g && g.last_played) ? '' : pickBtn(id) });
   if (su && su.needs && askCopy) rows.push(...otherFileRows(id, su));
   if (st && st.detail === 'cut' && askCopy) rows.push(cutRow(id));
+  // Android: what a PC needs for a game (its graphics driver, processor, runtimes, drive) says
+  // nothing about a phone. Android itself refuses an app the device can't run.
+  if (S.os === 'android') return rows;
   rows.push(...systemRows(su, pc));
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
@@ -2802,6 +2817,7 @@ async function loadCounts(force) {
   else if (S.view === 'discover' && $('#dlist')) morphList($('#dlist'), discoverGrid());
   else if (S.view === 'home') render(true);
   if (window.tvRefresh) window.tvRefresh();
+  if (window.phoneRefresh) window.phoneRefresh();
 }
 async function loadReports(id, force) {
   S.reports[id] = S.reports[id] && S.reports[id] !== 'loading' ? S.reports[id] : 'loading';
@@ -3273,7 +3289,7 @@ function manageTab(a) {
   const shotsCard = `<div class="card"><div class="card-h" style="margin-bottom:14px"><h3>${esc(t('Screenshots'))}</h3><button type="button" class="btn sm" data-act="shots-folder" data-id="${esc(id)}">${esc(t('Open folder'))}</button></div>
       ${shots && shots.length ? `<div class="shots">${shots.slice(0, 8).map((f, i) => `<button type="button" class="shot" data-act="shot-g" data-id="${esc(id)}" data-i="${i}" data-path="${esc(f)}"><img src="${esc(fileSrc(f))}" alt="${esc(t('Screenshot'))}" loading="lazy"${LOADED.has(fileSrc(f)) ? ' class="ld"' : ''}></button>`).join('')}</div>` : `<p class="muted" style="margin:0">${esc(S.os === 'macos' ? t('In-game screenshot capture is not available on Mac yet.') : t('None yet. While you play, press F12, or View + RB on a controller.'))}</p>`}</div>`;
   const leave = inst.local ? `<div class="set-row"><div class="k"><b>${esc(t('Remove from Library'))}</b><span>${esc(t('Your folder stays exactly as it is.'))}</span></div><button type="button" class="btn danger" data-act="dev-remove" data-id="${esc(id)}">${esc(t('Remove'))}</button></div>`
-    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div>${S.uninstalling.has(id) ? `<button type="button" class="btn danger" disabled>${esc(t('Uninstalling…'))}</button>` : `<button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button>`}</div>`;
+    : `<div class="set-row"><div class="k"><b>${esc(t('Uninstall'))}</b><span>${esc(staysInLibrary(id) ? t('It stays in your Library under Not Installed. You choose whether its folder goes too.') : t('Takes it out of your Library. You choose whether its folder goes too.'))}</span></div>${S.uninstalling.has(id) ? `<button type="button" class="btn danger" disabled>${esc(t('Uninstalling…'))}</button>` : `<button type="button" class="btn danger" data-act="uninstall" data-id="${esc(id)}">${esc(t('Uninstall'))}</button>`}</div>`;
   return `<div class="stack">${card(t('Updates'), manageUpdateRows(id, inst))}${card(t('Starting the Game'), manageStartRows(id, inst))}${card(t('Files and Saves'), manageFileRows(id, inst))}${shotsCard}<div class="card">${leave}</div></div>`;
 }
 // Which version it has, and how it gets the next one.
@@ -3699,7 +3715,7 @@ async function ssAct(b) {
   try { await invoke('setup_inputs_run', { id }); } catch (e) { if (SU.el && SU.id === id) { SU.stage = 'error'; SU.err = String(e && e.message ? e.message : e); suDraw(); } }
 }
 async function closeSetup(quiet) {
-  suDrive.stop();
+  suDrive.stop(); suTickStop();
   if (!SU.el) return;
   // The update window's build hidden (Hide, the X, Escape): it goes on, and says when it's ready.
   if (SU.upd && SU.stage === 'run' && SU.id && !quiet) {
@@ -3737,13 +3753,7 @@ async function closeSetup(quiet) {
       toast(tf('Setup for {name} was cancelled.', { name: a.name }));
       return;
     }
-    // pick === 'bg':
-    setupClosed(id);
-    if (SU.el) { SU.el.remove(); SU.el = null; }
-    render(true);
-    if (S.view === 'game') refreshGame();
-    toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
-    return;
+    return suBackground();
   }
   if (SU.stage === 'convert') invoke('convert_cancel').catch(() => {});
   const closingId = SU.id;
@@ -3754,10 +3764,21 @@ async function closeSetup(quiet) {
   SU.upd = false;
   if (!quiet && closingStage !== 'steps' && closingId) { delete S.setup[closingId]; loadSetup(closingId); }
 }
+// Run in Background, from its button or the X's question: the window goes, the setup goes on.
+function suBackground() {
+  suDrive.stop(); suTickStop();
+  const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id };
+  setupClosed(id);
+  if (SU.el) { SU.el.remove(); SU.el = null; }
+  render(true);
+  if (S.view === 'game') refreshGame();
+  toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
+}
 async function suAct(b) {
   const id = SU.id, su = S.setup[id] || {};
   switch (b.dataset.su) {
     case 'close': return closeSetup();
+    case 'bg': return suBackground();
     // A failed setup step's Copy and Open Full Log.
     case 'fail-copy': return setupFailAct('copy', SU.id, SU.err);
     case 'fail-open': return setupFailAct('open', SU.id, SU.err);
@@ -4164,7 +4185,7 @@ function suPump() {
     }
     SU.q.shift();
     SU.extras = ev.extras;
-    SU.steps[ev.step] = Object.assign({}, SU.steps[ev.step], ev);
+    SU.steps[ev.step] = stepEvent(SU.steps[ev.step], ev);
     if (ev.step === 'done') { SU.result = ev; profileSaid(SU.id, 'files', true); return suAfterCopy(); }
   }
   suDraw();
@@ -4221,7 +4242,7 @@ function suDraw() {
   if (!SU.el) return;
   // The update window's run: drawn small (update-build.js).
   if (SU.upd) return updDraw();
-  if (SU.stage !== 'run') suDrive.stop();
+  if (SU.stage !== 'run') { suDrive.stop(); suTickStop(); }
   if (SU.stage === 'steps') return ssDraw();
   const id = SU.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
   const box = $('.modal', SU.el);
@@ -4230,14 +4251,8 @@ function suDraw() {
   const mdState = SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
   if (SU.stage === 'run') {
-    const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
+    const { order, sub } = suLines();
     const st = SU.steps;
-    const sub = {
-      read: st.read && st.read.text ? st.read.text : baseName(SU.path),
-      verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
-      extras: (st.extras && t(st.extras.text)) || t('What the game needs from your copy'),
-      setup: t('Its settings, your controller and where your copy is'),
-    };
     // Under the title: the file it's reading now (Disc 3's, while it checks the discs), else the copy.
     const reading = SU.step === 'verify' && st.verify && st.verify.file && !st.verify.text ? st.verify.file : SU.path;
     const names = { read: t('Reading your copy'), verify: t('Checking your copy'), extras: t('Getting the extras'), setup: t('Setting it up') };
@@ -4256,7 +4271,8 @@ function suDraw() {
     box.dataset.step = SU.step + order.length;
     right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2><p class="su-now" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(reading)}</p>
       <div class="steps">${order.map((k) => { const i = order.indexOf(k), cur = order.indexOf(SU.step); const done = i < cur, now = i === cur; return `<div class="step${!done && !now ? ' wait' : ''}">${done ? `<span class="ok">${CHECK}</span>` : now ? '<span class="spinr"></span>' : '<span class="todo"></span>'}<div class="k"><b>${esc(names[k])}</b><span>${esc(sub[k])}</span></div></div>`; }).join('')}</div>
-      <div class="su-bar"><i style="width:${barW}%"></i></div>`;
+      <div class="su-bar"><i style="width:${barW}%"></i></div>
+      <div class="picks"><button type="button" class="btn big" data-su="bg">${esc(t('Run in Background'))}</button></div>`;
   } else if (SU.stage === 'ready') {
     const r = SU.result || {};
     right = `<span class="su-ok${r.verified ? '' : ' plain'}">${CHECK}${esc(r.text || t('Checked'))}</span><h2 style="font-size:32px">${esc(t('Ready to play'))}</h2>
@@ -4294,11 +4310,39 @@ function suDraw() {
     const f = retry || $('.su-r .btn.main, .su-r .pick, .su-r .btn', box) || $('.su-x', box);
     if (f) f.focus({ preventScroll: true });
   } else {
+    const had = document.activeElement?.dataset?.su;
     $('.su-r', box).innerHTML = right;
+    // A step change redraws Run in Background: if it had the focus, it keeps it.
+    if (had) $(`.su-r [data-su="${had}"]`, box)?.focus({ preventScroll: true });
     const d = $('.su-media .mdisc', box);
     if (d && keepDisc && SU.stage === 'run' && SU.step !== 'read' && !d.classList.contains('is-busy')) mediaState(d, 'is-busy');
   }
   if (SU.stage === 'run') suDrive.start($('.drive i', box));
+  if (SU.stage === 'run' && !SU.tick) SU.tick = setInterval(suTick, SU_TICK);
+}
+// The running setup's steps, and the line under each: the running one with its time left.
+function suLines() {
+  const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
+  const st = SU.steps;
+  const sub = {
+    read: st.read && st.read.text ? st.read.text : baseName(SU.path),
+    verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
+    extras: (st.extras && t(st.extras.text)) || t('What the game needs from your copy'),
+    setup: t('Its settings, your controller and where your copy is'),
+  };
+  const left = stepLeft(st[SU.step]);
+  if (left) sub[SU.step] += ` · ${left}`;
+  return { order, sub };
+}
+// A step that goes quiet sends no events, so nothing would redraw it: while setup runs, its line is
+// looked at again every SU_TICK, for "Taking longer than expected". Stops with the run or the window.
+const SU_TICK = 10000;
+function suTickStop() { clearInterval(SU.tick); SU.tick = 0; }
+function suTick() {
+  if (!SU.el || SU.stage !== 'run' || SU.upd) return suTickStop();
+  const { order, sub } = suLines();
+  const line = $$('.su-r .step .k span', SU.el)[order.indexOf(SU.step)];
+  if (line) line.textContent = sub[SU.step];
 }
 T.event.listen('tauri://drag-drop', ({ payload: p }) => {
   const paths = (p && p.paths) || [];
@@ -4881,6 +4925,31 @@ async function loadDlHist() {
   if (window.tvRedraw) window.tvRedraw();
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
+// A setup step's time left, from how fast its pct has moved since `from` (stepEvent): said only after
+// a few seconds and a bit of progress, so the first jumps don't promise too much. A step that sends
+// no pct (Setting it up, a build that prints no progress) says nothing. A step whose pct hasn't
+// moved for STEP_QUIET says it's taking longer than expected instead, until it moves again.
+const STEP_QUIET = 120000;
+function stepLeft(s, now = Date.now()) {
+  const f = s && s.from;
+  if (!f || !(s.pct < 1)) return '';
+  if (s.pct > 0 && now - (s.moved || f.at) >= STEP_QUIET) return t('Taking longer than expected');
+  const moved = s.pct - f.pct, secs = (now - f.at) / 1000;
+  if (moved < 0.02 || secs < 5) return '';
+  return tf('{time} left', { time: took(Math.max(1, Math.round((secs * (1 - s.pct)) / moved))) });
+}
+// A setup event merged into its step, desktop and Big Picture alike. `from`: where and when the
+// time left counts from, started again when the pct goes back (Getting the extras can run several
+// phases, each from 0). Not on a new text: a build prints one with every progress line, and the time
+// left would never show. `moved`: when it last showed anything new, pct or text, for STEP_QUIET.
+function stepEvent(prev, ev, now = Date.now()) {
+  const pct = ev.pct || 0;
+  const again = !prev || !prev.from || pct < (prev.pct || 0);
+  const from = again ? { at: now, pct } : prev.from;
+  const said = ev.text != null && ev.text !== prev?.text;
+  const moved = again || said || pct !== prev.pct ? now : prev.moved || from.at;
+  return Object.assign({}, prev, ev, { from, moved });
+}
 // (0.91) Each download's speed over its last minute and a half; its newest point gives the time left on Downloads.
 // A short download barely drew a line with one point a second, so the speed is worked out here from
 // the bytes each progress update brings (several a second), smoothed a little, and kept five times a
@@ -5652,6 +5721,10 @@ function scrollAnchor(main) {
 function render(keepScroll) {
   // Records set from an answer about one of a recomp's games go back on the recomp, and its games' records follow.
   expandLib();
+  // Android never shows the desktop view (it's Big Picture mode or the phone layout, see phone.css):
+  // its pages aren't built, measured or their pictures fetched. The theme is kept, and the phone
+  // layout follows whatever changed, as the desktop view would have.
+  if (S.os === 'android') { paintTheme(); paintIsland(); if (window.phoneRefresh) window.phoneRefresh(); return; }
   const main = $('#main'), top = main.scrollTop;
   const v = S.view;
   // Typing in a search: it keeps its text, caret and focus across a redraw.
@@ -5741,6 +5814,12 @@ function sideRows() {
 }
 
 // The sidebar: which page is on, counts, and the pinned games.
+// The theme (dark, OLED black or light), as every layout reads it.
+function paintTheme() {
+  const ui = S.settings.ui || {};
+  document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
+  document.body.classList.toggle('light', ui.theme === 'light');
+}
 function renderSide() {
   const v = S.view, ui = S.settings.ui || {};
   applySide();
@@ -5758,10 +5837,9 @@ function renderSide() {
   // A new launcher: the Update pill in the title bar, on every page.
   { const pill = $('#upd-pill'); if (pill) pill.hidden = !S.launcherUpd; }
   if (window.achSide) window.achSide();
-  document.body.classList.toggle('oled', !!ui.oled && ui.theme !== 'light');
+  paintTheme();
   document.body.classList.toggle('nonames', !!ui.hide_names);
   document.body.classList.toggle('no-tv-btn', !!ui.hide_tv_btn);
-  document.body.classList.toggle('light', ui.theme === 'light');
   { const wm = $('#brand .wm'); const want = ui.theme === 'light' ? 'img/wordmark-dark.svg' : 'img/wordmark.svg'; if (wm && wm.getAttribute('src') !== want) wm.setAttribute('src', want); }
   const auto = innerWidth < 1180;
   $('#side').classList.toggle('auto', auto);
@@ -5866,7 +5944,7 @@ function paintIsland() {
   const el = $('#isl');
   if (!el) return;
   const ids = Object.keys(S.jobs);
-  const off = !ids.length || S.view === 'downloads' || document.body.classList.contains('tv-on');
+  const off = !ids.length || S.view === 'downloads' || document.body.classList.contains('tv-on') || document.body.classList.contains('phone-on');
   document.body.classList.toggle('isl-on', !off);
   if (off) { el.hidden = true; el.dataset.id = ''; return; }
   const id = ids[0], j = S.jobs[id], a = (j && j.plug && { name: j.name }) || byId(id) || { name: (S.library[id] || {}).name || id };
@@ -6160,7 +6238,8 @@ function paintSetupProgress(id) {
 async function refreshState() {
   const st = await invoke('get_state');
   S.removedPlayHistory = st.removedPlayHistory || {};
-  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || {}, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
+  if (st.settings) S.settingsMissing = false;
+  Object.assign(S, { os: st.os, arch: st.arch, flatpak: !!st.flatpak, version: st.version, site: st.site, thumbs: st.thumbs || '', library: st.library || {}, arts: st.arts || {}, settings: st.settings || S.settings, roms: st.roms || [], steam: !!st.steam, deck: !!st.deck, bigArg: !!st.bigArg, desktopArg: !!st.desktopArg, canStartAtLogin: !!st.canStartAtLogin, noSound: !!st.noSound });
   setClock((S.settings.ui || {}).clock);
   // Each game's mode came with it (a setup that worked hands it back to Easy Setup).
   applyEasySkip();
@@ -6168,6 +6247,7 @@ async function refreshState() {
   document.body.classList.toggle('mac', S.os === 'macos');
   document.body.classList.toggle('cpu-draw', !!st.cpuDraw);
   S.running = new Set(st.running || []);
+  S.home = st.home || {};
   document.body.classList.toggle('playing', S.running.size > 0);
   if (st.updateFailed && !S.updateFailedShown) { S.updateFailedShown = true; setTimeout(() => updateFailedModal(st.updateFailed), 1500); }
   S.missing = new Set(st.missing || []);
@@ -6190,6 +6270,7 @@ async function loadCatalog(force, asked) {
     const r = await (asked || invoke('get_catalog', { force: !!force }));
     S.cat = Object.assign({ apps: [], origins: [] }, r.data);
     S.offline = !!r.offline;
+    S.listGate = '';
     S.owned = ownedHere(S.owned);
     // The art of the games in the Library is kept on disk, so it shows offline too. The rest comes
     // as it's shown (and is kept from then on).
@@ -6204,8 +6285,29 @@ async function loadCatalog(force, asked) {
     // No list on disk and the site can't be reached: the Library still works, and the "Offline"
     // mark says why Discover is empty. No popup.
     if (!S.cat) S.cat = { apps: [], origins: [] };
-    S.offline = true;
+    // Android while it's for testers only: the website said why (signed out, or not a tester).
+    const why = String((e && e.message) || e || '').replace(/^[A-Z_]+\|/, '');
+    S.listGate = /only open to testers/.test(why) ? why : '';
+    S.offline = !S.listGate;
   }
+}
+// Android: the Library follows the games installed on the device, checked at start and whenever the
+// launcher comes back to the front (after Android's installer, its Uninstall question, or a game).
+async function androidSync() {
+  if (S.os !== 'android') return false;
+  let changed = false;
+  try { changed = await invoke('android_sync'); } catch (e) { return false; }
+  if (changed) { try { await refreshState(); } catch (e) { /* shown on the next look */ } render(true); androidRedraw(); }
+  // Android doesn't say when a game closes: coming back to the launcher is when the saves of the
+  // games it opened are copied (and sent with cloud saves on). Each one says so with a 'saves' event.
+  invoke('android_back').catch(() => {});
+  return changed;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) androidSync(); });
+// Whichever Android layout is on screen, drawn again with what changed.
+function androidRedraw() {
+  if (window.tvRefresh) window.tvRefresh();
+  if (window.phoneRefresh) window.phoneRefresh();
 }
 // A newer list came in the background (it was more than six hours old, or the site said it changed).
 const approvedReleases = () => JSON.stringify(Object.keys(S.library).sort().map((id) => {
@@ -6420,7 +6522,7 @@ async function checkUpdates(loud) {
 async function setLanguage(code) {
   const ui = Object.assign({}, S.settings.ui || {}, { lang: code });
   const next = Object.assign({}, S.settings, { ui });
-  try { await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { return fail(e); }
+  try { if (!S.settingsMissing) await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { return fail(e); }
   await loadLang(code === 'auto' ? systemLang() : code);
   tDom();
   render(true);
@@ -6486,7 +6588,7 @@ function saveSettings(patch, quiet) {
   S.settings = Object.assign({}, S.settings, patch);
   applyEasySkip();
   setClock((S.settings.ui || {}).clock);
-  settingsSaving = settingsSaving.then(() => invoke('save_settings', { settings: S.settings })).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
+  settingsSaving = settingsSaving.then(() => (S.settingsMissing ? null : invoke('save_settings', { settings: S.settings }))).catch((e) => fail(e)).then(() => { if (!quiet) render(true); });
   return settingsSaving;
 }
 
@@ -6579,7 +6681,9 @@ function fbCrumbs(path) {
 // Lighter Launcher: no animations or moving pictures (CSS does the rest).
 function applyLighter() {
   const st = S.settings || {};
-  document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld : !!st.lighter);
+  // A phone or TV box draws lighter by default too, as a handheld PC does: their graphics chips are
+  // small next to a PC's, and the moving backdrop and blurs are what cost the most.
+  document.body.classList.toggle('lighter', st.lighter == null ? !!S.handheld || S.os === 'android' : !!st.lighter);
   // Nothing animates: Lighter Launcher turned on by the player, or the system asking for less
   // motion. Not on Linux, where game-mode sessions on handhelds ask for that by default and the
   // menus would stop moving; Lighter Launcher still turns it off there. A handheld that's lighter
@@ -7253,13 +7357,14 @@ function confirmUninstall(id) {
   if (!g || S.uninstalling.has(id)) return;
   // A recomp with several games: they all go with it.
   const many = hasGames(id) ? S.gameSets[id].games : null;
+  const stays = staysInLibrary(id);
   const s = document.createElement('div');
   s.className = 'scrim';
   s.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="u-h"><h2 id="u-h">${esc(tf('Uninstall {name}?', { name: g.name }))}</h2>
-    <p>${esc(t('It comes out of your Library. You can install it again from the Catalog any time.'))}</p>
+    <p>${esc(stays ? t('It stays in your Library under Not Installed, so you can install it again any time.') : t('It comes out of your Library. You can install it again from the Catalog any time.'))}</p>
     ${many ? `<p>${esc(tf('Its {n} games are uninstalled with it: {games}.', { n: many.length, games: many.map((x) => x.name).join(', ') }))}</p>` : ''}
     ${g.exe && /^([a-z]:[\\/]|\\\\|\/)/i.test(g.exe) && !String(g.exe).toLowerCase().startsWith(String(g.path).toLowerCase()) ? `<p class="muted">${esc(t('Its own installer put the game somewhere else. With the box ticked, its own uninstaller opens too.'))}</p>` : ''}
-    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label><label><input type="checkbox" id="u-keep" checked> ${esc(t('Keep a copy of its saves first, to put back if you install it again'))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
+    ${g.installer ? `<label><input type="checkbox" id="u-unins" checked> ${esc(t('Run its uninstaller too?'))}</label><p class="muted">${esc(stays ? tf('Without it, its folder stays where it is: {path}', { path: g.path }) : tf('Without it, only the Library forgets it. Its folder stays where it is: {path}', { path: g.path }))}</p>` : g.installer_setup ? '' : ownFolder(g) ? `<label><input type="checkbox" id="u-del" checked> ${esc(tf('Also delete its folder ({path}), saves and settings inside it too', { path: g.path }))}</label><label><input type="checkbox" id="u-keep" checked> ${esc(t('Keep a copy of its saves first, to put back if you install it again'))}</label>` : `<p class="muted">${esc(tf('Its folder stays where it is: {path}', { path: g.path }))}</p>`}
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Keep it'))}</button><button type="button" class="btn danger" data-x="yes">${esc(t('Uninstall'))}</button></div></div>`;
   document.body.append(s);
   $('[data-x="no"]', s).focus();
@@ -7286,7 +7391,7 @@ function confirmUninstall(id) {
     if (r.left) toast(tf('{name} is uninstalled, but a few of its files are still in use and stayed in {path}. Close whatever is using them (or restart), then delete that folder.', { name: g.name, path: r.path }), true);
     else if (del && r.kept && r.saves_stuck) toast(tf('{name} is uninstalled, but its folder stayed: a copy of its saves couldn\'t be made first. It\'s in {path}.', { name: g.name, path: r.path }), true);
     else if (del && r.kept && r.copy_stuck) toast(tf('{name} is uninstalled, but its folder stayed: your copy of the game is inside it and couldn\'t be moved out. It\'s in {path}.', { name: g.name, path: r.path }), true);
-    else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
+    else if (r.installer) toast(r.uninstaller ? tf('{name} is uninstalled.', { name: g.name }) : stays ? tf('{name} is uninstalled. Its folder stays in {path}.', { name: g.name, path: r.path }) : tf('{name} is out of your Library. Its folder stays in {path}.', { name: g.name, path: r.path }));
     else if (r.uninstaller) toast(tf('{name} is uninstalled. Its own uninstaller is open to remove the game from where it installed it.', { name: g.name }));
     else toast(tf('{name} is uninstalled.', { name: g.name }));
     // The player's own files that were inside its folder: said apart, whatever else happened.
@@ -7488,6 +7593,9 @@ async function startInstall(id, dir, tag, anyway) {
       if (v !== 'go') return;
     }
   }
+  // Android: the launcher must be allowed to install apps before anything downloads. Android's page
+  // for it is offered, and the install carries on by itself once the player comes back allowed.
+  if (S.os === 'android' && window.droidInstallGate && !(await window.droidInstallGate(() => startInstall(id, dir, tag, true)))) return;
   S.jobs[id] = { id, phase: 'prepare', done: 0, total: 0, at: Date.now() };
   render(true);
   dlArgs(id, { id, dir: dir || null, tag: tag || null });
@@ -7721,8 +7829,11 @@ async function playGame2(id, program) {
   if (window.beforePlay && !(await beforePlay(id))) return;
   const other = [...S.running].find((x) => x !== id && parentId(x) !== parentId(id) && !subOf(x));
   const go2 = async (replace) => {
-    try { await invoke('play', { id, replace, bigPicture: document.body.classList.contains('tv-on'), program: program || null }); }
-    catch (err) {
+    try {
+      await invoke('play', { id, replace, bigPicture: document.body.classList.contains('tv-on'), program: program || null });
+      // Android doesn't say when the game closes: the launcher coming back is the end (more.js).
+      if (S.os === 'android' && window.droidPlayed) window.droidPlayed(id);
+    } catch (err) {
       const m = String(err && err.message ? err.message : err).match(/^NEED_COPY\|([^|]*)(?:\|(.*))?$/);
       // The copy picked before didn't have what the game reads: the setup says which files.
       if (m && m[2]) S.setupNote = { id, text: tf('The copy you picked doesn\'t have {files}. Pick the folder that holds them.', { files: m[2] }) };
@@ -8285,7 +8396,24 @@ const selfAuto = () => !S.flatpak && !!(S.settings.ui || {}).self_auto_update;
 const ARROW_R = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>';
 
 // An update restart returns to the mode that was on screen.
-function startsInTV() { return !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+// Android has no desktop view: Big Picture mode with a controller or on a TV (no touch screen),
+// else the phone layout (phone.js).
+function startsInTV() { return S.os === 'android' ? padHere() || !touchHere() || droidHandheld() || !!S.settings.start_in_tv : !S.desktopArg && !!(S.settings.start_in_tv || S.bigArg); }
+// Android: what the launcher runs on (MainActivity tells it, android_device). A phone gets the phone
+// layout's own Big Picture mode; a tablet (600 or more across its smaller side) and a handheld with a
+// controller built in get the big-screen one, as on a PC, and a handheld starts in it.
+const droidHandheld = () => !!(S.droidDev && S.droidDev.pad);
+function droidPhone() {
+  const d = S.droidDev || {}, style = ((S.settings || {}).ui || {}).bp_style;
+  // The player's pick (Settings, Big Picture style): Phone or Full, on any touch screen.
+  if (style === 'phone' || style === 'full') return style === 'phone';
+  if (d.pad) return false;
+  return (Number(d.sw) || Math.min(screen.width, screen.height)) < 600;
+}
+// A controller the page already knows about (Android tells it once a button is pressed).
+function padHere() { return typeof navigator !== 'undefined' && !!navigator.getGamepads && [...navigator.getGamepads()].some(Boolean); }
+// A touch screen: a phone or a tablet, not a TV box.
+function touchHere() { return typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0; }
 
 // The update window at start: not during first-time setup, in Big Picture, with a game running
 // (started from a shortcut) or a window already open (a game link, a Set Up), and not for a
@@ -8534,10 +8662,20 @@ window.addOwned = addOwned;
 // Taken out of the Library by the player (removed, or uninstalled): a look at their games doesn't
 // put it back.
 async function keepOut(id) {
-  const skip = new Set(((S.settings.ui || {}).found_skip) || []);
-  if (skip.has(id)) return;
+  const ui = S.settings.ui || {};
+  const skip = new Set(ui.found_skip || []);
+  // One only a scan put in goes now, not at the next scan, as the Uninstall window said.
+  const found = foundOnly(id);
+  if (skip.has(id) && !found) return;
   skip.add(id);
-  await saveUi({ found_skip: [...skip] }, true);
+  const patch = { found_skip: [...skip] };
+  if (found) {
+    const s = Object.assign({}, saved());
+    delete s[id];
+    patch.saved = s;
+    patch.found_saved = (ui.found_saved || []).filter((x) => x !== id);
+  }
+  await saveUi(patch, true);
 }
 window.keepOut = keepOut;
 
@@ -8674,10 +8812,13 @@ async function fixFound(id) {
 }
 
 // What a program's exit code means, when it's one of the usual Windows ones.
-function codeMeaning(code) {
+function codeMeaning(code, secs) {
   const c = Number(code);
   if (!Number.isFinite(c) || c === 0) return '';
   const u = c < 0 ? c + 4294967296 : c;
+  // A processor missing an instruction fails as the game starts. Later, the code is the game
+  // stopping itself on purpose (Azahar after losing its Vulkan device, say), so it says nothing.
+  if (u === 0xC000001D && secs >= 10) return '';
   const M = {
     0xC0000005: N_('it read or wrote memory it shouldn\'t (access violation)'),
     0xC0000409: N_('it stopped itself after a serious error'),
@@ -8712,9 +8853,24 @@ function evenActs(btns) {
 }
 // A new issue on RecompLauncher's GitHub for a crash, filled in: the versions, the PC, the game and
 // the end of its log. Home folders become "~" and the excerpt loses lines from the top until the
-// address fits in 8 KB, which is about what GitHub and browsers take.
+// address fits in 8 KB, which is about what GitHub and browsers take. This PC's home folder comes
+// from Rust in every form a log shows it (c.home: /var/home/me on Bazzite and Silverblue, Z:\home\me
+// in Wine, \\?\C:\Users\Me on Windows) and goes wherever it is, file:// and -I included, and so does
+// the user name. A path from another PC, guessed from its shape, has its whole start up to its home
+// folder become "~". Web addresses stay as they are.
 const ghCrashUrl = (c) => {
-  const home = (s) => String(s || '').replace(/([A-Za-z]:\\Users\\|\/home\/|\/Users\/)[^\\/\s]+/g, '~');
+  const me = c.home || {};
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Either slash, and a Windows path in any case.
+  const forms = (me.forms || []).filter((f) => f && f.length > 1).map((f) => new RegExp(`${f.split(/[\\/]/).map(esc).join('[\\\\/]')}(?![\\w.-])`, /^([A-Za-z]:|\\)/.test(f) ? 'gi' : 'g'));
+  // A short name or a common word would change ordinary words in the log.
+  const common = ['user', 'users', 'admin', 'administrator', 'deck', 'steam', 'steamuser', 'home', 'root', 'guest', 'public', 'default'];
+  const names = (me.names || []).filter((n) => n && n.length >= 3 && !common.includes(n.toLowerCase())).map((n) => new RegExp(`(?<![\\p{L}\\p{N}_])${esc(n)}(?![\\p{L}\\p{N}_])`, 'giu'));
+  const media = /([\\/]run[\\/]media[\\/])[^\\/\s"'~]+(?=[\\/])/gi;
+  const other = /(^|[^\w.\/\\-]|file:\/\/|\\\\\?\\|-I)(?:[A-Za-z]:)?(?:[\\/][^\\/\s"']+)*?[\\/](?:home|users)[\\/][^\\/\s"']+/gmi;
+  const hide = (s) => names.reduce((t, r) => t.replace(r, '~'), forms.reduce((t, r) => t.replace(r, '~'), s).replace(media, '$1~').replace(other, '$1~'));
+  const url = /((?<![\w+.-])(?!file:)[A-Za-z][\w+.-]*:\/\/[^\/\s"'<>]+[^\s"'<>]*)/i;
+  const home = (s) => String(s || '').split(url).map((p, i) => (i % 2 ? p : hide(p))).join('');
   const reason = String(c.reason || '').replace(/\s+/g, ' ').trim();
   const title = `Crash: ${reason.length > 80 ? `${reason.slice(0, 79)}…` : reason}`;
   const head = [c.note ? `**What happened:** ${c.note}` : '**What happened:** ', '',
@@ -8783,7 +8939,7 @@ async function crashModal(p) {
   // something the player can fix, so no crash window.
   const tail = String((log && log[1]) || '').split('\n').slice(-8).join('\n');
   if (p.secs > 20 && /destruct ResourceManager|shutting down|shutdown complete|clean exit|exiting\.\.\./i.test(tail)) return;
-  const meaning = codeMeaning(p.code);
+  const meaning = codeMeaning(p.code, p.secs);
   const codeShown = meaning ? `${p.code}: ${meaning}` : String(p.code);
   const details = `${g.name} ${g.tag || ''} closed with code ${codeShown} after ${p.secs} s on ${OS_NAME[S.os]} (RecompLauncher ${S.version}).` + (log ? `\n\n${log[0]}:\n${log[1]}` : '');
   // The game said it couldn't open one of its own files (the player's copy isn't where it looks).
@@ -8807,8 +8963,9 @@ async function crashModal(p) {
   let su = S.setup[p.id] && S.setup[p.id] !== 'loading' ? S.setup[p.id] : null;
   if (gl && !su) { try { su = await invoke('game_setup', { id: p.id }); } catch (e) { /* none */ } }
   const glSetting = gl && su && (su.settings || []).find((o) => /renderer|graphics api|output|backend/i.test(o.label) && o.choices.length > 1);
-  // The graphics driver stopped answering while it drew (a driver reset): DXGI device removed/hung.
-  const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST/i.test(said);
+  // The graphics driver stopped answering while it drew (a driver reset): DXGI device removed/hung,
+  // or Vulkan's device lost, by its own name, the C++ wrapper's (ErrorDeviceLost) or in a Vulkan line.
+  const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST|ErrorDeviceLost|\b(?:vk|vulkan)\b[^\n]{0,60}\bdevice lost\b/i.test(said);
   // .NET it needs isn't on this PC (the .NET host says which, with a link).
   const net = /(?:To install missing framework, download|Download the \.NET runtime):\s*(https:\/\/\S+)/i.exec(said);
   const dotnet = !!net || [-2147450730, -2147450749].includes(Number(p.code)) || /You must install(?: or update)? \.NET|Failed to resolve hostfxr|hostfxr\.dll \[not found\]|\.NET location: Not found|app-launch-failed/i.test(said);
@@ -8985,7 +9142,7 @@ async function crashModal(p) {
       const url = ghCrashUrl({ reason: `${g.name} closed with code ${codeShown}`, note, version: S.version,
         os: `${OS_NAME[S.os] || S.os}${pc && pc.osver ? ` ${pc.osver}` : ''}${S.arch ? ` (${S.arch})` : ''}`, gpu: pc && pc.gpu,
         game: `${g.name} ${g.tag || ''} (${p.id})`.replace(/\s+/g, ' '), exit: `Closed with code ${codeShown} after ${p.secs} s`,
-        file: log && log[0], text: log && log[1] });
+        file: log && log[0], text: log && log[1], home: S.home });
       invoke('open_url', { url }).then(() => toast(t('The report is filled in. Attach the full log, then submit it on the page.'))).catch(fail);
     }
     if (x.dataset.x === 'report' && a) {
@@ -9576,7 +9733,7 @@ function renameModal(id) {
 }
 function launchOptions(id) {
   const g = S.library[id];
-  const m = modal(`<h2>${esc(tf('Launch options for {name}', { name: g.name }))}</h2><p>${esc(t('Added after everything else when the game starts. Put a setting with spaces in quotes.'))}</p>
+  const m = modal(`<h2>${esc(tf('Launch options for {name}', { name: g.name }))}</h2><p>${esc(t('Added after everything else when the game starts. Put a setting with spaces in quotes.'))}</p><p>${esc(t('To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.'))}</p>
     <input class="field" id="lo" type="text" value="${esc(g.args || '')}" placeholder="--example" spellcheck="false" autocomplete="off" aria-label="${esc(t('Launch options'))}">
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Save'))}</button></div>`, async (x, close) => {
     if (x.dataset.x !== 'yes') return;
@@ -9977,6 +10134,9 @@ async function act(el, e) {
 }
 
 document.addEventListener('click', (e) => {
+  // The phone layout answers its own taps (phone.js). Its buttons share names with these (play,
+  // install, back), so a tap there would also run the desktop's action.
+  if (e.target.closest && e.target.closest('#phone')) return;
   if (!e.target.closest('.menu')) closeMenu();
   if (!e.target.closest('.ds-more-w') && !e.target.closest('.dropmenu') && $('#dstick .ds-panel:not([hidden])')) stickPanel(false);
   const link = e.target.closest('[data-url]:not([data-act])');
@@ -10402,6 +10562,8 @@ window.deskPad = (b) => {
     return true;
   }
   if (b === 'x' && cur) {
+    // Like A: a game the mouse clicked keeps focus, and X shouldn't open its menu before a direction.
+    if (root.id === 'app' && !PAD.armed) return true;
     const g = cur.closest('[data-id]');
     if (g) {
       PAD.from = cur;
@@ -10744,7 +10906,14 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The list on disk is asked for alongside the state, not after it: the first screen needs both.
   const catAsk = invoke('get_catalog', { force: false });
   catAsk.catch(() => {});
-  try { await refreshState(); } catch (e) { loaded = false; fail(e); }
+  // The window is opened before the core has finished starting, so the first look can come too
+  // early (a slow phone or emulator): asked again for a few seconds before it counts as failed.
+  for (let i = 0; ; i++) {
+    try { await refreshState(); break; } catch (e) {
+      if (i >= 8) { loaded = false; fail(e); break; }
+      await new Promise((ok) => setTimeout(ok, 120 * (i + 1)));
+    }
+  }
   // Settings that didn't load are never saved over (they'd be lost).
   if (loaded) { try { sideOnce(); } catch (e) { /* the sidebar keeps its order */ } sendLimits(); }
   const lang = (S.settings.ui || {}).lang;
@@ -10755,8 +10924,24 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   // The Library's sort, as the player left it.
   if (['played', 'time', 'az', 'game'].includes((S.settings.ui || {}).lib_sort)) S.lib.sort = S.settings.ui.lib_sort;
   render();
+  // Android opens Big Picture mode or the phone layout straight away, without first-time setup
+  // (folders, the PC's own options), and fills in as the list comes.
+  const droid = loaded && S.os === 'android';
+  if (droid && !S.settings.asked_location) await saveSettings({ asked_location: true }, true);
+  if (droid) {
+    // Big Picture (tv.js) and the phone layout (phone.js) load after this file: both are in once the page is.
+    if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
+    S.droidDev = await invoke('android_device').catch(() => null);
+    // The phone layout has its own short first-time setup (phone.js); Big Picture on a TV or with a
+    // controller starts straight away.
+    if (!S.settings.setup_done && startsInTV()) await saveSettings({ setup_done: true }, true);
+    const open = startsInTV() ? window.startTV : window.startPhone;
+    if (open) open();
+  }
   trayWords();
   await loadCatalog(false, catAsk);
+  if (droid) await androidSync();
+  if (droid) androidRedraw();
   // The weekly chart comes in on its own: Discover is drawn without waiting for it.
   loadTrending();
   homeSync();
@@ -10777,6 +10962,7 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   if (S.view === 'discover' && S.offline && !S.cat.apps.length && Object.keys(S.library).length) S.view = 'library';
   S.anim = 'enter';
   render(true);
+  if (droid) androidRedraw();
   // Update check first (it keeps the release info on disk current), then the news reads from it.
   const upd = afterCatalog();
   applyLighter();
@@ -10790,9 +10976,9 @@ T.event.listen('screenshot', ({ payload: p }) => { delete S.shots[p.id]; forgetL
   upd.finally(() => loadNews());
   // The first time: the setup, like a new console. After that, TV mode if that's how they play.
   if (document.readyState === 'loading') await new Promise((ok) => addEventListener('DOMContentLoaded', ok, { once: true }));
-  if (!S.settings.setup_done && window.firstRun) window.firstRun();
+  if (!S.settings.setup_done && window.firstRun && !droid) window.firstRun();
   else if (window.startTV && startsInTV()) window.startTV();
-  else setTimeout(askData, 800);
+  else if (!droid) setTimeout(askData, 800);
   // Signed in before cloud saves were asked about once for every game: asked now (account.js; the
   // account may have come in before the settings did, so its own call could not ask yet).
   setTimeout(() => { if (window.askCloudAll) window.askCloudAll(); }, 900);

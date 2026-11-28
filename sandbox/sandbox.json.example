@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "_comment": [
+    "What the sandboxed RecompLauncher may see. Start from this file:",
+    "  cp sandbox/sandbox.json.example ~/.config/recomplauncher/sandbox.json",
+    "Then edit the lists and run: sandbox/rl-sandbox",
+    "",
+    "input/hidraw: controllers. /dev/input is the event device; /dev/hidraw is how SDL reads an",
+    "  Xbox pad (and a Bluetooth DualSense comes through uhid). Turn hidraw off to keep the raw HID",
+    "  nodes out, or input off for neither.",
+    "",
+    "nested_sandbox: programs inside may make their own user namespace, which is how umu-run",
+    "  (Proton, for Windows games) and WebKit's render process sandbox themselves. What they make",
+    "  sees no more files than this sandbox does, but it is more kernel surface. false forbids it:",
+    "  Windows games started through umu-run then fail, and WebKit's own sandbox is turned off",
+    "  unless webkit_sandbox is true (which then fails too). Leave it on unless you run no",
+    "  Windows games.",
+    "webkit_sandbox: only read with nested_sandbox false; true keeps WebKit's sandbox asked for.",
+    "",
+    "read_only  : visible, cannot be written (game folders, disc images, ROM collections).",
+    "read_write : visible and writable (where games are installed, save folders).",
+    "Nothing else exists inside the sandbox: no other home directories, no SSH keys, no browser",
+    "profile, no documents. The launcher's own folders are added automatically unless",
+    "auto_dirs is false.",
+    "",
+    "Checked before you rely on it:  sandbox/rl-sandbox --list",
+    "Proven by the test suite:       sandbox/test-sandbox.sh"
+  ],
+
+  "binary": "",
+  "args": [],
+
+  "network": true,
+  "gpu": true,
+  "input": true,
+  "hidraw": true,
+  "sound": true,
+  "x11": true,
+  "wayland": true,
+  "session_bus": true,
+  "nested_sandbox": true,
+  "shared_memory_mb": 8192,
+  "auto_dirs": true,
+  "webkit_sandbox": false,
+
+  "read_only": [
+    "~/Games",
+    "/run/media",
+    "/media",
+    "/mnt"
+  ],
+  "read_write": [
+    "~/Games/Recomp Library",
+    "~/.local/share/applications",
+    "~/Desktop"
+  ],
+
+  "_read_write": [
+    "~/.local/share/applications is where the launcher writes a game's menu entry ('Add to the",
+    "applications menu'), and ~/Desktop is where it writes the shortcut when you ask for one on the",
+    "desktop. Without them the shortcut is written and then lost: the home inside the sandbox is a",
+    "throwaway tmpfs, so a write outside the listed paths succeeds and is gone when the launcher",
+    "exits. The same goes for 'Start with your PC' (~/.config/autostart) and screenshots. List the",
+    "folder itself rather than ~/.local/share, so the sandbox doesn't also hand over Steam,",
+    "Flatpak's exports and the trash."
+  ],
+
+  "_optional": [
+    "Only uncomment what the launcher really needs. Each line is a path it can then reach.",
+    "~/.local/share/Steam        adding games to Steam, and Proton under compatibilitytools.d",
+    "~/.steam                    the same, for a Steam installed from the distribution",
+    "~/.config/autostart         'Start with your PC' writes its entry here",
+    "~/Pictures/RecompLauncher   in-game screenshots",
+    "~/Downloads                 if your disc images are there"
+  ],
+
+  "extra_env": {}
+}

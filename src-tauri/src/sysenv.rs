@@ -345,6 +345,11 @@ fn steam_launch_from(get: &dyn Fn(&str) -> Option<String>) -> Option<SteamLaunch
     STEAM_VARS[..6].iter().any(|k| launch.contains_key(*k)).then_some(launch)
 }
 
+/// Started by Steam (a Steam shortcut), going by Steam's launch variables.
+pub fn from_steam(get: &dyn Fn(&str) -> Option<String>) -> bool {
+    steam_launch_from(get).is_some()
+}
+
 pub fn steam_launch_from_args(args: &[String]) -> Option<SteamLaunch> {
     if !args.iter().any(|a| a == "--handoff") {
         return None;

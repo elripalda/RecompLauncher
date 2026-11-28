@@ -12,6 +12,9 @@
 //! Every unlock is saved here first (achievements/store.json in the app's data folder), shown in
 //! a toast over the game, and sent to the player's account when it can be.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use crate::{library::now, App, Error};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

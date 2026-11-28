@@ -6,7 +6,7 @@ If you're planning something big, open an issue or ask in the [Discord](https://
 
 ## Getting set up
 
-You need Rust 1.85 or newer, Node.js 20 or newer and CMake. The full list for each system, including the Windows and Linux extras, is in [docs/BUILDING.md](docs/BUILDING.md).
+You need Rust 1.90 or newer, Node.js 20 or newer and CMake. The full list for each system, including the Windows and Linux extras, is in [docs/BUILDING.md](docs/BUILDING.md).
 
 ```
 npm ci
@@ -19,7 +19,8 @@ node --test tests/*.test.cjs   # the UI tests
 
 - Branch off `main` and keep each pull request to one change.
 - Run both test commands before you push. Every pull request also builds and tests on Windows, Linux and Mac, and those checks have to pass.
-- Say what you changed and why, and add a screenshot or clip for anything you can see.
+- Say what you changed and why.
+- A big change to what players see, like a new or redesigned screen, window, row, button or layout, needs screenshots or a short clip on the pull request: each new or changed screen on the desktop and in Big Picture, and in the light theme where it changes too. Small tweaks like a word, a colour or a spacing fix don't. A big UI change isn't reviewed until the screenshots are there. The maintainers' own pull requests can skip this.
 - Don't bump the version or add patch notes. Releases and version numbers are handled separately.
 - Merges into `main` need a review from the maintainer.
 
