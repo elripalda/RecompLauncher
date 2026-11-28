@@ -153,6 +153,19 @@ test("our profile's features show the launcher's logo", () => {
   assert.match(html, /sup-ours[^]*From RecompLauncher/);
 });
 
+test('our profile turned on by hand says so, even when the store says the release has a file', () => {
+  // The release's file is one the launcher can't use, so the store turned ours on for the game.
+  const html = render({ support: ALL_DEV }, { from: 'ours', easy: true, tag: true, easy_setup: 'l', saves: 'l' }, { name: 'Dev', verified: true });
+  assert.match(html, /sup-ours[^]*From RecompLauncher/);
+  assert.doesNotMatch(html, /read once it's installed/);
+  assert.match(rowOf(html, 'Easy Setup'), /img\/mark\.svg/);
+});
+
+test('an older profile of ours with a release file the launcher hasn\'t read stays unchecked', () => {
+  const html = render({ support: ALL_DEV }, { from: 'store', easy: true, tag: false, easy_setup: 'l' }, { name: 'Dev', verified: true });
+  assert.match(html, /In the release, read once it's installed/);
+});
+
 test('an older profile of ours shows the same as ours: the launcher\'s logo', () => {
   const html = render({ support: { sdk: 'none' } }, { from: 'store', easy: true, tag: false, easy_setup: 'l', settings: 'l' });
   assert.match(rowOf(html, 'Game Settings'), /img\/mark\.svg/);

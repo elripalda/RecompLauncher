@@ -1422,9 +1422,11 @@ function askSupportUrl(a, ask) {
 // the store says the release has one, but the catalog carries no copy, so the launcher hasn't read
 // it and claims nothing from it until it's installed (the copy can be missing because the file is
 // broken, or for another reason). 'repo': only its repo has one, which the launcher never reads.
-// '' otherwise.
+// 'ours': our profile, turned on by hand for this game, is what sets it up, whatever the store says
+// the release has. '' otherwise.
 function supportSource(a, core, sup) {
   if (core && (core.from === 'folder' || core.from === 'release')) return 'own';
+  if (core && core.from === 'ours') return 'ours';
   const sdk = sup ? sup.sdk : '';
   if (sdk === 'release') return 'unchecked';
   if (sdk === 'repo') return 'repo';
@@ -1568,7 +1570,7 @@ function supportCard(a) {
   const row = (r) => `<div class="sup-row${r.s ? ' on st-' + r.s : ''}"><span class="sup-ib">${svg(r.icon, 'sup-i')}</span><span class="sup-k"><b>${esc(t(r.name))}</b><span>${esc(r.line)}</span></span><span class="sup-st" role="img" data-tip="${esc(tipOf(r))}" aria-label="${esc(tipOf(r))}">${markOf(r)}</span></div>`;
   // Where the setup comes from, and who made the game (with the tick when they're verified).
   const ourSetup = ['easy_setup', 'settings', 'prepare', 'verified'].some((k) => st[k] === 'l');
-  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : source === 'unchecked' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the release, read once it\'s installed')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
+  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : source === 'unchecked' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the release, read once it\'s installed')] : source === 'ours' || ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
   const badge = full ? `<span class="tag sup-full" data-tip="${esc(t(SUP_FULL_TIP))}">${svg('<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor" stroke="none"/>', 'sup-star')}${esc(t('Full Support'))}</span>` : `<span class="tag ${n >= 3 ? 'complete' : 'paused'}" data-raw>${esc(tf('{n} of {total}', { n, total: shown.length }))}</span>`;
   const askBox = ask ? `<div class="sup-ask"><p>${esc(ask.text)}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(ask.kind === 'verify' ? t('Ask to Verify') : t('Ask the Developer'))}</button></div>` : '';
   return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3>${badge}</div>
