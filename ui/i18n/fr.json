@@ -3663,5 +3663,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Avant %command%, les options de lancement ne peuvent que définir des variables, comme NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Le nom d'une variable ne peut contenir que des lettres, des chiffres et _, et ne peut pas commencer par un chiffre.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Les noms commençant par RECOMPLAUNCHER appartiennent au launcher, donc les options de lancement ne peuvent pas les définir.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Impossible de lire les options de lancement de ce jeu. Modifiez-les dans son onglet Gérer."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Impossible de lire les options de lancement de ce jeu. Modifiez-les dans son onglet Gérer.",
+ "Add Found Games to the Library": "Ajouter les jeux trouvés à la bibliothèque",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "Activé : les recomps des jeux trouvés vont dans votre bibliothèque, prêts à être configurés. Désactivé : ils apparaissent dans Accueil, et vous ajoutez ceux que vous voulez."
 }

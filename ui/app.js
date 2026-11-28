@@ -5511,7 +5511,8 @@ function pageSettings() {
           + row(t('Easy Setup'), t('The launcher sets up new games with your copy. Off: they install as they come and you set them up yourself. Games you have keep how they are; change one in its Manage tab.'), sw('easy_skip_all', !ui.easy_skip_all, t('Easy Setup'), 'easy-all')))
         + group(t('Where do you keep your ROMs?'), `<p class="set-note">${esc(t('Point the launcher at your ROMs, disc images and game backups. It shows which have recomps, sets them up with your copy, and lets you know when a new recomp comes out for one. Files are only read on this PC.'))}</p>
         ${(st.rom_dirs || []).length ? (st.rom_dirs || []).map((d) => `<div class="set-row"><div class="k"><b class="path">${esc(d)}</b><span>${esc(folderCounts(d))}</span></div><div class="acts"><button type="button" class="btn sm" data-act="folder" data-path="${esc(d)}">${esc(t('Open'))}</button><button type="button" class="btn sm danger" data-act="rom-remove" data-path="${esc(d)}">${esc(t('Remove'))}</button></div></div>`).join('') : `<p class="set-empty">${esc(t('No folders yet.'))}</p>`}
-        ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}`,
+        ${nOwned ? `<p class="set-foot">${esc(tn(nOwned, '1 of your games has a recomp.', '{n} of your games have recomps.'))} <a href="#" data-go="home">${esc(t('See them on Home'))}</a></p>` : ''}
+        ${row(t('Add Found Games to the Library'), t('On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.'), sw('found_lib_off', !ui.found_lib_off, t('Add Found Games to the Library'), 'found-lib'))}`,
         `<span class="acts"><button type="button" class="btn sm" data-act="rom-scan">${esc(t('Look again'))}</button><button type="button" class="btn sm" data-act="rom-emus">${esc(t('From My Emulators'))}</button><button type="button" class="btn sm main" data-act="rom-add">${esc(t('Add a folder'))}</button></span>`)
         + group(t('Desktop shortcuts'), row(t('Shortcuts Go Through the Launcher'), t('Off: a game\'s desktop shortcut starts the game itself, for front ends like RetroBat. On: it opens the launcher, which brings your shader, cloud saves and play time along.'), sw('shortcut_launcher', ui.shortcut_launcher, t('Shortcuts Go Through the Launcher'), 'ui-toggle')))
         + (S.steam ? steamSyncGroup(group, row, sw) : '')
@@ -8640,13 +8641,16 @@ async function addOwned() {
   const installedTitles = new Set(Object.keys(S.library).map(titleOf).filter(Boolean));
   // Only from a look that worked (offline, nothing is known either way).
   const known = S.ownedOk !== false || !(S.settings.rom_dirs || []).length;
-  const gone = [...mine].filter((id) => (known && !(S.owned || {})[id]) || S.library[id] || skip.has(id) || (installedTitles.has(titleOf(id)) && !S.library[id]));
+  // Add Found Games to the Library off: what a look finds only shows on Home, and the ones it put
+  // in before go again (installed ones stay).
+  const off = !!ui.found_lib_off;
+  const gone = [...mine].filter((id) => off || (known && !(S.owned || {})[id]) || S.library[id] || skip.has(id) || (installedTitles.has(titleOf(id)) && !S.library[id]));
   for (const id of gone) { mine.delete(id); if (!S.library[id]) delete s[id]; }
   // One version of each game, and none of a game the player already has a version of (installed
   // or in the Library): the recommended version when it's among those found.
   const have = new Set([...Object.keys(S.library), ...Object.keys(s)].map(titleOf).filter(Boolean));
   const rank = (id) => { const g = index().titles.get(titleOf(id)); return g ? (g.pick === id ? -1 : g.every.findIndex((a) => a.id === id)) : 0; };
-  const found = Object.keys(S.owned || {}).filter((id) => !S.library[id] && !s[id] && !skip.has(id) && byId(id) && !byId(id).soon && forOS(byId(id))).sort((x, y) => rank(x) - rank(y));
+  const found = off ? [] : Object.keys(S.owned || {}).filter((id) => !S.library[id] && !s[id] && !skip.has(id) && byId(id) && !byId(id).soon && forOS(byId(id))).sort((x, y) => rank(x) - rank(y));
   const add = [];
   for (const id of found) {
     const ti = titleOf(id);
@@ -9879,6 +9883,12 @@ async function act(el, e) {
       if (off && !(await askEasyAllOff())) return;
       return saveUi({ easy_skip_all: off });
     }
+    // Add Found Games to the Library (stored the other way round, as found_lib_off): the Library
+    // follows at once, not at the next look.
+    case 'found-lib':
+      await saveUi({ found_lib_off: !(S.settings.ui || {}).found_lib_off }, true);
+      await addOwned();
+      return render(true);
     // Show Game Names: the desktop shortcuts and Steam entries already made change pictures too.
     case 'game-names': return saveUi({ game_names: !(S.settings.ui || {}).game_names }).then(refreshShortcutArt);
     case 'dl-slow': return saveUi({ dl_slow_play: (S.settings.ui || {}).dl_slow_play === false }).then(sendLimits);

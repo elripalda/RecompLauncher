@@ -3663,5 +3663,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Vóór %command% kunnen startopties alleen variabelen instellen, zoals NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "De naam van een variabele mag alleen letters, cijfers en _ hebben en mag niet met een cijfer beginnen.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Namen die met RECOMPLAUNCHER beginnen zijn van de launcher, dus startopties kunnen ze niet instellen.",
- "This game's launch options can't be read. Change them on its Manage tab.": "De startopties van deze game kunnen niet worden gelezen. Pas ze aan op het tabblad Beheren."
+ "This game's launch options can't be read. Change them on its Manage tab.": "De startopties van deze game kunnen niet worden gelezen. Pas ze aan op het tabblad Beheren.",
+ "Add Found Games to the Library": "Gevonden games aan de bibliotheek toevoegen",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "Aan: recomps voor de games die het vindt komen in je bibliotheek, klaar om in te stellen. Uit: ze staan op Start en jij voegt toe wat je wilt."
 }

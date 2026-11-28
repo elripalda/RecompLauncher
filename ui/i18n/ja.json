@@ -3663,5 +3663,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% より前には、NAME=value のような変数しか書けません。",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "変数名に使えるのは英字、数字、_ だけで、数字で始めることはできません。",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER で始まる名前はランチャー専用のため、起動オプションでは設定できません。",
- "This game's launch options can't be read. Change them on its Manage tab.": "このゲームの起動オプションを読み取れません。管理タブで変更してください。"
+ "This game's launch options can't be read. Change them on its Manage tab.": "このゲームの起動オプションを読み取れません。管理タブで変更してください。",
+ "Add Found Games to the Library": "見つけたゲームをライブラリに追加",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "オン：見つけたゲームのリコンパイル版がライブラリに入り、すぐにセットアップできます。オフ：ホームに表示され、欲しいものだけを自分で追加します。"
 }

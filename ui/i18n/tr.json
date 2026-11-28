@@ -3663,5 +3663,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "%command% öncesinde başlatma seçenekleri yalnızca NAME=value gibi değişkenler ayarlayabilir.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Bir değişkenin adı yalnızca harf, rakam ve _ içerebilir ve rakamla başlayamaz.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER ile başlayan adlar başlatıcıya aittir, bu yüzden başlatma seçenekleri bunları ayarlayamaz.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Bu oyunun başlatma seçenekleri okunamıyor. Yönet sekmesinden değiştirin."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Bu oyunun başlatma seçenekleri okunamıyor. Yönet sekmesinden değiştirin.",
+ "Add Found Games to the Library": "Bulunan Oyunları Kitaplığa Ekle",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "Açık: Bulduğu oyunların recomp'ları Kitaplığınıza girer, kurulmaya hazır. Kapalı: Ana sayfada görünürler ve istediklerinizi siz eklersiniz."
 }

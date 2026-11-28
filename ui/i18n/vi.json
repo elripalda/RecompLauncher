@@ -3784,5 +3784,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Trước %command%, tùy chọn khởi chạy chỉ có thể đặt biến, như NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Tên biến chỉ được có chữ cái, chữ số và _, và không được bắt đầu bằng chữ số.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Các tên bắt đầu bằng RECOMPLAUNCHER thuộc về trình khởi chạy, nên tùy chọn khởi chạy không thể đặt chúng.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Không đọc được tùy chọn khởi chạy của trò chơi này. Hãy sửa chúng ở thẻ Quản lý."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Không đọc được tùy chọn khởi chạy của trò chơi này. Hãy sửa chúng ở thẻ Quản lý.",
+ "Add Found Games to the Library": "Thêm trò chơi tìm thấy vào thư viện",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "Bật: bản recomp của các trò chơi tìm thấy được thêm vào Thư viện, sẵn sàng thiết lập. Tắt: chúng hiện ở Trang chủ, và bạn tự thêm những cái bạn muốn."
 }

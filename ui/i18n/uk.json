@@ -3663,5 +3663,7 @@
  "Before %command%, launch options can only set variables, like NAME=value.": "Перед %command% параметри запуску можуть лише задавати змінні, наприклад NAME=value.",
  "A variable's name can only have letters, digits and _, and can't start with a digit.": "Ім'я змінної може містити лише літери, цифри та _ і не може починатися з цифри.",
  "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Імена, що починаються з RECOMPLAUNCHER, належать лаунчеру, тож параметри запуску не можуть їх задавати.",
- "This game's launch options can't be read. Change them on its Manage tab.": "Не вдається прочитати параметри запуску цієї гри. Зміни їх на вкладці «Керування»."
+ "This game's launch options can't be read. Change them on its Manage tab.": "Не вдається прочитати параметри запуску цієї гри. Зміни їх на вкладці «Керування».",
+ "Add Found Games to the Library": "Додавати знайдені ігри до бібліотеки",
+ "On: recomps for the games it finds go into your Library, ready to set up. Off: they show on Home, and you add the ones you want.": "Увімк.: рекомпіляції знайдених ігор потрапляють до бібліотеки, готові до налаштування. Вимк.: вони показуються на головній, а ви додаєте ті, що хочете."
 }
