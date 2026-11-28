@@ -26,7 +26,7 @@ pub const RELEASES_FRESH: u64 = 6 * 3600;
 pub const COUNTS_FRESH: u64 = 3600;
 
 /// The list has been asked for once since the launcher opened: after that it comes from disk,
-/// whatever its age, until the player presses Refresh.
+/// whatever its age, until the player presses Refresh, a push or the six-hourly look asks again.
 static LIST_ASKED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,7 +295,8 @@ pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<
 /// whether it's old enough to be asked for again in the background.
 pub fn catalog_now(dir: &Path) -> Option<(Fetched, bool)> {
     let f = on_disk(&list_file(dir), list_ok)?;
-    // Decided once per launch: after this, the list is only asked for again by Refresh or a push.
+    // Decided once per launch: after this, the list is only asked for again by Refresh, a push or
+    // the six-hourly look while the launcher stays open.
     let stale = f.age >= LIST_FRESH && !LIST_ASKED.swap(true, Ordering::Relaxed);
     Some((Fetched { data: with_mine(dir, f.data), ..f }, stale))
 }

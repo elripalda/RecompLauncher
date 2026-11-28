@@ -8095,7 +8095,18 @@ async fn check_updates_for(st: &App, force: bool) -> Res<HashMap<String, String>
             failed += 1;
             continue;
         };
-        let Ok(rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
+        let age = f.age;
+        let Ok(mut rels) = serde_json::from_value::<Vec<Release>>(f.data) else { continue };
+        // The store let out a release the list on disk doesn't have yet: that list is older than
+        // the approval, so it's asked for again instead of hiding the update until it expires. At
+        // most every ten minutes, so a tag the project took down isn't asked for on every check.
+        let approved = entry.and_then(catalog_tag);
+        let behind = age >= 600 && approved.is_some_and(|t| !rels.iter().any(|r| same_tag(&r.tag_name, &t)));
+        if behind && !force {
+            if let Some(newer) = catalog::releases_refresh(&st.http, &st.dir, &repo).await.ok().and_then(|f| serde_json::from_value(f.data).ok()) {
+                rels = newer;
+            }
+        }
         // Added from the player's own folder without a version: the release out when its program
         // was made is the one they have, so an update isn't offered for the version they're on.
         // One with a tag spelled differently from its release (1.0.0 for v1.0.0, from another
@@ -10957,6 +10968,18 @@ pub fn run() {
                                     ingame::notify(&h, &format!("RecompLauncher {ver} is out"), "Open RecompLauncher to update.");
                                 }
                                 let _ = h.emit("launcher-update", v);
+                            }
+                        }
+                        // The list too: the window only asks for it as it opens, so a launcher left
+                        // open showed a new RecompLauncher but no game update let out since (#427).
+                        // The window checks for updates when the approved releases changed.
+                        if !st.lib.lock().unwrap().settings.check_updates {
+                            continue;
+                        }
+                        if let Ok(f) = catalog::catalog_refresh(&st.http, &st.dir).await {
+                            if !f.offline {
+                                note_new_apps(&h, &st, &f.data);
+                                let _ = h.emit("catalog-fresh", ());
                             }
                         }
                     }

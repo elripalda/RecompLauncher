@@ -109,6 +109,32 @@ fn manual_checks_refresh_the_approved_release() {
 }
 
 #[test]
+fn a_background_check_asks_again_for_releases_older_than_the_approval() {
+    if isolated("update_check_tests::a_background_check_asks_again_for_releases_older_than_the_approval") { return; }
+    let site = Site::new(2);
+    // Saved an hour ago, before v2 came out: young enough to be used as it is.
+    let releases = site.app.dir.join("cache/releases");
+    std::fs::create_dir_all(&releases).unwrap();
+    let saved = releases.join("sourceforge_approval-probe.json");
+    std::fs::write(&saved, json!([{"tag_name": "v1", "assets": []}]).to_string()).unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    std::fs::File::options().write(true).open(&saved).unwrap().set_modified(hour_ago).unwrap();
+    let updates = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(check_updates_for(&site.app, false)).unwrap();
+    assert_eq!(updates.get("game").map(String::as_str), Some("v2"));
+}
+
+#[test]
+fn a_list_saved_minutes_ago_is_not_asked_for_again() {
+    if isolated("update_check_tests::a_list_saved_minutes_ago_is_not_asked_for_again") { return; }
+    let site = Site::new(2);
+    let releases = site.app.dir.join("cache/releases");
+    std::fs::create_dir_all(&releases).unwrap();
+    std::fs::write(releases.join("sourceforge_approval-probe.json"), json!([{"tag_name": "v1", "assets": []}]).to_string()).unwrap();
+    let updates = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(check_updates_for(&site.app, false)).unwrap();
+    assert_eq!(updates.get("game"), None);
+}
+
+#[test]
 fn manual_checks_keep_cached_approval_when_the_site_fails() {
     if isolated("update_check_tests::manual_checks_keep_cached_approval_when_the_site_fails") { return; }
     let site = Site::new(2);
