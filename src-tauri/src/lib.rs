@@ -6168,7 +6168,7 @@ async fn free_up_space(st: State<'_, App>, id: String) -> Res<u64> {
     let others: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
     let spare = spare_copy(&g, &p, &others).ok_or_else(|| Error::Msg("This game still needs your files, so they stay.".into()))?;
     let all: Vec<PathBuf> = std::iter::once(spare.path.clone()).chain(spare.more.iter().cloned()).collect();
-    let size: u64 = all.iter().map(|f| if f.is_dir() { manage::dir_size(f) } else { std::fs::metadata(f).map(|m| m.len()).unwrap_or(0) }).sum();
+    let size: u64 = all.iter().map(|f| manage::size_of(f)).sum();
     let mut gone = vec![];
     for f in &all {
         let path = f.clone();
@@ -11168,6 +11168,27 @@ mod tests {
         assert_eq!(paths, json!(["F:", "F:\\Games\\Game.exe", "F:/Games/data", "D:\\Games", "E:relative", "E::label", "Elsewhere", {"folder": "F:/nested", "number": 2}]));
     }
 
+
+    /// Uninstalling a Nix AppImage's game: its links into a store outside the folder go as links,
+    /// and nothing they point at is ever deleted.
+    #[cfg(unix)]
+    #[test]
+    fn uninstalling_never_deletes_what_a_link_out_of_the_folder_points_at() {
+        let d = std::env::temp_dir().join(format!("rl-uninstall-outside-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let (game, store) = (d.join("game"), d.join("nix/store/0000-rl-test-game"));
+        std::fs::create_dir_all(store.join("bin")).unwrap();
+        std::fs::write(store.join("bin/game"), "the store's").unwrap();
+        std::fs::create_dir_all(game.join("nix")).unwrap();
+        std::os::unix::fs::symlink(store.join("bin/game"), game.join("entrypoint")).unwrap();
+        std::os::unix::fs::symlink(&store, game.join("nix/store")).unwrap();
+        std::os::unix::fs::symlink("/nix/store/0000-rl-test-gone/bin/game", game.join("dangling")).unwrap();
+        let left = super::remove_game_folder(&game);
+        assert!(left.is_empty(), "{left:?}");
+        assert!(std::fs::symlink_metadata(&game).is_err());
+        assert_eq!(std::fs::read_to_string(store.join("bin/game")).unwrap(), "the store's");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     // Longshot's case: built, its dump freed (Free Up Space), and its setup step names the dump.
     fn freed_game() -> (crate::profile::Profile, crate::library::Installed) {

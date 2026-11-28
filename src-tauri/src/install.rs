@@ -1051,10 +1051,9 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
     let from = if strip_top { root(staging) } else { staging.to_path_buf() };
     #[cfg(target_os = "macos")]
     let from = if strip_top { unwrap_mac_zip(from, staging)? } else { from };
-    // On Linux every game plays from a plain folder: the release's AppImages are unpacked here, so
-    // their files are the game's files from now on.
-    #[cfg(target_os = "linux")]
-    unpack_appimages(&from, staging, k == "appimage")?;
+    // The archive's own links, before any AppImage in it is unpacked: an AppImage's links are kept
+    // as it has them (see appimage::unpack), even one into a /nix/store its AppRun brings along,
+    // which points nowhere until the game runs.
     validate_links(&from, &from)?;
     // Bundles must be self-contained when moved or replaced as a unit.
     for entry in fs::read_dir(&from)? {
@@ -1063,6 +1062,10 @@ fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Er
             validate_links(&entry.path(), &entry.path())?;
         }
     }
+    // On Linux every game plays from a plain folder: the release's AppImages are unpacked here, so
+    // their files are the game's files from now on.
+    #[cfg(target_os = "linux")]
+    unpack_appimages(&from, staging, k == "appimage")?;
     let mut files = vec![];
     list(&from, &from, &mut files);
     Ok(Staged { root: from, files })
@@ -1109,7 +1112,7 @@ pub fn stage_appimage(image: &Path, staging: &Path) -> Result<Staged, Error> {
         let _ = fs::remove_dir_all(staging);
         return Err(Error::Msg(format!("{APPIMAGE_UNPACK}{name}: {e}")));
     }
-    validate_links(staging, staging)?;
+    // Its links stay as the AppImage has them (see appimage::unpack): not checked as an archive's.
     let mut files = vec![];
     list(staging, staging, &mut files);
     Ok(Staged { root: staging.to_path_buf(), files })
@@ -2365,6 +2368,33 @@ mod tests {
         assert!(staged.files.contains(&PathBuf::from("usr/bin/game")));
         assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
         assert_eq!(find_exe(&staged.root, "linux", &["Game"]), Some(PathBuf::from("AppRun")));
+    }
+
+    /// Links that point nowhere until the game runs (a Nix AppImage's AppRun mounts its own
+    /// /nix/store) are the game's files: neither left out nor dropped as pointing nowhere.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_release_appimages_links_into_its_own_store_are_kept() {
+        let d = tmp("stage-nix-appimage");
+        let image = d.join("Game-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::nix_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        let entrypoint = fs::read_link(staged.root.join("entrypoint")).unwrap();
+        assert_eq!(entrypoint, Path::new(crate::appimage::tests::NIX_ENTRYPOINT));
+        assert_eq!(fs::read_link(staged.root.join("lib/libgi.so")).unwrap(), Path::new("libgi.so.1"));
+        assert!(staged.files.contains(&PathBuf::from("lib/libgi.so")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_appimage_brought_in_keeps_its_links_into_its_own_store() {
+        let d = tmp("bring-in-nix-appimage");
+        let image = d.join("Game-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::nix_image()).unwrap();
+        let staged = stage_appimage(&image, &d.join("st")).unwrap();
+        let entrypoint = fs::read_link(staged.root.join("entrypoint")).unwrap();
+        assert_eq!(entrypoint, Path::new(crate::appimage::tests::NIX_ENTRYPOINT));
+        assert_eq!(fs::read_link(staged.root.join("lib/libgi.so")).unwrap(), Path::new("libgi.so.1"));
     }
 
     #[cfg(target_os = "linux")]

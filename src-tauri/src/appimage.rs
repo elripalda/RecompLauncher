@@ -269,8 +269,9 @@ fn dwarfs_manifest(file: File, offset: u64) -> io::Result<Vec<u8>> {
 
 /// Unpack a type-2 AppImage's files into `to` with the launcher's own readers (SquashFS, or DwarFS
 /// for the "runs anywhere" kind): the AppImage is never run or mounted, so it works without FUSE
-/// and inside the Flatpak. Programs keep their run permission. Links that would point outside `to`
-/// are left out. Err when it isn't a type-2 AppImage (an old type-1 image), when it's damaged, or
+/// and inside the Flatpak. Programs keep their run permission. Links are kept as links, their
+/// targets exactly as stored, the way `unsquashfs` keeps them: a Nix-built AppImage links into a
+/// `/nix/store` its AppRun mounts at run time. Nothing is ever written through a link. Err when it isn't a type-2 AppImage (an old type-1 image), when it's damaged, or
 /// when the drive hasn't room for it.
 #[cfg(unix)]
 pub(crate) fn unpack(image: &Path, to: &Path) -> io::Result<()> {
@@ -336,15 +337,16 @@ fn unpack_dwarfs(file: File, offset: u64, to: &Path) -> io::Result<()> {
     out.finish()
 }
 
-/// The trail's line for links an unpack left out, naming the first few and where they pointed:
-/// a game that then won't start for a missing file is found by its name.
+/// The trail's line for the links an unpack kept that point outside the game's folder, naming the
+/// first few: they only work when the game brings what they point at (a Nix AppImage's AppRun
+/// mounts its own /nix/store), so a game that won't start for a missing file is found here.
 #[cfg_attr(not(unix), allow(dead_code))]
-fn left_out_note(links: &[String]) -> String {
+fn outside_note(links: &[String]) -> String {
     const SHOWN: usize = 5;
     let named = links.iter().take(SHOWN).cloned().collect::<Vec<_>>().join(", ");
     let more = links.len().saturating_sub(SHOWN);
     let rest = if more > 0 { format!(" and {more} more") } else { String::new() };
-    format!("AppImage: {} links pointing outside the game's folder were left out: {named}{rest}", links.len())
+    format!("AppImage: kept {} links pointing outside the game's folder as they are: {named}{rest}", links.len())
 }
 
 /// Writing an AppImage's files out, whatever they were packed in: the same rules for both.
@@ -367,6 +369,7 @@ impl<'a> Unpacking<'a> {
     }
 
     fn folder(&mut self, rel: &Path, mode: u32) -> io::Result<()> {
+        self.no_link_on_the_way(rel)?;
         let dest = self.to.join(rel);
         fs::create_dir_all(&dest)?;
         self.folders.push((dest, (mode & 0o777) | 0o700));
@@ -376,6 +379,7 @@ impl<'a> Unpacking<'a> {
     /// Never setuid, setgid or sticky: only the read, write and run bits come along.
     fn file(&mut self, rel: &Path, mode: u32, content: &mut dyn Read) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
+        self.no_link_on_the_way(rel)?;
         let dest = self.to.join(rel);
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
@@ -393,24 +397,41 @@ impl<'a> Unpacking<'a> {
 
     fn finish(self) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
-        let mut left_out = vec![];
-        for (rel, target) in self.links {
-            if !link_stays_inside(&rel, &target) {
-                left_out.push(format!("{} -> {}", rel.display(), target.display()));
-                continue;
-            }
-            let dest = self.to.join(&rel);
+        let mut outside = vec![];
+        for (rel, target) in &self.links {
+            // A link made just before may be on this one's way (`lib -> /nix/store/…`, then
+            // `lib/x`): its folders or the link itself would land wherever that one points.
+            self.no_link_on_the_way(rel)?;
+            let dest = self.to.join(rel);
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
-            std::os::unix::fs::symlink(&target, &dest)?;
+            // Never replaces what's there: two entries with one name is a damaged image.
+            std::os::unix::fs::symlink(target, &dest)?;
+            if !link_stays_inside(rel, target) {
+                outside.push(format!("{} -> {}", rel.display(), target.display()));
+            }
         }
-        if !left_out.is_empty() {
-            crate::trail::note(left_out_note(&left_out));
+        if !outside.is_empty() {
+            crate::trail::note(outside_note(&outside));
         }
         // Folders' own permissions last: a read-only folder in the image would stop its files going in.
         for (dir, mode) in self.folders.into_iter().rev() {
             fs::set_permissions(&dir, fs::Permissions::from_mode(mode))?;
+        }
+        Ok(())
+    }
+
+    /// Err when `rel` is a link already in the folder or goes through one, looked at without
+    /// following any: nothing is ever written through a link, wherever it points.
+    fn no_link_on_the_way(&self, rel: &Path) -> io::Result<()> {
+        let mut at = self.to.to_path_buf();
+        for part in rel.components() {
+            at.push(part);
+            let Ok(meta) = fs::symlink_metadata(&at) else { return Ok(()) };
+            if meta.file_type().is_symlink() {
+                return Err(invalid(&format!("The AppImage has a file inside one of its links ({})", rel.display())));
+            }
         }
         Ok(())
     }
@@ -425,7 +446,7 @@ fn inside_image(full: &Path) -> Option<PathBuf> {
 }
 
 /// A link at `rel` whose `target` stays inside the folder, read without following any link: never
-/// absolute, and no `..` past the top.
+/// absolute, and no `..` past the top. Only for the trail: the others are kept all the same.
 fn link_stays_inside(rel: &Path, target: &Path) -> bool {
     use std::path::Component;
     let mut depth = rel.parent().map(|p| p.components().count()).unwrap_or(0);
@@ -449,16 +470,16 @@ pub(crate) mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
-    fn links_left_out_are_named_with_where_they_pointed() {
-        let note = left_out_note(&["usr/lib/libfoo.so -> /usr/lib/libfoo.so".into()]);
-        assert_eq!(note, "AppImage: 1 links pointing outside the game's folder were left out: usr/lib/libfoo.so -> /usr/lib/libfoo.so");
+    fn links_out_of_the_folder_are_named_with_where_they_point() {
+        let note = outside_note(&["usr/lib/libfoo.so -> /usr/lib/libfoo.so".into()]);
+        assert_eq!(note, "AppImage: kept 1 links pointing outside the game's folder as they are: usr/lib/libfoo.so -> /usr/lib/libfoo.so");
     }
 
     #[test]
-    fn only_the_first_five_links_left_out_are_named() {
+    fn only_the_first_five_links_out_of_the_folder_are_named() {
         let links: Vec<String> = (1..=7).map(|i| format!("l{i} -> /x")).collect();
-        let note = left_out_note(&links);
-        assert!(note.starts_with("AppImage: 7 links"), "{note}");
+        let note = outside_note(&links);
+        assert!(note.starts_with("AppImage: kept 7 links"), "{note}");
         assert!(note.ends_with("l5 -> /x and 2 more"), "{note}");
     }
 
@@ -567,14 +588,97 @@ pub(crate) mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn links_out_of_the_unpacked_folder_are_left_out() {
+    fn links_out_of_the_unpacked_folder_are_kept_as_they_are() {
         let dir = TempDir::new();
         let image = dir.0.join("Game.AppImage");
         fs::write(&image, game_image()).unwrap();
         let to = dir.0.join("game");
         unpack(&image, &to).unwrap();
-        assert!(fs::symlink_metadata(to.join("absolute")).is_err());
-        assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+        assert_eq!(fs::read_link(to.join("absolute")).unwrap(), Path::new("/etc/passwd"));
+        assert_eq!(fs::read_link(to.join("usr/escape")).unwrap(), Path::new("../../outside"));
+    }
+
+    /// Where the Nix-built test image's entrypoint points: a store path no test machine has.
+    pub(crate) const NIX_ENTRYPOINT: &str = "/nix/store/0000-rl-test-game/bin/game";
+
+    /// A Nix-built AppImage, as bbport's: its entrypoint links into a /nix/store the image brings
+    /// and its AppRun mounts there at run time, and a library inside links on to the store. Both
+    /// point nowhere while it's unpacked.
+    #[cfg(unix)]
+    pub(crate) fn nix_image() -> Vec<u8> {
+        let mode = |permissions| NodeHeader { permissions, ..NodeHeader::default() };
+        let mut writer = FilesystemWriter::default();
+        writer.push_file(Cursor::new(b"#!/bin/sh\n".to_vec()), "/AppRun", mode(0o755)).unwrap();
+        writer.push_symlink(NIX_ENTRYPOINT, "/entrypoint", mode(0o777)).unwrap();
+        writer.push_dir("/lib", mode(0o755)).unwrap();
+        writer.push_symlink("/nix/store/0000-rl-test-gi/lib/libgi.so.1", "/lib/libgi.so.1", mode(0o777)).unwrap();
+        writer.push_symlink("libgi.so.1", "/lib/libgi.so", mode(0o777)).unwrap();
+        let mut squashfs = Cursor::new(Vec::new());
+        writer.write(&mut squashfs).unwrap();
+        let mut bytes = image(None, Compressor::Gzip)[..128].to_vec();
+        bytes.extend(squashfs.into_inner());
+        bytes
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_into_a_store_that_isnt_there_yet_is_kept() {
+        let dir = TempDir::new();
+        let image = dir.0.join("Game.AppImage");
+        fs::write(&image, nix_image()).unwrap();
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert_eq!(fs::read_link(to.join("entrypoint")).unwrap(), Path::new(NIX_ENTRYPOINT));
+        assert_eq!(fs::read_link(to.join("lib/libgi.so")).unwrap(), Path::new("libgi.so.1"));
+    }
+
+    /// A folder outside the game's, for links that try to lead the unpack out of it.
+    #[cfg(unix)]
+    fn unpacking_beside_an_outside_folder() -> (TempDir, PathBuf, PathBuf) {
+        let dir = TempDir::new();
+        let outside = dir.0.join("outside");
+        fs::create_dir(&outside).unwrap();
+        let to = dir.0.join("game");
+        (dir, outside, to)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_is_never_made_through_an_earlier_link() {
+        let (_dir, outside, to) = unpacking_beside_an_outside_folder();
+        let mut out = Unpacking::start(&to, 0).unwrap();
+        out.link(PathBuf::from("lib"), outside.clone());
+        out.link(PathBuf::from("lib/planted"), PathBuf::from("x"));
+        out.link(PathBuf::from("lib/deeper/planted"), PathBuf::from("x"));
+        assert!(out.finish().is_err());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_or_folder_is_never_written_through_a_link() {
+        let (_dir, outside, to) = unpacking_beside_an_outside_folder();
+        let mut out = Unpacking::start(&to, 0).unwrap();
+        std::os::unix::fs::symlink(&outside, to.join("lib")).unwrap();
+        assert!(out.file(Path::new("lib/planted"), 0o644, &mut Cursor::new(b"x".to_vec())).is_err());
+        assert!(out.folder(Path::new("lib/sub"), 0o755).is_err());
+        assert!(out.file(Path::new("lib"), 0o644, &mut Cursor::new(b"x".to_vec())).is_err());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    }
+
+    /// A damaged image's entries in the order it lists them: a link out of the folder, then a file
+    /// under the link's name. (backhand won't write such an image, so the entries come straight.)
+    /// The file lands in a folder of the game's own, and the link can't go in over it.
+    #[cfg(unix)]
+    #[test]
+    fn a_file_listed_under_a_link_never_lands_where_the_link_points() {
+        let (_dir, outside, to) = unpacking_beside_an_outside_folder();
+        let mut out = Unpacking::start(&to, 0).unwrap();
+        out.link(PathBuf::from("lib"), outside.clone());
+        out.file(Path::new("lib/planted"), 0o644, &mut Cursor::new(b"x".to_vec())).unwrap();
+        assert!(out.finish().is_err());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+        assert!(fs::symlink_metadata(to.join("lib")).unwrap().is_dir());
     }
 
     /// The same game as `game_image`, made by mksquashfs with extended attributes on every entry
@@ -608,9 +712,9 @@ pub(crate) mod tests {
         assert_eq!(fs::metadata(to.join("usr/bin/game")).unwrap().permissions().mode() & 0o7777, 0o755);
         assert_eq!(fs::read_link(to.join("AppRun")).unwrap(), Path::new("usr/bin/game"));
         assert_eq!(fs::read(to.join("recomplauncher.json")).unwrap(), br#"{"format":1}"#);
-        // Extended links still may not leave the folder.
-        assert!(fs::symlink_metadata(to.join("absolute")).is_err());
-        assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+        // Extended links are kept as stored, like any other link.
+        assert_eq!(fs::read_link(to.join("absolute")).unwrap(), Path::new("/etc/passwd"));
+        assert_eq!(fs::read_link(to.join("usr/escape")).unwrap(), Path::new("../../outside"));
         // Devices, pipes and sockets aren't a game's files; their folder is all that comes out.
         assert!(to.join("dev").is_dir());
         assert_eq!(fs::read_dir(to.join("dev")).unwrap().count(), 0);
@@ -662,14 +766,14 @@ pub(crate) mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a_dwarfs_appimage_keeps_its_links_inside_too() {
+    fn a_dwarfs_appimage_keeps_its_links_out_of_the_folder_too() {
         let dir = TempDir::new();
         let image = dir.0.join("Game.AppImage");
         fs::write(&image, dwarfs_game_image()).unwrap();
         let to = dir.0.join("game");
         unpack(&image, &to).unwrap();
-        assert!(fs::symlink_metadata(to.join("absolute")).is_err());
-        assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+        assert_eq!(fs::read_link(to.join("absolute")).unwrap(), Path::new("/etc/passwd"));
+        assert_eq!(fs::read_link(to.join("usr/escape")).unwrap(), Path::new("../../outside"));
     }
 
     #[cfg(unix)]
