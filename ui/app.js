@@ -3483,21 +3483,21 @@ function refreshGame() {
 const ROM_EXTS = { n64: ['z64', 'n64', 'v64', 'zip', '7z'], disc: ['iso', 'xiso', 'img', 'bin', 'cue', 'chd', 'cso', 'ciso', 'rvz', 'wbfs', 'gcm', 'nkit', 'pbp', '7z', 'zip'] };
 // Each console's files, for the picker (the catalog's console ids, a few spellings each).
 const SYSTEM_EXTS = [
-  [/^(nes|famicom)$/, ['nes', 'fds', 'unf', 'unif', 'zip']],
-  [/^(snes|sfc|superfamicom)$/, ['sfc', 'smc', 'zip']],
-  [/^(gb|gbc|gameboy|gameboycolor)$/, ['gbc', 'gb', 'zip']],
-  [/^(gba|gameboyadvance)$/, ['gba', 'zip']],
-  [/^(ds|nds)$/, ['nds', 'zip']],
-  [/^(3ds|n3ds)$/, ['3ds', 'cci', 'cia', 'cxi', 'app', 'zip']],
-  [/^(vb|virtualboy)$/, ['vb', 'vboy', 'zip']],
+  [/^(nes|famicom)$/, ['nes', 'fds', 'unf', 'unif', 'zip', '7z']],
+  [/^(snes|sfc|superfamicom)$/, ['sfc', 'smc', 'zip', '7z']],
+  [/^(gb|gbc|gameboy|gameboycolor)$/, ['gbc', 'gb', 'zip', '7z']],
+  [/^(gba|gameboyadvance)$/, ['gba', 'zip', '7z']],
+  [/^(ds|nds)$/, ['nds', 'zip', '7z']],
+  [/^(3ds|n3ds)$/, ['3ds', 'cci', 'cia', 'cxi', 'app', 'zip', '7z']],
+  [/^(vb|virtualboy)$/, ['vb', 'vboy', 'zip', '7z']],
   [/^(switch|switch2|nx|nx2)$/, ['xci', 'nsp', 'nup', 'nca']],
-  [/^(genesis|md|megadrive|gen)$/, ['md', 'gen', 'smd', 'bin', 'zip']],
-  [/^(32x|sega32x)$/, ['32x', 'bin', 'zip']],
-  [/^(gg|gamegear)$/, ['gg', 'zip']],
-  [/^(sms|mastersystem)$/, ['sms', 'zip']],
+  [/^(genesis|md|megadrive|gen)$/, ['md', 'gen', 'smd', 'bin', 'zip', '7z']],
+  [/^(32x|sega32x)$/, ['32x', 'bin', 'zip', '7z']],
+  [/^(gg|gamegear)$/, ['gg', 'zip', '7z']],
+  [/^(sms|mastersystem)$/, ['sms', 'zip', '7z']],
   [/^(arcade|mame|fbneo)$/, ['zip', '7z', 'chd']],
   [/^(cdi|cd-i|philipscdi)$/, ['chd', 'cue', 'bin', 'iso']],
-  [/^(amiga|amigacd32|cd32)$/, ['adf', 'hdf', 'ipf', 'lha', 'dms', 'zip']],
+  [/^(amiga|amigacd32|cd32)$/, ['adf', 'hdf', 'ipf', 'lha', 'dms', 'zip', '7z']],
 ];
 const extsFor = (origin) => { const o = String(origin || '').toLowerCase().replace(/[\s_.]/g, ''); const m = SYSTEM_EXTS.find(([re]) => re.test(o)); return m ? m[1] : null; };
 // What the player's copy of a game can be, to show before they pick it: a cartridge console's own
