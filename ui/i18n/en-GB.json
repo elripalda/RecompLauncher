@@ -376,5 +376,10 @@
  "Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.": "Optional. If you use LaunchBox, Customise can use the box art, logos, backgrounds and descriptions it already saved for your games.",
  "Saved. Customize can use your LaunchBox pictures now.": "Saved. Customise can use your LaunchBox pictures now.",
  "Critic and Player Score": "Critic and Player Score",
- "More Like This": "More Like This"
+ "More Like This": "More Like This",
+ "Networking": "Networking",
+ "Always": "Always",
+ "Never": "Never",
+ "Hide the Site's Name": "Hide the Site's Name",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked."
 }

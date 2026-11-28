@@ -340,7 +340,9 @@ pub async fn send_allowing(rb: reqwest::RequestBuilder, url: &str, player: bool,
     }
     tried(url);
     let started = Instant::now();
-    match rb.send().await {
+    // With its name hidden (Encrypted Client Hello) when the usual way is blocked by name, or as
+    // Settings → Networking says (ech.rs).
+    match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
             if trouble_status(code) && !normal.contains(&code) {
@@ -381,7 +383,7 @@ pub async fn send_picture(rb: reqwest::RequestBuilder, url: &str) -> Option<reqw
         return None;
     }
     let started = Instant::now();
-    match rb.send().await {
+    match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
             if !r.status().is_success() {
@@ -651,7 +653,7 @@ mod tests {
     }
 }
 
-// ---------- the proxy (Settings → Network) ----------
+// ---------- the proxy (Settings → Networking) ----------
 
 /// Off, the system's (HTTPS_PROXY / ALL_PROXY / HTTP_PROXY), or the player's own address. Every
 /// request the launcher makes (the list, GitHub, downloads, the website) goes through it.
@@ -734,6 +736,30 @@ pub fn with_proxy(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     b.no_proxy().proxy(reqwest::Proxy::custom(proxy_for))
 }
 
+/// Redirects are followed (GitHub's and SourceForge's downloads go through them), but never from
+/// https down to plain http.
+fn redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|a| {
+        if a.previous().len() >= 10 {
+            a.error("too many redirects")
+        } else if a.url().scheme() != "https" && a.previous().iter().any(|u| u.scheme() == "https") {
+            a.error("a redirect away from https")
+        } else {
+            a.follow()
+        }
+    })
+}
+
+/// The settings of the launcher's client. Here rather than where it's made, so the client that
+/// asks the server over Encrypted Client Hello (ech.rs) is the same in everything but its TLS.
+pub fn client_builder() -> reqwest::ClientBuilder {
+    with_proxy(reqwest::Client::builder())
+        .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
+        .redirect(redirects())
+        // Slow DNS or a busy mobile connection can take a while to connect.
+        .connect_timeout(Duration::from_secs(15))
+}
+
 // ---------- which server a failed download couldn't connect to, and why ----------
 
 /// A client that never follows redirects, so each step of a download link can be asked on its own.
@@ -789,6 +815,14 @@ fn causes(e: &reqwest::Error) -> Vec<&(dyn std::error::Error + 'static)> {
 pub fn tls_failed(e: &reqwest::Error) -> bool {
     let ios = causes(e).into_iter().filter_map(|s| s.downcast_ref::<std::io::Error>());
     ios.flat_map(io_kinds).any(|k| k == std::io::ErrorKind::InvalidData)
+}
+
+/// The connection opened and was then closed or reset before the secure handshake finished: the
+/// other way a filter that blocks a site by name cuts it. A refused or unanswered connection isn't.
+pub fn handshake_cut(e: &reqwest::Error) -> bool {
+    use std::io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
+    let ios = causes(e).into_iter().filter_map(|s| s.downcast_ref::<std::io::Error>());
+    ios.flat_map(io_kinds).any(|k| matches!(k, ConnectionReset | ConnectionAborted | UnexpectedEof))
 }
 
 /// An io error's kind and the kinds of the io errors it wraps. reqwest wraps rustls's InvalidData
@@ -874,6 +908,23 @@ mod connection_failure_tests {
         let e = get_error(&format!("https://127.0.0.1:{}/", closed_port()));
         assert!(e.is_connect());
         assert!(!tls_failed(&e));
+        assert!(!handshake_cut(&e));
+    }
+
+    #[test]
+    fn a_connection_closed_in_the_handshake_is_cut() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                // The greeting is read, then the connection closed without a word, as a filter does.
+                let _ = s.read(&mut [0u8; 1024]);
+            }
+        });
+        let e = get_error(&format!("https://127.0.0.1:{port}/"));
+        assert!(e.is_connect());
+        assert!(handshake_cut(&e), "{}", cause(&e));
     }
 
     #[test]

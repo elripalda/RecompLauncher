@@ -27,7 +27,7 @@ function updatesPage(settings, setTab = 'updates', libs = []) {
     tn: (n, one, many) => (n === 1 ? one : many.replace('{n}', n)), fmtB: String, folderCounts: () => '', sharedLibraryNote: () => '', dlssGroup: () => '', steamSyncGroup: () => '',
   });
   c.window = c;
-  c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => ''; c.launchboxRow = () => '';
+  c.clockRow = () => ''; c.hideNameItem = () => ''; c.monitorPicked = () => ''; c.monitorName = () => ''; c.launchboxRow = () => '';
   vm.runInContext(fn(app, 'pageSettings'), c);
   return c.pageSettings();
 }

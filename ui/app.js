@@ -4710,7 +4710,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const el = e.target;
   if (el.matches('[data-act="dl-limit"]')) { saveUi({ dl_limit: Number(el.value) || 0 }).then(sendLimits); return; }
-  if (el.matches('[data-act="proxy-mode"]')) { if (el.value === 'custom') { S.proxyMode = 'custom'; setSection('updates', false); } else saveProxy(el.value); return; }
+  if (el.matches('[data-act="proxy-mode"]')) { if (el.value === 'custom') { S.proxyMode = 'custom'; setSection('network', false); } else saveProxy(el.value); return; }
   if (el.matches('[data-lk-amount]')) {
     const id = el.dataset.lkAmount, v = Number(el.value);
     setLook(id, (S.looks[id] || {}).look || '', v).then(() => paintLooks());
@@ -5359,17 +5359,28 @@ const SET_ICONS = {
   changelog: '<path d="M6 3h8.5L19 7.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8.5 12.5h7M8.5 16.5h7"/>',
   plugins: '<path d="M10 4.5a2 2 0 0 1 4 0V6h4a1 1 0 0 1 1 1v4h-1.5a2 2 0 0 0 0 4H19v4a1 1 0 0 1-1 1h-4v-1.5a2 2 0 0 0-4 0V20H6a1 1 0 0 1-1-1v-4h1.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h4z"/>',
   beta: '<path d="M9.5 3h5M10 3v6.2L4.8 18.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9.2V3"/><path d="M7.2 14h9.6"/>',
+  network: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5s1.2-6.2 3.6-8.5z"/>',
 };
-// Settings → Network: the proxy every request goes through (the list, GitHub, downloads, the
-// website). Off, the system's (HTTPS_PROXY / ALL_PROXY), or the player's own address. The password
-// is sealed by the core and never comes back here.
+// Hide the Site's Name (ech.rs): how the launcher's own sites are asked on a network that blocks
+// them by name. The same three choices as Big Picture's Networking.
+const HIDE_NAME = [['', N_('Automatic')], ['always', N_('Always')], ['never', N_('Never')]];
+const HIDE_NAME_NOTE = N_('For networks that block the launcher\'s sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site\'s key. Automatic does that only when the usual way is blocked.');
+function hideNameRow() {
+  const now = HIDE_NAME.some(([k]) => k === S.settings.hide_name) ? S.settings.hide_name : '';
+  const pick = HIDE_NAME.map(([k, n]) => `<button type="button" role="radio" aria-checked="${now === k}" data-act="hide-name" data-k="${k}">${esc(t(n))}</button>`).join('');
+  return `<div class="set-row"><div class="k"><b>${esc(t('Hide the Site\'s Name'))}</b><span>${esc(t(HIDE_NAME_NOTE))}</span></div><div class="seg" role="radiogroup" aria-label="${esc(t('Hide the Site\'s Name'))}">${pick}</div></div>`;
+}
+// Settings → Networking: how the site is reached on a network that blocks it by name, and the proxy
+// every request goes through (the list, GitHub, downloads, the website). Off, the system's
+// (HTTPS_PROXY / ALL_PROXY), or the player's own address. The password is sealed by the core and
+// never comes back here.
 function networkGroup(group, row, st) {
   const mode = S.proxyMode || st.proxy || 'system';
   const custom = mode === 'custom';
   const pick = `<select class="sel" data-act="proxy-mode" aria-label="${esc(t('Proxy'))}">${[['off', t('Off')], ['system', t('Use the System Proxy')], ['custom', t('Custom')]].map(([k, n]) => `<option value="${k}"${mode === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   const fields = custom ? `<div class="set-row proxy-row"><div class="k"><b>${esc(t('Proxy Address'))}</b><span>${esc(t('http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.'))}</span></div>
     <span class="acts proxy-fields"><input class="field sm" id="proxy-url" type="text" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:7890" value="${esc(st.proxy_url || '')}" aria-label="${esc(t('Proxy Address'))}"><input class="field sm" id="proxy-user" type="text" autocomplete="off" spellcheck="false" placeholder="${esc(t('User'))}" value="${esc(st.proxy_user || '')}" aria-label="${esc(t('User'))}"><input class="field sm" id="proxy-pass" type="password" autocomplete="off" placeholder="${esc(st.proxy_pass ? '••••••' : t('Password'))}" aria-label="${esc(t('Password'))}"><button type="button" class="btn sm main" data-act="proxy-save">${esc(t('Save'))}</button></span></div>` : '';
-  return group(t('Network'), row(t('Proxy'), t('Where the launcher\'s requests go: the list, GitHub, downloads and the website. Use one if GitHub can\'t be reached from your network.'), pick) + fields);
+  return group(t('Networking'), hideNameRow() + row(t('Proxy'), t('Where the launcher\'s requests go: the list, GitHub, downloads and the website. Use one if GitHub can\'t be reached from your network.'), pick) + fields);
 }
 // Settings → Updates and Downloads starts with the launcher's own updates, apart from the games':
 // the version you're on (or the one that's ready), and its two switches. A Flatpak is updated by
@@ -5397,10 +5408,10 @@ async function saveProxy(mode) {
     Object.assign(S.settings, { proxy: mode, proxy_url: url.trim(), proxy_user: user, proxy_pass: r.has_pass ? 'sealed' : '' });
     S.proxyMode = null;
     toast(mode === 'off' ? t('Proxy off.') : mode === 'system' ? (r.shown ? tf('Using the system proxy, {proxy}.', { proxy: r.shown }) : t('Using the system proxy. None is set right now.')) : tf('Using the proxy {proxy}.', { proxy: r.shown || url }));
-    if (S.view === 'settings') setSection('updates', false);
+    if (S.view === 'settings') setSection('network', false);
   } catch (e) { fail(e); }
 }
-const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['reviews', N_('Reviews')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['changelog', N_('Changelog')], ['about', N_('About')]];
+const SET_SECTIONS = [['general', N_('General')], ['report', N_('Report a Problem')], ['beta', N_('Beta')], ['account', N_('Account')], ['reviews', N_('Reviews')], ['library', N_('Games and folders')], ['bring', N_('Bring Your Games')], ['updates', N_('Updates and downloads')], ['network', N_('Networking')], ['playing', N_('While Playing')], ['look', N_('Appearance')], ['bigpicture', N_('Big Picture mode')], ['plugins', N_('Plugins')], ['pads', N_('Controllers')], ['pc', N_('Your PC')], ['dev', N_('Developers')], ['changelog', N_('Changelog')], ['about', N_('About')]];
 // Microsoft's Visual C++ runtime, installed by the launcher (its installer's own small window
 // shows the progress, and Windows may ask for permission).
 let vcBusy = false;
@@ -5538,8 +5549,10 @@ function pageSettings() {
           + row(t('Auto-Install'), t('When an Easy Setup game or a game that comes as an installer finishes downloading (an update too), its setup or installer opens right away. Off: it waits until you press Set Up on its page.'), sw('auto_install', autoInstall(), t('Auto-Install'))))
         + group(t('Downloads'), row(t('Keep downloaded files'), t('Off: the zip is deleted once it\'s unpacked. On: every zip stays as it came, an update\'s too, in its library\'s .downloads folder with the date it was released.'), keepCtl)
           + row(t('Speed Limit'), t('Keeps downloads under this speed, so the rest of your home\'s internet stays quick.'), `<select class="sel" data-act="dl-limit" aria-label="${esc(t('Speed Limit'))}">${DL_LIMITS.map((n) => `<option value="${n}"${Number(ui.dl_limit || 0) === n ? ' selected' : ''}>${esc(n ? tf('{n} MB/s', { n }) : t('No Limit'))}</option>`).join('')}</select>`)
-          + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')))
-        + networkGroup(group, row, st);
+          + row(t('Slow Down While Playing'), t('While a game is running, downloads keep to 4 MB/s so the game gets your internet and drive first.'), sw('dl_slow_play', ui.dl_slow_play !== false, t('Slow Down While Playing'), 'dl-slow')));
+      break;
+    case 'network':
+      body = networkGroup(group, row, st);
       break;
     case 'playing': {
       const hh = !!S.handheld, eff = (k) => (st[k] == null ? hh : !!st[k]);
@@ -10056,6 +10069,7 @@ async function act(el, e) {
     case 'start-page': { await saveUi({ start_page: el.dataset.k || '' }); return render(true); }
     case 'ui-scale': return setUiScale(Number(el.dataset.k));
     case 'theme': { const k = el.dataset.k; await saveUi({ theme: k === 'light' ? 'light' : '', oled: k === 'oled' }); return render(true); }
+    case 'hide-name': { await saveSettings({ hide_name: el.dataset.k || '' }, true); return setSection('network', false); }
     case 'skip-backup': return invoke('skip_backup').catch(() => {});
     case 'check-upd': {
       el.disabled = true;

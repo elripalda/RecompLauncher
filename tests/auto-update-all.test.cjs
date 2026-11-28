@@ -26,7 +26,7 @@ function settingsContext(settings) {
     svg: () => '', hints: () => '', HEART: '', setClock: () => {},
   });
   c.window = c;
-  c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
+  c.clockRow = () => ''; c.hideNameItem = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
   vm.runInContext(helpersSrc, c);
   return c;
 }

@@ -113,9 +113,9 @@ test('the Updates tab offers the same update as the badge', () => {
   assert.match(c.relState('g', inst, list, list[1], 1), /No build for your system/);
 });
 
-// ---- Settings → Network ----
+// ---- Settings → Networking ----
 test('the proxy setting offers off, the system proxy and a custom address', () => {
-  const c = vm.createContext(Object.assign(base(), { S: {} }));
+  const c = vm.createContext(Object.assign(base(), { S: {}, hideNameRow: () => '' }));
   vm.runInContext(fn(app, 'networkGroup'), c);
   const group = (title, body) => `<g>${title}${body}</g>`, row = (k, d, ctl) => `<r>${k}${ctl}</r>`;
   const sys = c.networkGroup(group, row, { proxy: '' });

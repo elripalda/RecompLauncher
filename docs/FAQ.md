@@ -44,6 +44,16 @@ It backs up a game's saves before every update. You can also back up, restore an
 
 Only if you say yes. The first time you open it, the launcher asks whether to share anonymous usage stats: when it's open and which recomps are being played, under a random ID that isn't linked to you. You can change it any time in **Settings > General**.
 
+## Does it talk to Cloudflare or Google?
+
+Only when your network blocks the launcher's sites (recomplauncher.com and recompstore.com) by their name, the way some school and office firewalls do. The launcher then hides the name, as browsers do: it asks Cloudflare's DNS service (cloudflare-dns.com), or Google's (dns.google) if that doesn't answer, for the site's key, and connects with it. That question names only the site, nothing about you or your games. On a network that doesn't block the sites, nothing is asked.
+
+You choose this in **Settings > Networking > Hide the Site's Name**:
+
+- **Automatic** (the default): the usual connection first. Only when that's blocked does the launcher ask for the key and try again with the name hidden. If that works, it keeps doing so until it closes or the PC moves to another network.
+- **Always**: the name is hidden from the start, so the key is asked for when the launcher first reaches its sites.
+- **Never**: the name is never hidden and Cloudflare and Google are never asked. On a network that blocks the sites, the launcher then shows Offline.
+
 ## Windows says "Windows protected your PC". Is it safe?
 
 Yes. Windows shows that for newer apps it hasn't seen many times yet. The installer is code-signed, and each release lists its file's SHA-256 so you can check you have the real one. Click **More info**, then **Run anyway**.

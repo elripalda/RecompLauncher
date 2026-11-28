@@ -423,11 +423,11 @@ fn client_for(headers: &BTreeMap<String, String>) -> Res<reqwest::Client> {
             h.insert(n, v);
         }
     }
-    crate::net::with_proxy(reqwest::Client::builder())
-        .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
+    // The launcher's client settings (proxy, user agent, connect timeout), with the plugin's headers
+    // and no redirects of its own.
+    crate::net::client_builder()
         .default_headers(h)
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| Error::Msg(e.to_string()))
 }

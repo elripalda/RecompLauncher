@@ -1441,6 +1441,12 @@
     } catch (e) { fail(e); }
   }
 
+  // Hide the Site's Name, with the desktop's three choices (HIDE_NAME in app.js): A or right goes to the next.
+  function hideNameItem() {
+    const now = HIDE_NAME.find(([k]) => k === S.settings.hide_name) || HIDE_NAME[0];
+    const choices = HIDE_NAME.map(([k, n]) => `<span class="${k === now[0] ? 'on' : ''}">${esc(t(n))}</span>`).join('');
+    return `<button type="button" class="tv-item" data-f data-key="s:hidename" data-tvact="hidename" data-seg="1" data-val="${esc(t(now[1]))}"><span class="k">${esc(t('Hide the Site\'s Name'))}<small>${esc(t(HIDE_NAME_NOTE))}</small></span><span class="tv-seg">${choices}</span></button>`;
+  }
   // Settings in groups, with the focused one shown large on the right (what it does, and its value).
   function pageSettings() {
     // Android: no desktop view to leave for, and none of the PC-only settings.
@@ -1490,6 +1496,8 @@
           ${S.steam ? `<button type="button" class="tv-item" data-f data-key="s:steamremove" data-tvact="steamremove"><span class="k">${esc(t('Remove from Steam'))}<small>${esc(S.settings.steam_sync ? t('Takes out the games RecompLauncher put in Steam. Keep Steam in Sync turns off too.') : t('Takes out the games RecompLauncher put in Steam. Games you added yourself stay.'))}</small></span><span class="tv-pill">${esc(t('Remove All'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:storage" data-tvact="storage"><span class="k">${esc(t('Storage'))}<small>${esc(t('How much room each game takes, and uninstalling'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:saves" data-tvact="saves"><span class="k">${esc(t('Saves'))}<small>${esc(t('Every game\'s save copies, to restore an older one'))}</small></span>${svg('chevR', 30)}</button>
+          ${head(t('Networking'))}
+          ${hideNameItem()}
           ${head(t('Controller'))}
           ${(() => { const g = (S.settings.ui || {}).tv_glyphs; const v = g === 'ps' ? 'PlayStation' : g === 'xbox' ? 'Xbox' : g === 'nintendo' ? 'Nintendo' : g === 'steam' ? 'Steam' : 'Automatic'; return `<button type="button" class="tv-item" data-f data-key="s:glyphs" data-tvact="glyphs" data-seg="1" data-val="${esc(t(v))}"><span class="k">${esc(t('Button Icons'))}<small>${esc(t('Which controller\'s buttons are shown. Automatic follows the one you use.'))}</small></span><span class="tv-seg">${[N_('Automatic'), 'Xbox', 'PlayStation', 'Nintendo', 'Steam'].map((n) => `<span class="${n === v ? 'on' : ''}">${esc(t(n))}</span>`).join('')}</span></button>`; })()}
           <button type="button" class="tv-item" data-f data-key="s:buttons"><span class="k">${esc(t('Buttons'))}<small>${esc(t('What each button does'))}</small></span></button>
@@ -3432,6 +3440,7 @@
     else if (act === 'bgmode') await saveUi({ tv_bg: roll(['', 'grid', 'drift', 'art'], ui.tv_bg || '') });
     else if (act === 'clock') await saveUi({ clock: roll(['', '12', '24'], ui.clock || '') });
     else if (act === 'glyphs') await saveUi({ tv_glyphs: roll(['', 'xbox', 'ps', 'nintendo', 'steam'], ui.tv_glyphs || '') });
+    else if (act === 'hidename') await saveSettings({ hide_name: roll(HIDE_NAME.map(([k]) => k), S.settings.hide_name || '') }, true);
     else if (act === 'theme') {
       const now = ui.theme === 'light' ? 2 : ui.oled ? 1 : 0, next = (now + dir + 3) % 3;
       await saveUi({ theme: next === 2 ? 'light' : '', oled: next === 1 });

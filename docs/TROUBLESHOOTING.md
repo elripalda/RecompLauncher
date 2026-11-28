@@ -80,6 +80,8 @@ Windows-only recomps run through umu-run and GE-Proton on Linux. If the launcher
 
 It only needs the internet for the game list, updates, accounts and cloud saves. Installed games still play offline. It goes back online by itself once it can reach recomplauncher.com again.
 
+If the website opens in your browser but the launcher still says Offline, your network may block the site by its name (some school and office firewalls do). Check that **Settings > Networking > Hide the Site's Name** isn't set to **Never**: on **Automatic** the launcher hides the name the way browsers do when it's blocked. If your network needs a proxy, set it in the same place. The [FAQ](FAQ.md#does-it-talk-to-cloudflare-or-google) says what hiding the name asks Cloudflare and Google.
+
 ## Cloud saves aren't syncing
 
 Make sure you're signed in and cloud saves are on for that game in its **Saves** tab. If a sync fails, the launcher tries again by itself and shows when the next try is.

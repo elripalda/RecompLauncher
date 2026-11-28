@@ -25,6 +25,7 @@ pub mod display;
 pub mod dllcheck;
 pub mod discord;
 pub mod dlss;
+mod ech;
 pub mod extract;
 pub mod files;
 pub mod gamefiles;
@@ -145,7 +146,7 @@ impl From<reqwest::Error> for Error {
             Error::Net(format!("Couldn't open a secure connection to {h}. Something on your network or PC may be blocking it: a router's security filter, an antivirus or a VPN."))
         } else if e.is_connect() && net::proxy_shown().is_some() {
             // Through a proxy that didn't answer: that's what to check, not the site.
-            Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Network, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
+            Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Networking, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
         } else if e.is_connect() {
             match site {
                 Some(h) => Error::Net(format!("Couldn't reach {h}. Check your connection, or try again in a minute.")),
@@ -9799,6 +9800,7 @@ fn save_settings(st: State<'_, App>, settings: Settings) -> Res<()> {
     l.settings.start_at_login = start_at_login;
     (l.settings.proxy, l.settings.proxy_url, l.settings.proxy_user, l.settings.proxy_pass) = proxy;
     pads::STICK.store(l.settings.pad_stick, Ordering::Relaxed);
+    ech::set_mode(&l.settings.hide_name);
     saves::use_chosen_device(&l.settings.ui);
     let discord_now = l.settings.discord;
     l.save(&st.dir)?;
@@ -9845,7 +9847,7 @@ fn leave_tv_mode(app: AppHandle) -> Res<()> {
     display::leave_tv_mode(&app).map_err(Error::Msg)
 }
 
-/// Settings → Network: the proxy every request goes through. `pass` None keeps the saved one; the
+/// Settings → Networking: the proxy every request goes through. `pass` None keeps the saved one; the
 /// password is sealed like the other secrets and never comes back to the window.
 #[tauri::command(async)]
 fn set_proxy(st: State<'_, App>, mode: String, url: String, user: String, pass: Option<String>) -> Res<Value> {
@@ -10007,6 +10009,7 @@ fn reset_settings(st: State<'_, App>, what: String) -> Res<Settings> {
         "setup" => l.settings.setup_done = false,
         _ => return Err(Error::Msg("Nothing to reset.".into())),
     }
+    ech::set_mode(&l.settings.hide_name);
     l.save(&st.dir)?;
     Ok(l.settings.clone())
 }
@@ -11036,30 +11039,17 @@ pub fn run() {
                     let _ = std::fs::remove_file(d.join(f));
                 }
             }
-            // The player's proxy (Settings → Network): off, the system's, or their own.
+            // The player's proxy (Settings → Networking): off, the system's, or their own.
             {
                 let l = Library::load(&dir);
                 let pass = secret::open(&l.settings.proxy_pass).unwrap_or_default();
                 if let Err(e) = net::set_proxy(&l.settings.proxy, &l.settings.proxy_url, &l.settings.proxy_user, &pass) {
                     trail::note(format!("Proxy setting not used: {e}"));
                 }
+                // Hide the Site's Name (Settings → Networking): Automatic, Always or Never.
+                ech::set_mode(&l.settings.hide_name);
             }
-            let http = net::with_proxy(reqwest::Client::builder())
-                .user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")))
-                // Redirects are followed (GitHub's and SourceForge's downloads go through them), but
-                // never from https down to plain http.
-                .redirect(reqwest::redirect::Policy::custom(|a| {
-                    if a.previous().len() >= 10 {
-                        a.error("too many redirects")
-                    } else if a.url().scheme() != "https" && a.previous().iter().any(|u| u.scheme() == "https") {
-                        a.error("a redirect away from https")
-                    } else {
-                        a.follow()
-                    }
-                }))
-                // Slow DNS or a busy mobile connection can take a while to connect.
-                .connect_timeout(std::time::Duration::from_secs(15))
-                .build()?;
+            let http = net::client_builder().build()?;
             #[allow(unused_mut)]
             let mut lib = Library::load(&dir);
             // An update the launcher was closed in the middle of: finished, or undone, before

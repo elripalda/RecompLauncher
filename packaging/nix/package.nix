@@ -44,8 +44,15 @@ rustPlatform.buildRustPackage {
     wrapGAppsHook3
   ];
 
-  # cmake is only there for sdl3-sys; the package itself is cargo's.
+  # cmake is only there for sdl3-sys and aws-lc-sys; the package itself is cargo's.
   dontUseCmakeConfigure = true;
+
+  # aws-lc-sys (rustls's ECH for the launcher's own sites, src-tauri/src/ech.rs) is built from its
+  # vendored source, as on every other platform. In the Nix build it otherwise looks for a system
+  # AWS-LC and fails when there is none.
+  preBuild = ''
+    export AWS_LC_SYS_USE_SYSTEM=0
+  '';
 
   buildInputs = [
     gtk3

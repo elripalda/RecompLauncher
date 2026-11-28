@@ -63,7 +63,7 @@ pub async fn download_split(
     const CHUNK: u64 = 8 << 20;
     // Does it send parts, and how big is it? One byte asked for says both. Where it ends up after
     // redirects is where every chunk is asked for, so each one doesn't go through them again.
-    let probe = http.get(url).header(reqwest::header::RANGE, "bytes=0-0").timeout(Duration::from_secs(30)).send().await;
+    let probe = crate::ech::send(http.get(url).header(reqwest::header::RANGE, "bytes=0-0").timeout(Duration::from_secs(30))).await;
     let Ok(probe) = probe else { return Ok(None) };
     if probe.status() != reqwest::StatusCode::PARTIAL_CONTENT {
         return Ok(None);
@@ -113,7 +113,8 @@ pub async fn download_split(
                     // The address it landed on, then the first one again if that stops working
                     // (a mirror's link can expire).
                     let ask = if tries < 2 { &first } else { &url };
-                    let r = http.get(ask).header(reqwest::header::RANGE, format!("bytes={at}-{}", to - 1)).timeout(Duration::from_secs(60 * 30)).send().await;
+                    let part = http.get(ask).header(reqwest::header::RANGE, format!("bytes={at}-{}", to - 1)).timeout(Duration::from_secs(60 * 30));
+                    let r = crate::ech::send(part).await;
                     let r = match r {
                         Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
                         other => {
@@ -405,7 +406,9 @@ async fn download_with_api(
         if done > 0 {
             req = req.header(reqwest::header::RANGE, format!("bytes={done}-"));
         }
-        let send = req.send();
+        // The RecompLauncher backup (recomplauncher.com) is asked with its name hidden when the
+        // network blocks it by name (ech.rs); every other server the usual way.
+        let send = crate::ech::send(req);
         tokio::pin!(send);
         let started = Instant::now();
         let r = loop {
