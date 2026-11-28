@@ -251,6 +251,11 @@ pub struct Installed {
     /// one from the catalog is applied on the next Play.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub boot_hash: String,
+    /// The move to one road (one_road.rs), done once: "moved" (it's the player's own now, with what
+    /// our profile did kept in its launch options), or "again: <why>" (left as it was; set up again
+    /// once the catalog stops carrying our profile).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub one_road: String,
     /// The files Easy Setup read whole, by input id, and what it read: Set Up Again with the same
     /// file, unchanged since, doesn't read it all again (a Switch 2 package is over 20 GB).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
