@@ -773,7 +773,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
 
     // The settings the player picked on the game's page, put back after the update's files.
-    let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.repo, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
+    let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.tag, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
     // Unpacked beside the game's folder first: a full drive or a bad download stops here, with the
     // game untouched.
@@ -849,7 +849,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
     if !kept.is_empty() {
-        if let Some(prof) = profile::find(&target, &repo, &entry) {
+        if let Some(prof) = profile::find(&target, &tag_got, &entry) {
             prof.restore(&target, &kept);
         }
     }
@@ -2234,8 +2234,8 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         r
     };
     for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
-        let (Some(id), repo) = (a.get("id").and_then(Value::as_str), a.get("repo").and_then(Value::as_str).unwrap_or("")) else { continue };
-        let Some(need) = profile::find(dirs.get(id).unwrap_or(&none), repo, a).and_then(|p| p.main_copy()) else { continue };
+        let Some(id) = a.get("id").and_then(Value::as_str) else { continue };
+        let Some(need) = profile::find(dirs.get(id).unwrap_or(&none), "", a).and_then(|p| p.main_copy()) else { continue };
         // A check that can't tell games apart (default.xex, which every game of its console has,
         // or just "a disc image"): matched by name only, unless the catalog lists its disc IDs.
         let want: Vec<String> = need.check.ids.iter().map(|i| roms::id_key(i)).filter(|i| i.len() >= 3).chain(roms::copy_ids(a)).collect();
@@ -5124,16 +5124,17 @@ pub(crate) fn player_sets_up(st: &App, id: &str) -> bool {
 #[tauri::command(async)]
 fn easy_setup(st: State<'_, App>) -> Vec<String> {
     let cat = cached_catalog(&st);
-    let dirs: HashMap<String, PathBuf> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.path.clone())).collect();
-    let none = PathBuf::new();
+    // An installed game is asked about the release it has; one that isn't, about the one it'd get.
+    let dirs: HashMap<String, (PathBuf, String)> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), (g.path.clone(), g.tag.clone()))).collect();
+    let none = (PathBuf::new(), String::new());
     cat.get("apps")
         .and_then(Value::as_array)
         .map(|a| {
             a.iter()
                 .filter_map(|x| {
                     let id = x.get("id")?.as_str()?;
-                    let repo = x.get("repo").and_then(Value::as_str).unwrap_or("");
-                    let p = profile::find(dirs.get(id).unwrap_or(&none), repo, x)?;
+                    let (dir, tag) = dirs.get(id).unwrap_or(&none);
+                    let p = profile::find(dir, tag, x)?;
                     p.easy_setup().then(|| id.to_string())
                 })
                 .collect()
@@ -5725,7 +5726,7 @@ fn recomp_games(st: State<'_, App>) -> std::collections::BTreeMap<String, GameSe
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+    profile::find(&g.path, &g.tag, &entry).map(|mut p| {
         p.windows_build = Some(is_windows_build(g));
         // Optional inputs this launcher can't use (newer shared types, DLSS without an RTX card).
         inputs::prepare(&mut p, dlss::applies(&st.dir));
@@ -11987,14 +11988,16 @@ mod tests {
         };
         let sms = gc("Super Mario Sunshine (USA).iso", b"GMSE01");
         let ps2 = { let p = d.join("Some PS2 Game.iso"); std::fs::write(&p, vec![0u8; 0x400]).unwrap(); roms::RomFile { path: p, system: "ps2".into(), title: "Some PS2 Game".into(), region: "US".into(), size: 0x400 } };
-        let cat = json!({ "apps": [{ "id": "dusklight", "name": "Dusklight", "game": "The Legend of Zelda: Twilight Princess", "origin": "gamecube", "repo": "TwilitRealm/dusklight" }] });
+        // The release's own file, as the catalog carries it (its disc IDs are what tells games apart).
+        let own = json!({ "format": 1, "game": { "kind": "iso", "label": "Your Twilight Princess disc image", "check": { "ids": ["GZ2E", "GZ2P", "GZ2J", "RZDE", "RZDP", "RZDJ"] } }, "start": { "program": ["dusklight.exe"], "args": ["--dvd", "{game}"] } });
+        let cat = json!({ "apps": [{ "id": "dusklight", "name": "Dusklight", "game": "The Legend of Zelda: Twilight Princess", "origin": "gamecube", "repo": "TwilitRealm/dusklight", "tag": "v1", "launcher": own, "launcher_from": "release" }] });
         let dirs = HashMap::new();
         assert!(copies_for(&cat, &[sms.clone(), ps2.clone()], &dirs).is_empty());
         // Its own disc, under any name, is.
         let tp = gc("disc1.iso", b"GZ2E01");
         assert_eq!(copies_for(&cat, &[sms, ps2, tp.clone()], &dirs).get("dusklight").map(|r| r.path.clone()), Some(tp.path.clone()));
         // And picking Sunshine for it is refused.
-        let need = profile::find(Path::new(""), "TwilitRealm/dusklight", &cat["apps"][0]).and_then(|p| p.main_copy()).unwrap();
+        let need = profile::find(Path::new(""), "", &cat["apps"][0]).and_then(|p| p.main_copy()).unwrap();
         assert!(profile::check_copy(&need, &d.join("Super Mario Sunshine (USA).iso")).unwrap_err().contains("GMSE01"));
         assert!(profile::check_copy(&need, &tp.path).is_ok());
         // Checks that can't tell games apart: a common file, or nothing but "a disc image".
@@ -12597,7 +12600,7 @@ mod tests {
         img[rec + 32] = name.len() as u8;
         img[rec + 33..rec + 33 + name.len()].copy_from_slice(name);
         std::fs::write(&iso, &img).unwrap();
-        let cat = json!({"apps": [{"id": "streetball", "name": "Streetball Revival", "game": "NBA Street Vol. 2", "repo": "luckvj/streetball-revival"}]});
+        let cat = json!({"apps": [{"id": "streetball", "name": "Streetball Revival", "game": "NBA Street Vol. 2", "repo": "luckvj/streetball-revival", "tag": "v1", "launcher_from": "release", "launcher": serde_json::from_str::<Value>(include_str!("../../docs/examples/streetball.json")).unwrap()}]});
         let found = vec![roms::RomFile { path: iso.clone(), system: "ps2".into(), title: "backup-07".into(), region: String::new(), size: img.len() as u64 }];
         let got = copies_for(&cat, &found, &HashMap::new());
         assert_eq!(got.get("streetball").map(|r| r.path.clone()), Some(iso));

@@ -653,7 +653,7 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
 fn named_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
+    let profile_saves = crate::profile::find(&g.path, &g.tag, &entry).map(|p| p.saves).unwrap_or_default();
     named_spots(profile_saves, catalog_saves(&entry, false), g)
 }
 
