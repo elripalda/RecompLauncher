@@ -5204,7 +5204,7 @@ function pageDownloads() {
   const pauseBtn = Object.keys(S.jobs).some(canPause) ? `<button type="button" class="btn sm" data-act="dl-pause-all">${esc(t('Pause all'))}</button>` : '';
   const upRows = ups.map((id) => { const a = appOf(id);
     // The pill is the new version's check, so the player sees it before they download it.
-    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${withNewVer('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }, 'to')}</span>${scanPill({ id, tag: S.updates[id], update: true })}</span></div><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
+    return `<div class="dl-row link" data-act="open" data-id="${esc(id)}">${wide(id)}<div class="mid"><b>${esc(a.name)}</b><span class="dl-sub"><span>${withNewVer('{from} → {to}', { from: S.library[id].tag || '?', to: S.updates[id] }, 'to')}</span>${scanPill({ id, tag: S.updates[id], update: true })}</span></div><button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(id)}">${esc(t('Skip This Version'))}</button><button type="button" class="btn main sm" data-act="install" data-id="${esc(id)}">${DOWN}${esc(t('Update'))}</button></div>`; }).join('');
   const failRows = fails.map((r) => { const a = appOf(r.id);
     return `<div class="dl-row bad">${wide(r.id)}<div class="mid"><b>${esc(a.name)}</b><span class="err">${esc(t(r.msg))}</span></div>${S.updates[r.id] && S.library[r.id] ? `<button type="button" class="btn sm" data-act="skip-ver" data-id="${esc(r.id)}">${esc(t('Skip This Version'))}</button>` : ''}<button type="button" class="btn sm" data-act="install" data-id="${esc(r.id)}">${esc(t('Try again'))}</button></div>`; }).join('');
   // Recent: each game once, with its newest install or update, under the day it happened. Its
@@ -6428,7 +6428,21 @@ async function toggleHold(id) {
   if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
   render(true);
 }
+// Skip This Version: the update on offer stays out until a newer one (see checkUpdates). For a
+// download that keeps failing, and for a game whose own updater already put that version on disk.
+async function skipVersion(id) {
+  const tag = S.updates[id];
+  if (!tag) return;
+  await saveUi({ skip_ver: Object.assign({}, (S.settings.ui || {}).skip_ver, { [id]: tag }) }, true);
+  delete S.updates[id];
+  S.recent = S.recent.filter((r) => r.id !== id);
+  toast(tf('{name} stays on the version it has. You\'ll hear about the next one.', { name: (S.library[id] || {}).name || id }));
+  renderSide();
+  if (window.tvRefresh && document.body.classList.contains('tv-on')) window.tvRefresh();
+  render(true);
+}
 window.holdItem = holdItem;
+window.skipVersion = skipVersion;
 window.toggleHold = toggleHold;
 window.autoUpdates = autoUpdates;
 window.toggleAutoUpdate = toggleAutoUpdate;
@@ -6495,7 +6509,8 @@ async function checkUpdates(loud) {
   try {
     const updates = await invoke('check_updates', { force: !!loud });
     if (revision !== updateCheckRevision) return false;
-    // A version the player chose to skip (its download kept failing) stays out until a newer one.
+    // A version the player chose to skip (its download kept failing, or the game's own updater
+    // already installed it) stays out until a newer one.
     const skip = (S.settings.ui || {}).skip_ver || {};
     // A game whose downloaded installer waits for Set Up has its update already: Set Up runs it.
     S.updates = Object.fromEntries(Object.entries(updates).filter(([id, tag]) => skip[id] !== tag && stillChecked(id, checked[id])));
@@ -9859,16 +9874,7 @@ async function act(el, e) {
     case 'hidden-list': return hiddenModal();
     case 'ig-go': return igGo(el.dataset.id);
     case 'sp-go': return invoke('open_url', { url: `${SITE}/api/spons.php?go=${encodeURIComponent(el.dataset.id)}` }).catch(fail);
-    case 'skip-ver': {
-      const id = el.dataset.id, tag = S.updates[id];
-      if (!tag) return;
-      await saveUi({ skip_ver: Object.assign({}, (S.settings.ui || {}).skip_ver, { [id]: tag }) }, true);
-      delete S.updates[id];
-      S.recent = S.recent.filter((r) => r.id !== id);
-      toast(tf('{name} stays on the version it has. You\'ll hear about the next one.', { name: (S.library[id] || {}).name || id }));
-      renderSide();
-      return render(true);
-    }
+    case 'skip-ver': return skipVersion(el.dataset.id);
     case 'ui-toggle':
       return saveUi({ [el.dataset.k]: !(S.settings.ui || {})[el.dataset.k] });
     // Easy Setup in Settings, for new games (stored the other way round, as easy_skip_all). Turning
