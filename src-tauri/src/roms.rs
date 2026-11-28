@@ -98,6 +98,21 @@ fn has_bytes(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
+/// How much of a file it takes to tell a Mega Drive game: its header ends at 0x110.
+const MEGA_DRIVE_HEAD: usize = 0x110;
+
+/// A Mega Drive or Genesis cartridge names its console at 0x100 ("SEGA MEGA DRIVE", " SEGA
+/// GENESIS"): the console itself checks for SEGA there before it boots one.
+fn mega_drive_header(head: &[u8]) -> bool {
+    head.get(0x100..MEGA_DRIVE_HEAD).is_some_and(|console| has_bytes(console, b"SEGA"))
+}
+
+fn mega_drive_file(p: &Path) -> bool {
+    let mut head = [0u8; MEGA_DRIVE_HEAD];
+    let read = fs::File::open(p).and_then(|mut f| f.read_exact(&mut head));
+    read.is_ok() && mega_drive_header(&head)
+}
+
 /// Which console a disc image is for, from what's inside it: an Xbox or Xbox 360 disc (its XDVDFS
 /// volume, and default.xbe or default.xex at its root), a GameCube or Wii disc (their magic
 /// numbers), a PlayStation disc (ISO 9660 saying PLAYSTATION; its SYSTEM.CNF's BOOT2 line makes it a
@@ -807,7 +822,9 @@ fn identify_by_type(p: &Path, size: impl FnOnce() -> Option<u64>) -> Option<RomF
     }
     let is_n64 = N64.contains(&ext.as_str());
     let is_disc = DISC.contains(&ext.as_str());
-    let is_cart = CART.contains(&ext.as_str());
+    // .md is also Markdown, and READMEs and licenses sit in every recomp's folder: one only counts
+    // when it has a Mega Drive header.
+    let is_cart = CART.contains(&ext.as_str()) && (ext != "md" || mega_drive_file(p));
     if !is_n64 && !is_disc && !is_cart && ext != "xex" {
         return None;
     }
@@ -976,6 +993,48 @@ fn rom_ext(name: &str) -> Option<String> {
     is_rom.then_some(ext)
 }
 
+/// A 7z can't skip to a file: to read a .md's header, what comes before it in its block is
+/// unpacked too. A Mega Drive game never sits behind this much.
+const SEVENZ_HEAD_REACH: u64 = 64 * 1024 * 1024;
+
+/// A .md in an archive that isn't a Mega Drive game (a README, a license), by its header.
+fn markdown_in_archive(p: &Path, ext: &str, name: &str) -> bool {
+    let is_md = Path::new(name).extension().is_some_and(|e| e.eq_ignore_ascii_case("md"));
+    is_md && !archive_head(p, ext, name).is_some_and(|head| mega_drive_header(&head))
+}
+
+/// The start of a file in a zip or 7z, as far as a Mega Drive header goes.
+fn archive_head(p: &Path, ext: &str, name: &str) -> Option<Vec<u8>> {
+    let n = MEGA_DRIVE_HEAD as u64;
+    let mut head = Vec::new();
+    if ext != "7z" {
+        let mut zip = zip::ZipArchive::new(fs::File::open(p).ok()?).ok()?;
+        zip.by_name(name).ok()?.take(n).read_to_end(&mut head).ok()?;
+        return Some(head);
+    }
+    let archive = sevenz_rust::Archive::open(p).ok()?;
+    let at = archive.files.iter().position(|f| f.name() == name)?;
+    let block = archive.stream_map.file_folder_index[at]?;
+    let first = archive.stream_map.folder_first_file_index[block];
+    let before: u64 = archive.files[first..at].iter().map(|f| f.size()).sum();
+    if before > SEVENZ_HEAD_REACH {
+        return None;
+    }
+    let mut source = fs::File::open(p).ok()?;
+    let decoder = sevenz_rust::BlockDecoder::new(block, &archive, &[], &mut source);
+    let mut each = |entry: &sevenz_rust::SevenZArchiveEntry, data: &mut dyn Read| -> Result<bool, sevenz_rust::Error> {
+        if entry.name() != name {
+            // The files of a block are one stream: the next one starts where this one is read to.
+            std::io::copy(data, &mut std::io::sink())?;
+            return Ok(true);
+        }
+        data.take(n).read_to_end(&mut head)?;
+        Ok(false)
+    };
+    decoder.for_each_entries(&mut each).ok()?;
+    Some(head)
+}
+
 /// A MAME-style set name ("hopr", "racr2ce", "hopr_x"): short, with no spaces or brackets. A zip
 /// named like a game ("Some Game (USA).zip") with no ROM inside is something else.
 fn is_set_name(stem: &str) -> bool {
@@ -989,7 +1048,7 @@ fn is_set_name(stem: &str) -> bool {
 /// set's short name.
 fn identify_archive(p: &Path, ext: &str, size: impl FnOnce() -> Option<u64>) -> Option<RomFile> {
     let names = archive_names(p, ext)?;
-    let roms: Vec<String> = names.iter().filter_map(|n| rom_ext(n)).collect();
+    let roms: Vec<String> = names.iter().filter(|n| !markdown_in_archive(p, ext, n)).filter_map(|n| rom_ext(n)).collect();
     let stem = p.file_stem()?.to_str()?.to_string();
     if let [inner] = roms.as_slice() {
         let system = system_for(inner);
@@ -1667,6 +1726,74 @@ pub(crate) mod tests {
         z.finish().unwrap();
     }
 
+    fn mega_drive_rom() -> Vec<u8> {
+        let mut cart = vec![0u8; 8192];
+        cart[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        cart
+    }
+
+    /// A 7z of the files `names` in `src`, packed in that order into one solid block.
+    fn write_solid_7z(p: &Path, src: &Path, names: &[&str]) {
+        let mut w = sevenz_rust::SevenZWriter::create(p).unwrap();
+        let entries = names.iter().map(|n| sevenz_rust::SevenZArchiveEntry::from_path(src.join(n), n.to_string())).collect();
+        let readers: Vec<_> = names.iter().map(|n| sevenz_rust::SourceReader::from(fs::File::open(src.join(n)).unwrap())).collect();
+        w.push_archive_entries(entries, sevenz_rust::SeqReader::from(readers)).unwrap();
+        w.finish().unwrap();
+    }
+
+    #[test]
+    fn a_zip_with_a_rom_and_a_readme_md_is_the_rom() {
+        let d = tmp("zip-readme");
+        let p = d.join("ActRaiser (USA).zip");
+        write_zip(&p, &["ActRaiser (USA).sfc", "README.md"]);
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("snes".to_string()));
+    }
+
+    #[test]
+    fn a_zip_with_a_mega_drive_md_rom_is_a_genesis_copy() {
+        use std::io::Write;
+        let d = tmp("zip-mega-drive");
+        let p = d.join("Sonic.zip");
+        let mut z = zip::ZipWriter::new(fs::File::create(&p).unwrap());
+        z.start_file("Sonic.md", zip::write::SimpleFileOptions::default()).unwrap();
+        z.write_all(&mega_drive_rom()).unwrap();
+        z.finish().unwrap();
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("genesis".to_string()));
+    }
+
+    #[test]
+    fn a_7z_with_a_rom_and_a_readme_md_is_the_rom() {
+        let d = tmp("7z-readme");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("README.md"), "# Game\n".repeat(64)).unwrap();
+        fs::write(src.join("Game.gba"), [0u8; 64]).unwrap();
+        let p = d.join("Game.7z");
+        write_solid_7z(&p, &src, &["README.md", "Game.gba"]);
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("gba".to_string()));
+    }
+
+    #[test]
+    fn a_7z_with_a_mega_drive_md_rom_behind_a_readme_is_a_genesis_copy() {
+        // The readme is unpacked first: the header has to be read from the ROM's own bytes.
+        let d = tmp("7z-mega-drive");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("readme.txt"), "Unzip and play.\n".repeat(512)).unwrap();
+        fs::write(src.join("Sonic.md"), mega_drive_rom()).unwrap();
+        let p = d.join("Sonic.7z");
+        write_solid_7z(&p, &src, &["readme.txt", "Sonic.md"]);
+        let found = identify(&p, 1);
+        let _ = fs::remove_dir_all(&d);
+        assert_eq!(found.map(|r| r.system), Some("genesis".to_string()));
+    }
+
     #[test]
     fn a_zip_with_one_snes_rom_is_a_snes_copy() {
         let d = tmp("zip-snes");
@@ -2115,6 +2242,29 @@ pub(crate) mod tests {
         assert!(fits(&found[0], "switch2"));
         assert!(fits(&found[0], "switch"));
         assert!(!fits(&found[0], "ps3"));
+    }
+
+    #[test]
+    fn skips_markdown_files() {
+        let root = tmp("markdown-scan");
+        fs::write(root.join("README.md"), "# Some Recomp\n".repeat(1024)).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn scans_mega_drive_md_roms() {
+        let root = tmp("mega-drive-scan");
+        let sonic = root.join("Sonic the Hedgehog (USA, Europe).md");
+        fs::write(&sonic, mega_drive_rom()).unwrap();
+
+        let found = scan(&[root.clone()]);
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, sonic);
+        assert_eq!(found[0].system, "genesis");
     }
 
     #[test]
