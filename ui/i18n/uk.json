@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "Пройти початкове налаштування ще раз?",
  "Run it again": "Пройти ще раз",
  "Run its setup": "Запустити встановлення",
+ "Run Setup Again": "Запустити встановлення знову",
+ "Opens {file}, the program that sets this game up or builds it.": "Відкриває {file} — програму, яка встановлює або збирає цю гру.",
  "Runs on": "Запускається на",
  "Runs on {os}": "Запускається на {os}",
  "Safety": "Безпека",

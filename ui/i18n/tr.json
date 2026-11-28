@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "İlk kurulum yeniden yapılsın mı?",
  "Run it again": "Yeniden yap",
  "Run its setup": "Kurulumu çalıştır",
+ "Run Setup Again": "Kurulumu yeniden çalıştır",
+ "Opens {file}, the program that sets this game up or builds it.": "Bu oyunu kuran ya da derleyen program olan {file} dosyasını açar.",
  "Runs on": "Çalıştığı sistemler",
  "Runs on {os}": "{os} üzerinde çalışır",
  "Safety": "Güvenlik",

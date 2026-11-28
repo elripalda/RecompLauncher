@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "ทำการตั้งค่าครั้งแรกอีกครั้งไหม",
  "Run it again": "ทำอีกครั้ง",
  "Run its setup": "เรียกตัวติดตั้ง",
+ "Run Setup Again": "เรียกตัวติดตั้งอีกครั้ง",
+ "Opens {file}, the program that sets this game up or builds it.": "เปิด {file} โปรแกรมที่ตั้งค่าหรือบิลด์เกมนี้",
  "Runs on": "ทำงานบน",
  "Runs on {os}": "ทำงานบน {os}",
  "Safety": "ความปลอดภัย",

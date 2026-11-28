@@ -2076,6 +2076,8 @@
         ...(!g.local && window.holdItem ? [(() => { const on = window.holdItem(id)[0]?.check; return { label: on ? t('Resume Updates') : t('Pause Updates'), sub: on ? ((S.held || {})[id] ? tf('{v} is out', { v: S.held[id] }) : t('It updates like the rest again')) : t('It stays on the version it has'), icon: 'pause', run: async () => { await window.toggleHold(id); draw(true); } }; })()] : []),
         { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
+        // The same as Run Setup Again in the desktop's Manage tab.
+        ...(g.setup ? [{ label: t('Run Setup Again'), sub: tf('Opens {file}, the program that sets this game up or builds it.', { file: baseName(g.setup) }), icon: 'wrench', run: () => invoke('run_own_setup', { id }).catch(fail) }] : []),
         ...(!S.running.has(id) && window.hasOwnPlaytime(id) ? [{ label: t('Reset Play Time'), sub: t('Its play time on this PC starts again from zero'), icon: 'history', run: () => { closeSheet(); setTimeout(() => window.resetPlaytime(id), 250); } }] : []),
         ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
       ] : []),

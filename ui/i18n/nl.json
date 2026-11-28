@@ -1096,6 +1096,8 @@
  "Run first-time setup again?": "Eerste installatie opnieuw doen?",
  "Run it again": "Opnieuw doen",
  "Run its setup": "Setup starten",
+ "Run Setup Again": "Setup opnieuw starten",
+ "Opens {file}, the program that sets this game up or builds it.": "Opent {file}, het programma dat deze game installeert of bouwt.",
  "Runs on": "Draait op",
  "Runs on {os}": "Draait op {os}",
  "Safety": "Veiligheid",
