@@ -3656,5 +3656,12 @@
  "Won't Run": "เปิดไม่ได้",
  "Your RecompStore Account": "บัญชี RecompStore ของคุณ",
  "Go Back to This Version": "กลับไปใช้รุ่นนี้",
- "Android Games": "เกม Android"
+ "Android Games": "เกม Android",
+ "Enjoying RecompLauncher?": "ชอบ RecompLauncher ไหม?",
+ "You can still star it from Settings → About.": "คุณยังให้ดาวได้จาก การตั้งค่า → เกี่ยวกับ",
+ "Thank you for the star!": "ขอบคุณสำหรับดาว!",
+ "Star RecompLauncher on GitHub": "ให้ดาว RecompLauncher บน GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher ฟรีและพัฒนาแบบเปิดเผย การให้ดาวใช้เวลาแค่วินาทีเดียว ช่วยให้ผู้เล่นค้นพบมากขึ้น และบอกนักพัฒนาว่า recomp ของพวกเขามีความหมาย",
+ "Star on GitHub opens the project's page in your browser.": "ให้ดาวบน GitHub จะเปิดหน้าโปรเจกต์ในเบราว์เซอร์ของคุณ",
+ "Sign in to GitHub, then press Star at the top right.": "ลงชื่อเข้าใช้ GitHub แล้วกด Star ที่มุมขวาบน"
 }

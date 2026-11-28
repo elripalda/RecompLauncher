@@ -3656,5 +3656,12 @@
  "Won't Run": "لا تعمل",
  "Your RecompStore Account": "حسابك في RecompStore",
  "Go Back to This Version": "العودة إلى هذا الإصدار",
- "Android Games": "ألعاب Android"
+ "Android Games": "ألعاب Android",
+ "Enjoying RecompLauncher?": "هل يعجبك RecompLauncher؟",
+ "You can still star it from Settings → About.": "لا يزال بإمكانك وضع نجمة من الإعدادات ← حول.",
+ "Thank you for the star!": "شكرًا على النجمة!",
+ "Star RecompLauncher on GitHub": "ضع نجمة لـ RecompLauncher على GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher مجاني ويُطوَّر بشكل مفتوح. النجمة تستغرق ثانية، وتساعد مزيدًا من اللاعبين على العثور عليه، وتُظهر للمطورين أن مشاريعهم مهمة.",
+ "Star on GitHub opens the project's page in your browser.": "زر ضع نجمة على GitHub يفتح صفحة المشروع في متصفحك.",
+ "Sign in to GitHub, then press Star at the top right.": "سجّل الدخول إلى GitHub، ثم اضغط Star في أعلى اليمين."
 }

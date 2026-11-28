@@ -3656,5 +3656,12 @@
  "Won't Run": "Не запускається",
  "Your RecompStore Account": "Ваш акаунт RecompStore",
  "Go Back to This Version": "Повернутися до цієї версії",
- "Android Games": "Ігри для Android"
+ "Android Games": "Ігри для Android",
+ "Enjoying RecompLauncher?": "Подобається RecompLauncher?",
+ "You can still star it from Settings → About.": "Поставити зірку можна й пізніше: Налаштування → Про програму.",
+ "Thank you for the star!": "Дякуємо за зірку!",
+ "Star RecompLauncher on GitHub": "Постав зірку RecompLauncher на GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher безкоштовний і створюється відкрито. Зірка — це одна секунда: вона допомагає більшій кількості гравців знайти його й показує розробникам, що їхні рекомпи важливі.",
+ "Star on GitHub opens the project's page in your browser.": "Кнопка «Поставити зірку на GitHub» відкриє сторінку проєкту в браузері.",
+ "Sign in to GitHub, then press Star at the top right.": "Увійди в GitHub і натисни Star угорі праворуч."
 }

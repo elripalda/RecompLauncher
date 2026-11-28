@@ -3656,5 +3656,12 @@
  "Won't Run": "Ne se lance pas",
  "Your RecompStore Account": "Votre compte RecompStore",
  "Go Back to This Version": "Revenir à cette version",
- "Android Games": "Jeux Android"
+ "Android Games": "Jeux Android",
+ "Enjoying RecompLauncher?": "Tu aimes RecompLauncher ?",
+ "You can still star it from Settings → About.": "Tu peux toujours lui mettre une étoile depuis Paramètres → À propos.",
+ "Thank you for the star!": "Merci pour l'étoile !",
+ "Star RecompLauncher on GitHub": "Mettre une étoile à RecompLauncher sur GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher est gratuit et développé en open source. Une étoile prend une seconde, aide plus de joueurs à le trouver et montre aux développeurs que leurs recomps comptent.",
+ "Star on GitHub opens the project's page in your browser.": "Mettre une étoile sur GitHub ouvre la page du projet dans ton navigateur.",
+ "Sign in to GitHub, then press Star at the top right.": "Connecte-toi à GitHub, puis appuie sur Star en haut à droite."
 }

@@ -3656,5 +3656,12 @@
  "Won't Run": "Не запускается",
  "Your RecompStore Account": "Ваш аккаунт RecompStore",
  "Go Back to This Version": "Вернуться к этой версии",
- "Android Games": "Игры для Android"
+ "Android Games": "Игры для Android",
+ "Enjoying RecompLauncher?": "Нравится RecompLauncher?",
+ "You can still star it from Settings → About.": "Поставить звезду можно и позже: Настройки → О программе.",
+ "Thank you for the star!": "Спасибо за звезду!",
+ "Star RecompLauncher on GitHub": "Поставьте звезду RecompLauncher на GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher бесплатный и делается открыто. Звезда — это одна секунда: она помогает большему числу игроков найти его и показывает разработчикам, что их рекомпы важны.",
+ "Star on GitHub opens the project's page in your browser.": "Кнопка «Поставить звезду на GitHub» откроет страницу проекта в браузере.",
+ "Sign in to GitHub, then press Star at the top right.": "Войдите в GitHub и нажмите Star справа вверху."
 }

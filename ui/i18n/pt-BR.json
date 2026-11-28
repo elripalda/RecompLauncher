@@ -3646,5 +3646,12 @@
  "Your RecompStore Account": "Sua conta RecompStore",
  "Go Back to This Version": "Voltar para esta versão",
  "Players": "jogadores",
- "Android Games": "Jogos para Android"
+ "Android Games": "Jogos para Android",
+ "Enjoying RecompLauncher?": "Está curtindo o RecompLauncher?",
+ "You can still star it from Settings → About.": "Você ainda pode dar uma estrela em Configurações → Sobre.",
+ "Thank you for the star!": "Valeu pela estrela!",
+ "Star RecompLauncher on GitHub": "Dê uma estrela ao RecompLauncher no GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "O RecompLauncher é gratuito e feito de forma aberta. Uma estrela leva um segundo, ajuda mais jogadores a encontrá-lo e mostra aos desenvolvedores que os recomps deles importam.",
+ "Star on GitHub opens the project's page in your browser.": "Dar uma estrela no GitHub abre a página do projeto no seu navegador.",
+ "Sign in to GitHub, then press Star at the top right.": "Entre no GitHub e clique em Star, no canto superior direito."
 }

@@ -3656,5 +3656,12 @@
  "Won't Run": "Çalışmıyor",
  "Your RecompStore Account": "RecompStore hesabın",
  "Go Back to This Version": "Bu sürüme dön",
- "Android Games": "Android Oyunları"
+ "Android Games": "Android Oyunları",
+ "Enjoying RecompLauncher?": "RecompLauncher'ı beğendin mi?",
+ "You can still star it from Settings → About.": "Yine de Ayarlar → Hakkında'dan yıldız verebilirsin.",
+ "Thank you for the star!": "Yıldız için teşekkürler!",
+ "Star RecompLauncher on GitHub": "GitHub'da RecompLauncher'a yıldız ver",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher ücretsiz ve açık olarak geliştiriliyor. Bir yıldız bir saniyeni alır, daha çok oyuncunun onu bulmasına yardımcı olur ve geliştiricilere recomp'larının önemli olduğunu gösterir.",
+ "Star on GitHub opens the project's page in your browser.": "GitHub'da yıldız ver, projenin sayfasını tarayıcında açar.",
+ "Sign in to GitHub, then press Star at the top right.": "GitHub'a giriş yap, ardından sağ üstteki Star düğmesine bas."
 }

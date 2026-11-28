@@ -3656,5 +3656,12 @@
  "Won't Run": "无法运行",
  "Your RecompStore Account": "你的 RecompStore 账户",
  "Go Back to This Version": "回到这个版本",
- "Android Games": "Android 游戏"
+ "Android Games": "Android 游戏",
+ "Enjoying RecompLauncher?": "喜欢 RecompLauncher 吗？",
+ "You can still star it from Settings → About.": "你仍可以在 设置 → 关于 中点星。",
+ "Thank you for the star!": "感谢你的星！",
+ "Star RecompLauncher on GitHub": "在 GitHub 上为 RecompLauncher 点星",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher 免费且公开开发。点个星只需一秒，能帮更多玩家发现它，也让开发者知道他们的 recomp 有人在乎。",
+ "Star on GitHub opens the project's page in your browser.": "“在 GitHub 上点星”会在浏览器中打开项目页面。",
+ "Sign in to GitHub, then press Star at the top right.": "登录 GitHub，然后点右上角的 Star。"
 }

@@ -3656,5 +3656,12 @@
  "Won't Run": "起動しない",
  "Your RecompStore Account": "RecompStore アカウント",
  "Go Back to This Version": "このバージョンに戻す",
- "Android Games": "Android ゲーム"
+ "Android Games": "Android ゲーム",
+ "Enjoying RecompLauncher?": "RecompLauncher を気に入ってくれた？",
+ "You can still star it from Settings → About.": "スターは 設定 → 情報 からいつでも付けられます。",
+ "Thank you for the star!": "スターをありがとう！",
+ "Star RecompLauncher on GitHub": "GitHub で RecompLauncher にスターを付ける",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher は無料で、オープンに開発されています。スターは一瞬で付けられ、より多くのプレイヤーに見つけてもらう助けになり、開発者に自分の recomp が大切にされていると伝わります。",
+ "Star on GitHub opens the project's page in your browser.": "「GitHub でスターを付ける」を押すと、プロジェクトのページがブラウザで開きます。",
+ "Sign in to GitHub, then press Star at the top right.": "GitHub にサインインして、右上の Star を押してください。"
 }
