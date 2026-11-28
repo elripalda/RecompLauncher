@@ -38,6 +38,7 @@ pub mod install;
 pub mod launch_options;
 pub mod launchbox;
 pub mod library;
+pub mod one_road;
 pub mod library_convert;
 pub mod logs_zip;
 pub mod looks;
@@ -952,6 +953,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         installer_setup: String::new(),
         installer_tag: String::new(),
         boot_hash: prev.as_ref().map(|p| p.boot_hash.clone()).unwrap_or_default(),
+        one_road: prev.as_ref().map(|p| p.one_road.clone()).unwrap_or_default(),
         unpacked: prev.as_ref().map(|p| p.unpacked).unwrap_or(false),
         from_appimage: prev.as_ref().map(|p| p.from_appimage.clone()).unwrap_or_default(),
         input_checks: prev.as_ref().map(|p| p.input_checks.clone()).unwrap_or_default(),
@@ -7927,12 +7929,56 @@ fn back_online(app: &AppHandle) {
 /// The list for the window. Without `force`, the copy on disk comes back at once (the window never
 /// waits on the network for it) and, when it's more than six hours old, a new one is asked for in
 /// the background and sent as "catalog-fresh". `force`: the player pressed Refresh.
+/// Games set up with an older profile of ours that the catalog no longer keeps become the player's
+/// own, once each (one_road.rs). Only an entry that says the profile is ours counts, so a catalog
+/// from before `launcher_from` moves nothing.
+fn move_to_one_road(st: &App, cat: &Value) {
+    let ids: Vec<String> = {
+        let l = st.lib.lock().unwrap();
+        l.installed.values().filter(|g| g.one_road.is_empty() && !g.local && !g.player_sets_up()).map(|g| g.id.clone()).collect()
+    };
+    let mut changed = false;
+    for id in ids {
+        let Some(entry) = catalog::app(cat, &id).filter(|e| one_road::ours_to_move(e)) else { continue };
+        let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { continue };
+        let Some(p) = profile::find(&g.path, &g.tag, entry) else { continue };
+        let copy = inputs::main_path(&p, &g);
+        let outcome = one_road::plan(&g, &p, copy.as_deref(), is_windows_build(&g));
+        let mut l = st.lib.lock().unwrap();
+        let Some(g) = l.installed.get_mut(&id) else { continue };
+        match outcome {
+            Ok(m) => {
+                if let Some(exe) = m.exe {
+                    g.exe = Some(exe);
+                }
+                g.args = m.args;
+                if m.save_place.is_some() {
+                    g.save_place = m.save_place;
+                }
+                g.mode = library::SetupMode::Own;
+                g.boot_hash.clear();
+                g.one_road = "moved".into();
+                trail::note(format!("One road {id}: moved to Set Up by You"));
+            }
+            Err(why) => {
+                trail::note(format!("One road {id}: left as it was ({why})"));
+                g.one_road = format!("again: {why}");
+            }
+        }
+        changed = true;
+    }
+    if changed {
+        st.save();
+    }
+}
+
 #[tauri::command]
 async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<catalog::Fetched> {
     if !force {
         if let Some((mut f, stale)) = catalog::catalog_now(&st.dir) {
             merged_mine(&app, &st, &mut f.data);
             refresh_repo_profiles(&app, &st, &f.data, false);
+            move_to_one_road(&st, &f.data);
             if stale {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -7953,6 +7999,7 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     let mut f = if force { net::now(catalog::catalog(&st.http, &st.dir, true)).await? } else { catalog::catalog(&st.http, &st.dir, false).await? };
     merged_mine(&app, &st, &mut f.data);
     refresh_repo_profiles(&app, &st, &f.data, force);
+    move_to_one_road(&st, &f.data);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
     }
