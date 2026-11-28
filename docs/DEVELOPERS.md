@@ -425,6 +425,7 @@ Which input for which file:
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
 `backup-07.iso` is still found. A copy is checked when the player picks it, never again on Play.
+Which files and IDs the launcher reads for each console is in [GAME-SCANNER.md](GAME-SCANNER.md).
 
 **One file per input, one argument per file.** Each disc image, DLC package or update is an input
 of its own, and your game gets each one through an argument of its own, the flag and the file
