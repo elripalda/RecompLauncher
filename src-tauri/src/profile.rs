@@ -470,7 +470,8 @@ pub struct Check {
     #[serde(default)]
     pub n64_rev: Option<u8>,
     /// The disc or cartridge IDs it reads (`GZ2E01`, or `GZ2` for every region): a GameCube or
-    /// Wii disc's, an N64 cartridge's game code, a PlayStation disc's serial (crate::roms::copy_id).
+    /// Wii disc's, an N64, DS or Game Boy Advance cartridge's game code, a PlayStation disc's
+    /// serial (crate::roms::copy_id).
     #[serde(default)]
     pub ids: Vec<String>,
 }

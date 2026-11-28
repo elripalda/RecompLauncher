@@ -232,7 +232,8 @@ pub fn id_key(s: &str) -> String {
 }
 
 /// The game's own ID, read off the player's copy: an N64 cartridge's game code ("NZSE"), a
-/// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a PlayStation or
+/// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a DS or Game Boy
+/// Advance cartridge's game code ("ACVE", "BPEE"), a PlayStation or
 /// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"), a Switch game's title ID
 /// ("0100F2C0115B6000"), an extracted PS3, PS4 or PS5 game's title ID ("CUSA00242"). None when the file doesn't carry one this reads (a CHD, another console).
 pub fn copy_id(p: &Path) -> Option<String> {
@@ -282,6 +283,16 @@ pub fn copy_id(p: &Path) -> Option<String> {
             _ => return None,
         }
         return game_code(&h[0x3B..0x3F]);
+    }
+    // A DS or Game Boy Advance cartridge: its 4-letter game code, at 0x0C or 0xAC of the header.
+    // Only by extension: neither header has a magic number to tell it from any other file.
+    let cart_code_at = match ext.as_str() {
+        "nds" => Some(0x0C),
+        "gba" => Some(0xAC),
+        _ => None,
+    };
+    if let Some(at) = cart_code_at {
+        return cart_game_code(&mut f, at);
     }
     if let Some((disc, _)) = nintendo_disc(&mut f) {
         return game_code(&disc[..6]);
@@ -454,6 +465,14 @@ fn ps3_pkg_content_id(h: &[u8]) -> Option<&str> {
 /// The game's title ID inside a content ID that `ps3_pkg_content_id` accepted.
 fn ps3_pkg_title_id(content_id: &str) -> String {
     content_id[7..16].to_string()
+}
+
+/// The 4-letter game code at `at` of a cartridge's header, or None when the file is too short or
+/// the code is blank (homebrew leaves it zeroed or fills it with '#').
+fn cart_game_code(f: &mut fs::File, at: u64) -> Option<String> {
+    let mut code = [0u8; 4];
+    read_at(f, at, &mut code).ok()?;
+    game_code(&code)
 }
 
 /// Letters and digits only, or None.
@@ -2172,6 +2191,73 @@ pub(crate) mod tests {
         fs::write(&p, [0u8; 0x400]).unwrap();
         assert_eq!(copy_id(&p).as_deref(), Some("0400C3F00006E000"));
         assert_eq!(part_of("Pokemon Pokopia [0400A3A01EE4C800][v655360].nup").kind, "update");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ds_cartridge_has_its_game_code() {
+        let d = tmp("nds-code");
+        let p = d.join("castlevania.nds");
+        let mut rom = vec![0u8; 0x200];
+        rom[..12].copy_from_slice(b"CASTLEVANIA ");
+        rom[0x0C..0x10].copy_from_slice(b"ACVE");
+        fs::write(&p, rom).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("ACVE"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_gba_cartridge_has_its_game_code() {
+        let d = tmp("gba-code");
+        let p = d.join("emerald.gba");
+        let mut rom = vec![0u8; 0x200];
+        rom[0xA0..0xAC].copy_from_slice(b"POKEMON EMER");
+        rom[0xAC..0xB0].copy_from_slice(b"BPEE");
+        fs::write(&p, rom).unwrap();
+        assert_eq!(copy_id(&p).as_deref(), Some("BPEE"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_cartridge_too_short_for_its_code_has_no_id() {
+        let d = tmp("gba-short");
+        let p = d.join("short.gba");
+        fs::write(&p, [0u8; 0x60]).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_zeroed_cartridge_code_is_no_id() {
+        let d = tmp("nds-zeroed");
+        let p = d.join("homebrew.nds");
+        fs::write(&p, [0u8; 0x200]).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_hash_filled_cartridge_code_is_no_id() {
+        let d = tmp("nds-hashes");
+        let p = d.join("homebrew.nds");
+        let mut rom = vec![0u8; 0x200];
+        rom[0x0C..0x10].copy_from_slice(b"####");
+        fs::write(&p, rom).unwrap();
+        assert_eq!(copy_id(&p), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ds_game_code_fits_only_its_listed_id() {
+        let d = tmp("nds-fits");
+        let p = d.join("game.nds");
+        let mut rom = vec![0u8; 0x200];
+        rom[0x0C..0x10].copy_from_slice(b"ACVE");
+        fs::write(&p, rom).unwrap();
+        let usa = serde_json::json!({ "copy_ids": ["acve"] });
+        let eur = serde_json::json!({ "copy_ids": ["ACVP"] });
+        assert!(fits_copy_ids(&usa, &p).is_ok());
+        assert_eq!(fits_copy_ids(&eur, &p), Err("ACVE".to_string()));
         let _ = fs::remove_dir_all(&d);
     }
 
