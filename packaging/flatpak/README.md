@@ -25,12 +25,12 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
 
 - Updates come through Flatpak (from Flathub, once it's published there): the launcher's own
   updater is off (`flatpak::sandboxed()`).
-- Many games ship as AppImages, and there's no FUSE in the sandbox to mount one. A release's
-  AppImage (on its own or in a zip) is unpacked at install and update like an archive: its
-  contents become the game's files and the AppImage is removed. The game starts from `AppRun`
-  with `APPDIR` and `ARGV0` set, and profile programs named `….AppImage` point at the `AppRun`.
-  AppImages the launcher didn't install (Bring Your Recomps, Set Up By Hand) are unpacked the
-  first time they're played into `~/.var/app/<id>/cache/appimage-run/unpacked/<game>` and reused.
+- Many games ship as AppImages, and there's no FUSE in the sandbox to mount one. That needs
+  nothing of its own here: on every Linux build the launcher unpacks AppImages with its own
+  SquashFS and DwarFS readers (`appimage.rs`) and never runs one. A release's AppImage is unpacked at install
+  and update, and one the player brings in is unpacked into their Recomp Library (`plain.rs`).
+  The game starts from `AppRun` with `APPDIR` and `ARGV0` set. The cache folder earlier versions
+  unpacked AppImages into (`~/.var/app/<id>/cache/appimage-run`) is removed once, at start.
   What this means for recomp developers is in [docs/FLATPAK.md](../../docs/FLATPAK.md).
 - A recomp that ships only a `.flatpak` file needs the PC's own flatpak, which the sandbox may not
   reach (Flathub flags `--talk-name=org.freedesktop.Flatpak`, so the manifest leaves it out). The
@@ -47,6 +47,11 @@ and `... appstream com.recomplauncher.RecompLauncher.metainfo.xml`.
   their ROM folders by hand. First-time setup offers "Use Games/ROMs": `~/Games/ROMs`, made when
   picked, read directly with no picker.
 
+- Settings → Start with your PC asks the Background portal (`autostart.rs`), which needs no
+  permission in the manifest. The portal writes `~/.config/autostart/com.recomplauncher.RecompLauncher.desktop`
+  itself (the desktop may ask the player first; Plasma doesn't) with `flatpak run ... --background`,
+  and Plasma's Autostart page lists it, with a plain icon because the portal's file names none.
+  The sandbox can't read that file, so the launcher keeps the player's choice in its settings.
 - Steam and desktop shortcuts start `flatpak run com.recomplauncher.RecompLauncher`. The sandbox
   can't see Steam's process, so Steam counts as open while its command pipe has a reader
   (`~/.steam/steam.pipe`, or Flathub Steam's under `~/.var/app/com.valvesoftware.Steam`).

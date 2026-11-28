@@ -219,12 +219,13 @@ pub fn id_key(s: &str) -> String {
 /// The game's own ID, read off the player's copy: an N64 cartridge's game code ("NZSE"), a
 /// GameCube or Wii disc's ("GZLE01", also inside a WBFS, CISO, WIA or RVZ image), a PlayStation or
 /// PS2 disc's serial from its SYSTEM.CNF ("SLUS20312"), a Switch game's title ID
-/// ("0100F2C0115B6000"). None when the file doesn't carry one this reads (a CHD, another console).
+/// ("0100F2C0115B6000"), an extracted PS3, PS4 or PS5 game's title ID ("CUSA00242"). None when the file doesn't carry one this reads (a CHD, another console).
 pub fn copy_id(p: &Path) -> Option<String> {
-    // An extracted game: an Xbox 360 disc's default.xex says the title, a Switch game's main.npdm.
+    // An extracted game: an Xbox 360 disc's default.xex says the title, a Switch game's main.npdm,
+    // a PlayStation game's param.sfo (param.json on PS5).
     if p.is_dir() {
         let xex = fs::File::open(p.join("default.xex")).ok().and_then(|mut f| xex_title(&mut f, 0));
-        return xex.or_else(|| switch_folder_id(p));
+        return xex.or_else(|| switch_folder_id(p)).or_else(|| playstation_folder_id(p));
     }
     if !p.is_file() {
         return None;
@@ -1012,6 +1013,13 @@ fn listed_set(app: &Value, rom: &RomFile) -> bool {
     copy_ids(app).contains(&id_key(stem))
 }
 
+/// An extracted PlayStation game whose title ID the catalog lists. Its own title often carries an
+/// edition or subtitle the catalog's name doesn't ("Diablo III: Reaper of Souls – Ultimate Evil
+/// Edition" for "Diablo III"), so its ID is what tells it is this game.
+fn listed_playstation(app: &Value, rom: &RomFile) -> bool {
+    matches!(rom.system.as_str(), "ps3" | "ps4" | "ps5") && known_dump(app, &rom.path)
+}
+
 /// Read the title and title ID from the little-endian PSF index and string tables.
 fn sfo_title(sfo: &[u8]) -> Option<(&str, &str)> {
     let read_u32 = |offset: usize| Some(u32::from_le_bytes(sfo.get(offset..offset + 4)?.try_into().ok()?) as usize);
@@ -1049,7 +1057,8 @@ fn sfo_title(sfo: &[u8]) -> Option<(&str, &str)> {
     Some((title.filter(|t| !t.is_empty())?, title_id?))
 }
 
-fn identify_sfo(folder: &Path, path: &Path, system: &str, valid_id: impl FnOnce(&str) -> bool) -> Option<RomFile> {
+/// The game in a PARAM.SFO, with its title ID.
+fn identify_sfo(folder: &Path, path: &Path, system: &str, valid_id: impl FnOnce(&str) -> bool) -> Option<(RomFile, String)> {
     const MAX_SFO: u64 = 64 * 1024;
     let mut sfo = Vec::new();
     fs::File::open(path).ok()?.take(MAX_SFO + 1).read_to_end(&mut sfo).ok()?;
@@ -1060,7 +1069,8 @@ fn identify_sfo(folder: &Path, path: &Path, system: &str, valid_id: impl FnOnce(
     if !valid_id(id) {
         return None;
     }
-    Some(RomFile { path: folder.to_path_buf(), system: system.into(), title: title.into(), region: String::new(), size: 0 })
+    let game = RomFile { path: folder.to_path_buf(), system: system.into(), title: title.into(), region: String::new(), size: 0 };
+    Some((game, id.to_string()))
 }
 
 fn valid_playstation_id(id: &str) -> bool {
@@ -1090,7 +1100,8 @@ fn game_path(folder: &Path, relative: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-fn identify_ps5(folder: &Path) -> Option<RomFile> {
+/// The game in a PS5 folder's sce_sys/param.json, with its title ID ("PPSA21559").
+fn identify_ps5(folder: &Path) -> Option<(RomFile, String)> {
     fn title_of(entry: &Value) -> Option<&str> {
         entry.get("titleName")?.as_str().map(str::trim).filter(|title| !title.is_empty())
     }
@@ -1113,10 +1124,21 @@ fn identify_ps5(folder: &Path) -> Option<RomFile> {
     let title = preferred.and_then(|lang| localized.get(lang)).and_then(title_of)
         .or_else(|| localized.get("en-US").and_then(title_of))
         .or_else(|| localized.values().find_map(title_of))?;
-    Some(RomFile { path: folder.to_path_buf(), system: "ps5".into(), title: title.into(), region: String::new(), size: 0 })
+    let game = RomFile { path: folder.to_path_buf(), system: "ps5".into(), title: title.into(), region: String::new(), size: 0 };
+    Some((game, format!("PPSA{digits}")))
 }
 
 fn identify_playstation(folder: &Path) -> Option<RomFile> {
+    playstation_game(folder).map(|(game, _)| game)
+}
+
+/// An extracted PlayStation game's title ID ("CUSA00242"), from the same file its title is read from.
+fn playstation_folder_id(folder: &Path) -> Option<String> {
+    playstation_game(folder).map(|(_, id)| id)
+}
+
+/// An extracted PS3, PS4 or PS5 game, with its title ID.
+fn playstation_game(folder: &Path) -> Option<(RomFile, String)> {
     let has_file = |relative| game_path(folder, relative).is_some_and(|path| path.is_file());
     if has_file("eboot.bin") {
         let ps4 = game_path(folder, "sce_sys/param.sfo").and_then(|path| {
@@ -1293,8 +1315,19 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
 /// The words in a name, lower case, with the noise taken out: "Zelda - Majora's Mask (USA).z64"
 /// becomes zelda, majoras, mask.
 pub fn words(s: &str) -> Vec<String> {
+    let clean = outside_brackets(s);
+    const NOISE: [&str; 9] = ["the", "of", "a", "and", "usa", "us", "europe", "rev", "v1"];
+    clean
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty() && !NOISE.contains(w))
+        .map(str::to_string)
+        .collect()
+}
+
+/// A name in lower case without its bracketed tags: region and dump tags say nothing about which
+/// game it is.
+fn outside_brackets(s: &str) -> String {
     let s = s.to_lowercase().replace('\'', "").replace('’', "");
-    // Region and dump tags in brackets say nothing about which game it is.
     let mut clean = String::new();
     let mut depth = 0;
     for c in s.chars() {
@@ -1305,12 +1338,37 @@ pub fn words(s: &str) -> Vec<String> {
             _ => {}
         }
     }
-    const NOISE: [&str; 9] = ["the", "of", "a", "and", "usa", "us", "europe", "rev", "v1"];
     clean
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|w| !w.is_empty() && !NOISE.contains(w))
-        .map(str::to_string)
-        .collect()
+}
+
+/// A number or Roman numeral that can be a sequel's. One is left out: "Game 1" is still "Game".
+fn is_sequel_number(word: &str) -> bool {
+    // Up to XX so long series are covered too: Final Fantasy XIII isn't Final Fantasy XII.
+    const ROMAN: [&str; 19] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx"];
+    if ROMAN.contains(&word) {
+        return true;
+    }
+    let digits = !word.is_empty() && word.len() <= 4 && word.chars().all(|c| c.is_ascii_digit());
+    digits && !word.trim_start_matches('0').is_empty() && word != "1"
+}
+
+/// Whether the name carries a sequel number the game's name doesn't: "Gears of War 2" isn't
+/// "Gears of War". Dots stay inside a word so a version like "1.2" isn't read as a sequel, and a
+/// number after "Disc" or "Part" is that disc of this game.
+fn names_a_sequel(name: &str, want: &[String]) -> bool {
+    const NUMBERED: [&str; 12] = ["disc", "disk", "cd", "part", "track", "side", "vol", "volume", "rev", "ver", "version", "of"];
+    let clean = outside_brackets(name);
+    let parts: Vec<&str> = clean.split(|c: char| !c.is_ascii_alphanumeric() && c != '.').map(|p| p.trim_matches('.')).filter(|p| !p.is_empty()).collect();
+    for (i, part) in parts.iter().enumerate() {
+        if !is_sequel_number(part) || want.iter().any(|w| w == part) {
+            continue;
+        }
+        let after_a_label = i > 0 && NUMBERED.contains(&parts[i - 1]);
+        if !after_a_label {
+            return true;
+        }
+    }
+    false
 }
 
 /// Does this file look like `game`? Every word of the game's name has to be in the file's.
@@ -1325,7 +1383,8 @@ fn matches(game: &str, rom: &RomFile) -> bool {
     // Every word of the game's name is in the file's, and at least half of the file's words are
     // the game's: "Tony Hawk's Pro Skater 3" isn't "Skate 3", though it has both words in it.
     let all = |pool: &[String]| !pool.is_empty() && want.iter().all(|w| pool.iter().any(|h| hit(w, h))) && pool.iter().filter(|h| want.iter().any(|w| hit(w, h))).count() * 2 >= pool.len();
-    all(&have) || all(&file)
+    let stem = rom.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    (all(&have) && !names_a_sequel(&rom.title, &want)) || (all(&file) && !names_a_sequel(stem, &want))
 }
 
 /// For each catalog app, the player's file for its game, if they have one.
@@ -1412,7 +1471,7 @@ pub fn files_of(app: &Value, roms: &[RomFile]) -> Vec<RomFile> {
     if game.is_empty() {
         return vec![];
     }
-    roms.iter().filter(|r| fits(r, origin) && (matches(game, r) || listed_set(app, r)) && fits_copy_ids(app, &r.path).is_ok()).cloned().collect()
+    roms.iter().filter(|r| fits(r, origin) && (matches(game, r) || listed_set(app, r) || listed_playstation(app, r)) && fits_copy_ids(app, &r.path).is_ok()).cloned().collect()
 }
 
 /// A file whose disc ID is one of the catalog's known dumps for this game.
@@ -1437,7 +1496,7 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
             .iter()
             .copied()
             .filter(|r| fits(r, origin))
-            .filter(|r| matches(game, r) || listed_set(a, r))
+            .filter(|r| matches(game, r) || listed_set(a, r) || listed_playstation(a, r))
             // Its catalog entry lists the discs or cartridges it's made for: one with another ID isn't it.
             .filter(|r| fits_copy_ids(a, &r.path).is_ok())
             // A US dump first: most recomps are built against it.
@@ -1450,7 +1509,7 @@ pub fn match_catalog(cat: &Value, roms: &[RomFile]) -> HashMap<String, RomFile> 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A tiny XEX2 header with an execution info carrying this title ID.
@@ -2209,6 +2268,38 @@ mod tests {
     }
 
     #[test]
+    fn a_sequels_disc_isnt_the_earlier_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(!matches("Gears of War", &f("Gears of War 2 (USA)")));
+        assert!(!matches("God of War", &f("God of War II (USA)")));
+        assert!(matches("Gears of War 2", &f("Gears of War 2 (USA)")));
+    }
+
+    #[test]
+    fn a_disc_number_or_revision_is_still_the_same_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(matches("Gears of War", &f("Gears of War Disc 2")));
+        assert!(matches("Gears of War", &f("Gears of War Track 02")));
+        assert!(matches("Gears of War", &f("Gears of War 1.2")));
+        assert!(matches("Gears of War", &f("Gears of War (USA) (Disc 2)")));
+        assert!(matches("Banjo-Kazooie", &f("Banjo-Kazooie (USA) (Rev 1)")));
+    }
+
+    #[test]
+    fn a_later_roman_numeral_isnt_the_earlier_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(!matches("Final Fantasy XII", &f("Final Fantasy XIII (USA)")));
+        assert!(!matches("Final Fantasy VII", &f("Final Fantasy VIII (USA)")));
+    }
+
+    #[test]
+    fn the_same_roman_numeral_is_still_the_same_game() {
+        let f = |name: &str| RomFile { path: PathBuf::from(format!("{name}.iso")), system: system_for("iso").into(), title: name.into(), region: String::new(), size: 1 << 20 };
+        assert!(matches("Final Fantasy XII", &f("Final Fantasy XII (USA)")));
+        assert!(matches("Final Fantasy VII", &f("Final Fantasy VII (USA) (Disc 2)")));
+    }
+
+    #[test]
     fn matches_games_to_recomps() {
         let d = tmp("match");
         fs::write(d.join("mm.z64"), rom("z64", "ZELDA MAJORA'S MASK", b'E')).unwrap();
@@ -2323,7 +2414,7 @@ mod tests {
     }
 
     /// A PARAM.SFO with just a title and a title ID.
-    fn sfo(title: &str, id: &str) -> Vec<u8> {
+    pub(crate) fn sfo(title: &str, id: &str) -> Vec<u8> {
         let keys = b"TITLE\0TITLE_ID\0";
         let title = format!("{title}\0").into_bytes();
         let id = format!("{id}\0").into_bytes();
@@ -2342,6 +2433,51 @@ mod tests {
         sfo.extend(title);
         sfo.extend(id);
         sfo
+    }
+
+    /// An extracted PS4 game folder: eboot.bin and sce_sys/param.sfo.
+    pub(crate) fn ps4_folder(at: &Path, title: &str, id: &str) {
+        fs::create_dir_all(at.join("sce_sys")).unwrap();
+        fs::write(at.join("eboot.bin"), b"").unwrap();
+        fs::write(at.join("sce_sys/param.sfo"), sfo(title, id)).unwrap();
+    }
+
+    const DIABLO: &str = "Diablo III: Reaper of Souls – Ultimate Evil Edition";
+
+    #[test]
+    fn a_ps4_folder_id_is_read_from_its_param_sfo() {
+        let root = tmp("ps4-id");
+        let game = root.join("PS4/Diablo 3/CUSA00242");
+        ps4_folder(&game, DIABLO, "CUSA00242");
+        assert_eq!(copy_id(&game).as_deref(), Some("CUSA00242"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_ps4_folder_is_matched_by_a_title_id_the_catalog_lists() {
+        let root = tmp("ps4-listed");
+        let game = root.join("PS4/Diablo 3/CUSA00242");
+        ps4_folder(&game, DIABLO, "CUSA00242");
+        let found = scan(&[root.clone()]);
+        // "Diablo III" is 2 of the title's 7 words: too few to match by name.
+        let by_name = serde_json::json!({"apps": [{"id": "sanctuary", "game": "Diablo III", "origin": "ps4"}]});
+        assert!(match_catalog(&by_name, &found).is_empty());
+        let by_id = serde_json::json!({"apps": [
+            {"id": "sanctuary", "game": "Diablo III", "origin": "ps4", "copy_ids": ["CUSA00243", "CUSA00242"]}
+        ]});
+        assert_eq!(match_catalog(&by_id, &found)["sanctuary"].path, game);
+        assert_eq!(files_of(&by_id["apps"][0], &found).len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_ps4_folder_with_an_unlisted_title_id_is_not_matched_by_name() {
+        let root = tmp("ps4-unlisted");
+        ps4_folder(&root.join("PS4/CUSA00242"), DIABLO, "CUSA00242");
+        let found = scan(&[root.clone()]);
+        let cat = serde_json::json!({"apps": [{"id": "sanctuary", "game": DIABLO, "origin": "ps4", "copy_ids": ["CUSA00433"]}]});
+        assert!(match_catalog(&cat, &found).is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 
     /// A PS3 game folder laid out the way PSN games are installed: PARAM.SFO and USRDIR/EBOOT.BIN.

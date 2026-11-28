@@ -1,13 +1,13 @@
 //! Named Easy Setup inputs. Scope is discs/DLC/game files, three shared key types, and NVIDIA DLSS
 //! (nvidia.dlss, role runtime: a file the launcher fetches itself, approved by the maintainer).
 //! BIOS, firmware, fonts and generic shared-resource expansion are deliberately out of scope.
-use crate::{library::Installed, profile::Profile};
+use crate::{library::Installed, profile::{Check, Dump, Extra, GameCopy, Profile}};
 use serde::{Deserialize, Serialize};
 use std::{collections::{BTreeMap, BTreeSet}, fs, path::{Component, Path, PathBuf}};
-use sha2::{Digest, Sha256};
 
+/// One file or folder Easy Setup asks for. A field this launcher doesn't know is ignored, never a
+/// reason to drop the whole manifest: a newer SDK's option must not break an older launcher.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Input {
     pub id: String,
     pub label: String,
@@ -24,11 +24,145 @@ pub struct Input {
     /// Installation-relative file destination. Empty: pass {input:id} to start/prepare.
     #[serde(default)]
     pub destination: String,
+    /// How to tell it's the right game (a file in it, an ID, a build ID): checked when it's picked.
+    #[serde(default, skip_serializing_if = "Check::is_empty")]
+    pub check: Check,
+    /// Known good dumps: only an input with these is read whole on setup (CRC32, the verified badge).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dumps: Vec<Dump>,
+    /// What the folder the game reads must hold once it's placed (`default.xex`, `Media`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contains: Vec<String>,
+    /// A folder inside the game's folder it's placed in before each start (`.` for the game's own).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub into: String,
+    /// The name a single file must have there.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// A disc image the launcher unpacks on setup: "xdvdfs" or "iso9660".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub extract: String,
+    /// The one known file (an update): checked when it's picked.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sha256: String,
+    /// From the catalog's boot profile only: the game's own setup takes it (crate::profile::GameCopy).
+    #[serde(skip)]
+    pub for_setup: bool,
+    /// From the catalog's boot profile only: its check is a common file, not this game's alone.
+    #[serde(skip)]
+    pub generic: bool,
+    /// Made from a manifest's `game` field (or a store profile's copy), not written as an input:
+    /// its label may be empty, as `game.label` could be.
+    #[serde(skip)]
+    pub lifted: bool,
 }
 fn game_role() -> String { "game".into() }
 
+impl Input {
+    /// A file or folder the player picks (not a shared key, not one the launcher fetches).
+    pub fn picked(&self) -> bool {
+        self.shared.is_empty() && self.role != "runtime"
+    }
+
+    fn takes(&self, kind: &str) -> bool {
+        self.formats.iter().any(|f| f.kind == kind)
+    }
+
+    /// Its rules as the player's copy of the game: the same checks, unpacking and placing the
+    /// `game` field always had, run by the same code.
+    pub fn as_copy(&self) -> GameCopy {
+        let kind = match (self.takes("file"), self.takes("folder")) {
+            (true, true) => "iso_or_folder",
+            (false, true) => "folder",
+            _ => "iso",
+        };
+        GameCopy {
+            kind: kind.into(),
+            label: self.label.clone(),
+            check: self.check.clone(),
+            dumps: self.dumps.clone(),
+            into: self.into.clone(),
+            name: self.name.clone(),
+            extract: self.extract.clone(),
+            generic: self.generic,
+            for_setup: self.for_setup,
+            contains: self.contains.clone(),
+            update: None,
+        }
+    }
+
+    /// Its rules as the game's update (role update): put in its folder under its name, and checked
+    /// by its SHA-256 or its name, as `game.update` always was.
+    pub fn as_extra(&self) -> Extra {
+        let accepts = match (self.takes("file"), self.takes("folder")) {
+            (true, true) => "file or folder",
+            (false, true) => "folder",
+            _ => "file",
+        };
+        Extra { into: self.into.clone(), label: self.label.clone(), accepts: accepts.into(), optional: self.optional, name: self.name.clone(), sha256: self.sha256.clone() }
+    }
+
+    /// Already where the game reads it (put there by the player, or placed before): an update in
+    /// its folder under its name, a copy whose folder holds what `contains` names. Then it doesn't
+    /// have to be picked.
+    pub fn in_place(&self, install: &Path) -> Option<PathBuf> {
+        if self.into.trim().is_empty() || install.as_os_str().is_empty() {
+            return None;
+        }
+        if self.role == "update" {
+            return self.as_extra().in_place(install);
+        }
+        crate::profile::in_place(&self.as_copy(), install)
+    }
+
+    /// The input `game` becomes: id `game`, its kind as formats, every rule kept.
+    pub fn from_copy(g: &GameCopy) -> Input {
+        let formats = match g.kind.as_str() {
+            "folder" => vec![Format::of("folder")],
+            "iso_or_folder" => vec![Format::of("file"), Format::of("folder")],
+            _ => vec![Format::of("file")],
+        };
+        Input {
+            id: "game".into(),
+            label: g.label.clone(),
+            role: "game".into(),
+            formats,
+            check: g.check.clone(),
+            dumps: g.dumps.clone(),
+            contains: g.contains.clone(),
+            into: g.into.clone(),
+            name: g.name.clone(),
+            extract: g.extract.clone(),
+            for_setup: g.for_setup,
+            generic: g.generic,
+            lifted: true,
+            ..Default::default()
+        }
+    }
+
+    /// The input `game.update` becomes: id `update`, role update.
+    pub fn from_extra(x: &Extra) -> Input {
+        let formats = match (x.wants_file(), x.wants_folder()) {
+            (true, true) => vec![Format::of("file"), Format::of("folder")],
+            (false, true) => vec![Format::of("folder")],
+            _ => vec![Format::of("file")],
+        };
+        Input {
+            id: "update".into(),
+            label: x.label.clone(),
+            role: "update".into(),
+            optional: x.optional,
+            formats,
+            into: x.into.clone(),
+            name: x.name.clone(),
+            sha256: x.sha256.clone(),
+            lifted: true,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Format {
     /// file or folder; a file format may constrain extensions, without claiming encryption.
     #[serde(rename = "type")]
@@ -38,6 +172,12 @@ pub struct Format {
     /// IDs of shared key inputs to activate for this selected format.
     #[serde(default)]
     pub requires: Vec<String>,
+}
+
+impl Format {
+    fn of(kind: &str) -> Format {
+        Format { kind: kind.into(), ..Default::default() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,9 +250,6 @@ pub fn excluded(g: &Installed, path: &Path) -> bool {
         target == path || target.canonicalize().ok().zip(path.canonicalize().ok()).is_some_and(|(a, b)| a == b)
     }) || path.file_name().and_then(|s| s.to_str()).is_some_and(|s| ["prod.keys", "title.keys", "common.key"].iter().any(|n| s.eq_ignore_ascii_case(n)))
 }
-pub fn release_files(g: &Installed) -> Vec<PathBuf> {
-    g.files.iter().cloned().chain(g.input_staged.values().filter(|s| relative(s)).map(PathBuf::from)).collect()
-}
 pub fn relative(s: &str) -> bool {
     !s.is_empty() && !s.contains(['\\', ':', '{', '}']) && Path::new(s).components().all(|c| matches!(c, Component::Normal(_)))
         && !s.split('/').any(|c| c.is_empty() || c == "." || c == "..")
@@ -126,7 +263,7 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     for i in p.inputs.iter().filter(|i| !(i.optional && !known(i))) {
         let dlss = i.shared == crate::dlss::SHARED;
         if !i.shared.is_empty() && i.optional && !dlss { return Err("Shared key requirements must be required or conditional, not optional features.".into()); }
-        if !id_ok(&i.id) || ["game", "legacy-update"].contains(&i.id.as_str()) && p.game.is_some() || !ids.insert(&i.id) || i.label.trim().is_empty() {
+        if !id_ok(&i.id) || ["game", "legacy-update"].contains(&i.id.as_str()) && p.game.is_some() || !ids.insert(&i.id) || i.label.trim().is_empty() && !i.lifted {
             return Err("Setup inputs need unique IDs and a label; game is reserved when the legacy game field is used.".into());
         }
         if !ROLES.contains(&i.role.as_str()) { return Err("Unknown setup input role.".into()); }
@@ -168,6 +305,9 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     let declarations: BTreeSet<_> = p.inputs.iter().map(|i| i.id.as_str()).chain(p.skipped_inputs.iter().map(String::as_str)).collect();
     let mut texts: Vec<&str> = p.start.iter().flat_map(|s| s.args.iter().chain(s.env.values()).map(String::as_str)).collect();
     texts.extend(p.prepare.iter().flat_map(|pr| pr.args.iter().map(String::as_str)));
+    // A game's own args are filled too, so a misspelled id there is caught like one in start.args.
+    let games = crate::games::of(p.games.as_ref(), &serde_json::Value::Null);
+    texts.extend(games.iter().flat_map(|g| g.args.iter().map(String::as_str)));
     for text in texts {
         for suffix in text.split("{input:").skip(1) {
             let id = suffix.split_once('}').map(|(id, _)| id).ok_or("Unclosed input placeholder.")?;
@@ -197,7 +337,7 @@ pub fn rows(p: &Profile, g: &Installed, dir: &Path) -> Result<Vec<Row>, String> 
         // The game's release has its own file there (not the launcher's copy): it's used as it is.
         let ships = runtime && !i.destination.is_empty() && g.input_staged.get(&i.id) != Some(&i.destination) && g.path.join(&i.destination).is_file();
         let path = if runtime { (!off && !ships).then(|| crate::dlss::current(dir)).flatten() }
-            else if i.shared.is_empty() { selected(i, g).cloned() } else if active { key_path(dir, &i.shared).filter(|p| p.is_file()) } else { None };
+            else if i.shared.is_empty() { selected(i, g).cloned().or_else(|| i.in_place(&g.path)) } else if active { key_path(dir, &i.shared).filter(|p| p.is_file()) } else { None };
         Row { id: i.id.clone(), label: i.label.clone(), role: i.role.clone(), optional: i.optional, shared: i.shared.clone(), active, path,
             file: !runtime && (!i.shared.is_empty() || i.formats.iter().any(|f| f.kind == "file")), folder: i.formats.iter().any(|f| f.kind == "folder"),
             extensions: i.formats.iter().flat_map(|f| f.extensions.clone()).collect(), runtime, off, ships }
@@ -211,119 +351,27 @@ pub fn resolve(p: &Profile, g: &Installed, dir: &Path) -> Result<BTreeMap<String
     }
     Ok(paths)
 }
+/// The file the player picked for an input, while it's there.
+pub fn picked(g: &Installed, id: &str) -> Option<PathBuf> {
+    g.setup_inputs.get(id).filter(|p| p.exists()).cloned()
+}
+/// The player's copy of the game (the main input's file): picked and there, or already where the
+/// game reads it. What `{game}` fills in with.
+pub fn main_path(p: &Profile, g: &Installed) -> Option<PathBuf> {
+    let main = p.main_input()?;
+    picked(g, &main.id).or_else(|| main.in_place(&g.path))
+}
+/// The files `{input:<id>}` fills in with. The main one is the file the game is given for the
+/// player's copy, as `{game}` is: a .cue's first data track unless its label names .cue.
 pub fn available(p: &Profile, g: &Installed, dir: &Path) -> BTreeMap<String, PathBuf> {
-    rows(p, g, dir).unwrap_or_default().into_iter().filter(|r| r.active).filter_map(|r| Some((r.id, r.path?))).collect()
+    let mut paths: BTreeMap<String, PathBuf> = rows(p, g, dir).unwrap_or_default().into_iter().filter(|r| r.active).filter_map(|r| Some((r.id, r.path?))).collect();
+    let main = p.main_input().map(|i| i.id.clone());
+    if let Some(x) = main.and_then(|m| paths.get_mut(&m)) {
+        *x = p.handed(Some(x.as_path())).unwrap_or_else(|| x.clone());
+    }
+    paths
 }
 
-fn put(h: &mut Sha256, tag: &str, v: &[u8]) {
-    h.update(tag.as_bytes());
-    h.update((v.len() as u64).to_le_bytes());
-    h.update(v);
-}
-fn secs(t: std::time::SystemTime) -> i64 {
-    match t.duration_since(std::time::UNIX_EPOCH) {
-        Ok(d) => d.as_secs() as i64,
-        Err(e) => -(e.duration().as_secs() as i64),
-    }
-}
-fn copies(p: &Profile, g: &Installed) -> Result<Vec<PathBuf>, String> {
-    let mut out = Vec::new();
-    if p.game.is_some() {
-        out.push(g.game_copy.clone().filter(|c| c.exists()).ok_or("Choose your copy of the game first.")?);
-        if let Some(update) = p.game.as_ref().and_then(|c| c.update.as_ref()) {
-            match g.update_copy.as_ref().filter(|p| p.exists()).cloned().or_else(|| update.in_place(&g.path)) {
-                Some(path) => out.push(path),
-                None if !update.optional => return Err("Choose the game's update first.".into()),
-                None => {}
-            }
-        }
-    }
-    Ok(out)
-}
-
-/// The fingerprint setup saves and Play checks. It's made only from the player's files (each
-/// one's path, size and modified time, and the game and update copies) and prepare.version, so
-/// a new launcher or a changed profile never asks anyone to set up again; only their files or
-/// the developer's version can. Disc/DLC checksums are explicitly deferred.
-pub fn signature(p: &Profile, g: &Installed, dir: &Path) -> Result<String, String> {
-    let paths = resolve(p, g, dir)?;
-    let mut h = Sha256::new();
-    put(&mut h, "version", p.prepare.as_ref().map_or("", |x| x.version.as_str()).as_bytes());
-    for copy in copies(p, g)? {
-        put(&mut h, "copy", copy.to_string_lossy().as_bytes());
-    }
-    // Files the launcher fetches itself (DLSS) don't count: one arriving later, or a newer
-    // version, never asks for setup again.
-    for (id, path) in paths.into_iter().filter(|(id, _)| !p.inputs.iter().any(|i| &i.id == id && i.role == "runtime")) {
-        let m = path.metadata().map_err(|_| "A selected input is no longer readable.")?;
-        put(&mut h, "input", id.as_bytes());
-        put(&mut h, "path", path.to_string_lossy().as_bytes());
-        put(&mut h, "size", &m.len().to_le_bytes());
-        put(&mut h, "modified", &m.modified().map(secs).unwrap_or(0).to_le_bytes());
-    }
-    Ok(format!("v2:{}", hex::encode(h.finalize())))
-}
-
-/// Beta 48 and earlier hashed the whole profile; Beta 46 to 48 wrote `"options":[]` in prepare,
-/// Beta 45 and earlier had no options. Kept only so those fingerprints still count.
-#[derive(serde::Serialize)]
-struct OldPrepare<'a> {
-    program: &'a Vec<String>,
-    args: &'a Vec<String>,
-    label: &'a str,
-    timeout: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    options: Option<&'a Vec<crate::profile::PrepareOption>>,
-}
-pub(crate) fn signature_legacy(p: &Profile, g: &Installed, dir: &Path, with_options: bool) -> Result<String, String> {
-    let paths = resolve(p, g, dir)?;
-    let prepare = p.prepare.as_ref().map(|x| OldPrepare { program: &x.program, args: &x.args, label: &x.label, timeout: x.timeout, options: with_options.then_some(&x.options) });
-    let mut hash = Sha256::new();
-    hash.update(serde_json::to_vec(&p.inputs).map_err(|_| "Invalid inputs")?);
-    hash.update(serde_json::to_vec(&prepare).map_err(|_| "Invalid preparation")?);
-    if p.game.is_some() {
-        hash.update(serde_json::to_vec(&p.game).map_err(|_| "Invalid game copy")?);
-        for copy in copies(p, g)? {
-            hash.update(copy.to_string_lossy().as_bytes());
-        }
-    }
-    for (id, path) in paths.into_iter().filter(|(id, _)| !p.inputs.iter().any(|i| &i.id == id && i.role == "runtime")) {
-        hash.update(id.as_bytes()); hash.update(path.to_string_lossy().as_bytes());
-        let m = path.metadata().map_err(|_| "A selected input is no longer readable.")?;
-        hash.update(m.len().to_le_bytes());
-        hash.update(format!("{:?}", m.modified().ok()).as_bytes());
-    }
-    Ok(hex::encode(hash.finalize()))
-}
-
-/// The fingerprint to keep when a saved one still counts: the same v2 fingerprint, or one an
-/// older launcher saved for the same files (to be rewritten as v2). None: set up again.
-pub fn current(p: &Profile, g: &Installed, dir: &Path, stored: &str) -> Option<String> {
-    if stored.is_empty() { return None; }
-    let now = signature(p, g, dir).ok()?;
-    if stored == now { return Some(now); }
-    if stored.starts_with("v2:") { return None; }
-    [true, false].into_iter().any(|o| signature_legacy(p, g, dir, o).is_ok_and(|s| s == stored)).then_some(now)
-}
-/// Set up: the player's files are the same as at setup, and what the setup step leaves (when the
-/// profile lists it in `prepare.done`) is still there. An update keeps the setup; a build an
-/// update took away asks again.
-pub fn ready(p: &Profile, g: &Installed, dir: &Path) -> bool {
-    current(p, g, dir, &g.inputs_ready).is_some() && p.build_done(&g.path) != Some(false)
-}
-/// Every file picked for setup is still there, and the ones placed in the game's folder are the
-/// same as when they were placed (path, size, time). For putting back a setup an update emptied.
-pub fn kept_since_setup(p: &Profile, g: &Installed, dir: &Path) -> bool {
-    let Ok(rows) = rows(p, g, dir) else { return false };
-    let needed: Vec<&Row> = rows.iter().filter(|r| r.active && r.shared.is_empty() && !r.runtime && !r.optional).collect();
-    if needed.is_empty() || needed.iter().any(|r| r.path.is_none()) {
-        return false;
-    }
-    g.input_stamps.iter().all(|(id, stamp)| {
-        let Some(src) = g.setup_inputs.get(id) else { return true };
-        src.metadata().is_ok_and(|m| &format!("{}|{}|{:?}", src.display(), m.len(), m.modified().ok()) == stamp)
-    })
-}
 pub fn expand(t: &str, paths: &BTreeMap<String, PathBuf>, wine: bool) -> String {
     let mut text = t.to_string();
     for (id, path) in paths {
@@ -558,13 +606,10 @@ mod tests {
         // Not fetched yet: no row path, setup isn't blocked, the argument is left out.
         assert!(rows(&p, &g, &dir).unwrap()[0].path.is_none());
         assert!(resolve(&p, &g, &dir).is_ok());
-        let sig = signature(&p, &g, &dir).unwrap();
         let shared = dir.join("shared-runtime/nvidia.dlss/310.9.16");
         fs::create_dir_all(&shared).unwrap();
         fs::write(shared.join("nvngx_dlss.dll"), b"nvidia").unwrap();
         fs::write(dir.join("shared-runtime/nvidia.dlss/current.txt"), "310.9.16").unwrap();
-        // Arriving later doesn't ask for setup again.
-        assert_eq!(signature(&p, &g, &dir).unwrap(), sig);
         stage(&p, &mut g, &dir).unwrap();
         assert_eq!(fs::read(dir.join("nvngx_dlss.dll")).unwrap(), b"nvidia");
         assert!(excluded(&g, &dir.join("nvngx_dlss.dll")), "kept out of saves and backups");
@@ -580,158 +625,6 @@ mod tests {
         stage(&p, &mut g, &dir).unwrap();
         assert_eq!(fs::read(dir.join("nvngx_dlss.dll")).unwrap(), b"the game's own");
         fs::remove_dir_all(dir).unwrap();
-    }
-    /// A recomp with a prepare step, a game copy and one picked file, set up.
-    fn prepared(extra: serde_json::Value) -> (Profile, Installed, PathBuf) {
-        let (_, mut g, dir) = fixture();
-        let mut v = serde_json::json!({
-            "game": { "kind": "folder", "label": "Your copy" },
-            "prepare": { "program": ["Builder.exe"], "args": ["--game={input:disc1}"], "label": "Building", "timeout": 600 },
-            "inputs": [{ "id": "disc1", "label": "Disc 1", "role": "disc", "formats": [{ "type": "file" }] }]
-        });
-        if let Some(o) = extra.as_object() { for (k, x) in o { v[k] = x.clone(); } }
-        let p: Profile = serde_json::from_value(v).unwrap();
-        let disc = dir.join("disc.iso"); fs::write(&disc, b"disc image").unwrap();
-        g.setup_inputs.insert("disc1".into(), disc);
-        let copy = dir.join("copy"); fs::create_dir_all(&copy).unwrap();
-        g.game_copy = Some(copy);
-        (p, g, dir)
-    }
-    #[test]
-    fn the_old_prepare_is_written_as_each_launcher_wrote_it() {
-        let (p, _, _) = prepared(serde_json::json!({}));
-        let x = p.prepare.as_ref().unwrap();
-        let old = |o: bool| serde_json::to_string(&OldPrepare { program: &x.program, args: &x.args, label: &x.label, timeout: x.timeout, options: o.then_some(&x.options) }).unwrap();
-        assert_eq!(old(false), r#"{"program":["Builder.exe"],"args":["--game={input:disc1}"],"label":"Building","timeout":600}"#);
-        assert_eq!(old(true), r#"{"program":["Builder.exe"],"args":["--game={input:disc1}"],"label":"Building","timeout":600,"options":[]}"#);
-        // And the profile itself now writes no empty options or version.
-        assert_eq!(serde_json::to_string(x).unwrap(), old(false));
-    }
-    #[test]
-    fn a_game_set_up_by_an_older_launcher_stays_set_up_and_is_rewritten_as_v2() {
-        for with_options in [false, true] {
-            let (p, mut g, dir) = prepared(serde_json::json!({}));
-            g.inputs_ready = signature_legacy(&p, &g, &dir, with_options).unwrap();
-            assert!(!g.inputs_ready.starts_with("v2:"));
-            assert!(ready(&p, &g, &dir), "Beta {} fingerprint", if with_options { "46-48" } else { "45" });
-            let v2 = current(&p, &g, &dir, &g.inputs_ready).unwrap();
-            assert!(v2.starts_with("v2:"));
-            assert_eq!(v2, signature(&p, &g, &dir).unwrap());
-            g.inputs_ready = v2;
-            assert!(ready(&p, &g, &dir));
-        }
-        // One that matches neither stays not set up, and a v2 one is never checked the old way.
-        let (p, mut g, dir) = prepared(serde_json::json!({}));
-        g.inputs_ready = "0".repeat(64);
-        assert!(!ready(&p, &g, &dir));
-        g.inputs_ready = format!("v2:{}", signature_legacy(&p, &g, &dir, true).unwrap());
-        assert!(!ready(&p, &g, &dir));
-        g.inputs_ready.clear();
-        assert!(!ready(&p, &g, &dir));
-    }
-    #[test]
-    fn the_v2_fingerprint_ignores_what_isnt_the_players_files() {
-        let (p, g, dir) = prepared(serde_json::json!({}));
-        let base = signature(&p, &g, &dir).unwrap();
-        let changed = [
-            serde_json::json!({ "prepare": { "program": ["Other.exe"], "args": ["--x"], "label": "New text", "timeout": 9, "options": [{ "id": "o", "label": "O", "args": ["--o"] }] } }),
-            serde_json::json!({ "game": { "kind": "folder", "label": "Pick your game folder" } }),
-            serde_json::json!({ "inputs": [{ "id": "disc1", "label": "New label", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }] }] }),
-            serde_json::json!({ "name": "Renamed", "saves": ["{install}/save"], "exit_codes": { "20": "x" }, "something_new": true }),
-        ];
-        for extra in changed {
-            let (q, _, _) = prepared(extra.clone());
-            assert_eq!(signature(&q, &g, &dir).unwrap(), base, "{extra}");
-        }
-    }
-    #[test]
-    fn only_files_and_prepare_version_go_in_the_fingerprint() {
-        // Every optional field set, against the bare profile with the same files. Hashing a new
-        // profile field breaks this.
-        let full = serde_json::json!({
-            "$schema": "x", "format": 1, "name": "N", "repo": "a/b",
-            "game": { "kind": "folder", "label": "L", "into": "game", "name": "copy", "extract": "x" },
-            "inputs": [{ "id": "disc1", "label": "L2", "role": "disc", "optional": false, "formats": [{ "type": "file", "extensions": ["iso"] }] }],
-            "prepare": { "program": ["P.exe", "P"], "args": ["--a", "--b={input:disc1}"], "label": "L3", "timeout": 1, "options": [{ "id": "o", "label": "O", "note": "n", "args": ["--o"], "os": ["windows"], "gpu": "nvidia", "license": { "name": "x", "url": "https://x" }, "default": false }] },
-            "start": { "program": ["G.exe"], "args": ["--g"], "env": { "A": "1" } },
-            "config": [{ "id": "main", "format": "ini", "file": [{ "path": "{install}/a.ini" }] }],
-            "saves": ["{install}/save"], "folders": { "data": [{ "path": "{install}" }] }, "from_boot": true, "games": [{ "id": "a", "name": "A" }],
-            "exit_codes": { "20": "x" }, "groups": [{ "id": "G" }],
-            "settings": [{ "id": "s", "label": "S", "group": "G", "choices": [{ "label": "A", "set": { "a": "1" } }], "defaults": { "a": "1" } }],
-            "actions": [{ "id": "a", "label": "A", "open": "saves" }]
-        });
-        let (bare, g, dir) = prepared(serde_json::json!({}));
-        let mut p: Profile = serde_json::from_value(full).unwrap();
-        p.windows_build = Some(true);
-        p.skipped_inputs = vec!["gone".into()];
-        p.input_paths.insert("disc1".into(), dir.join("elsewhere"));
-        p.slider_vals.insert("a".into(), "2".into());
-        assert_eq!(signature(&p, &g, &dir).unwrap(), signature(&bare, &g, &dir).unwrap());
-    }
-    #[test]
-    fn a_changed_file_copy_or_version_asks_for_setup_again() {
-        let (p, mut g, dir) = prepared(serde_json::json!({}));
-        g.inputs_ready = signature(&p, &g, &dir).unwrap();
-        assert!(ready(&p, &g, &dir));
-        let disc = g.setup_inputs["disc1"].clone();
-        // Its modified time.
-        let f = fs::File::options().write(true).open(&disc).unwrap();
-        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(120)).unwrap();
-        drop(f);
-        assert!(!ready(&p, &g, &dir));
-        g.inputs_ready = signature(&p, &g, &dir).unwrap();
-        // Its size.
-        fs::write(&disc, b"a longer disc image").unwrap();
-        assert!(!ready(&p, &g, &dir));
-        g.inputs_ready = signature(&p, &g, &dir).unwrap();
-        // Its path.
-        let moved = dir.join("moved.iso"); fs::copy(&disc, &moved).unwrap();
-        let mut h = g.clone(); h.setup_inputs.insert("disc1".into(), moved);
-        assert!(!ready(&p, &h, &dir));
-        // The game copy gone.
-        let mut h = g.clone(); h.game_copy = Some(dir.join("nowhere"));
-        assert!(!ready(&p, &h, &dir));
-        assert!(signature(&p, &h, &dir).is_err());
-        // The developer's version.
-        let (q, _, _) = prepared(serde_json::json!({ "prepare": { "program": ["Builder.exe"], "version": "2" } }));
-        assert!(ready(&p, &g, &dir));
-        assert!(!ready(&q, &g, &dir));
-        let mut h = g.clone(); h.inputs_ready = signature(&q, &g, &dir).unwrap();
-        assert!(ready(&q, &h, &dir));
-    }
-    #[test]
-    fn an_update_keeps_the_setup_unless_the_step_version_changes() {
-        let (p, mut g, dir) = prepared(serde_json::json!({}));
-        g.inputs_ready = signature(&p, &g, &dir).unwrap();
-        // The update: a new release, the record carried over as install() now does.
-        let updated = Installed { tag: "v0.1.1".into(), updated_at: 99, ..g.clone() };
-        assert!(ready(&p, &updated, &dir));
-        let (bumped, _, _) = prepared(serde_json::json!({ "prepare": { "program": ["Builder.exe"], "version": "2" } }));
-        assert!(!ready(&bumped, &updated, &dir));
-    }
-    #[test]
-    fn the_build_the_step_leaves_has_to_be_there() {
-        let (_, mut g, dir) = prepared(serde_json::json!({}));
-        let out = dir.join("prepared.bin");
-        let done = serde_json::json!({ "prepare": { "program": ["Builder.exe"], "done": [out.to_string_lossy()] } });
-        let (p, _, _) = prepared(done);
-        g.inputs_ready = signature(&p, &g, &dir).unwrap();
-        assert!(!ready(&p, &g, &dir), "its build isn't there");
-        fs::write(&out, b"built").unwrap();
-        assert!(ready(&p, &g, &dir));
-    }
-    #[test]
-    fn a_setup_an_update_emptied_is_kept_when_its_files_are_the_same() {
-        let (p, mut g, dir) = prepared(serde_json::json!({}));
-        assert!(kept_since_setup(&p, &g, &dir));
-        // A placed file that changed since it was placed: not put back.
-        let disc = g.setup_inputs["disc1"].clone();
-        g.input_stamps.insert("disc1".into(), format!("{}|1|None", disc.display()));
-        assert!(!kept_since_setup(&p, &g, &dir));
-        // A picked file that's gone: not put back either.
-        let (p, mut g, dir) = prepared(serde_json::json!({}));
-        g.setup_inputs.insert("disc1".into(), dir.join("gone.iso"));
-        assert!(!kept_since_setup(&p, &g, &dir));
     }
     fn fixture() -> (Profile, Installed, PathBuf) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -756,9 +649,9 @@ mod tests {
         let key = dir.join("source.keys"); fs::write(&key, format!("header_key = {}", "a".repeat(64))).unwrap();
         import_key(&dir, "switch.prod-keys", &key).unwrap();
         assert!(resolve(&p, &g, &dir).is_ok());
-        g.inputs_ready = signature(&p, &g, &dir).unwrap(); assert!(ready(&p, &g, &dir));
+        assert!(resolve(&p, &g, &dir).is_ok());
         fs::remove_file(key_path(&dir, "switch.prod-keys").unwrap()).unwrap();
-        assert!(!ready(&p, &g, &dir));
+        assert!(resolve(&p, &g, &dir).unwrap_err().contains("Switch keys"));
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
@@ -829,19 +722,6 @@ mod tests {
         fs::remove_file(&target).unwrap(); stage(&p, &mut g, &dir).unwrap();
         g.setup_inputs.remove("dlc"); stage(&p, &mut g, &dir).unwrap();
         assert!(!target.exists()); assert!(source.exists());
-        fs::remove_dir_all(dir).unwrap();
-    }
-    #[test]
-    fn changing_a_disc_asks_to_set_up_again() {
-        let p: Profile = serde_json::from_str(include_str!("../../docs/examples/multidisc-inputs.json")).unwrap();
-        let (_, mut g, dir) = fixture();
-        for n in 1..=4 { let path = dir.join(format!("Disc {n}.iso")); fs::write(&path, b"disc").unwrap(); g.setup_inputs.insert(format!("disc{n}"), path); }
-        g.inputs_ready = signature(&p, &g, &dir).unwrap();
-        assert!(ready(&p, &g, &dir));
-        // Another file picked for disc 2: not ready until it's set up again.
-        let other = dir.join("Disc 2 (Rev 1).iso"); fs::write(&other, b"another disc").unwrap();
-        g.setup_inputs.insert("disc2".into(), other);
-        assert!(!ready(&p, &g, &dir));
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]

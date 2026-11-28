@@ -6,11 +6,10 @@ const vm = require('node:vm');
 
 const appSrc = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tvSrc = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
-const inputsSrc = fs.readFileSync(path.join(__dirname, '../ui/setup-inputs.js'), 'utf8');
 
 test('status returns settingup when setupJobs has an active setup', () => {
   const c = vm.createContext({
-    S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.5 } }, jobs: {}, library: {} },
+    S: { running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.5 } }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     forOS: () => true,
   });
@@ -20,9 +19,10 @@ test('status returns settingup when setupJobs has an active setup', () => {
   assert.equal(c.status({ id: 'other-game' }), 'get');
 });
 
-test('actions renders clickable reopen-setup button with stage and percentage and direct cancel button', () => {
+// The game page's main buttons while a setup runs, with the real status, actions and setupProg.
+function actionsWhile(ev) {
   const c = vm.createContext({
-    S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.65 } }, jobs: {}, library: {} },
+    S: { running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: { 'test-game': ev }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     t: (s) => s,
     esc: String,
@@ -32,30 +32,40 @@ test('actions renders clickable reopen-setup button with stage and percentage an
     forOS: () => true,
   });
   const fnStatus = appSrc.match(/function status\(a\) \{[^]*?\n\}/)[0];
-  const fnActions = appSrc.match(/function actions\(a, size = 'big'\) \{[^]*?\n\}/)[0];
-  vm.runInContext(fnStatus, c);
-  vm.runInContext(fnActions, c);
+  const fnActions = appSrc.match(/function actions\(a, size = 'big'[^)]*\) \{[^]*?\n\}/)[0];
+  const fnProg = appSrc.match(/^function setupProg\([^]*?^}/m)[0];
+  vm.runInContext(fnStatus + fnActions + fnProg, c);
+  return c.actions({ id: 'test-game' });
+}
 
-  const html = c.actions({ id: 'test-game' });
-  assert.match(html, /data-act="reopen-setup"/);
+test('a build running in the background is a bar that reopens its setup, with a cross that cancels it', () => {
+  const html = actionsWhile({ step: 'extras', pct: 0.65, extras: true });
+  assert.match(html, /class="prog su-prog" data-act="reopen-setup"/);
   assert.match(html, /data-act="setup-cancel"/);
-  assert.match(html, /class="prog su-prog"/);
-  assert.match(html, /width:65%/);
-  assert.match(html, /65%/);
-  assert.match(html, /Checking/);
 });
 
-test('namedSetup delegates to setupModal when job is active in background', () => {
-  let reopened = null;
-  const c = vm.createContext({
-    S: { setupJobs: { 'hopper': { step: 'extras', pct: 0.8 } } },
-    parentId: (id) => id.split('@')[0],
-    setupModal: (id) => { reopened = id; },
-    closeSetup: () => {},
-  });
-  vm.runInContext(inputsSrc, c);
-  c.namedSetup('hopper');
-  assert.equal(reopened, 'hopper');
+test("in its build step, the game page's bar says Building the game and the build step's %", () => {
+  const html = actionsWhile({ step: 'extras', pct: 0.65, extras: true });
+  assert.match(html, /<div class="track"><i style="width:65%"><\/i><\/div><div class="lbl"><span>Building the game<\/span><span>65%<\/span>/);
+});
+
+test("before its build step, the game page's bar only moves: no %", () => {
+  const html = actionsWhile({ step: 'verify', pct: 0.65, extras: true });
+  assert.match(html, /<div class="track busy"><i style="width:0%"><\/i><\/div><div class="lbl"><span>Building the game<\/span><span><\/span>/);
+});
+
+test('a setup with no build step of its own says Setting up', () => {
+  const html = actionsWhile({ step: 'verify', pct: 0.4, extras: false });
+  assert.match(html, /<span>Setting up<\/span><span><\/span>/);
+});
+
+test('the setup window shows a setup running in the background before it shows the steps', () => {
+  // Every profile opens the same window now (setupModal): a running job is shown as its progress.
+  const fn = appSrc.slice(appSrc.indexOf('async function setupModal(id)'), appSrc.indexOf('\nfunction ssDraw()'));
+  const job = fn.indexOf('const activeJob = S.setupJobs && (S.setupJobs[id] || S.setupJobs[parentId(id)]);');
+  assert.ok(job > 0);
+  assert.ok(fn.indexOf("stage: 'run',", job) > job);
+  assert.ok(fn.indexOf("stage: 'steps'") > fn.indexOf("stage: 'run',", job));
 });
 
 test('onSetupFinished auto-adds to library and sets setup_ok', async () => {
@@ -87,9 +97,10 @@ test('onSetupFinished auto-adds to library and sets setup_ok', async () => {
   assert.equal(toasted, 'Test Recomp is ready to play!');
 });
 
-test('TV mode mainButton and mainWords display settingup progress', () => {
+// Big Picture's main button and Home's words for it while a setup runs, with the real helpers.
+function tvWhile(ev) {
   const c = vm.createContext({
-    S: { running: new Set(), settingUp: new Set(), setupJobs: { 'test-game': { step: 'verify', pct: 0.42 } }, jobs: {}, library: {} },
+    S: { running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: { 'test-game': ev }, jobs: {}, library: {} },
     parentId: (id) => id.split('@')[0],
     t: (s) => s,
     esc: String,
@@ -98,16 +109,20 @@ test('TV mode mainButton and mainWords display settingup progress', () => {
     forOS: () => true,
   });
   const fnStatus = appSrc.match(/function status\(a\) \{[^]*?\n\}/)[0];
-  vm.runInContext(fnStatus, c);
+  const fnProg = appSrc.match(/^function setupProg\([^]*?^}/m)[0] + appSrc.match(/^function setupLine\([^]*?^}/m)[0];
+  const mainButton = tvSrc.match(/function mainButton\(a, key[^)]*\) \{[^]*?\n  \}/)[0];
+  const mainWords = tvSrc.match(/function mainWords\(a\) \{[^]*?\n  \}/)[0];
+  vm.runInContext(fnStatus + fnProg + mainButton + mainWords, c);
+  return c;
+}
 
-  const mainBtnMatch = tvSrc.match(/function mainButton\(a, key\) \{[^]*?\n  \}/)[0];
-  vm.runInContext(mainBtnMatch, c);
-  const btnHtml = c.mainButton({ id: 'test-game' }, 'k1');
-  assert.match(btnHtml, /setup-reopen/);
-  assert.match(btnHtml, /Setting up 42%/);
+test("Big Picture's button says Building the game and the build step's %", () => {
+  const c = tvWhile({ step: 'extras', pct: 0.42, extras: true });
+  assert.equal(c.mainButton({ id: 'test-game' }, 'k1'), '[btn setup-reopen Building the game · 42%]');
+  assert.equal(c.mainWords({ id: 'test-game' }), 'Building the game · 42%');
+});
 
-  const mainWordsMatch = tvSrc.match(/function mainWords\(a\) \{[^]*?\n  \}/)[0];
-  vm.runInContext(mainWordsMatch, c);
-  const words = c.mainWords({ id: 'test-game' });
-  assert.equal(words, 'Setting up 42%');
+test("before its build step, Big Picture's button has no %", () => {
+  const c = tvWhile({ step: 'verify', pct: 0.42, extras: true });
+  assert.equal(c.mainWords({ id: 'test-game' }), 'Building the game');
 });

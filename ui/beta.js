@@ -4,7 +4,7 @@
 (() => {
   const KINDS = [['bug', N_('Something broke')], ['idea', N_('An idea')], ['thoughts', N_('Thoughts')]];
   const MOODS = [['great', N_('Great')], ['good', N_('Good')], ['rough', N_('Rough')], ['broken', N_('Broken')]];
-  const AREAS = [['Home and Discover', N_('Home and Discover')], ['Installing and updates', N_('Installing and updates')], ['Playing a game', N_('Playing a game')],
+  const AREAS = [['Home and Discover', N_('Home and Catalog')], ['Installing and updates', N_('Installing and updates')], ['Playing a game', N_('Playing a game')],
     ['Big Picture mode', N_('Big Picture mode')], ['Saves and cloud saves', N_('Saves and cloud saves')], ['Account and signing in', N_('Account and signing in')],
     ['Settings', N_('Settings')], ['Something else', N_('Something else')]];
   const fb = () => (S.betaFb = S.betaFb || { kind: 'bug', area: 'Something else', mood: '', text: '', contact: '', attach: true, sent: false, busy: false, game: '' });
@@ -76,14 +76,6 @@
     }
   }
 
-  async function notes() {
-    let v = null;
-    try { v = await invoke('launcher_notes'); } catch (e) { /* offline */ }
-    if (!v || !v.notes) return toast(t('The notes couldn\'t be loaded. Check your connection.'), true);
-    modal(`<div class="whatsnew"><h2>${esc(tf('What\'s new in RecompLauncher {version}', { version: verName(v.version || S.version) }))}</h2><div class="md">${md(v.notes, true)}</div>
-      <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Got it'))}</button></div></div>`, () => {}, t('What\'s new'));
-  }
-
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-b]');
     if (!b || !b.closest('.set-body, .beta-hero')) return;
@@ -96,7 +88,8 @@
       f.attach = !f.attach; b.setAttribute('aria-checked', String(f.attach));
     } else if (k === 'send') send();
     else if (k === 'again') { f.sent = false; redraw(); const ta = document.querySelector('.bt-text'); if (ta) ta.focus(); }
-    else if (k === 'notes') notes();
+    // What's New in This Beta: the notes are in Settings → Changelog, newest open.
+    else if (k === 'notes') setSection('changelog');
     else if (k === 'toreport') setSection('report');
   });
   document.addEventListener('input', (e) => {

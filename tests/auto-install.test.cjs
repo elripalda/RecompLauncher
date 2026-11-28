@@ -8,6 +8,8 @@ const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
 const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
 const autoInstallSrc = app.match(/^const autoInstall = .*$/m)[0];
+// The Updates page also draws Update All Games Automatically.
+const autoUpdateAllSrc = app.match(/^const autoUpdateAll = .*$/m)[0];
 // The part of the download-finished handler that decides what opens next.
 const doneHandler = app.slice(app.indexOf("T.event.listen('install'"), app.indexOf("T.event.listen('game'"));
 
@@ -21,14 +23,14 @@ function settingsContext(settings, setTab = 'updates') {
     tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
     LANGS: [['en', 'English']], systemLang: () => 'en',
     SET_SECTIONS: [['updates', 'Updates']], SET_ICONS: {}, DL_LIMITS: [0],
-    okMark: () => '', portableRow: () => '', geRow: () => '', networkGroup: () => '',
+    okMark: () => '', portableRow: () => '', geRow: () => '', networkGroup: () => '', selfUpdatesGroup: () => '',
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s) => s,
-    homePinned: () => false, bgMode: () => '', langName: () => 'English',
+    homePinned: () => false, ownedGames: () => [], bgMode: () => '', langName: () => 'English',
     svg: () => '', hints: () => '', HEART: '', setClock: () => {},
   });
   c.window = c;
   c.clockRow = () => ''; c.monitorPicked = () => ''; c.monitorName = () => '';
-  vm.runInContext(autoInstallSrc, c);
+  vm.runInContext(autoInstallSrc + '\n' + autoUpdateAllSrc, c);
   return c;
 }
 
@@ -77,11 +79,20 @@ test('a finished installer download opens its installer only with Auto-Install o
   assert.match(doneHandler, /if \(isInstallerApp\(byId\(id\)\)\) \{ if \(auto && !busy/);
 });
 
-test('a finished Easy Install download opens its setup only with Auto-Install on', () => {
-  assert.match(doneHandler, /su\.needs && !su\.copy && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
+test('a finished Easy Setup download opens its setup only with Auto-Install on', () => {
+  assert.match(doneHandler, /su\.needs && su\.status && !su\.status\.ready && !auto\) toast\(tf\('\{name\} is installed\. Set it up from its page\.'/);
 });
 
-test('Easy Install skips Pick Your Copy First with Auto-Install off', () => {
+test('Easy Setup starts the download without opening a file picker', () => {
   const start = fn(app, 'startInstall');
-  assert.match(start, /if \(autoInstall\(\) && !S\.library\[id\] && !tag && !anyway && turnkey\(byId\(id\)\)/);
+  assert.match(start, /dlArgs\(id, \{ id, dir: dir \|\| null, tag: tag \|\| null \}\);\n\s+try \{ await invoke\('install'/);
+  assert.doesNotMatch(start, /pickFile|copyPickOpts/);
+});
+
+test('a game page redrawn in place reads the setup state of a game just installed', () => {
+  assert.match(fn(app, 'refreshGame'), /if \(S\.library\[id\] && S\.setup\[id\] === undefined\) loadSetup\(id\);/);
+});
+
+test('a finished Easy Setup download opens the Easy Setup screen for the copy', () => {
+  assert.match(doneHandler, /else if \(su && su\.needs && su\.status && !su\.status\.ready\) await setupModal\(id\);/);
 });

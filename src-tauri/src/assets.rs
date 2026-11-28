@@ -26,6 +26,9 @@ pub fn os_now() -> &'static str {
         "windows"
     } else if cfg!(target_os = "macos") {
         "macos"
+    } else if cfg!(target_os = "android") {
+        // Android games are APKs (assets.android in the Android catalog), never the Linux builds.
+        "android"
     } else {
         "linux"
     }
@@ -90,7 +93,7 @@ const X64: [&str; 5] = ["x64", "x86_64", "amd64", "win64", "64bit"];
 /// What kind of file it is, by its ending, and whether this system can use it as a build.
 pub fn kind(name: &str) -> Option<&'static str> {
     let n = name.to_lowercase();
-    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".msi", "msi"), (".dmg", "dmg")] {
+    for (end, k) in [(".tar.gz", "tar.gz"), (".tgz", "tar.gz"), (".tar.xz", "tar.xz"), (".txz", "tar.xz"), (".tar.zst", "tar.zst"), (".tzst", "tar.zst"), (".zip", "zip"), (".7z", "7z"), (".rar", "rar"), (".appimage", "appimage"), (".exe", "exe"), (".msi", "msi"), (".dmg", "dmg")] {
         if n.ends_with(end) {
             return Some(k);
         }
@@ -101,7 +104,7 @@ pub fn kind(name: &str) -> Option<&'static str> {
 fn usable(os: &str, k: &str) -> bool {
     match os {
         "windows" => matches!(k, "zip" | "7z" | "rar" | "exe" | "msi"),
-        "linux" => matches!(k, "appimage" | "tar.gz" | "zip" | "7z" | "rar"),
+        "linux" => matches!(k, "appimage" | "tar.gz" | "tar.xz" | "tar.zst" | "zip" | "7z" | "rar"),
         "macos" => matches!(k, "zip" | "dmg" | "rar" | "7z"),
         _ => false,
     }
@@ -112,7 +115,7 @@ fn usable(os: &str, k: &str) -> bool {
 fn usable_file(os: &str, name: &str) -> bool {
     match kind(name) {
         Some(k) if usable(os, k) => true,
-        Some("tar.gz" | "tar.xz") if os == "windows" => words(name).iter().any(|w| matches!(w.as_str(), "windows" | "win" | "win64" | "win32")),
+        Some("tar.gz" | "tar.xz" | "tar.zst") if os == "windows" => words(name).iter().any(|w| matches!(w.as_str(), "windows" | "win" | "win64" | "win32")),
         _ => false,
     }
 }
@@ -124,6 +127,33 @@ fn not_a_build(name: &str) -> bool {
     n.ends_with(".sha256") || n.ends_with(".sig") || n.ends_with(".asc") || n.ends_with(".pdb")
         || w.iter().any(|x| matches!(x.as_str(), "symbols" | "pdb" | "debug" | "dbg" | "source" | "sources" | "src"))
         || dependency(&n, &w)
+}
+
+/// A release's file named for one of the game's tools (Game-shader-translator-linux.tar.gz,
+/// Game-server-linux.zip): never the game's build, by the same words as a tool program
+/// (install::TOOL_WORDS). A word every build of the release has is the game's own name, so a game
+/// called Shader Quest still installs.
+fn tool_build(name: &str, assets: &[Asset]) -> bool {
+    let builds: Vec<Vec<String>> = assets.iter().filter(|a| kind(&a.name).is_some() && !not_a_build(&a.name)).map(|a| words(&a.name)).collect();
+    let shared = |w: &String| builds.iter().all(|b| b.contains(w));
+    words(name).iter().any(|w| crate::install::TOOL_WORDS.contains(&w.as_str()) && !shared(w))
+}
+
+/// The files a build is guessed from when no list pattern names one: every file but the tools'.
+fn guessable(assets: &[Asset]) -> Vec<&Asset> {
+    assets.iter().filter(|a| !tool_build(&a.name, assets)).collect()
+}
+
+/// What a list's pattern matches, less the tools' files when the game's is among them: one
+/// pattern can match both (armagetronad-*.win32.exe matches the dedicated server too). A pattern
+/// that matches only a tool's file (a patch, a compiler) is used as it is.
+fn named<'a>(assets: &'a [Asset], p: &str) -> Vec<&'a Asset> {
+    let all = matching(assets, p);
+    let games: Vec<&Asset> = all.iter().copied().filter(|a| !tool_build(&a.name, assets)).collect();
+    if games.is_empty() {
+        return all;
+    }
+    games
 }
 
 /// A compiler, SDK or library a release keeps for building the game (a "deps" mirror):
@@ -203,7 +233,7 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
         ("windows", "exe") => 6,
         ("windows", "msi") => 2,
         ("linux", "appimage") => 14,
-        ("linux", "tar.gz") => 12,
+        ("linux", "tar.gz" | "tar.xz" | "tar.zst") => 12,
         ("linux", "zip") => 8,
         ("macos", "zip") => 12,
         // Below a ZIP even when the disk image's name says more (arm64): a ZIP keeps the app as it is.
@@ -224,12 +254,12 @@ fn score(name: &str, os: &str, arch: &str) -> i32 {
 /// A list's pattern naming only builds for another processor is ignored, as in `pick`.
 fn pool<'a>(assets: &'a [Asset], arch: &str, pattern: Option<&str>) -> Vec<&'a Asset> {
     let Some(p) = pattern.filter(|p| !p.trim().is_empty()) else {
-        return assets.iter().collect();
+        return guessable(assets);
     };
-    let named = matching(assets, p);
+    let named = named(assets, p);
     let only_other_arch = !named.is_empty() && named.iter().all(|a| other_arch(&a.name, arch));
     if only_other_arch {
-        return assets.iter().collect();
+        return guessable(assets);
     }
     named
 }
@@ -243,7 +273,50 @@ pub fn choices<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
     if best <= 0 {
         return vec![];
     }
-    pool.into_iter().filter(|a| score(&a.name, os, arch) == best).collect()
+    without_copies(pool.into_iter().filter(|a| score(&a.name, os, arch) == best).collect())
+}
+
+/// A release's name for a file, less its version: Game-1.2.0-x86_64.AppImage and
+/// Game-x86_64.AppImage both read game-x86-64.appimage.
+pub(crate) fn unversioned(name: &str) -> String {
+    name.split(['-', '_', ' ']).filter(|w| !is_version(w)).collect::<Vec<_>>().join("-").to_lowercase()
+}
+
+/// A part of a file's name that is its version: 1.5.4, v2, 20261116.
+fn is_version(part: &str) -> bool {
+    let part = part.strip_prefix(['v', 'V']).unwrap_or(part);
+    part.chars().any(|c| c.is_ascii_digit()) && part.chars().all(|c| c.is_ascii_digit() || c == '.')
+}
+
+fn names_a_version(name: &str) -> bool {
+    name.split(['-', '_', ' ']).any(is_version)
+}
+
+/// The same file uploaded twice, once by a name without the version for releases/latest/download
+/// links (Theme-Park-World-1.5.4-x86_64.AppImage and Theme-Park-World-x86_64.AppImage): one build,
+/// not two to choose between. GitHub's SHA-256 says so; an older upload without one, the same size
+/// and the same name but the version.
+fn same_file(a: &Asset, b: &Asset) -> bool {
+    if let (Some(x), Some(y)) = (&a.digest, &b.digest) {
+        return x == y;
+    }
+    let one_unversioned = names_a_version(&a.name) != names_a_version(&b.name);
+    a.size == b.size && one_unversioned && unversioned(&a.name) == unversioned(&b.name)
+}
+
+/// One of each file uploaded under two names, the one whose name says its version kept.
+fn without_copies(list: Vec<&Asset>) -> Vec<&Asset> {
+    let mut out: Vec<&Asset> = Vec::new();
+    for a in list {
+        let Some(i) = out.iter().position(|b| same_file(a, b)) else {
+            out.push(a);
+            continue;
+        };
+        if a.name.len() > out[i].name.len() {
+            out[i] = a;
+        }
+    }
+    out
 }
 
 /// Every build of a release that can run here, best first: every format (an AppImage and a plain
@@ -278,7 +351,7 @@ pub fn all_for<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&s
         v.retain(|(_, a)| says_os(&a.name, os));
     }
     v.sort_by(|x, y| y.0.cmp(&x.0).then_with(|| x.1.name.cmp(&y.1.name)));
-    v.into_iter().map(|(_, a)| a).collect()
+    without_copies(v.into_iter().map(|(_, a)| a).collect())
 }
 
 /// Does the file's name (or its kind: a .exe, an AppImage, a .dmg) say it's for `os`?
@@ -355,13 +428,14 @@ fn same_shape(a: &str, b: &str) -> bool {
 
 pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>) -> Option<&'a Asset> {
     if let Some(p) = pattern.filter(|p| !p.trim().is_empty()) {
-        let named = matching(assets, p);
-        let best = named
+        let named = named(assets, p);
+        let usable: Vec<&Asset> = named
             .iter()
             .copied()
             .filter(|a| !other_arch(&a.name, arch) && !not_a_build(&a.name) && !for_other_platform(&a.name))
             .filter(|a| usable_file(os, &a.name))
-            .max_by_key(|a| score(&a.name, os, arch).max(0));
+            .collect();
+        let best = best_by(usable, |a| score(&a.name, os, arch).max(0));
         if best.is_some() {
             return best;
         }
@@ -373,12 +447,16 @@ pub fn pick<'a>(assets: &'a [Asset], os: &str, arch: &str, pattern: Option<&str>
             return None;
         }
     }
-    assets
-        .iter()
-        .map(|a| (score(&a.name, os, arch), a))
-        .filter(|(s, _)| *s > 0)
-        .max_by_key(|(s, _)| *s)
-        .map(|(_, a)| a)
+    let builds: Vec<&Asset> = guessable(assets).into_iter().filter(|a| score(&a.name, os, arch) > 0).collect();
+    best_by(builds, |a| score(&a.name, os, arch))
+}
+
+/// The best-scoring file, the last of equals, as ever. A file uploaded twice counts once, by its
+/// versioned name (without_copies), so pick, choices and all_for name the same copy.
+fn best_by<'a>(list: Vec<&'a Asset>, key: impl Fn(&Asset) -> i32) -> Option<&'a Asset> {
+    let top = list.iter().map(|a| key(a)).max()?;
+    let tied: Vec<&Asset> = list.into_iter().filter(|a| key(a) == top).collect();
+    without_copies(tied).into_iter().last()
 }
 
 #[cfg(test)]
@@ -396,6 +474,77 @@ mod tests {
         // Still nothing for this system when no name is alike.
         let rel = [a("Other-1.0-linux.AppImage")];
         assert!(pick(&rel, "windows", "x64", Some("Game.Setup-*-windows.zip")).is_none());
+    }
+
+    fn release(names: &[&str]) -> Vec<Asset> {
+        names.iter().map(|n| Asset { name: (*n).into(), size: 1, digest: None, browser_download_url: String::new(), url: None }).collect()
+    }
+
+    #[test]
+    fn a_tool_archive_isnt_the_games_build() {
+        let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        assert!(pick(&rel, "linux", "x64", None).is_none());
+    }
+
+    #[test]
+    fn a_server_archive_isnt_the_games_build() {
+        let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-server-linux-x64.zip"]);
+        assert!(pick(&rel, "linux", "x64", None).is_none());
+    }
+
+    #[test]
+    fn a_tool_archive_isnt_offered_as_a_choice() {
+        let rel = release(&["Harbor-1.0-linux-x64.tar.gz", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let names: Vec<&str> = all_for(&rel, "linux", "x64", None).iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Harbor-1.0-linux-x64.tar.gz"]);
+    }
+
+    #[test]
+    fn a_tool_word_in_the_games_own_name_still_counts_as_the_build() {
+        let rel = release(&["Shader-Quest-1.0-windows-x64.zip", "Shader-Quest-1.0-linux-x64.tar.gz"]);
+        assert_eq!(pick(&rel, "linux", "x64", None).map(|a| a.name.as_str()), Some("Shader-Quest-1.0-linux-x64.tar.gz"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_naming_a_tool_archive_is_still_used() {
+        let rel = release(&["Harbor-1.0-windows-x64.zip", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let got = pick(&rel, "linux", "x64", Some("Harbor-*-shader-translator-linux-x64.tar.gz")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("Harbor-1.0-shader-translator-linux-x64.tar.gz"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_server_picks_the_game() {
+        let rel = release(&["armagetronad-0.2.9.3.1.win32.exe", "armagetronad-dedicated-0.2.9.3.1.win32.exe"]);
+        let got = pick(&rel, "windows", "x64", Some("armagetronad-*.win32.exe")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("armagetronad-0.2.9.3.1.win32.exe"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_server_offers_only_the_game() {
+        let rel = release(&["armagetronad-0.2.9.3.1.win32.exe", "armagetronad-dedicated-0.2.9.3.1.win32.exe"]);
+        let names: Vec<&str> = all_for(&rel, "windows", "x64", Some("armagetronad-*.win32.exe")).iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["armagetronad-0.2.9.3.1.win32.exe"]);
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_translator_picks_the_game() {
+        let rel = release(&["Harbor-1.0-linux-x64.tar.gz", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let got = pick(&rel, "linux", "x64", Some("Harbor-*linux-x64.tar.gz")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("Harbor-1.0-linux-x64.tar.gz"));
+    }
+
+    #[test]
+    fn a_catalog_pattern_matching_the_game_and_its_translator_offers_only_the_game() {
+        let rel = release(&["Harbor-1.0-linux-x64.tar.gz", "Harbor-1.0-shader-translator-linux-x64.tar.gz"]);
+        let names: Vec<&str> = all_for(&rel, "linux", "x64", Some("Harbor-*linux-x64.tar.gz")).iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Harbor-1.0-linux-x64.tar.gz"]);
+    }
+
+    #[test]
+    fn a_catalog_pattern_naming_only_a_patch_still_picks_it() {
+        let rel = release(&["PGR4-1.0-patch.zip"]);
+        let got = pick(&rel, "windows", "x64", Some("PGR4-*-patch.zip")).map(|a| a.name.as_str());
+        assert_eq!(got, Some("PGR4-1.0-patch.zip"));
     }
 
     #[test]
@@ -443,6 +592,58 @@ mod tests {
 
     fn a(n: &str) -> Asset {
         Asset { name: n.into(), size: 1, digest: None, browser_download_url: String::new(), url: None }
+    }
+
+    fn file(n: &str, size: u64, digest: Option<&str>) -> Asset {
+        Asset { name: n.into(), size, digest: digest.map(String::from), browser_download_url: String::new(), url: None }
+    }
+
+    /// tpw-recomp v1.5.4: each AppImage and the Mac zip twice, once without the version.
+    fn tpw_1_5_4() -> Vec<Asset> {
+        vec![
+            file("Theme-Park-World-1.5.4-aarch64.AppImage", 142739976, Some("sha256:aa")),
+            file("Theme-Park-World-1.5.4-x86_64.AppImage", 161954296, Some("sha256:bb")),
+            file("Theme-Park-World-1.5.4.zip", 40083153, Some("sha256:cc")),
+            file("Theme-Park-World-aarch64.AppImage", 142739976, Some("sha256:aa")),
+            file("Theme-Park-World-x86_64.AppImage", 161954296, Some("sha256:bb")),
+            file("Theme-Park-World.zip", 40083153, Some("sha256:cc")),
+        ]
+    }
+
+    #[test]
+    fn the_same_file_under_two_names_is_one_build() {
+        let rel = tpw_1_5_4();
+        let names = |v: Vec<&Asset>| v.iter().map(|x| x.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(choices(&rel, "linux", "x64", None)), ["Theme-Park-World-1.5.4-x86_64.AppImage"]);
+        assert_eq!(names(all_for(&rel, "linux", "x64", None)), ["Theme-Park-World-1.5.4-x86_64.AppImage"]);
+        assert_eq!(names(all_for(&rel, "linux", "arm64", None)), ["Theme-Park-World-1.5.4-aarch64.AppImage"]);
+        assert_eq!(names(choices(&rel, "macos", "arm64", None)), ["Theme-Park-World-1.5.4.zip"]);
+        // The file installed is the same copy the choices name, whichever comes last in the list.
+        let mut reversed = rel.clone();
+        reversed.reverse();
+        assert_eq!(pick(&rel, "linux", "x64", None).unwrap().name, "Theme-Park-World-1.5.4-x86_64.AppImage");
+        assert_eq!(pick(&reversed, "linux", "x64", None).unwrap().name, "Theme-Park-World-1.5.4-x86_64.AppImage");
+        assert_eq!(pick(&rel, "macos", "arm64", Some("Theme-Park-World*.zip")).unwrap().name, "Theme-Park-World-1.5.4.zip");
+    }
+
+    #[test]
+    fn an_upload_without_a_digest_is_a_copy_by_its_size_and_name() {
+        let rel = [file("Game-2.0-x86_64.AppImage", 500, None), file("Game-x86_64.AppImage", 500, None)];
+        assert_eq!(all_for(&rel, "linux", "x64", None).len(), 1);
+        assert_eq!(choices(&rel, "linux", "x64", None)[0].name, "Game-2.0-x86_64.AppImage");
+    }
+
+    #[test]
+    fn different_files_stay_choices() {
+        // Two versions of the same size, both named: not a copy of each other.
+        let rel = [file("Game-1.0-linux.tar.gz", 500, None), file("Game-1.1-linux.tar.gz", 500, None)];
+        assert_eq!(all_for(&rel, "linux", "x64", None).len(), 2);
+        // The same names, but GitHub's SHA-256 says the bytes differ.
+        let rel = [file("Game-2.0-x86_64.AppImage", 500, Some("sha256:aa")), file("Game-x86_64.AppImage", 500, Some("sha256:bb"))];
+        assert_eq!(all_for(&rel, "linux", "x64", None).len(), 2);
+        // The same size, without the version, but another name.
+        let rel = [file("Game-JP-x86_64.AppImage", 500, None), file("Game-US-2.0-x86_64.AppImage", 500, None)];
+        assert_eq!(all_for(&rel, "linux", "x64", None).len(), 2);
     }
 
     #[test]

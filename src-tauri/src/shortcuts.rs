@@ -615,7 +615,7 @@ pub fn launcher_to_steam(steam: &Path, art: &[(&str, Vec<u8>, &str)]) -> Result<
 /// How a shortcut starts the launcher: the program and the arguments that go before its own.
 /// Run as a Flatpak, the program inside the sandbox isn't on the PC at all: a shortcut starts it
 /// with `flatpak run <app id>`.
-fn start_command() -> (PathBuf, Vec<String>) {
+pub fn start_command() -> (PathBuf, Vec<String>) {
     if crate::flatpak::sandboxed() {
         if let Ok(id) = std::env::var("FLATPAK_ID") {
             return (PathBuf::from("/usr/bin/flatpak"), vec!["run".into(), id]);
@@ -637,7 +637,21 @@ fn launcher_icon() -> String {
             return icon;
         }
     }
+    if crate::nix_managed() {
+        if let Some(icon) = nix_icon() {
+            return icon;
+        }
+    }
     launcher_exe().to_string_lossy().to_string()
+}
+
+/// The icon beside the Nix wrapper the PC starts (a profile's bin, see start_path): the profile's
+/// share/icons survives updates, where the program's own store path is gone after the next one.
+fn nix_icon() -> Option<String> {
+    let wrapper = PathBuf::from(std::env::var_os("RL_START_PATH")?);
+    let profile = wrapper.parent()?.parent()?;
+    let icon = profile.join("share/icons/hicolor/512x512/apps/recomplauncher.png");
+    icon.is_file().then(|| icon.to_string_lossy().to_string())
 }
 
 fn flatpak_icon() -> Option<String> {
@@ -655,8 +669,12 @@ fn icon_in(info: &str, id: &str) -> Option<String> {
 }
 
 /// The program Steam should start: the AppImage itself on Linux when it's one, else this program.
-fn start_path() -> PathBuf {
-    std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()).unwrap_or_else(launcher_exe)
+/// A package that wraps the launcher (the Nix one runs it inside Steam's runtime environment)
+/// sets RL_START_PATH to its wrapper. Started directly, this program would run outside the
+/// wrapper, from a store path that is gone after the next update.
+pub fn start_path() -> PathBuf {
+    let set = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file());
+    set("APPIMAGE").or_else(|| set("RL_START_PATH")).unwrap_or_else(launcher_exe)
 }
 
 /// Is this a Steam Deck? Its firmware says so (Jupiter is the LCD model, Galileo the OLED).
@@ -664,6 +682,12 @@ pub fn is_steam_deck() -> bool {
     if !cfg!(target_os = "linux") {
         return false;
     }
+    // The machine doesn't change while the launcher runs: read once.
+    static DECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DECK.get_or_init(steam_deck_now)
+}
+
+fn steam_deck_now() -> bool {
     let read = |f: &str| fs::read_to_string(format!("/sys/devices/virtual/dmi/id/{f}")).unwrap_or_default().trim().to_lowercase();
     matches!(read("product_name").as_str(), "jupiter" | "galileo") || read("board_vendor") == "valve"
 }

@@ -239,6 +239,8 @@ jobs:
               echo "$TAG is already published; nothing was changed." >&2
               exit 1
             fi
+            # A rebuilt draft gets this commit's title and notes too, not only its files.
+            gh release edit "$TAG" --title "$title" --notes-file body.md
             gh release upload "$TAG" out/* --clobber
           else
             gh release create "$TAG" out/* --draft --prerelease --title "$title" --notes-file body.md --verify-tag

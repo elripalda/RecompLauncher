@@ -38,6 +38,58 @@ pub struct Game {
     pub hero: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub logo: String,
+    /// The project's own pictures for this game (set on the developer's website page, only ever
+    /// from the catalog): shown before the game's, see catalog::art_url.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_icon: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_cover: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_hero: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_logo: String,
+}
+
+impl Game {
+    /// This game's (game, project) picture of a kind: cover, hero, logo or icon.
+    pub fn art(&self, kind: &str) -> (&str, &str) {
+        match kind {
+            "cover" => (&self.cover, &self.project_cover),
+            "hero" => (&self.hero, &self.project_hero),
+            "logo" => (&self.logo, &self.project_logo),
+            "icon" => (&self.icon, &self.project_icon),
+            _ => ("", ""),
+        }
+    }
+}
+
+/// A game's picture as a full address: the catalog can give one on its own site as a path (/media/...).
+fn full_url(pic: &str) -> String {
+    if pic.starts_with('/') {
+        format!("{}{}", crate::catalog::base(), pic)
+    } else {
+        pic.to_string()
+    }
+}
+
+/// A recomp's catalog entry as one of its games shows: the game's own pictures over the recomp's.
+/// Its project picture only when the game has no picture of that kind of its own, or the recomp's
+/// one project cover would make every game of a series look the same (as ui/games.js childArt).
+pub fn with_game_art(entry: &Value, game: &Game) -> Value {
+    let mut a = if entry.is_object() { entry.clone() } else { serde_json::json!({}) };
+    for kind in ["cover", "hero", "logo", "icon"] {
+        let (pic, project) = game.art(kind);
+        let pk = format!("project_{kind}");
+        if !project.is_empty() {
+            a[&pk] = Value::from(full_url(project));
+        } else if !pic.is_empty() {
+            a[&pk] = Value::from("");
+        }
+        if !pic.is_empty() {
+            a[kind] = Value::from(full_url(pic));
+        }
+    }
+    a
 }
 
 /// A game's id: 1 to 16 of a-z and 0-9.
@@ -110,6 +162,12 @@ pub fn of(own: Option<&Value>, entry: &Value) -> Vec<Game> {
                     }
                 }
             }
+            // Project pictures are set on the website only: the catalog's, never the developer's file.
+            let theirs = art.get(g.id.as_str());
+            g.project_icon = theirs.map(|c| c.project_icon.clone()).unwrap_or_default();
+            g.project_cover = theirs.map(|c| c.project_cover.clone()).unwrap_or_default();
+            g.project_hero = theirs.map(|c| c.project_hero.clone()).unwrap_or_default();
+            g.project_logo = theirs.map(|c| c.project_logo.clone()).unwrap_or_default();
             g
         })
         .collect()
@@ -124,7 +182,12 @@ pub fn inputs_for(game: &Game, all: &[Game], inputs: &[crate::inputs::Input]) ->
 /// A profile for playing one game: only its inputs, and its saves in place of the shared ones
 /// when it has its own.
 pub fn scope(p: &mut crate::profile::Profile, game: &Game, all: &[Game]) {
-    p.inputs = inputs_for(game, all, &p.inputs);
+    let kept = inputs_for(game, all, &p.inputs);
+    // The other games' inputs are still declared, only not asked for here: their {input:...}
+    // arguments are left out of this game's command line instead of failing it as unknown.
+    let dropped = p.inputs.iter().filter(|i| !kept.iter().any(|k| k.id == i.id)).map(|i| i.id.clone());
+    p.skipped_inputs.extend(dropped);
+    p.inputs = kept;
     p.input_paths.retain(|k, _| p.inputs.iter().any(|i| &i.id == k));
     if !game.saves.is_empty() {
         p.saves = game.saves.clone();
@@ -132,9 +195,10 @@ pub fn scope(p: &mut crate::profile::Profile, game: &Game, all: &[Game]) {
 }
 
 /// What a game adds to the command line: its own options after the recomp's (its `start.args`
-/// and settings). The player's own launch options still come last.
-pub fn add_args(args: &mut Vec<String>, game: &Game) {
-    args.extend(game.args.iter().cloned());
+/// and settings). The player's own launch options still come last. Its {input:...} placeholders
+/// are filled from the player's files as in `start.args`; one with no file is left out.
+pub fn add_args(args: &mut Vec<String>, game: &Game, paths: &BTreeMap<String, std::path::PathBuf>, wine: bool) {
+    args.extend(crate::inputs::arguments(&game.args, paths, wine));
 }
 
 /// Play time and the last session of one game in a recomp, kept on its install.
@@ -146,9 +210,12 @@ pub struct Played {
     pub last_played: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<[u64; 2]>,
-    /// Setup for this game's own inputs is done (their fingerprint, as `inputs_ready` is).
+    /// The release this game's own Easy Setup last worked on, as `Installed::set_up` is.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub inputs_ready: String,
+    pub set_up: String,
+    /// This game's own build was cut short, as `Installed::build_cut` is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub build_cut: bool,
 }
 
 impl Played {
@@ -161,6 +228,20 @@ impl Played {
             if n > 500 {
                 self.sessions.drain(..n - 500);
             }
+        }
+    }
+
+    /// Time played kept from elsewhere (an uninstalled copy, an old id) added to this: both
+    /// count, so neither side is lost. Setup state stays this one's.
+    pub fn absorb(&mut self, other: Played) {
+        self.played_secs += other.played_secs;
+        self.last_played = self.last_played.max(other.last_played);
+        self.sessions.extend(other.sessions);
+        self.sessions.sort_unstable();
+        self.sessions.dedup();
+        let n = self.sessions.len();
+        if n > 500 {
+            self.sessions.drain(..n - 500);
         }
     }
 }
@@ -229,6 +310,48 @@ mod tests {
     }
 
     #[test]
+    fn project_art_comes_from_the_catalog_never_the_developers_file() {
+        let entry = json!({ "games": [
+            { "id": "gow2", "name": "Catalog 2", "project_cover": "/p2.jpg" },
+            { "id": "gow3", "name": "Catalog 3" }
+        ]});
+        let mine = json!([
+            { "id": "gow2", "name": "Gears of War 2", "project_cover": "/mine2.jpg" },
+            { "id": "gow3", "name": "Gears of War 3", "project_cover": "/mine3.jpg" }
+        ]);
+        let list = of(Some(&mine), &entry);
+        assert_eq!(list[0].project_cover, "/p2.jpg");
+        assert_eq!(list[1].project_cover, "");
+    }
+
+    #[test]
+    fn a_games_own_picture_wins_over_the_recomps_project_one() {
+        let recomp = json!({ "cover": "/series.jpg", "project_cover": "/series-p.jpg", "project_hero": "/series-ph.jpg" });
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "https://cdn.example/g2.jpg".into(), ..Default::default() };
+        let a = with_game_art(&recomp, &game);
+        assert_eq!(a["cover"], "https://cdn.example/g2.jpg");
+        assert_eq!(a["project_cover"], "", "the recomp's project cover would make every game look the same");
+        assert_eq!(a["project_hero"], "/series-ph.jpg", "no hero of its own: the recomp's look");
+    }
+
+    #[test]
+    fn a_games_pictures_on_the_catalogs_site_become_full_addresses() {
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "/media/x.png".into(), project_hero: "/media/p.png".into(), ..Default::default() };
+        let a = with_game_art(&json!({}), &game);
+        assert_eq!(a["cover"], format!("{}/media/x.png", crate::catalog::base()));
+        assert_eq!(a["project_hero"], format!("{}/media/p.png", crate::catalog::base()));
+    }
+
+    #[test]
+    fn a_games_own_project_picture_comes_first() {
+        let recomp = json!({ "cover": "/series.jpg", "project_cover": "/series-p.jpg" });
+        let game = Game { id: "gow2".into(), name: "Gears of War 2".into(), cover: "https://cdn.example/g2.jpg".into(), project_cover: "https://cdn.example/g2-p.jpg".into(), ..Default::default() };
+        let a = with_game_art(&recomp, &game);
+        assert_eq!(a["project_cover"], "https://cdn.example/g2-p.jpg");
+        assert_eq!(a["cover"], "https://cdn.example/g2.jpg");
+    }
+
+    #[test]
     fn each_game_asks_for_its_own_inputs_and_the_shared_ones() {
         let input = |id: &str| serde_json::from_value::<crate::inputs::Input>(json!({ "id": id, "label": id })).unwrap();
         let all = parse(&two());
@@ -244,6 +367,61 @@ mod tests {
         assert_eq!(p.saves, ["{install}/gow3/save"]);
     }
 
+    // Gen1Recomp's shape: every game's ROM argument in the recomp's start.args.
+    fn rom_per_game() -> crate::profile::Profile {
+        serde_json::from_value(json!({
+            "format": 1,
+            "inputs": [
+                { "id": "rom-red", "label": "Red", "optional": true, "formats": [{ "type": "file", "extensions": ["gb"] }] },
+                { "id": "rom-blue", "label": "Blue", "optional": true, "formats": [{ "type": "file", "extensions": ["gb"] }] }
+            ],
+            "games": [
+                { "id": "red", "name": "Red", "args": ["--game=red"], "inputs": ["rom-red"] },
+                { "id": "blue", "name": "Blue", "args": ["--game=blue"], "inputs": ["rom-blue"] }
+            ],
+            "start": { "program": ["g.exe"], "args": ["--rom={input:rom-red}", "--rom={input:rom-blue}"] }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn another_games_input_in_start_args_is_not_unknown() {
+        let mut p = rom_per_game();
+        let all = of(p.games.as_ref(), &Value::Null);
+        scope(&mut p, &all[1], &all);
+        assert_eq!(crate::inputs::validate(&p), Ok(()));
+    }
+
+    #[test]
+    fn only_the_played_games_input_reaches_its_command_line() {
+        let mut p = rom_per_game();
+        p.input_paths.insert("rom-red".into(), "/r.gb".into());
+        p.input_paths.insert("rom-blue".into(), "/b.gb".into());
+        let all = of(p.games.as_ref(), &Value::Null);
+        scope(&mut p, &all[1], &all);
+        let args = crate::inputs::arguments(&p.start.as_ref().unwrap().args, &p.input_paths, false);
+        assert_eq!(args, ["--rom=/b.gb"]);
+    }
+
+    #[test]
+    fn a_misspelled_input_in_a_games_args_fails() {
+        let mut p = rom_per_game();
+        p.games = Some(json!([
+            { "id": "red", "name": "Red", "args": ["--rom={input:rom-red}"], "inputs": ["rom-red"] },
+            { "id": "blue", "name": "Blue", "args": ["--rom={input:rom-bleu}"], "inputs": ["rom-blue"] }
+        ]));
+        assert!(crate::inputs::validate(&p).is_err());
+    }
+
+    #[test]
+    fn a_misspelled_input_still_fails_after_scoping() {
+        let mut p = rom_per_game();
+        p.start.as_mut().unwrap().args.push("--x={input:rom-gren}".into());
+        let all = of(p.games.as_ref(), &Value::Null);
+        scope(&mut p, &all[1], &all);
+        assert!(crate::inputs::validate(&p).is_err());
+    }
+
     #[test]
     fn a_games_options_come_after_the_recomps_start_args() {
         let p: crate::profile::Profile = serde_json::from_value(json!({
@@ -253,12 +431,39 @@ mod tests {
         })).unwrap();
         let all = of(p.games.as_ref(), &Value::Null);
         let mut args = p.start.as_ref().unwrap().args.clone();
-        add_args(&mut args, &all[1]);
+        add_args(&mut args, &all[1], &BTreeMap::new(), false);
         assert_eq!(args, ["--fullscreen", "--game=gow3"]);
         // No options of its own: Play opens the recomp's menu, as it starts.
         let mut plain = p.start.as_ref().unwrap().args.clone();
-        add_args(&mut plain, &Game { id: "gowj".into(), name: "Judgment".into(), ..Default::default() });
+        add_args(&mut plain, &Game { id: "gowj".into(), name: "Judgment".into(), ..Default::default() }, &BTreeMap::new(), false);
         assert_eq!(plain, ["--fullscreen"]);
+    }
+
+    fn with_rom_arg() -> Game {
+        Game { id: "blue".into(), name: "Blue".into(), args: vec!["--game=blue".into(), "--rom={input:rom-blue}".into()], ..Default::default() }
+    }
+
+    #[test]
+    fn a_games_own_args_get_its_files() {
+        let paths = BTreeMap::from([("rom-blue".to_string(), std::path::PathBuf::from("/roms/blue.gb"))]);
+        let mut args = vec![];
+        add_args(&mut args, &with_rom_arg(), &paths, false);
+        assert_eq!(args, ["--game=blue", "--rom=/roms/blue.gb"]);
+    }
+
+    #[test]
+    fn a_games_arg_without_its_file_is_left_out() {
+        let mut args = vec![];
+        add_args(&mut args, &with_rom_arg(), &BTreeMap::new(), false);
+        assert_eq!(args, ["--game=blue"]);
+    }
+
+    #[test]
+    fn a_games_file_is_given_as_a_windows_path_under_proton() {
+        let paths = BTreeMap::from([("rom-blue".to_string(), std::path::PathBuf::from("/roms/blue.gb"))]);
+        let mut args = vec![];
+        add_args(&mut args, &with_rom_arg(), &paths, true);
+        assert_eq!(args[1], "--rom=Z:\\roms\\blue.gb");
     }
 
     #[test]

@@ -22,7 +22,8 @@ pub struct Profile {
     #[serde(skip)]
     pub input_paths: BTreeMap<String, PathBuf>,
     /// Optional inputs this launcher skipped (a shared type or role it doesn't know, or DLSS on a PC
-    /// it doesn't apply to): their {input:...} arguments are left out instead of failing.
+    /// it doesn't apply to), and the other games' inputs when one game of several is played: their
+    /// {input:...} arguments are left out instead of failing.
     #[serde(skip)]
     pub skipped_inputs: Vec<String>,
     /// The installed build's platform preference, supplied by the launcher, never a manifest.
@@ -59,6 +60,10 @@ pub struct Profile {
     /// Whether looks (ReShade filters) can be used with it, and how.
     #[serde(default)]
     pub looks: Option<crate::looks::ProfileLooks>,
+    /// What it needs from the PC, by system (sysneeds.rs). Left out of the profile when it isn't
+    /// given, so setups fingerprinted before it existed stay as they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<crate::sysneeds::SystemNeeds>,
     /// Where the game keeps its saves: folders, files, or `*` patterns, with the same {local},
     /// {documents}, {install}... as everywhere else. Backups and cloud saves copy these.
     #[serde(default)]
@@ -87,21 +92,26 @@ pub struct Prepare {
     /// What the setup screen calls this step.
     #[serde(default)]
     pub label: String,
-    /// Seconds before it's given up on.
-    #[serde(default = "five_min")]
-    pub timeout: u64,
     /// Ticks on the setup screen before the step runs, each adding its arguments when it's on
     /// (a library the builder downloads under a company's license, say).
     #[serde(default, deserialize_with = "options_lenient", skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<PrepareOption>,
-    /// Changed by the developer when players must run this step again (its output changed, say).
-    /// The only thing in the profile that makes a finished setup count as not done.
+    /// Not part of the SDK anymore: every new release builds again by itself. Read only to tell,
+    /// once, whether a setup from before format 3 was current (lib.rs, old_setup).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
     /// Files the step leaves when it has finished ({home}, {local}, {install}...). All there: the
     /// game is set up, even when another launcher built it.
     #[serde(default, deserialize_with = "paths_lenient", skip_serializing_if = "Vec::is_empty")]
     pub done: Vec<String>,
+    /// Environment variables for the step, as `start.env`. Left out of the profile when there are
+    /// none, so setups fingerprinted before it existed stay as they were.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    /// The step keeps what it needs from the copy in the game's build folder (folders.game), and
+    /// runs again from there without the copy: then the arguments with {game} are left out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_copy: bool,
 }
 
 /// A path or a list of them; anything else is nothing.
@@ -143,6 +153,10 @@ pub struct PrepareOption {
     /// Whether it starts ticked (on when not given). Ignored with a license.
     #[serde(default, rename = "default")]
     pub start_on: Option<bool>,
+    /// Setup can't run until it's ticked (a license the build can't do without). It still starts
+    /// off with a license: only the player accepts one.
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -183,23 +197,59 @@ impl Prepare {
     pub fn option_args(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<String> {
         self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.on(picked)).flat_map(|o| o.args.iter().cloned()).collect()
     }
+    /// The required options this PC is offered that aren't ticked: setup waits for them.
+    pub fn unticked_required(&self, os: &str, nvidia_rtx: bool, amd: bool, picked: &BTreeMap<String, bool>) -> Vec<&PrepareOption> {
+        self.options_here(os, nvidia_rtx, amd).into_iter().filter(|o| o.required && !o.on(picked)).collect()
+    }
 }
 
 impl Prepare {
+    /// `prepare.env`, filled in; names that aren't allowed are left out, and so is a value with a
+    /// named input still in it (`with_inputs` fills those in first: an optional DLC the player
+    /// didn't give is left out, as in `prepare.args`).
+    pub fn env_vars(&self, install: &Path, copy: Option<&Path>) -> Vec<(String, String)> {
+        let mut out = vec![];
+        for (k, v) in self.env.iter().filter(|(k, _)| env_name_ok(k)) {
+            // Run again without the copy (keeps_copy): a value naming it is left out, as in args.
+            if copy.is_none() && v.contains("{game}") {
+                continue;
+            }
+            let value = fill(v, install, copy);
+            if value.contains("{input:") {
+                continue;
+            }
+            out.push((k.clone(), value));
+        }
+        out
+    }
+
+    /// The step with the player's named inputs in its arguments and environment.
+    /// `wine`: a Windows step run through Proton or Wine on Linux, given the paths as it reads them.
+    pub fn with_inputs(&self, inputs: &BTreeMap<String, PathBuf>, wine: bool) -> Prepare {
+        let mut pr = self.clone();
+        // Omit an argument containing an absent optional/conditional token. Put flags in the same
+        // argument (e.g. --dlc={input:dlc}) so a flag cannot steal the next value.
+        pr.args = crate::inputs::arguments(&self.args, inputs, wine);
+        pr.env = self.env.iter().map(|(k, v)| (k.clone(), crate::inputs::expand(v, inputs, wine))).collect();
+        pr
+    }
+
+    /// Whether it's a Windows program that runs through Proton or Wine here (on Linux), as the
+    /// game's own Windows build does.
+    pub fn through_proton(&self, install: &Path) -> bool {
+        !cfg!(windows) && self.program_in(install).is_some_and(|e| crate::proton::is_windows_program(&e))
+    }
+
     /// Its program in the game's folder: a name it gives, or on Linux and Mac the native build by
     /// the same name (a release's Game-nightly-4-x86_64.AppImage for "Game.AppImage"), as Play
     /// finds the game's own program.
     pub fn program_in(&self, install: &Path) -> Option<PathBuf> {
-        let named = self.program.iter().map(|p| install.join(p)).find(|p| p.is_file());
+        let named = self.program.iter().find_map(|p| named_program(install.join(p)));
         if named.is_some() || cfg!(windows) {
             return named;
         }
-        self.program.iter().find_map(|p| native_twin(install, p))
+        self.program.iter().find_map(|p| twin_beside(install, p))
     }
-}
-
-fn five_min() -> u64 {
-    300
 }
 
 /// A known good dump of the disc (from Redump), to check the player's copy against.
@@ -372,6 +422,11 @@ impl Extra {
             if empty_dir(&to) {
                 let _ = std::fs::remove_dir(&to);
             }
+            // A link to a dump the player moved or deleted points nowhere: placed again. What's
+            // really there stays.
+            if dead_link(&to) {
+                remove_link(&to)?;
+            }
             if to.symlink_metadata().is_ok() {
                 continue;
             }
@@ -420,12 +475,18 @@ pub struct Check {
     pub ids: Vec<String>,
 }
 
+impl Check {
+    /// Nothing to check.
+    pub fn is_empty(&self) -> bool {
+        self.file.is_empty() && self.xdvdfs.is_empty() && self.iso9660.is_empty() && self.nup_build_id.is_empty() && self.n64_region.is_empty() && self.n64_id.is_empty() && self.n64_rev.is_none() && self.ids.is_empty()
+    }
+}
+
 impl GameCopy {
     /// Whether anything about the copy is actually checked (a file in it, an id, a known dump), so
     /// "it checks out" means something; otherwise the copy only has to be there.
     pub fn checks_anything(&self) -> bool {
-        let c = &self.check;
-        !c.file.is_empty() || !c.xdvdfs.is_empty() || !c.iso9660.is_empty() || !c.nup_build_id.is_empty() || !c.n64_region.is_empty() || !c.n64_id.is_empty() || c.n64_rev.is_some() || !c.ids.is_empty() || !self.dumps.is_empty()
+        !self.check.is_empty() || !self.dumps.is_empty()
     }
 }
 
@@ -761,21 +822,38 @@ const BUILT_IN: &[&str] = &[
 /// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
+    // On Android a game is an app of its own: Android keeps its files out of every other app's
+    // reach, so the launcher can't put the player's copy or any settings where the game reads
+    // them. No game has a profile there (no Easy Setup, no Game Settings): Play opens the game,
+    // and the game asks for what it needs itself.
+    if cfg!(target_os = "android") {
+        return None;
+    }
     let mut p = find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))?;
+    p.lift_game();
     to_apprun(&mut p, game_dir);
     Some(p)
 }
 
-/// An AppImage the Flatpak unpacked at install is gone, its AppRun in its place: programs named
-/// `….AppImage` that aren't in the folder start the AppRun instead.
-fn to_apprun(p: &mut Profile, dir: &Path) {
-    if dir.as_os_str().is_empty() || !dir.join("AppRun").is_file() {
+/// An AppImage unpacked at install (on Linux every game plays from a plain folder) is gone, its
+/// AppRun in its place: programs named `….AppImage` that aren't in the folder start the AppRun
+/// instead. The one in a folder named after the AppImage first (a release with several), else the
+/// one at the top.
+pub(crate) fn to_apprun(p: &mut Profile, dir: &Path) {
+    if dir.as_os_str().is_empty() {
         return;
     }
     let swap = |programs: &mut Vec<String>| {
         for prog in programs.iter_mut() {
-            let image = Path::new(prog.as_str()).extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
-            if image && !dir.join(prog.as_str()).is_file() {
+            let named = Path::new(prog.as_str());
+            let image = named.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false);
+            if !image || dir.join(named).is_file() {
+                continue;
+            }
+            let own = named.with_extension("").join("AppRun");
+            if dir.join(&own).is_file() {
+                *prog = own.to_string_lossy().replace('\\', "/");
+            } else if dir.join("AppRun").is_file() {
                 *prog = "AppRun".into();
             }
         }
@@ -791,6 +869,29 @@ fn to_apprun(p: &mut Profile, dir: &Path) {
 /// From the catalog's boot profile (crate::boot): the player's copy and how it reaches the game,
 /// when it goes on the command line (`files.how: "flag"`) or into a folder (`"folder"`), and the
 /// game's settings the launcher can show (`settings: {config, settings}`).
+/// A program a profile names (`start.program`, `prepare.program`), as a path in the game's folder:
+/// the file itself, or on a Mac a Game.app, as the program inside it its Info.plist names, the one
+/// Play starts for a bundle anyway.
+pub fn named_program(path: PathBuf) -> Option<PathBuf> {
+    if path.is_file() {
+        return Some(path);
+    }
+    let mac_app = crate::assets::os_now() == "macos" && crate::macos::is_bundle(&path);
+    if !mac_app {
+        return None;
+    }
+    crate::macos::bundle_executable(&path, crate::assets::arch_now())
+}
+
+/// The native twin of a program a profile names, looked for in the folder that name points into.
+/// A program in a subfolder (`Longshot/longshot`, built there by the setup step) must not match a
+/// tool at the top of the release that shares its name (`longshot-builder`).
+fn twin_beside(install: &Path, named: &str) -> Option<PathBuf> {
+    let path = install.join(named);
+    let folder = path.parent().unwrap_or(install);
+    native_twin(folder, named)
+}
+
 /// A native build's program for the Windows one a game's setup names: the same name without its
 /// Windows and processor parts. pd.i686.exe is pd.x86_64, not pd.pal.x86_64 (a build for another
 /// region, with a word the Windows name doesn't have).
@@ -802,6 +903,10 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
         return None;
     }
     let runnable = |p: &Path| -> bool {
+        // Mac metadata sidecars can inherit run permission on an external drive.
+        if crate::install::mac_metadata(p) {
+            return false;
+        }
         let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
         if [".dll", ".so", ".exe", ".txt", ".md", ".ini", ".cfg", ".json", ".pdb", ".zip", ".7z", ".dat", ".bin"].iter().any(|e| n.ends_with(e)) || n.contains(".so.") {
             return false;
@@ -809,19 +914,22 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
         if n.ends_with(".x86_64") || n.ends_with(".appimage") || n.ends_with(".sh") {
             return true;
         }
-        // A program, by its run permission or its first bytes (an ELF): zips made on Windows drop
-        // the permission.
-        let elf = || {
-            let mut head = [0u8; 4];
-            std::fs::File::open(p).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_ok() && &head == b"\x7fELF"
-        };
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false) || elf()
+        // A program by its first bytes, not its run permission: on a drive formatted for Windows
+        // (exFAT, NTFS) every file has that, so a Dusklight.log or Game.pck would pass, and zips
+        // made on Windows drop it from real programs. An ELF, a script that says what runs it, or
+        // on a Mac a program for this processor (as install::is_program judges one).
+        let mut head = [0u8; 4];
+        if std::fs::File::open(p).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).is_err() {
+            return false;
         }
-        #[cfg(not(unix))]
-        elf()
+        if &head == b"\x7fELF" || head.starts_with(b"#!") {
+            return true;
+        }
+        if crate::assets::os_now() != "macos" {
+            return false;
+        }
+        let here = if crate::assets::arch_now() == "arm64" { "arm64" } else { "x64" };
+        crate::macos::is_executable(p, here)
     };
     let mut best: Option<(usize, usize, PathBuf)> = None;
     for e in std::fs::read_dir(dir).ok()?.flatten() {
@@ -840,6 +948,23 @@ pub fn native_twin(dir: &Path, win: &str) -> Option<PathBuf> {
         }
     }
     best.map(|(_, _, p)| p)
+}
+
+/// A .NET app host on Linux finds the runtime only where .NET put it system-wide. When the
+/// player's runtime lives elsewhere (~/.dotnet, a folder it downloaded) the host stops at once
+/// with "You must install .NET". A release's own start script finds that runtime and sets
+/// DOTNET_ROOT before starting the host, so when a game's profile resolves to such a host, Play
+/// starts the script instead.
+fn through_start_script(host: PathBuf) -> PathBuf {
+    if !cfg!(target_os = "linux") {
+        return host;
+    }
+    let Some(dir) = host.parent() else { return host };
+    let Some(name) = host.file_name().map(|n| n.to_string_lossy().to_string()) else { return host };
+    if !dir.join(format!("{name}.runtimeconfig.json")).is_file() {
+        return host;
+    }
+    crate::linux_twin(&host).unwrap_or(host)
 }
 
 pub fn from_boot(b: &Value) -> Option<Profile> {
@@ -899,7 +1024,7 @@ fn boot_settings(b: &Value) -> (Vec<Config>, Vec<Setting>) {
 /// out of them.
 fn safe_place(p: &str) -> bool {
     let p = p.trim().replace('\\', "/");
-    ["{install}/", "{documents}/", "{local}/", "{config}/", "{home}/"].iter().any(|r| p.starts_with(r)) && !p.split('/').any(|c| c == "..")
+    ["{install}/", "{data}/", "{documents}/", "{local}/", "{config}/", "{home}/"].iter().any(|r| p.starts_with(r)) && !p.split('/').any(|c| c == "..")
 }
 
 /// The player's copy, when the boot profile says it goes on the command line or into a folder:
@@ -1015,6 +1140,18 @@ fn bind_image(raw: &mut Value, image: &Path) -> Option<()> {
     Some(())
 }
 
+/// JSON bytes without the UTF-8 byte order mark some Windows editors put in front. The mark belongs
+/// to the encoding and JSON doesn't allow it, so a recomplauncher.json saved that way would fail to
+/// parse and the game would lose its launcher support.
+pub(crate) fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes)
+}
+
+/// A recomplauncher.json, or another JSON file a person may have saved, read from bytes, BOM or not.
+pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> {
+    serde_json::from_slice(without_bom(bytes)).ok()
+}
+
 /// Embedded metadata belongs to the installed image and wins over a stale
 /// sidecar. Unsupported, missing or unreadable metadata keeps the old fallback.
 pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
@@ -1022,7 +1159,7 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
         return None;
     }
     let parse = |bytes: &[u8], image: Option<&Path>| -> Option<ReleaseProfile> {
-        let mut raw: Value = serde_json::from_slice(bytes).ok()?;
+        let mut raw = parse_json_bytes(bytes)?;
         if let Some(image) = image {
             bind_image(&mut raw, image)?;
         }
@@ -1045,6 +1182,125 @@ pub(crate) fn release_profile(dir: &Path) -> Option<ReleaseProfile> {
     }
     let bytes = std::fs::read(dir.join(crate::appimage::MANIFEST)).ok()?;
     parse(&bytes, None)
+}
+
+/// Why the launcher skips the release's recomplauncher.json in this folder, in plain words, for a
+/// folder where release_profile found nothing to use. None when there is no file at all: that
+/// isn't a problem, the launcher just sets the game up without one.
+pub(crate) fn release_file_problem(dir: &Path) -> Option<String> {
+    if dir.as_os_str().is_empty() {
+        return None;
+    }
+    let embedded = crate::appimage::installed_image(dir).and_then(|image| crate::appimage::manifest(&image).ok());
+    let bytes = embedded.or_else(|| std::fs::read(dir.join(crate::appimage::MANIFEST)).ok())?;
+    Some(file_problem(without_bom(&bytes)))
+}
+
+/// What's wrong with a recomplauncher.json the launcher can't use: the first thing, as the
+/// developer would fix it ("config[0].file" should be a list).
+fn file_problem(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let v = match serde_json::from_str::<Value>(&text) {
+        Ok(v) => v,
+        Err(e) => return format!("It isn't valid JSON (line {}, column {}).", e.line(), e.column()),
+    };
+    if v.get("format").and_then(Value::as_u64) != Some(1) {
+        return "\"format\" has to be 1.".into();
+    }
+    let Err(e) = serde_json::from_str::<Profile>(&text) else {
+        return "The launcher can't read it.".into();
+    };
+    let at = json_path_at(&text, e.line(), e.column());
+    // serde_json ends its message with where it stopped; the path says that better.
+    let full = e.to_string();
+    let said = full.split(" at line ").next().unwrap_or(&full);
+    let what = plain_type_error(said);
+    if at.is_empty() {
+        return format!("The file {what}.");
+    }
+    format!("\"{at}\" {what}.")
+}
+
+/// A serde message in the words of the format guide.
+fn plain_type_error(said: &str) -> String {
+    if let Some(field) = said.strip_prefix("missing field `").and_then(|s| s.split('`').next()) {
+        return format!("needs \"{field}\"");
+    }
+    if let Some(value) = said.strip_prefix("unknown variant `").and_then(|s| s.split('`').next()) {
+        return format!("can't be \"{value}\"");
+    }
+    let expected = said.rsplit("expected ").next().unwrap_or("");
+    let kind = match expected {
+        "a sequence" => "a list",
+        "a string" => "text",
+        "a boolean" => "true or false",
+        "a map" => "an object, in { }",
+        _ if expected.starts_with("struct ") => "an object, in { }",
+        _ if expected.starts_with('u') || expected.starts_with('i') || expected.starts_with('f') => "a number",
+        _ => return said.to_string(),
+    };
+    format!("should be {kind}")
+}
+
+/// The place in a JSON text where a parse stopped (serde_json's line and column), as a path like
+/// config[0].file: the keys and list positions around it.
+fn json_path_at(text: &str, line: usize, column: usize) -> String {
+    enum Frame {
+        Object { key: Option<String>, wants_key: bool },
+        List { at: usize },
+    }
+    let start: usize = text.split('\n').take(line.saturating_sub(1)).map(|l| l.len() + 1).sum();
+    let last = (start + column).saturating_sub(1).min(text.len());
+    let bytes = text.as_bytes();
+    let mut stack: Vec<Frame> = vec![];
+    let mut i = 0;
+    while i < last {
+        match bytes[i] {
+            b'"' => {
+                let from = i + 1;
+                i = from;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                if let Some(Frame::Object { key, wants_key: wants @ true }) = stack.last_mut() {
+                    *key = Some(text[from..i.min(text.len())].to_string());
+                    *wants = false;
+                }
+            }
+            b'{' => stack.push(Frame::Object { key: None, wants_key: true }),
+            b'[' => stack.push(Frame::List { at: 0 }),
+            b'}' | b']' => {
+                stack.pop();
+            }
+            b',' => match stack.last_mut() {
+                Some(Frame::Object { key, wants_key }) => {
+                    *key = None;
+                    *wants_key = true;
+                }
+                Some(Frame::List { at }) => *at += 1,
+                None => {}
+            },
+            _ => {}
+        }
+        i += 1;
+    }
+    // Stopped on an object's closing brace (a missing field): the error is about the whole object,
+    // not its last key.
+    if bytes.get(last) == Some(&b'}') {
+        if let Some(Frame::Object { key, .. }) = stack.last_mut() {
+            *key = None;
+        }
+    }
+    let mut path = String::new();
+    for frame in &stack {
+        match frame {
+            Frame::Object { key: Some(k), .. } if path.is_empty() => path.push_str(k),
+            Frame::Object { key: Some(k), .. } => path.push_str(&format!(".{k}")),
+            Frame::Object { key: None, .. } => {}
+            Frame::List { at } => path.push_str(&format!("[{at}]")),
+        }
+    }
+    path
 }
 
 fn find_own(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
@@ -1102,9 +1358,9 @@ pub fn wine_path(p: &str) -> String {
 }
 
 /// While it's alive, filling in is for a Windows program under Proton (when `on`).
-struct WineFill(bool);
+pub struct WineFill(bool);
 impl WineFill {
-    fn new(on: bool) -> Self {
+    pub fn new(on: bool) -> Self {
         WineFill(WINE.with(|w| w.replace(on)))
     }
 }
@@ -1128,12 +1384,24 @@ pub fn app_data() -> Option<PathBuf> {
     }
 }
 
+/// The one folder a game keeps everything it writes in (saves, settings, caches), inside its own
+/// folder: `{data}` in its recomplauncher.json, and RECOMPLAUNCHER_DATA when it starts. A name no
+/// game uses: releases ship a `data` folder of their own (TotK's does), and 11 catalog games
+/// already write or ship a top-level `userdata` (the same folder as `UserData` on Windows).
+pub const DATA_DIR: &str = "recompdata";
+
+/// `{data}` for a game in `install`.
+pub fn data_dir(install: &Path) -> PathBuf {
+    install.join(DATA_DIR)
+}
+
 pub fn fill(t: &str, install: &Path, game: Option<&Path>) -> String {
     if !t.contains('{') {
         return t.to_string();
     }
     let s = |p: Option<PathBuf>| p.map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
     t.replace("{pad}", &PAD.read().unwrap())
+        .replace("{data}", &data_dir(install).to_string_lossy())
         .replace("{install}", &install.to_string_lossy())
         .replace("{documents}", &s(dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents")))))
         .replace("{appdata}", &s(app_data()))
@@ -1356,11 +1624,73 @@ pub fn path_value(format: &str, p: &Path) -> String {
     }
 }
 
+/// What the folder a copy goes in (`into`) is still missing of what it must hold (empty: all there).
+pub fn missing_in(g: &GameCopy, install: &Path) -> Vec<String> {
+    let into = g.into.trim().trim_matches(['/', '\\']);
+    if into.is_empty() || into.contains("..") || g.contains.is_empty() {
+        return vec![];
+    }
+    let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
+    // An empty folder doesn't count: a release can come with the folders the player's files go in.
+    // Nor does a link to a dump the player moved or deleted.
+    let there = |e: &std::fs::DirEntry| !empty_dir(&e.path()) && !dead_link(&e.path());
+    let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(there).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
+    g.contains
+        .iter()
+        .filter(|c| !c.contains(['*', '/', '\\']))
+        .filter(|c| !names.contains(&c.to_lowercase()))
+        .cloned()
+        .collect()
+}
+
+/// The copy's files already where the game reads them (put there by the player, or placed before):
+/// the folder they're in. Then no copy has to be picked.
+pub fn in_place(g: &GameCopy, install: &Path) -> Option<PathBuf> {
+    let into = g.into.trim().trim_matches(['/', '\\']);
+    if into.is_empty() || into.contains("..") || !g.contains.iter().any(|c| !c.contains(['*', '/', '\\'])) {
+        return None;
+    }
+    if !missing_in(g, install).is_empty() {
+        return None;
+    }
+    Some(if into == "." { install.to_path_buf() } else { install.join(into) })
+}
+
 impl Profile {
+    /// `game` (and its `update`) as named inputs, first in the list: `game` and `update`, with every
+    /// rule they had. Named inputs are the one way to ask for files; a manifest written with `game`
+    /// reads the same as one written with inputs. `{game}` keeps filling in with the main input.
+    /// After this `game` is None; `main_copy` gives its rules back, read from the input.
+    /// Beta only: removed before 1.0, when no manifest writes `game` any more (the store's boot
+    /// profiles are made as inputs by then).
+    pub fn lift_game(&mut self) {
+        let Some(g) = self.game.take() else { return };
+        let mut lifted = vec![crate::inputs::Input::from_copy(&g)];
+        if let Some(up) = g.update.as_ref() {
+            lifted.push(crate::inputs::Input::from_extra(up));
+        }
+        // An input of the same id the manifest declares itself is the developer's: theirs stays.
+        lifted.retain(|l| !self.inputs.iter().any(|i| i.id == l.id));
+        self.inputs.splice(0..0, lifted);
+    }
+
+    /// The rules of the player's copy: the main input's, as `GameCopy` (a profile not lifted yet,
+    /// in a test, has them in `game`).
+    pub fn main_copy(&self) -> Option<GameCopy> {
+        self.game.clone().or_else(|| self.main_input().filter(|i| i.role != "runtime").map(crate::inputs::Input::as_copy))
+    }
+
+    /// The input the game's big copy box is for: the first one the player picks with role game,
+    /// else the first one they pick.
+    pub fn main_input(&self) -> Option<&crate::inputs::Input> {
+        let picked = || self.inputs.iter().filter(|i| i.picked() && i.role != "update" && i.role != "key");
+        picked().find(|i| i.role == "game").or_else(|| picked().next())
+    }
+
     /// Easy Setup, the same rule as the website's: it starts a program and takes the player's copy
     /// of the game, or it asks for the game or its disc as a required input.
     pub fn easy_setup(&self) -> bool {
-        (self.start.is_some() && self.game.is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
+        (self.start.is_some() && self.main_copy().is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
     }
 
     pub fn config_file(&self, id: &str, install: &Path) -> Option<File> {
@@ -1372,10 +1702,13 @@ impl Profile {
 
     fn program_for(&self, install: &Path, windows_build: bool) -> Option<PathBuf> {
         let s = self.start.as_ref()?;
-        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| native_twin(install, p)) };
-        (if windows_build { None } else { twin() })
-            .or_else(|| s.program.iter().map(|p| install.join(p)).find(|p| p.is_file()))
-            .or_else(twin)
+        let twin = || if cfg!(windows) { None } else { s.program.iter().find_map(|p| twin_beside(install, p)) };
+        let program = (if windows_build { None } else { twin() })
+            .or_else(|| s.program.iter().find_map(|p| named_program(install.join(p))))
+            .or_else(twin)?;
+        // A .NET app host on Linux needs the start script a release ships with it (see
+        // `through_start_script`), whether the profile named the Windows program or the host itself.
+        Some(if cfg!(windows) { program } else { through_start_script(program) })
     }
 
     /// The selected program is a Windows one that plays through Proton here. Leftover Windows
@@ -1388,7 +1721,7 @@ impl Profile {
     /// The file the game is given for the player's copy, by its `game` (`GameCopy::file_for`).
     pub fn handed(&self, game: Option<&Path>) -> Option<PathBuf> {
         let copy = game?;
-        Some(self.game.as_ref().map(|g| g.file_for(copy)).unwrap_or_else(|| copy.to_path_buf()))
+        Some(self.main_copy().map(|g| g.file_for(copy)).unwrap_or_else(|| copy.to_path_buf()))
     }
 
     pub fn prepare(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
@@ -1399,25 +1732,36 @@ impl Profile {
             // A path put into a TOML or JSON string: forward slashes, so the backslashes aren't escapes.
             let fill = |v: &str, install: &Path, game: Option<&Path>| {
                 let f = fill(v, install, game);
-                if c.format != "ini" && ["{install}", "{game}", "{documents}", "{local}", "{config}", "{home}"].iter().any(|k| v.contains(k)) { f.replace('\\', "/") } else { f }
+                if c.format != "ini" && ["{install}", "{data}", "{game}", "{documents}", "{local}", "{config}", "{home}"].iter().any(|k| v.contains(k)) { f.replace('\\', "/") } else { f }
             };
             let Some(path) = place(&c.file, install) else { continue };
             let mut f = File::open(path, &c.format);
+            let mut set = false;
             for (k, v) in &c.ensure {
                 if f.get(k).map(|x| x.is_empty()).unwrap_or(true) {
                     f.set(k, &fill(v, install, game));
+                    set = true;
                 }
             }
             for (k, v) in &c.always {
                 f.set(k, &fill(v, install, game));
+                set = true;
             }
             if !f.existed {
                 for (k, v) in &c.new {
                     f.set(k, &fill(v, install, game));
+                    set = true;
                 }
             }
             if let (false, Some(g)) = (c.game_path.is_empty(), game) {
                 f.set(&c.game_path, &path_value(&c.format, g));
+                set = true;
+            }
+            // A file that isn't there yet, with nothing to put in it, is left for the game: an
+            // empty one would stop a game that writes its own defaults only when it's missing
+            // (PrimeRecomp's primerecomp.ini).
+            if !f.existed && !set {
+                continue;
             }
             f.save()?;
         }
@@ -1430,7 +1774,7 @@ impl Profile {
     /// files and folders go in as links (junctions on Windows), a disc image as a hard link, or a
     /// copy when it's on another drive. What's already there stays.
     pub fn place(&self, install: &Path, game: Option<&Path>) -> std::io::Result<()> {
-        let (Some(g), Some(copy)) = (&self.game, game) else { return Ok(()) };
+        let (Some(g), Some(copy)) = (self.main_copy(), game) else { return Ok(()) };
         let into = g.into.trim().trim_matches(['/', '\\']);
         if into.is_empty() || into.contains("..") {
             return Ok(());
@@ -1471,6 +1815,11 @@ impl Profile {
             if empty_dir(&to) {
                 let _ = std::fs::remove_dir(&to);
             }
+            // A link to a dump the player moved or deleted points nowhere: placed again. What's
+            // really there stays.
+            if dead_link(&to) {
+                remove_link(&to)?;
+            }
             if to.symlink_metadata().is_ok() {
                 continue;
             }
@@ -1487,20 +1836,7 @@ impl Profile {
 
     /// After `place`: what the game's folder is still missing of what it must hold (empty: all there).
     pub fn missing_after_place(&self, install: &Path) -> Vec<String> {
-        let Some(g) = &self.game else { return vec![] };
-        let into = g.into.trim().trim_matches(['/', '\\']);
-        if into.is_empty() || into.contains("..") || g.contains.is_empty() {
-            return vec![];
-        }
-        let dir = if into == "." { install.to_path_buf() } else { install.join(into) };
-        // An empty folder doesn't count: a release can come with the folders the player's files go in.
-        let names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(|e| !empty_dir(&e.path())).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect();
-        g.contains
-            .iter()
-            .filter(|c| !c.contains(['*', '/', '\\']))
-            .filter(|c| !names.contains(&c.to_lowercase()))
-            .cloned()
-            .collect()
+        self.main_copy().map(|g| missing_in(&g, install)).unwrap_or_default()
     }
 
     /// The game's files already where it reads them (put there by the player): the folder they're
@@ -1518,7 +1854,9 @@ impl Profile {
     /// Whether starting the game hands it the player's copy ({game} in its arguments or
     /// variables). When it doesn't, a finished build is all it needs.
     pub fn start_uses_game(&self) -> bool {
-        self.start.as_ref().is_some_and(|s| s.args.iter().chain(s.env.values()).any(|a| a.contains("{game}")))
+        let main = self.main_input().map(|i| format!("{{input:{}}}", i.id));
+        let names = |a: &String| a.contains("{game}") || main.as_ref().is_some_and(|m| a.contains(m.as_str()));
+        self.start.as_ref().is_some_and(|s| s.args.iter().chain(s.env.values()).any(names))
     }
 
     /// The game's own folder (the first `folders.game`) when it has a setup step and nothing says
@@ -1540,60 +1878,19 @@ impl Profile {
         (dir.is_absolute() && dir != install).then_some(dir)
     }
 
-    /// The player's build in `to` standing in for the setup's own folder: every path of the
-    /// profile in that folder (how it starts, its settings files, its saves, its folders) moves
-    /// with it. What the setup step runs stays as it is: the launcher's own build goes to its folder.
-    pub fn rebase_build(&mut self, install: &Path, to: &Path) {
-        let Some(from) = self.build_home(install) else { return };
-        let moved = |t: &mut String| {
-            if t.is_empty() || t.contains("{game}") {
-                return;
-            }
-            let full = PathBuf::from(fill(t, install, None));
-            if let Ok(rest) = full.strip_prefix(&from) {
-                *t = (if rest.as_os_str().is_empty() { to.to_path_buf() } else { to.join(rest) }).to_string_lossy().into_owned();
-            }
-        };
-        if let Some(st) = self.start.as_mut() {
-            st.args.iter_mut().for_each(moved);
-            st.env.values_mut().for_each(moved);
-        }
-        for c in self.config.iter_mut() {
-            for f in c.file.iter_mut() {
-                moved(&mut f.path);
-                moved(&mut f.when);
-            }
-        }
-        self.saves.iter_mut().for_each(moved);
-        for list in self.folders.values_mut() {
-            for f in list.iter_mut() {
-                moved(&mut f.path);
-                moved(&mut f.when);
-            }
-        }
-    }
-
-    pub fn build_folder_here(&self, install: &Path) -> Option<PathBuf> {
-        let pr = self.prepare.as_ref()?;
-        if !pr.done.is_empty() {
+    /// What a step that keeps the copy (`prepare.keeps_copy`) kept from it: its build folder, when
+    /// it's there with files in it. A build folder that's gone took what it kept with it.
+    pub fn kept_from_copy(&self, install: &Path) -> Option<PathBuf> {
+        if !self.prepare.as_ref()?.keeps_copy {
             return None;
         }
-        let first = self.folders.get("game")?.first()?;
-        let dir = PathBuf::from(fill(&first.path, install, None));
-        let full = std::fs::read_dir(&dir).ok()?.flatten().next().is_some();
-        (full && dir != install).then_some(dir)
+        let home = self.build_home(install)?;
+        let has_files = std::fs::read_dir(&home).ok()?.flatten().next().is_some();
+        has_files.then_some(home)
     }
 
     pub fn already_in_place(&self, install: &Path) -> Option<PathBuf> {
-        let g = self.game.as_ref()?;
-        let into = g.into.trim().trim_matches(['/', '\\']);
-        if into.is_empty() || into.contains("..") || !g.contains.iter().any(|c| !c.contains(['*', '/', '\\'])) {
-            return None;
-        }
-        if !self.missing_after_place(install).is_empty() {
-            return None;
-        }
-        Some(if into == "." { install.to_path_buf() } else { install.join(into) })
+        in_place(&self.main_copy()?, install)
     }
 
     pub fn env_vars(&self, install: &Path, game: Option<&Path>) -> Vec<(String, String)> {
@@ -1636,14 +1933,6 @@ impl Profile {
         })
     }
 
-    /// Whether a game the launcher built from the player's copy was built with another
-    /// `prepare.version` than the manifest has now (`built_with`: the one kept at setup). The
-    /// developer changed it because players who already set up have to run the step again.
-    pub fn prepare_version_changed(&self, built_with: &str) -> bool {
-        let Some(pr) = self.prepare.as_ref() else { return false };
-        pr.version != built_with
-    }
-
     /// Whether `exe` is the program its start names (in any of its forms: the Windows one, or the
     /// native build by that name on Linux and Mac).
     pub fn starts_program(&self, exe: &Path) -> bool {
@@ -1656,8 +1945,26 @@ impl Profile {
             // Game.AppImage for Game-nightly-4-x86_64.AppImage, as Play finds it.
             let base = want_name.split('.').next().unwrap_or_default();
             let twin = matches!(low(want, true).as_str(), "appimage" | "");
-            want_name == name || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
+            // The program inside Game.app, for "Game.app", as named_program finds it.
+            let in_bundle = want_name.ends_with(".app") && exe.ancestors().any(|a| low(a, false) == want_name);
+            want_name == name || in_bundle || (twin && !base.is_empty() && name.starts_with(base) && low(want, true) == low(exe, true))
         })
+    }
+
+    /// Start With's programs, relative to `install`: the one Play starts, and the one the player
+    /// picked in the game's settings. A recomp that ships its own tools (a setup worker, a
+    /// compiler, each kept build's game) offered them all to start by hand (#464). It's the program
+    /// Play resolves, not every file sharing its name: a kept build or a builder named like the
+    /// game isn't the game. None when the start names no program that's there: Start With then
+    /// offers every program in the folder, as before.
+    pub fn start_with(&self, install: &Path, picked: Option<&Path>) -> Option<Vec<String>> {
+        let started = self.program_for(install, self.windows_build.unwrap_or(true))?;
+        let rel = |p: &Path| p.strip_prefix(install).ok().map(|r| r.to_string_lossy().to_string());
+        let mut out = vec![rel(&started)?];
+        // Held Play only starts a program inside the game's folder, so one picked elsewhere can't be offered.
+        let own = picked.filter(|p| p.is_file() && *p != started.as_path()).and_then(rel);
+        out.extend(own);
+        Some(out)
     }
 
     pub fn command_for(&self, install: &Path, game: Option<&Path>, picks: &BTreeMap<String, usize>, windows_build: bool) -> Option<(PathBuf, Vec<String>)> {
@@ -2244,6 +2551,31 @@ fn xdvdfs_has(path: &Path, name: &str) -> bool {
 }
 
 /// A link to a folder: a junction on Windows (no administrator rights needed), a symlink elsewhere.
+/// A link (a junction on Windows, a symlink elsewhere: the dump folders `place` links in) whose
+/// target is gone. A hard-linked or copied file is a real file, never dead.
+pub fn dead_link(p: &Path) -> bool {
+    let link = p.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) || is_junction(p);
+    link && std::fs::metadata(p).is_err()
+}
+
+#[cfg(windows)]
+fn is_junction(p: &Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    // FILE_ATTRIBUTE_REPARSE_POINT: a junction link_dir made.
+    p.symlink_metadata().is_ok_and(|m| m.file_attributes() & 0x400 != 0)
+}
+
+#[cfg(not(windows))]
+fn is_junction(_: &Path) -> bool {
+    false
+}
+
+/// Takes a link away, never what it points to: a symlink as a file, a junction as an empty
+/// folder. Never remove_dir_all, which would follow it into the player's dump.
+fn remove_link(p: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(p).or_else(|_| std::fs::remove_dir(p))
+}
+
 fn link_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
@@ -2320,6 +2652,18 @@ impl GameCopy {
 /// Files every game of a console has, so they can't tell one game from another.
 const COMMON_FILES: [&str; 9] = ["default.xex", "default.xbe", "eboot.bin", "param.sfo", "system.cnf", "main.npdm", "main", "main.dol", "boot.bin"];
 
+/// The copy's own ID when the game lists IDs and it isn't one of them. None when none are listed
+/// or the copy's ID can't be read.
+fn wrong_copy_id(g: &GameCopy, p: &Path) -> Option<String> {
+    let ids: Vec<String> = g.check.ids.iter().map(|i| crate::roms::id_key(i)).filter(|i| i.len() >= 3).collect();
+    if ids.is_empty() {
+        return None;
+    }
+    let id = crate::roms::copy_id(p)?;
+    let listed = ids.iter().any(|w| id.starts_with(w.as_str()));
+    (!listed).then_some(id)
+}
+
 pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
     let folder = p.is_dir();
     // A game packed in an archive: unpacked first (set_game_copy does that for .7z and .zip).
@@ -2341,6 +2685,11 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         }
         if !g.check.nup_build_id.is_empty() {
             return check_nup_build(&g.check.nup_build_id, nup::build_id_of_folder(p));
+        }
+        // An extracted game whose ID can be read (a PlayStation game's param.sfo, an Xbox 360 game's
+        // default.xex) and isn't one of this game's. One whose ID can't be read isn't refused.
+        if let Some(id) = wrong_copy_id(g, p) {
+            return Err(format!("That folder is a different game (its ID is {id})."));
         }
         // With nothing more to check by: a folder with nothing in it, or only pictures and videos
         // (the launcher's own screenshots folder, say), is never anyone's game.
@@ -2385,13 +2734,8 @@ pub fn check_copy(g: &GameCopy, p: &Path) -> Result<(), String> {
         return Err("That disc image isn't the release this recomp reads.".into());
     }
     // A disc ID that isn't one of this game's (a copy whose ID can't be read isn't refused).
-    let ids: Vec<String> = g.check.ids.iter().map(|i| crate::roms::id_key(i)).filter(|i| i.len() >= 3).collect();
-    if !ids.is_empty() {
-        if let Some(id) = crate::roms::copy_id(p) {
-            if !ids.iter().any(|w| id.starts_with(w.as_str())) {
-                return Err(format!("That's a different game's disc image (its ID is {id})."));
-            }
-        }
+    if let Some(id) = wrong_copy_id(g, p) {
+        return Err(format!("That's a different game's disc image (its ID is {id})."));
     }
     if !g.check.xdvdfs.is_empty() && !xdvdfs_has(p, &g.check.xdvdfs) {
         return Err(if xdvdfs_part(p).is_none() {
@@ -2531,6 +2875,75 @@ fn place_z64(from: &Path, to: &Path) -> std::io::Result<bool> {
 mod tests {
 
     #[test]
+    fn json_bytes_without_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn json_bytes_with_a_byte_order_mark_parse() {
+        let v = super::parse_json_bytes(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
+    fn a_manifest_saved_with_a_byte_order_mark_is_still_read() {
+        let dir = std::env::temp_dir().join(format!("rl-profile-bom-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("recomplauncher.json"), "\u{feff}{\"format\":1}").unwrap();
+        let found = super::release_profile(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(found.map(|p| p.profile.format), Some(1));
+    }
+
+    // Mario Tennis Fever's mistake (v0.1.2): config.file as one path instead of a list.
+    const ONE_PATH: &str = "{\n  \"format\": 1,\n  \"start\": { \"program\": [\"game.exe\"] },\n  \"config\": [\n    { \"id\": \"main\", \"format\": \"ini\", \"file\": \"{install}/game.ini\" }\n  ]\n}";
+
+    #[test]
+    fn a_file_problem_names_the_field_and_what_it_should_be() {
+        assert_eq!(super::file_problem(ONE_PATH.as_bytes()), "\"config[0].file\" should be a list.");
+    }
+
+    #[test]
+    fn a_file_problem_names_a_missing_field() {
+        let text = r#"{"format":1,"settings":[{"id":"a","label":"A","choices":[]},{"label":"B"}]}"#;
+        assert_eq!(super::file_problem(text.as_bytes()), "\"settings[1]\" needs \"id\".");
+    }
+
+    #[test]
+    fn a_file_problem_gives_the_line_of_broken_json() {
+        assert_eq!(super::file_problem(b"{\n  \"format\": 1,\n}"), "It isn't valid JSON (line 3, column 1).");
+    }
+
+    #[test]
+    fn a_file_problem_asks_for_format_1() {
+        assert_eq!(super::file_problem(br#"{"format":2}"#), "\"format\" has to be 1.");
+    }
+
+    #[test]
+    fn a_folder_without_a_file_has_no_file_problem() {
+        let dir = std::env::temp_dir().join(format!("rl-no-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let problem = super::release_file_problem(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(problem, None);
+    }
+
+    #[test]
+    fn system_reads_each_part_and_a_profile_without_it_writes_none() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"system":{"linux":{"glibc":"2.35","graphics":{"vulkan":"1.3"}},"windows":{"version":"11"}}}"#).unwrap();
+        let s = p.system.as_ref().unwrap();
+        assert_eq!(s.for_build("linux").unwrap().glibc, "2.35");
+        assert_eq!(s.for_build("linux").unwrap().graphics["vulkan"], "1.3");
+        assert_eq!(s.for_build("windows").unwrap().version, "11");
+        assert!(s.for_build("macos").is_none());
+        // Setups fingerprinted from the profile before `system` existed stay set up.
+        let plain: super::Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("system"));
+    }
+
+    #[test]
     fn easy_setup_follows_the_websites_rule() {
         let p = |v: serde_json::Value| serde_json::from_value::<super::Profile>(v).unwrap().easy_setup();
         assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "game": {} })));
@@ -2571,6 +2984,42 @@ mod tests {
     }
 
     #[test]
+    fn a_required_option_with_a_license_starts_unticked_and_holds_setup_until_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--accept-vs-license"],"required":true,"default":true,"license":{"name":"VS","url":"https://example.com/vs"}}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        // "default": true doesn't accept a license for the player.
+        let ids = |picked: &std::collections::BTreeMap<String, bool>| pr.unticked_required("windows", false, false, picked).iter().map(|o| o.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&picked), ["vs"]);
+        assert!(pr.option_args("windows", false, false, &picked).is_empty());
+        picked.insert("vs".to_string(), true);
+        assert!(ids(&picked).is_empty());
+        assert_eq!(pr.option_args("windows", false, false, &picked), ["--accept-vs-license"]);
+    }
+
+    #[test]
+    fn a_required_option_without_a_license_can_start_ticked() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"tools","label":"Tools","args":["--tools"],"required":true}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let mut picked = std::collections::BTreeMap::new();
+        assert!(pr.unticked_required("linux", false, false, &picked).is_empty());
+        picked.insert("tools".to_string(), false);
+        assert_eq!(pr.unticked_required("linux", false, false, &picked).len(), 1);
+    }
+
+    #[test]
+    fn a_required_option_this_pc_isnt_offered_doesnt_hold_setup() {
+        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
+            {"id":"vs","label":"Build tools","args":["--vs"],"required":true,"os":["windows"],"license":{"name":"VS","url":"https://example.com/vs"}},
+            {"id":"dlss","label":"Upscaler A","args":["--a"],"required":true,"gpu":"nvidia","default":false}]}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        // A Steam Deck: neither applies.
+        assert!(pr.unticked_required("linux", false, true, &std::collections::BTreeMap::new()).is_empty());
+    }
+
+    #[test]
     fn an_option_added_after_setup_is_unanswered_until_the_player_answers_it() {
         let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["Builder.exe"],"options":[
             {"id":"hd","label":"HD textures","args":["--hd"]},
@@ -2604,6 +3053,88 @@ mod tests {
         // The game the builder made, or anything else: the player's own pick.
         assert!(!p.starts_program(Path::new("C:/Games/Hopper/bin/hopper.exe")));
         assert!(!p.starts_program(Path::new("/opt/HopperEditor.exe")));
+    }
+
+    // A release folder like Cubic.Heroes' in #464: the game, the launcher's setup worker, a
+    // compiler and a kept build of the game under the same name.
+    fn cubic_folder(n: &str) -> PathBuf {
+        let d = tmp(n);
+        for rel in ["CubicHeroes.exe", "setup/worker.exe", "setup/zig/zig.exe", "builds/1.0.2/CubicHeroes.exe"] {
+            let file = d.join(rel);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, b"MZ").unwrap();
+        }
+        d
+    }
+
+    fn cubic_profile() -> Profile {
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["CubicHeroes.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        p
+    }
+
+    #[test]
+    fn start_with_offers_only_the_program_play_starts() {
+        let d = cubic_folder("sw-only");
+        let got = cubic_profile().start_with(&d, None);
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_keeps_the_program_the_player_picked() {
+        let d = cubic_folder("sw-picked");
+        let picked = d.join("builds").join("1.0.2").join("CubicHeroes.exe");
+        let got = cubic_profile().start_with(&d, Some(&picked)).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(Path::new(&got[1]), Path::new("builds/1.0.2/CubicHeroes.exe"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_leaves_out_a_pick_outside_the_games_folder() {
+        let d = cubic_folder("sw-elsewhere");
+        let elsewhere = tmp("sw-elsewhere-pick").join("Other.exe");
+        std::fs::write(&elsewhere, b"MZ").unwrap();
+        let got = cubic_profile().start_with(&d, Some(&elsewhere));
+        assert_eq!(got, Some(vec!["CubicHeroes.exe".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(elsewhere.parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn start_with_offers_a_program_built_into_a_subfolder_not_the_builder() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("sw-subfolder");
+        // Longshot's release (#494): the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        p.windows_build = Some(false);
+        assert_eq!(p.start_with(&d, None), Some(vec!["Longshot/longshot".to_string()]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_without_a_start_program() {
+        let d = cubic_folder("sw-nostart");
+        let p: Profile = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn start_with_offers_every_program_when_the_named_one_isnt_there() {
+        let d = cubic_folder("sw-renamed");
+        let mut p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Renamed.exe"]}}"#).unwrap();
+        p.windows_build = Some(true);
+        assert_eq!(p.start_with(&d, None), None);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -2650,26 +3181,6 @@ mod tests {
         let p = builds_into_install(r#""--config","{install}/settings.ini""#);
         assert_eq!(p.built_folder_missing(&install), None);
         let _ = std::fs::remove_dir_all(&install);
-    }
-
-    #[test]
-    fn a_changed_prepare_version_asks_for_a_new_build() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"],"version":"2"}}"#).unwrap();
-        assert!(p.prepare_version_changed(""));
-        assert!(p.prepare_version_changed("1"));
-        assert!(!p.prepare_version_changed("2"));
-    }
-
-    #[test]
-    fn no_prepare_version_matches_a_setup_from_before_versions_were_kept() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["B.exe"]}}"#).unwrap();
-        assert!(!p.prepare_version_changed(""));
-    }
-
-    #[test]
-    fn a_game_without_a_setup_step_never_asks_for_a_new_build() {
-        let p: super::Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.exe"]}}"#).unwrap();
-        assert!(!p.prepare_version_changed("2"));
     }
 
     #[test]
@@ -2802,14 +3313,86 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn dusklight_starts_its_mac_program_instead_of_appledouble_metadata() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dusklight-appledouble");
+        let exe = d.join("Dusklight.app/Contents/MacOS/Dusklight");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").unwrap();
+        let metadata = d.join("._Dusklight.app");
+        std::fs::write(&metadata, b"\x00\x05\x16\x07AppleDouble").unwrap();
+        // Windows-formatted drives can give the metadata the same run permission as the program.
+        std::fs::set_permissions(&metadata, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(got, exe);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_native_twin_never_uses_appledouble_metadata_with_a_program_extension() {
+        let d = tmp("native-appledouble");
+        std::fs::write(d.join("._game.x86_64"), b"\x00\x05\x16\x07AppleDouble").unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dusklight_never_starts_a_log_that_a_windows_drive_marks_runnable() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dusklight-log");
+        let exe = d.join("Dusklight.app/Contents/MacOS/Dusklight");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").unwrap();
+        let log = d.join("Dusklight.log");
+        std::fs::write(&log, b"Dusklight started\n").unwrap();
+        // exFAT and NTFS drives give every file the run permission.
+        std::fs::set_permissions(&log, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(got, exe);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_runnable_game_pack_never_beats_the_real_program() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("native-pck");
+        let elf = d.join("game-nightly.x86_64");
+        std::fs::write(&elf, b"\x7fELF\x02\x01\x01").unwrap();
+        // A shorter name with fewer words would win, if the run permission alone made a program.
+        let pck = d.join("game.pck");
+        std::fs::write(&pck, b"GDPC\x02\x00\x00\x00").unwrap();
+        std::fs::set_permissions(&pck, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), Some(elf));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_twin_is_an_elf_a_windows_zip_left_without_the_run_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("native-elf-no-x");
+        let elf = d.join("game");
+        std::fs::write(&elf, b"\x7fELF\x02\x01\x01").unwrap();
+        std::fs::set_permissions(&elf, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(native_twin(&d, "game.exe"), Some(elf));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_native_build_ignores_a_leftover_windows_exe() {
         use std::os::unix::fs::PermissionsExt;
         let d = std::env::temp_dir().join(format!("rl-native-start-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        for n in ["parasite-eve-pc.exe", "parasite-eve-pc"] {
+        // Each file starts the way its kind does: a native program is known by its first bytes.
+        for (n, head) in [("parasite-eve-pc.exe", &b"MZ"[..]), ("parasite-eve-pc", &b"\x7fELF\x02\x01\x01"[..])] {
             let p = d.join(n);
-            std::fs::write(&p, b"x").unwrap();
+            std::fs::write(&p, head).unwrap();
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["parasite-eve-pc.exe"]}}"#).unwrap();
@@ -2820,6 +3403,57 @@ mod tests {
         assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0.file_name().unwrap(), "parasite-eve-pc");
         // The plain call keeps the Windows-first behavior for callers that don't know the build.
         assert_eq!(p.command(&d, None, &picks).unwrap().0.file_name().unwrap(), "parasite-eve-pc.exe");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_program_built_into_a_subfolder_starts_not_the_builder_beside_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("twin-subfolder");
+        // Longshot's release: the builder at the top, the game it built in Longshot/.
+        std::fs::create_dir_all(d.join("Longshot")).unwrap();
+        for n in ["longshot-builder", "Longshot/longshot"] {
+            let p = d.join(n);
+            std::fs::write(&p, b"\x7fELF").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Longshot/longshot"]}}"#).unwrap();
+        let exe = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
+        assert_eq!(exe, d.join("Longshot").join("longshot"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_dotnet_app_host_starts_through_the_releases_script() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("dotnet-start");
+        // The layout of Symphony Recomp's Linux release: the app host, the files that say it's a
+        // .NET one, and the run.sh that finds the player's runtime before starting it.
+        let host = d.join("sotn");
+        std::fs::write(&host, b"\x7fELF").unwrap();
+        std::fs::set_permissions(&host, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(d.join("sotn.runtimeconfig.json"), b"{}").unwrap();
+        let script = d.join("run.sh");
+        std::fs::write(&script, b"#!/bin/sh\nexport DOTNET_ROOT=\"$HOME/.dotnet\"\nexec \"$DIR/sotn\" \"$@\"\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["sotn.exe"]}}"#).unwrap();
+        let picks = BTreeMap::new();
+        // The host alone finds no runtime; the release's script finds one and passes the profile's
+        // arguments on, so that's what Play starts.
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, script);
+        // The same when the profile names the Linux host itself rather than its Windows name.
+        let by_host: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["sotn"]}}"#).unwrap();
+        assert_eq!(by_host.command_for(&d, None, &picks, false).unwrap().0, script);
+        // Without a script it's still the host.
+        std::fs::remove_file(&script).unwrap();
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, host);
+        // A native build is itself, even with a run.sh beside it.
+        std::fs::write(&script, b"#!/bin/sh\nexec \"$DIR/sotn\"\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_file(d.join("sotn.runtimeconfig.json")).unwrap();
+        assert_eq!(p.command_for(&d, None, &picks, false).unwrap().0, host);
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -2840,6 +3474,24 @@ mod tests {
         assert_eq!(native.0, dir.join("game"));
         assert_eq!(native.1, vec![copy.to_string_lossy().to_string(), format!("--disc={}", copy.display())]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_settings_file_with_nothing_to_set_is_not_made_empty() {
+        let dir = tmp("config-nothing-to-set");
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["game.exe"]},
+            "config":[{"format":"ini","file":[{"path":"{install}/game.ini"}]}]}"#).unwrap();
+        p.prepare(&dir, None).unwrap();
+        assert!(!dir.join("game.ini").exists());
+    }
+
+    #[test]
+    fn a_settings_file_with_new_values_is_made_with_them() {
+        let dir = tmp("config-new-values");
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["game.exe"]},
+            "config":[{"format":"ini","file":[{"path":"{install}/game.ini"}],"new":{"vsync":"1"}}]}"#).unwrap();
+        p.prepare(&dir, None).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("game.ini")).unwrap().trim(), "vsync = 1");
     }
 
     #[cfg(unix)]
@@ -2905,6 +3557,53 @@ mod tests {
         d
     }
 
+    /// Game.app with Info.plist naming Contents/MacOS/Game, a Mach-O program for this processor.
+    #[cfg(target_os = "macos")]
+    fn mac_app(dir: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let contents = dir.join("Game.app/Contents");
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        let plist = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Game</string></dict></plist>"#;
+        std::fs::write(contents.join("Info.plist"), plist).unwrap();
+        let cpu: u32 = if crate::assets::arch_now() == "arm64" { 0x0100000c } else { 0x01000007 };
+        let mut head = vec![0u8; 32];
+        head[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        head[4..8].copy_from_slice(&cpu.to_le_bytes());
+        head[12..16].copy_from_slice(&2u32.to_le_bytes());
+        let exe = contents.join("MacOS/Game");
+        std::fs::write(&exe, head).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_mac_app_named_in_start_and_prepare_runs_its_program() {
+        let d = tmp("mac-app");
+        mac_app(&d);
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Game.app"]},"prepare":{"program":["Game.app"],"args":["--install"]}}"#).unwrap();
+        let inner = d.join("Game.app/Contents/MacOS/Game");
+        assert_eq!(p.prepare.as_ref().unwrap().program_in(&d), Some(inner.clone()));
+        assert_eq!(p.command_for(&d, None, &BTreeMap::new(), false).map(|c| c.0), Some(inner));
+    }
+
+    #[test]
+    fn a_program_is_a_file_and_a_folder_only_as_a_mac_app() {
+        let d = tmp("named-program");
+        std::fs::write(d.join("game.exe"), b"MZ").unwrap();
+        std::fs::create_dir_all(d.join("Game.app/Contents/MacOS")).unwrap();
+        assert_eq!(named_program(d.join("game.exe")), Some(d.join("game.exe")));
+        assert_eq!(named_program(d.join("missing.exe")), None);
+        // A folder with no Info.plist is no program, on a Mac either.
+        assert_eq!(named_program(d.join("Game.app")), None);
+    }
+
+    #[test]
+    fn the_program_inside_a_named_app_is_the_one_start_names() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["Theme Park World.app"]}}"#).unwrap();
+        assert!(p.starts_program(Path::new("/Games/tpw/Theme Park World.app/Contents/MacOS/Theme Park World")));
+        assert!(!p.starts_program(Path::new("/Games/tpw/Other.app/Contents/MacOS/Theme Park World")));
+    }
+
     #[test]
     fn an_unpacked_appimage_starts_its_apprun() {
         let d = tmp("apprun");
@@ -2922,6 +3621,17 @@ mod tests {
         // No AppRun either: the profile is left as it is.
         std::fs::remove_file(d.join("AppRun")).unwrap();
         assert_eq!(find(&d, "", &Value::Null).unwrap().start.unwrap().program, ["Game-x86_64.AppImage"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn one_of_several_unpacked_appimages_starts_from_its_own_folder() {
+        let d = tmp("apprun-own");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["Game-x86_64.AppImage"]}}"#).unwrap();
+        std::fs::create_dir_all(d.join("Game-x86_64")).unwrap();
+        std::fs::write(d.join("Game-x86_64/AppRun"), b"#!/bin/sh\n").unwrap();
+        let p = find(&d, "", &Value::Null).unwrap();
+        assert_eq!(p.start.unwrap().program, ["Game-x86_64/AppRun"]);
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -3126,6 +3836,28 @@ mod tests {
     }
 
     #[test]
+    fn a_ps4_folder_with_another_title_id_is_refused() {
+        let d = tmp("ps4-wrong-id");
+        let game = d.join("CUSA00035");
+        crate::roms::tests::ps4_folder(&game, "The Order: 1886", "CUSA00035");
+        let check = Check { file: "eboot.bin".into(), ids: vec!["CUSA00242".into()], ..Default::default() };
+        let need = GameCopy { kind: "folder".into(), check, ..Default::default() };
+        assert!(check_copy(&need, &game).unwrap_err().contains("CUSA00035"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_ps4_folder_with_a_listed_title_id_is_taken() {
+        let d = tmp("ps4-listed-id");
+        let game = d.join("CUSA00242");
+        crate::roms::tests::ps4_folder(&game, "Diablo III", "CUSA00242");
+        let check = Check { file: "eboot.bin".into(), ids: vec!["CUSA00243".into(), "CUSA00242".into()], ..Default::default() };
+        let need = GameCopy { kind: "folder".into(), check, ..Default::default() };
+        assert!(check_copy(&need, &game).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn a_folder_with_no_game_in_it_is_refused() {
         let d = tmp("nogamefolder");
         let need = GameCopy { kind: "folder".into(), ..Default::default() };
@@ -3287,7 +4019,7 @@ mod tests {
         let f = find(Path::new("/nope"), "HossEz/fifa-world-cup-2014-recompiled", &Value::Null).unwrap();
         assert!(f.settings.iter().any(|s| s.id == "resolution"));
         let s = find(Path::new("/nope"), "luckvj/streetball-revival", &Value::Null).unwrap();
-        assert_eq!(s.game.unwrap().check.iso9660, "SLUS_206.51");
+        assert_eq!(s.main_copy().unwrap().check.iso9660, "SLUS_206.51");
     }
 
     #[test]
@@ -3306,7 +4038,7 @@ mod tests {
         let disc = install.join("Twilight Princess.rvz");
         std::fs::write(&disc, b"").unwrap();
         let profile = find(&install, "twilitrealm/dusklight", &Value::Null).unwrap();
-        check_copy(profile.game.as_ref().unwrap(), &disc).unwrap();
+        check_copy(&profile.main_copy().unwrap(), &disc).unwrap();
         let picks = BTreeMap::new();
         let (exe, args) = profile.command(&install, Some(&disc), &picks).unwrap();
         assert_eq!(exe, executable);
@@ -3336,11 +4068,13 @@ mod tests {
         assert_eq!(backup.files, 2);
         std::fs::remove_file(&card).unwrap();
         std::fs::remove_file(&states).unwrap();
-        let archive = crate::saves::dir_of(&app, "dusklight").join(backup.name);
+        let archive = crate::saves::dir_of(&app, "dusklight", &game).join(backup.name);
         assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
         assert_eq!(std::fs::read(card).unwrap(), b"card");
         assert_eq!(std::fs::read(states).unwrap(), b"[]");
         let _ = std::fs::remove_dir_all(&install);
+        // The copies sit beside the game, in its library's .backups folder.
+        let _ = std::fs::remove_dir_all(crate::backups_dir(&game));
     }
 
     #[test]
@@ -3592,7 +4326,9 @@ mod tests {
         let d = tmp("sb");
         std::fs::create_dir_all(d.join("bin")).unwrap();
         std::fs::write(d.join("bin").join(if cfg!(windows) { "street-game.exe" } else { "street-game" }), "").unwrap();
-        let p = find(&d, "luckvj/streetball-revival", &Value::Null).unwrap();
+        let mut p = find(&d, "luckvj/streetball-revival", &Value::Null).unwrap();
+        // As profile_of fills them in from what's picked.
+        p.input_paths.insert("game".into(), PathBuf::from("/isos/nbas2.iso"));
         let mut picks = BTreeMap::new();
         picks.insert("intro".to_string(), 1usize);
         let (exe, args) = p.command(&d, Some(Path::new("/isos/nbas2.iso")), &picks).unwrap();
@@ -3727,6 +4463,34 @@ mod tests {
     }
 
     #[test]
+    fn a_games_own_build_folder_is_not_a_copy() {
+        // Hookshot's and Longshot's builders keep what they built from in their output folder, in a
+        // hidden folder of their own. That's the builder's private layout, not the player's copy:
+        // handed back to the builder as its copy, it refuses it (#215). Only a real copy counts.
+        let d = tmp("nup-build-folder");
+        let mut main = vec![0u8; 0x100];
+        main[..4].copy_from_slice(b"NSO0");
+        main[0x40..0x44].copy_from_slice(&[0xe0, 0xf3, 0xcc, 0xfa]);
+        let build = d.join("Longshot");
+        std::fs::create_dir_all(build.join(".longshot_exefs")).unwrap();
+        std::fs::create_dir_all(build.join("romfs")).unwrap();
+        std::fs::create_dir_all(build.join("bin")).unwrap();
+        std::fs::write(build.join(".longshot_exefs").join("main"), &main).unwrap();
+        std::fs::write(build.join("bin").join("longshot.exe"), b"").unwrap();
+        let need = GameCopy {
+            kind: "iso_or_folder".into(),
+            label: String::new(),
+            check: Check { nup_build_id: "e0f3ccfa".into(), ..Default::default() },
+            ..Default::default()
+        };
+        assert!(check_copy(&need, &build).is_err());
+        // Nor is the player pointed at it from the folder around it.
+        let around = check_copy(&need, &d).unwrap_err();
+        assert!(!around.contains(&build.display().to_string()), "{around}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn start_env_fills_in_and_keeps_out_what_it_must() {
         let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["g.exe"],"env":{"SDL_GAMECONTROLLER_USE_BUTTON_LABELS":"0","GAME_DATA":"{install}/data","PATH":"x","RECOMPLAUNCHER_MODE":"y","1BAD":"z"}}}"#).unwrap();
         let e = p.env_vars(Path::new("/games/x"), None);
@@ -3734,6 +4498,48 @@ mod tests {
         assert!(e.iter().any(|(k, v)| k == "GAME_DATA" && v.ends_with("data") && v.contains("games")));
         assert_eq!(e.len(), 2, "PATH, the launcher's own and bad names stay out: {e:?}");
         assert!(env_name_ok("_X1") && !env_name_ok("A-B") && !env_name_ok("path"));
+    }
+
+    #[test]
+    fn data_fills_in_as_the_recompdata_folder_in_the_game() {
+        let install = Path::new("/games/x");
+        assert_eq!(PathBuf::from(fill("{data}", install, None)), install.join("recompdata"));
+        assert_eq!(PathBuf::from(fill("{data}/cache", install, None)), install.join("recompdata").join("cache"));
+    }
+
+    #[test]
+    fn prepare_env_fills_in_and_keeps_out_what_it_must() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"env":{"BUILD_CACHE":"{data}/cache","DISC":"{game}","TEMP":"x","RECOMPLAUNCHER_DATA":"y"}}}"#).unwrap();
+        let pr = p.prepare.unwrap();
+        let e = pr.env_vars(Path::new("/games/x"), Some(Path::new("/isos/x.iso")));
+        let get = |k: &str| e.iter().find(|(n, _)| n == k).map(|(_, v)| PathBuf::from(v));
+        assert_eq!(get("BUILD_CACHE"), Some(Path::new("/games/x").join("recompdata").join("cache")));
+        assert_eq!(get("DISC"), Some(PathBuf::from("/isos/x.iso")));
+        assert_eq!(e.len(), 2, "TEMP and the launcher's own names stay out: {e:?}");
+    }
+
+    #[test]
+    fn prepare_env_run_again_without_the_copy_leaves_out_what_names_it() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"keeps_copy":true,"env":{"BUILD_CACHE":"{data}/cache","DISC":"{game}"}}}"#).unwrap();
+        let e = p.prepare.unwrap().env_vars(Path::new("/games/x"), None);
+        let names: Vec<&str> = e.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["BUILD_CACHE"]);
+    }
+
+    #[test]
+    fn prepare_env_takes_named_inputs_and_drops_a_missing_one() {
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"],"env":{"PATCH":"{input:patch}","DLC":"{input:dlc}"}}}"#).unwrap();
+        let given = BTreeMap::from([("patch".to_string(), PathBuf::from("/files/patch.zip"))]);
+        let pr = p.prepare.unwrap().with_inputs(&given, false);
+        let e = pr.env_vars(Path::new("/games/x"), None);
+        assert_eq!(e, vec![("PATCH".to_string(), "/files/patch.zip".to_string())]);
+    }
+
+    #[test]
+    fn a_prepare_without_env_writes_none() {
+        // Setups fingerprinted from the profile before prepare.env existed stay set up.
+        let p: Profile = serde_json::from_str(r#"{"format":1,"prepare":{"program":["b.exe"]}}"#).unwrap();
+        assert!(!serde_json::to_string(&p.prepare.unwrap()).unwrap().contains("env"));
     }
 }
 
@@ -3769,14 +4575,6 @@ mod build_here_tests {
         let mut v = base.clone();
         v["start"]["env"] = serde_json::json!({ "DISC": "{game}" });
         assert!(prof(v).start_uses_game());
-        // No done list: the game's folder with files in it is offered as the build on this PC.
-        let mut v = base.clone();
-        v["prepare"].as_object_mut().unwrap().remove("done");
-        let p = prof(v.clone());
-        assert_eq!(p.build_done(&dir), None);
-        assert_eq!(p.build_folder_here(&dir), Some(game.clone()));
-        std::fs::remove_file(&done).unwrap();
-        assert_eq!(prof(v).build_folder_here(&dir), None, "an empty folder isn't a build");
         // One path for done works too.
         let mut v = base.clone();
         v["prepare"]["done"] = serde_json::json!(done.to_string_lossy());
@@ -3785,61 +4583,262 @@ mod build_here_tests {
     }
 }
 
+/// `game` read as named inputs: every rule it had lands on the input it becomes, so the same code
+/// checks, unpacks and places it as before.
 #[cfg(test)]
-mod own_build_tests {
+mod lift_tests {
     use super::*;
-    use serde_json::json;
 
-    fn builder() -> Profile {
-        serde_json::from_value(json!({
-            "format": 1,
-            "game": { "kind": "iso_or_folder", "label": "Your copy" },
-            "start": { "program": ["HopperBuilder.exe"], "args": ["--play", "{home}/Games/Hopper"] },
-            "prepare": { "program": ["HopperBuilder.exe"], "args": ["--cli", "--prepare", "--game", "{game}"] },
-            "config": [{ "id": "main", "format": "ini", "file": [{ "path": "{home}/Games/Hopper/options.ini" }] }],
-            "saves": ["{local}/hopper", "{home}/Games/Hopper/user"],
-            "folders": { "saves": [{ "path": "{home}/Games/Hopper/user", "if": "{home}/Games/Hopper/user" }], "game": [{ "path": "{home}/Games/Hopper" }] }
-        }))
-        .unwrap()
+    /// The rules of a copy, as one value: what `game` had, or what an input gives back.
+    fn rules(g: &GameCopy) -> Value {
+        serde_json::json!({
+            "kind": g.kind, "label": g.label, "check": serde_json::to_value(&g.check).unwrap(), "dumps": serde_json::to_value(&g.dumps).unwrap(),
+            "into": g.into, "name": g.name, "extract": g.extract, "generic": g.generic, "for_setup": g.for_setup, "contains": g.contains,
+        })
+    }
+
+    /// Lifts one profile and checks it: `game` gone, an input `game` first with the same rules,
+    /// `game.update` as input `update` with the same rules, everything else as it was.
+    fn lifts_the_same(what: &str, p: &Profile) {
+        let Some(before) = p.game.clone() else { return };
+        let mut after = p.clone();
+        after.lift_game();
+        assert!(after.game.is_none(), "{what}: game still there");
+        let game = after.inputs.iter().find(|i| i.id == "game").unwrap_or_else(|| panic!("{what}: no input game"));
+        assert_eq!(rules(&game.as_copy()), rules(&before), "{what}: the copy's rules changed");
+        assert_eq!(after.main_input().map(|i| i.id.as_str()), Some("game"), "{what}: game isn't the main input");
+        if let Some(up) = before.update.as_ref() {
+            let lifted = after.inputs.iter().find(|i| i.id == "update").unwrap_or_else(|| panic!("{what}: no input update")).as_extra();
+            assert_eq!(serde_json::to_value(&lifted).unwrap(), serde_json::to_value(up).unwrap(), "{what}: the update's rules changed");
+        }
+        let start = |p: &Profile| serde_json::to_value(&p.start).unwrap();
+        let prepare = |p: &Profile| serde_json::to_value(&p.prepare).unwrap();
+        assert_eq!(start(&after), start(p), "{what}: start changed");
+        assert_eq!(prepare(&after), prepare(p), "{what}: prepare changed");
+        let own: Vec<&str> = after.inputs.iter().filter(|i| !i.lifted).map(|i| i.id.as_str()).collect();
+        let was: Vec<&str> = p.inputs.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(own, was, "{what}: the manifest's own inputs changed");
+        let ok_before = crate::inputs::validate(p).is_ok();
+        assert!(crate::inputs::validate(&after).is_ok() || !ok_before, "{what}: valid before, not after: {:?}", crate::inputs::validate(&after));
+    }
+
+    fn boot_profiles(all: &Value) -> Vec<(String, Profile)> {
+        let mut out = vec![];
+        let apps: Vec<(String, Value)> = match all.get("apps").and_then(Value::as_array) {
+            Some(list) => list.iter().map(|a| (a.get("id").and_then(Value::as_str).unwrap_or("?").to_string(), a.get("boot").cloned().unwrap_or(Value::Null))).collect(),
+            None => all.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default(),
+        };
+        for (id, b) in apps {
+            if let Some(p) = from_boot(&b) {
+                out.push((id, p));
+            }
+        }
+        out
     }
 
     #[test]
-    fn a_build_the_player_already_has_stands_in_for_the_setups_own_folder() {
-        let install = std::env::temp_dir().join("rl-own-build-install");
-        let mine = std::env::temp_dir().join("rl-own-build-mine");
-        let mut p = builder();
-        let home = p.build_home(&install).expect("built into a folder of its own");
-        assert!(home.ends_with("Games/Hopper") || home.ends_with("Games\\Hopper"));
-        p.rebase_build(&install, &mine);
-        let s = p.start.as_ref().unwrap();
-        assert_eq!(s.args[0], "--play");
-        assert_eq!(PathBuf::from(&s.args[1]), mine);
-        assert_eq!(PathBuf::from(&p.config[0].file[0].path), mine.join("options.ini"));
-        assert_eq!(p.saves[0], "{local}/hopper", "paths outside that folder stay as they are");
-        assert_eq!(PathBuf::from(&p.saves[1]), mine.join("user"));
-        assert_eq!(PathBuf::from(&p.folders["saves"][0].when), mine.join("user"));
-        assert_eq!(PathBuf::from(&p.folders["game"][0].path), mine);
-        // What the setup step runs stays as it is: the launcher's own build goes to its folder.
-        assert_eq!(p.prepare.as_ref().unwrap().args, vec!["--cli", "--prepare", "--game", "{game}"]);
+    fn the_shipped_boot_profiles_lift_with_every_rule() {
+        let all: Value = serde_json::from_str(include_str!("../boot/boot-profiles.json")).unwrap();
+        let list = boot_profiles(&all);
+        assert!(list.iter().filter(|(_, p)| p.game.is_some()).count() > 20);
+        for (id, p) in &list {
+            lifts_the_same(id, p);
+        }
     }
 
     #[test]
-    fn only_games_built_into_a_folder_of_their_own_have_one() {
-        let install = std::env::temp_dir().join("rl-own-build-install2");
-        let mut p = builder();
-        p.folders.insert("game".into(), vec![Place { path: "{install}".into(), when: String::new() }]);
-        assert_eq!(p.build_home(&install), None, "the game's own folder itself");
-        let mut inside = builder();
-        inside.folders.insert("game".into(), vec![Place { path: "{install}/game".into(), when: String::new() }]);
-        assert_eq!(inside.build_home(&install), Some(install.join("game")), "a folder inside it still has one");
-        let mut q = builder();
-        q.prepare = None;
-        assert_eq!(q.build_home(&install), None, "not built from the copy");
-        let mut r = builder();
-        r.folders.remove("game");
-        assert_eq!(r.build_home(&install), None);
-        let before = serde_json::to_string(&p).unwrap();
-        p.rebase_build(&install, Path::new("/elsewhere"));
-        assert_eq!(serde_json::to_string(&p).unwrap(), before, "nothing moves without a folder of its own");
+    fn the_examples_lift_with_every_rule() {
+        for (n, text) in BUILT_IN.iter().enumerate() {
+            let p: Profile = serde_json::from_str(text).unwrap();
+            lifts_the_same(&format!("built-in {n}"), &p);
+        }
+    }
+
+    /// The developers' manifests and the store's catalog (`RL_CORPUS`: a folder with `manifests/`
+    /// and `pc-catalog.json`), kept out of the repository. Every one with `game` lifts the same,
+    /// and none that read before fails to read now.
+    #[test]
+    fn the_corpus_lifts_with_every_rule() {
+        let Some(root) = std::env::var_os("RL_CORPUS").map(PathBuf::from) else { return };
+        let mut lifted = 0;
+        let mut unreadable = 0;
+        for e in std::fs::read_dir(root.join("manifests")).unwrap().flatten() {
+            let what = e.file_name().to_string_lossy().to_string();
+            let Ok(raw) = serde_json::from_slice::<Value>(&std::fs::read(e.path()).unwrap()) else { continue };
+            // One that doesn't read is dropped by every launcher alike (a value of the wrong type):
+            // dropping deny_unknown_fields only lets more read, never fewer.
+            let p = match serde_json::from_value::<Profile>(raw) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{what}: doesn't read: {e}");
+                    unreadable += 1;
+                    continue;
+                }
+            };
+            if p.game.is_some() {
+                lifted += 1;
+            }
+            lifts_the_same(&what, &p);
+        }
+        assert!(lifted >= 170, "only {lifted} manifests with game");
+        assert!(unreadable <= 2, "{unreadable} manifests don't read");
+        let cat: Value = serde_json::from_slice(&std::fs::read(root.join("pc-catalog.json")).unwrap()).unwrap();
+        let store = boot_profiles(&cat);
+        let copies = store.iter().filter(|(_, p)| p.game.is_some()).count();
+        assert!(copies >= 200, "only {copies} store profiles with a copy");
+        for (id, p) in &store {
+            lifts_the_same(id, p);
+        }
+    }
+
+    #[test]
+    fn an_unknown_input_field_is_ignored() {
+        let p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [{ "id": "base", "label": "Base", "formats": [{ "type": "file", "future": 1 }], "future": true }] })).unwrap();
+        assert_eq!(p.inputs[0].id, "base");
+        assert!(crate::inputs::validate(&p).is_ok());
+    }
+
+    #[test]
+    fn an_input_the_manifest_declares_as_game_stays_its_own() {
+        let mut p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "folder", "label": "Old" }, "inputs": [{ "id": "game", "label": "Mine", "formats": [{ "type": "file" }] }] })).unwrap();
+        p.lift_game();
+        assert_eq!(p.inputs.len(), 1);
+        assert_eq!(p.inputs[0].label, "Mine");
+    }
+
+    #[test]
+    fn the_main_input_fills_in_as_the_game_is_given_it() {
+        let d = std::env::temp_dir().join(format!("rl-main-handed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Game (USA).cue"), "FILE \"Game (USA).bin\" BINARY\n  TRACK 01 MODE2/2352\n").unwrap();
+        std::fs::write(d.join("Game (USA).bin"), b"disc").unwrap();
+        let mut p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "iso", "label": "Your disc" }, "start": { "program": ["g"], "args": ["--disc={input:game}"] } })).unwrap();
+        p.lift_game();
+        let mut g = crate::library::Installed { path: d.join("install"), ..Default::default() };
+        g.setup_inputs.insert("game".into(), d.join("Game (USA).cue"));
+        // Its label doesn't name .cue: the game gets the disc's data track, as with {game}.
+        assert_eq!(crate::inputs::available(&p, &g, &d)["game"], d.join("Game (USA).bin"));
+        p.inputs[0].label = "Pick the .cue file".into();
+        assert_eq!(crate::inputs::available(&p, &g, &d)["game"], d.join("Game (USA).cue"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_input_can_have_every_rule_game_had() {
+        let p: Profile = serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [{
+            "id": "disc", "label": "Your disc", "formats": [{ "type": "file" }, { "type": "folder" }],
+            "check": { "iso9660": "SLUS_206.51" }, "dumps": [{ "name": "USA", "crc32": "0011aabb" }],
+            "contains": ["SYSTEM.CNF"], "into": "game", "extract": "iso9660"
+        }]})).unwrap();
+        let g = p.inputs[0].as_copy();
+        assert_eq!((g.kind.as_str(), g.check.iso9660.as_str(), g.dumps.len(), g.into.as_str(), g.extract.as_str()), ("iso_or_folder", "SLUS_206.51", 1, "game", "iso9660"));
+        assert_eq!(g.contains, ["SYSTEM.CNF"]);
+        assert_eq!(p.main_input().unwrap().id, "disc");
+    }
+}
+
+/// A dump the player moved or deleted leaves a link in the game's folder that points nowhere: it
+/// counts as missing, and the next place puts the copy picked now there instead.
+#[cfg(test)]
+mod dead_link_tests {
+    use super::*;
+
+    fn dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-dead-link-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn folder_copy() -> Profile {
+        let input = serde_json::json!({ "id": "game", "label": "Your copy", "formats": [{ "type": "folder" }], "into": "data", "contains": ["Media"] });
+        serde_json::from_value(serde_json::json!({ "format": 1, "inputs": [input], "start": { "program": ["g"] } })).unwrap()
+    }
+
+    /// A dump with its Media folder, linked into the game's data folder as place does.
+    fn linked(d: &Path, name: &str) -> PathBuf {
+        let dump = d.join(name);
+        std::fs::create_dir_all(dump.join("Media")).unwrap();
+        std::fs::write(dump.join("Media").join("a.bin"), name).unwrap();
+        dump
+    }
+
+    #[test]
+    fn a_link_to_a_dump_that_is_gone_counts_as_missing_and_is_placed_again() {
+        let d = dir("gone");
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let p = folder_copy();
+        let old = linked(&d, "old-dump");
+        p.place(&install, Some(&old)).unwrap();
+        assert!(p.missing_after_place(&install).is_empty());
+        std::fs::remove_dir_all(&old).unwrap();
+        let media = install.join("data").join("Media");
+        assert!(dead_link(&media));
+        assert_eq!(p.missing_after_place(&install), vec!["Media".to_string()]);
+        assert!(p.already_in_place(&install).is_none());
+        // Picked again from where it is now: placed, not skipped.
+        let new = linked(&d, "new-dump");
+        p.place(&install, Some(&new)).unwrap();
+        assert!(p.missing_after_place(&install).is_empty());
+        assert_eq!(std::fs::read(media.join("a.bin")).unwrap(), b"new-dump");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_working_link_and_a_folder_the_launcher_didnt_place_stay() {
+        let d = dir("stay");
+        let install = d.join("game");
+        let own = install.join("data").join("Media");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(own.join("mine.bin"), b"the player's").unwrap();
+        let p = folder_copy();
+        let dump = linked(&d, "dump");
+        p.place(&install, Some(&dump)).unwrap();
+        // Not a link: never taken away, whatever's picked.
+        assert!(!dead_link(&own));
+        assert_eq!(std::fs::read(own.join("mine.bin")).unwrap(), b"the player's");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn taking_a_dead_link_away_leaves_what_it_pointed_to() {
+        let d = dir("remove");
+        let install = d.join("game");
+        std::fs::create_dir_all(&install).unwrap();
+        let p = folder_copy();
+        let dump = linked(&d, "dump");
+        p.place(&install, Some(&dump)).unwrap();
+        let media = install.join("data").join("Media");
+        // A link that still works is no dead link, and the dump is left as it is.
+        assert!(!dead_link(&media));
+        remove_link(&media).unwrap();
+        assert!(dump.join("Media").join("a.bin").is_file());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+/// A Windows-only game's setup step on Linux runs through Proton, as its game does.
+#[cfg(all(test, not(windows)))]
+mod proton_step_tests {
+    use super::*;
+
+    #[test]
+    fn a_windows_setup_program_runs_through_proton_with_windows_paths() {
+        let d = std::env::temp_dir().join(format!("rl-proton-step-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Builder.exe"), b"MZ").unwrap();
+        std::fs::write(d.join("builder.sh"), b"#!/bin/sh").unwrap();
+        let step = |program: &str| Prepare { program: vec![program.into()], args: vec!["--disc={input:disc}".into()], ..Default::default() };
+        assert!(step("Builder.exe").through_proton(&d));
+        assert!(!step("builder.sh").through_proton(&d));
+        // Not in the release: nothing to run through anything.
+        assert!(!step("Missing.exe").through_proton(&d));
+        let paths = BTreeMap::from([("disc".to_string(), PathBuf::from("/home/me/Games/disc.iso"))]);
+        assert_eq!(step("Builder.exe").with_inputs(&paths, true).args, [r"--disc=Z:\home\me\Games\disc.iso"]);
+        assert_eq!(step("builder.sh").with_inputs(&paths, false).args, ["--disc=/home/me/Games/disc.iso"]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

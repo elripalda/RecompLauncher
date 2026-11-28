@@ -400,35 +400,20 @@ fn apply(a: &Account, arts: &Arts) -> Result<(), Error> {
 
 // ---------- which games ----------
 
-/// Ready to play from Steam: installed, its own first-time setup run, and its copy of the game and
-/// Easy Setup files picked. Otherwise Steam would open the launcher to set it up, not the game.
+/// Ready to play from Steam: fully set up, by the same answer Play and the game's page give.
+/// Otherwise Steam would open the launcher to set it up, not the game, so it isn't added yet.
 fn ready(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[games::Game])>) -> bool {
-    let ui = st.lib.lock().unwrap().settings.ui.clone();
-    if crate::catalog::needs_setup_first(&st.dir, recomp, &ui) {
-        return false;
-    }
     if g.exe.is_none() || !g.installer_setup.is_empty() {
         return false;
     }
-    if g.setup.is_some() && !g.setup_done {
+    // Its own setup program still to run, for any of the reasons Play would run it for (asked
+    // without using up the once-only ones, which are Play's to answer).
+    if crate::own_setup::pending(st, recomp, g).is_some() {
         return false;
     }
-    // Set Up By Hand: the player says how it starts and gets its files.
-    if g.manual.is_some() {
-        return true;
-    }
-    let Some(whole) = crate::profile_of(st, recomp, g) else { return true };
-    let has_copy = g.game_copy.as_ref().map(|c| c.exists()).unwrap_or(false) || whole.already_in_place(&g.path).is_some();
-    if whole.game.is_some() && !has_copy {
-        return false;
-    }
-    if whole.inputs.is_empty() {
-        return true;
-    }
-    let Some((game, all)) = game else { return crate::inputs::ready(&whole, g, &st.dir) };
-    let mut scoped = whole.clone();
-    games::scope(&mut scoped, game, all);
-    scoped.inputs.is_empty() || crate::game_inputs_ready(&scoped, &whole, g, game, &st.dir)
+    // A setup step that changed, a build that's gone, an update or files still to pick: not set
+    // up. A game built from a copy that's gone since plays without it: set up.
+    crate::plays_as_set_up(st, recomp, g, game)
 }
 
 /// The games that should be in Steam, and the ones installed but not ready yet (their entries
@@ -688,6 +673,41 @@ pub async fn add_game(steam: &Path, data: &Path, want: &Want, art: Vec<(&'static
         apply(a, &arts)?;
     }
     Ok(accts.len())
+}
+
+/// The pictures of the launcher's games already in Steam, written again: Show Game Names changed
+/// which set recomps show. Only the grid folder is written, never shortcuts.vdf, so Steam can stay
+/// open (it shows them once it reads its pictures again). How many entries got them.
+pub async fn refresh_art(st: &App) -> usize {
+    let Some(steam) = shortcuts::steam_dir() else { return 0 };
+    // The sync's timer may be writing pictures right now: wait for it rather than write over each other.
+    let mut busy = Busy::take();
+    for _ in 0..60 {
+        if busy.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        busy = Busy::take();
+    }
+    let Some(_busy) = busy else { return 0 };
+    let mut arts = Arts::new();
+    let mut n = 0;
+    for user in shortcuts::steam_users(&steam) {
+        let cfg = user.join("config");
+        let Some(list) = entries(fs::read(cfg.join("shortcuts.vdf")).ok().as_deref()) else { continue };
+        for o in owned(&list, &|exe| shortcuts::script_game(&st.dir, exe)) {
+            let Ok(g) = crate::installed_or_game(st, &o.id) else { continue };
+            if !arts.contains_key(&o.id) {
+                let art = crate::steam_art(st, &o.id, &g).await;
+                arts.insert(o.id.clone(), art);
+            }
+            let (art, _) = &arts[&o.id];
+            if shortcuts::save_art(&cfg, o.app_id, art).is_ok() {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 /// Settings → Keep Steam in Sync → Sync Now (and turning it on).

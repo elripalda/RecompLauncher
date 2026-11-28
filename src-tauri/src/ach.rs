@@ -12,6 +12,9 @@
 //! Every unlock is saved here first (achievements/store.json in the app's data folder), shown in
 //! a toast over the game, and sent to the player's account when it can be.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use crate::{library::now, App, Error};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -2041,6 +2044,7 @@ fn build_toast(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         .inner_size(TOAST_W, TOAST_H)
         .build()?;
     crate::rest(&w, true);
+    crate::webview_crash::watch(&w);
     Ok(w)
 }
 
@@ -2509,8 +2513,9 @@ pub fn ach_reset(app: AppHandle, id: String) {
     });
 }
 
-/// Dev tools: the toast, to see it over a game.
-#[tauri::command]
+/// Dev tools: the toast, to see it over a game. Async: the first toast makes its window, and a
+/// window made from a command on the main thread hangs the launcher on Windows.
+#[tauri::command(async)]
 pub fn ach_test_toast(app: AppHandle, id: String, mastered: Option<bool>) {
     if !dev_ok(&app) {
         return;

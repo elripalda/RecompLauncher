@@ -61,6 +61,66 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.69" date="2026-11-25">
+      <description>
+        <p>Home follows the order set on the website with info boxes in your language, new consoles, one Save button for Coming Soon games, a Set Up by You pill and an Easy Setup switch for new games, safer cloud saves, clearer setup failures, and many fixes.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.68" date="2026-11-22">
+      <description>
+        <p>Easy Setup rebuilt so every game sets up the same way, games build again with every new release and after a build that was cut short, every build shows on Downloads with its progress, cloud saves are asked about once, and cleaner game pages.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.67" date="2026-11-20">
+      <description>
+        <p>A new update window with a changelog, cleaner game page stats, Launcher Support says where each feature comes from, starting with your PC, and fixes for a blank window and Mac games.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.66" date="2026-11-20">
+      <description>
+        <p>Rebuilt Updates, Saves, Shaders and Manage tabs, cloud save status above Play, updating every game automatically from Settings, Play finishes an update that needs a new build, games can say what they need from your PC, and Discover is now Catalog.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.65" date="2026-11-19">
+      <description>
+        <p>Reworks how games install, update and build, Easy Setup keeps your choices, updates go in whole or not at all, cloud save status for each game, and the featured banner can be turned off.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.64" date="2026-11-17">
+      <description>
+        <p>Easy Setup goes in clear steps on the desktop and in Big Picture, setup options a game needs are marked Required, the game page is cleaner, consoles are listed A to Z, custom logos show full size in Big Picture, and using a build you already made works for more games.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.63" date="2026-11-17">
+      <description>
+        <p>Fixes games built from your copy asking to set up again after an update.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.62" date="2026-11-17">
+      <description>
+        <p>The Verified label on a download opens its scan report.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.61" date="2026-11-17">
+      <description>
+        <p>Games that install with their own setup no longer show as missing before Set Up, and the Library can sort by game name.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.60" date="2026-11-17">
+      <description>
+        <p>The window opens on the right screen at a size that fits, updates show for games whose project moved, Linux .NET games find .NET, and the launcher starts faster.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.59" date="2026-11-17">
+      <description>
+        <p>Easy Setup can be switched on and off from a game's Manage tab, and a game's page shows its latest version before you install it.</p>
+      </description>
+    </release>
+    <release version="0.90.0-beta.58" date="2026-11-16">
+      <description>
+        <p>Playtime by game across recomps, kept through reinstalls and synced with your account, and each game of a multi-game release gets its own place in the store.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.57" date="2026-11-16">
       <description>
         <p>Linux .NET games start through their own start script, controller A waits for the D-pad on the desktop, and setups that build inside the game's folder are recognized.</p>

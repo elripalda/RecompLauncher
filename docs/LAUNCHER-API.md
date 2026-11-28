@@ -29,7 +29,7 @@ was signed out (from the account page, or the account is gone): the launcher for
 | `POST ?a=save-delete` | `{"game", "v"}` |
 | `POST ?a=signout` | This PC's token stops working |
 
-The website keeps the newest five copies per game and 150 MB per account, refuses game files,
+The website keeps the newest five copies per game and 300 MB per account, refuses game files,
 programs and archives inside a copy, and doesn't keep a copy whose `hash` matches the newest one.
 
 `hash` is the checksum of the whole set of save files (see `saves::set_hash`), so two PCs with the
@@ -45,6 +45,59 @@ same saves have the same hash. The launcher remembers the hash it last agreed on
 With the website's sign-in cookie: `GET ?a=pcs`, `POST ?a=pc-remove {id}`, `GET ?a=cloud`,
 `GET ?a=cloud-get&game=&v=`, `POST ?a=cloud-delete {game, v}`. Deleting the account deletes its
 PCs and cloud saves too.
+
+## Playtime
+
+Signed in, each PC sends its own running total per game (seconds played on that PC, ever), and the
+website adds the PCs up. Because a PC always sends its total and never "since last time", a resend
+or a lost request never counts anything twice.
+
+| Call | |
+| --- | --- |
+| `POST ?a=play` | `{"pc", "games": [{"game", "secs", "last", "count", "longest", "recent"}]}`, up to 500 and 1 MB → `{"ok": true}`. The website keeps the larger of what it has and what's sent, so nothing goes down. Bad entries (`secs` over 20 years, `last` more than a day ahead, a malformed id) are skipped, not the whole request. |
+| `GET ?a=play` | `{"games": {ID: {"secs", "last", "count", "longest", "recent"}}, "titles": {TITLE: {"secs", "last"}}}`, summed over the account's PCs |
+| `POST ?a=play-clear` | `{"pc", "games": [ID, ...]}`, up to 500 → `{"ok": true}`. Deletes this PC's rows for those games (its play ID's, and its sign-in's from before it sent one); other PCs keep theirs. Reset Play Time in a game's menu (`cloud::playtime_reset`): the launcher clears its own numbers, then this, then sends what's left with `POST ?a=play`. A site without it answers 400 and the launcher says the account still has the old time. |
+| `GET ?a=spons` | `{"s": [{"id", "slot", "img", "alt", "house"}]}`: sponsor spots for this account (Home's `app_home`, between Ready to Play and Recently Updated; `cloud::spons_mine`, `sponsSync` in app.js). Views go to `/api/spons.php?seen=<id>` (`cloud::spons_seen`) and a click opens `/api/spons.php?go=<id>`. Empty when there's nothing for this account. Used only while the Home list below hasn't come. |
+
+`count`, `longest` and `recent` draw a game's "Your play time" card (this week, this month,
+sessions, longest, the last two weeks) over all the PCs:
+
+- `count` is how many sessions that PC kept of the game (10 seconds or more each, its newest 500)
+  and `longest` the longest of them in seconds. Like `secs`, the website keeps the larger of what
+  it has and what's sent per PC; `GET` gives `count` summed over the PCs and `longest` the largest.
+- `recent` is that PC's sessions of the last 31 days, as `[start, secs]` (start in Unix seconds,
+  both whole numbers above zero), oldest first. The website adds them to what it had for that PC
+  (a session is the same one when both numbers match, so a resend adds nothing), drops sessions
+  older than 31 days, and skips a bad one (start more than a day ahead, longer than 20 years) on
+  its own. `GET` gives every PC's recent sessions together, oldest first.
+- A site without them leaves the card to the PC's own sessions. Titles don't carry them.
+
+`pc` is the PC's play ID: 32 lowercase hex characters, random, kept in `play.id` in the
+launcher's data folder (`cloud::play_id`). It's the same each time that PC signs in, which the
+sign-in token isn't, so the website keeps play rows by account and play ID rather than by sign-in:
+signing out and back in then adds to the same rows instead of counting that PC's whole time a
+second time. When a send has a good `pc`, the rows that sign-in sent before under itself move to
+that play ID, merged as above (the larger of each number, recent sessions joined). A send without
+one (an older launcher) is kept by its sign-in as before. It's used for nothing but play time, and
+isn't the usage ID (`install.id`), which only goes when the player shares usage and Settings can
+reset. Rows from a sign-in that's already gone stay as they are.
+
+- `game` is the recomp's id, or `recomp--game` for one game of a recomp that carries several.
+  A developer's own builds (`local-…`, `own-…`) aren't sent.
+- A title is the sum of its recomps in the catalog's `titles[].pc`, and a replaced listing counts
+  as its new id. `recomp--game` rows don't count toward titles until the catalog maps those games.
+- The launcher sends everything after signing in and then once a day (installed games and what
+  it kept from uninstalled ones), one game after each session, and reads the totals with the
+  account and every 10 minutes (`cloud::playtime_push`, `playtime_pull`; `playSync` in app.js).
+- 120 sends and 120 reads an hour per PC. Any failure, a 401 included, just leaves this PC's own
+  numbers showing: these calls never sign the PC out, and they rest on their own in net.rs.
+- `save-put`'s `played` only labels save copies (the "Which save do you want?" picker) and isn't
+  counted.
+- `tools/fake-play-site.cjs` stands in for the website to try this locally (`RL_API`).
+
+Account page (cookie): `GET ?a=playtime` (each game's total and each PC's share), `POST
+?a=playtime-clear {game?}` (one game, or everything). Removing a PC keeps its rows; deleting the
+account deletes them. Each play ID's share is one PC, named after the sign-in that last sent it.
 
 ## Get it on my PC
 
@@ -143,6 +196,22 @@ Everything the launcher asks this server goes to one address, `API_BASE` in `src
 - `api/gh.php?repo=`: kept on disk for 6 hours per repo. Asked for when the player opens a game's
   page, installs or updates, and on start for installed games whose copy is older than 6 hours.
 - `api/pc.php?a=counts` and `a=feedback`: only when a page that shows them opens, kept for 1 hour.
+- `api/pc.php?a=interest&id=`: `{n}`, how many saved the recomp or wait for its email (each account
+  once), the number on its website page's Save button. Asked when its game page opens, kept for 10
+  minutes (`cache/interest/`). The game page shows it on Save (Coming Soon games) and Add to
+  Library, in Big Picture too, from 10 (`wantCount` in app.js). A site without it answers 400, and
+  nothing shows.
+
+### Save on Coming Soon games
+
+A Coming Soon game has one button, Save, where Notify Me was. Save is Add to Library: the game waits
+under Not Installed and, signed in, goes to the account with the rest of the saved list
+(`api/launcher.php?a=library-save`). The website treats saving a Coming Soon recomp as signing up for
+its "it's out" email, so signed-in players get that too; the launcher no longer asks `api/pc.php`
+`a=notify` or `a=notifies` (the site still answers them, for older launchers, by saving or unsaving
+the game). When a catalog no longer has a saved game as Coming Soon, the launcher shows a
+notification that it's out (`saved_out_now` in `note_new_apps`, lib.rs; the last catalog's
+Coming Soon ids are kept as `seen_soon` in the library file). It follows the Notifications setting.
 - `launcher/version.json`: on start (an answer from the last hour is reused), then about every
   6 hours, or after a `launcher` push.
 - `api/launcher-ping.php`: on open, then every 30 minutes at the most often. A `next` (seconds) in
@@ -177,3 +246,16 @@ same status and keep installation available.
 
 This fallback does not infer abandonment from repository activity and does not change
 how the separately hosted catalog service collects its metadata.
+
+## Home's order (`/api/home.php`)
+
+`GET /api/home.php?page=app` (signed out) or `?page=app&me=1` with the account's token (adds the blocks for App Testers): what goes on Home, in order, set on the website's admin (Launcher > Home page). `cloud::home_layout` asks for it at start, every 10 minutes, and when Home opens (at most once a minute), and keeps the last good answer in `cache/home.json` for offline use.
+
+`{"v": 1, "items": [...], "hide": [row ids]}`. Items: `{"k": "row", "id"}` (one of Home's own rows: `played`, `favs`, `ready`, `updated`, `follow`, `found`, `trend`, `new`, `easy`, `news`), `{"k": "box", "id", "title", "text", "icon", "btn", "act", "arg", "when", "close"}` (an info box; `act` is `link`, `game`, `rom-add` or `go:discover|soon|library|settings`; `when` is ``, `no_folders`, `signed_out` or `signed_in`), `{"k": "banner", "id", "slot", "sp": {"id", "img", "alt", "house"}}` (counted like the sponsor spots above).
+
+The launcher (`homePlan` in app.js) skips kinds and rows it doesn't know, puts back a row the list doesn't name after the row it usually follows, and keeps its built-in order (with the `a=spons` banner) when there's no list or its `v` isn't 1. A closed box is remembered in settings (`ui.home_closed`).
+
+A box can also have `"tr": {LANG: {"title", "text", "btn"}}`: its words in each language the website translated them into when the admin saved (any of them can be missing). `homeWord` in app.js shows the player's language, then its base language for the four regional ones (`es` for `es-419`; `zh-Hant` never falls back to `zh`), else the words as typed. The answer holds every language, so the copy in `cache/home.json` follows a language change offline too.
+
+Big Picture's Home (`tvHomeRows` in tv.js) follows the same list under its row of your games. It has its own rows, matched by the same ids (`played` is Continue playing, shown when that row holds your pinned games; `found`, `ready`, `easy`, `news`, `updated`, `new`, `trend`); `favs` and `follow` aren't in Big Picture, so their place is skipped. Info boxes (in the player's language, `homeWord`) and banners are as wide as a row and picked with the controller (a box's button does what it does on the desktop, `homeBoxAct`); a box with nothing to press shows with the row under it. Without the list it keeps its own order, with no banner.
+

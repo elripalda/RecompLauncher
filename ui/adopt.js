@@ -4,13 +4,18 @@
 // Library. From then on they update like the rest.
 
 const ADOPT = { list: [], move: false, busy: false, el: null };
-const FROM_WORD = { steam: N_('In Steam'), launcher: N_('From another launcher'), folder: N_('A folder you picked'), linked: N_('Found its game: Play starts it from here now') };
+const FROM_WORD = { steam: N_('In Steam'), launcher: N_('From another launcher'), folder: N_('A folder you picked'), appimage: N_('An AppImage on this PC'), linked: N_('Found its game: Play starts it from here now') };
 
 function adoptName(f) { const a = f.id && byId(f.id); return a ? a.name : f.name; }
 function adoptKey(f) { return String(f.path).toLowerCase(); }
+// One row per game found: several AppImages in one folder (like ~/AppImages) are different games.
+function adoptRowKey(f) {
+  const image = /\.appimage$/i.test(String(f.exe || ''));
+  return image ? `${adoptKey(f)}|${String(f.exe).toLowerCase()}` : adoptKey(f);
+}
 function adoptMerge(list) {
   for (const f of list) {
-    const i = ADOPT.list.findIndex((x) => adoptKey(x) === adoptKey(f));
+    const i = ADOPT.list.findIndex((x) => adoptRowKey(x) === adoptRowKey(f));
     if (i >= 0) ADOPT.list[i] = Object.assign(ADOPT.list[i], f); else ADOPT.list.push(Object.assign({ on: !f.have && !!f.id }, f));
   }
 }
@@ -161,7 +166,7 @@ async function adoptAdd(close) {
   const pick = ADOPT.list.filter((f) => f.on && (f.id || f.any) && !f.have);
   // The same recomp twice: the first one. The player's own games go by their folder.
   const seen = new Set();
-  const items = pick.filter((f) => { const k = f.id || adoptKey(f); return !seen.has(k) && seen.add(k); }).map((f) => ({ id: f.id || '', path: f.path, exe: f.exe || null, tag: f.tag || '' }));
+  const items = pick.filter((f) => { const k = f.id || adoptRowKey(f); return !seen.has(k) && seen.add(k); }).map((f) => ({ id: f.id || '', path: f.path, exe: f.exe || null, tag: f.tag || '' }));
   if (!items.length) return;
   ADOPT.busy = 'add'; adoptDraw();
   let added = [];
@@ -169,7 +174,8 @@ async function adoptAdd(close) {
   close();
   await saveUi({ adopt_asked: true });
   await refreshState();
-  const moving = ADOPT.move ? pick.filter((f) => f.from === 'launcher' && added.some((g) => g.id === f.id)) : [];
+  // One unpacked from its AppImage (Linux) is in the Recomp Library already.
+  const moving = ADOPT.move ? pick.filter((f) => f.from === 'launcher' && added.some((g) => g.id === f.id && !g.from_appimage)) : [];
   for (const f of moving) {
     toast(tf('Moving {name} into your Recomp Library…', { name: adoptName(f) }));
     try { await moveGame(f.id, S.settings.library_dir); } catch (e) { fail(e); }
@@ -252,7 +258,7 @@ function migGroups() {
 function migMerge(list) {
   MIG.list = MIG.list || [];
   for (const f of list) {
-    const i = MIG.list.findIndex((x) => adoptKey(x) === adoptKey(f));
+    const i = MIG.list.findIndex((x) => adoptRowKey(x) === adoptRowKey(f));
     if (i >= 0) MIG.list[i] = Object.assign(MIG.list[i], f); else MIG.list.push(f);
   }
 }
@@ -293,7 +299,7 @@ function migratePage(group) {
   else if (g) {
     const box = (n, title, sub, act, label) => `<div class="mig-box"><b>${n}</b><span>${esc(title)}</span><small>${esc(sub)}</small>
       <button type="button" class="btn sm${act === 'mig-add' ? ' main' : ''}" data-act="${act}"${n && !busy ? '' : ' disabled'}>${esc(label)}</button></div>`;
-    const ready = g.ready.filter((f) => !MIG.off.has(adoptKey(f)));
+    const ready = g.ready.filter((f) => !MIG.off.has(adoptRowKey(f)));
     if (!g.ready.length && !g.look.length && !g.away.length) {
       body += `<p class="set-empty">${esc(g.have ? t('Everything it found is already in your Library.') : t('No games found. If yours are somewhere else, pick their folder or the other launcher\'s folder.'))}</p>`;
     } else {
@@ -304,7 +310,7 @@ function migratePage(group) {
       </div>`;
       if (MIG.note) body += `<p class="muted mig-wait">${esc(MIG.note)}</p>`;
       if (g.ready.length) {
-        body += `<div class="mig-list">${g.ready.map((f) => { const a = byId(f.id); const k = adoptKey(f); return `<label class="mig-row">
+        body += `<div class="mig-list">${g.ready.map((f) => { const a = byId(f.id); const k = adoptRowKey(f); return `<label class="mig-row">
           <input type="checkbox" data-act="mig-tick" data-k="${esc(k)}"${MIG.off.has(k) ? '' : ' checked'}${busy ? ' disabled' : ''}>
           ${(a && a.cover && pic(a.cover)) || '<span class="ph"></span>'}
           <span class="adopt-k"><b>${esc(a ? a.name : f.name)}</b><small class="path">${esc(f.path)}</small><small>${esc(t(FROM_WORD[f.from] || FROM_WORD.folder))}${f.tag ? ' · ' + esc(f.tag) : ''}${f.hidden ? ' · ' + esc(t('Hidden there, hidden here too')) : ''}</small></span></label>`; }).join('')}</div>`;
@@ -402,7 +408,7 @@ async function migAway() {
 }
 
 async function migAddReady() {
-  const list = migGroups().ready.filter((f) => !MIG.off.has(adoptKey(f)));
+  const list = migGroups().ready.filter((f) => !MIG.off.has(adoptRowKey(f)));
   if (!list.length) return;
   MIG.busy = 'add'; migRedraw();
   let got = [];

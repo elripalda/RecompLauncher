@@ -9,7 +9,9 @@ const fn = (src, name) => src.match(new RegExp(`^  (?:async )?function ${name}\\
 
 function downloadsContext(launcherUpd) {
   const c = vm.createContext({
-    S: { jobs: {}, recent: [], updates: {}, library: {}, dlHist: [], launcherUpd, version: '0.90.0-beta.39' },
+    S: { jobs: {}, recent: [], updates: {}, library: {}, dlHist: [], launcherUpd, version: '0.90.0-beta.39', buildQ: [] },
+    // No builds here: these tests are about downloads and the launcher's own update.
+    buildsNow: () => [], buildBar: () => '',
     TV: {},
     t: (s) => s, esc: String,
     tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
@@ -19,7 +21,8 @@ function downloadsContext(launcherUpd) {
     sfx: () => {}, calls: [],
   });
   c.selfUpdate = () => c.calls.push('selfUpdate');
-  vm.runInContext(fn(tv, 'scanTag') + fn(tv, 'pageDownloads'), c);
+  const latestPerGame = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8').match(/^function latestPerGame\([^]*?^}/m)[0];
+  vm.runInContext(latestPerGame + fn(tv, 'scanTag') + fn(tv, 'pageDownloads'), c);
   vm.runInContext(fn(tv, 'activate'), c);
   return c;
 }
@@ -51,9 +54,9 @@ function checkedRow(info) {
   return c.pageDownloads();
 }
 
-test('a checked download shows the Verified pill and opens the game', () => {
-  const html = checkedRow({ cls: 'ok', ic: '✓', text: 'Verified' });
-  assert.match(html, /<span class="scan-pill ok" title="Scanned before release and checked by the RecompStore team\."><i>✓<\/i>Verified<\/span><\/button>/);
+test('a checked download shows the Safe pill and opens the game', () => {
+  const html = checkedRow({ cls: 'ok', ic: '✓', text: 'Safe' });
+  assert.match(html, /<span class="scan-pill ok" title="Scanned before release and checked by the RecompStore team\."><i>✓<\/i>Safe<\/span><\/button>/);
   assert.match(html, /<small>Installed v0\.0\.11<\/small>/);
   assert.match(html, /data-go-game="prime"/);
   assert.doesNotMatch(html, /data-tvact="scan"/);
@@ -64,7 +67,7 @@ test('an update-ready row shows how the new version was checked', () => {
   c.S.library = { prime: { tag: 'v0.0.10' } };
   c.S.updates = { prime: 'v0.0.11' };
   const asked = [];
-  c.scanInfo = (h) => { asked.push(h.tag + (h.update ? ' update' : '')); return { cls: 'ok', ic: '✓', text: 'Verified update' }; };
+  c.scanInfo = (h) => { asked.push(h.tag + (h.update ? ' update' : '')); return { cls: 'ok', ic: '✓', text: 'Safe Update' }; };
   const html = c.pageDownloads();
   assert.deepEqual(asked, ['v0.0.11 update']);
   assert.match(html, /Update ready: v0\.0\.10 → v0\.0\.11<\/small><\/span><span class="scan-pill ok" title="[^"]+">/);

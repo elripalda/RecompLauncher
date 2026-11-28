@@ -66,6 +66,11 @@ pub fn init(app: &AppHandle) {
     let _ = APP.set(app.clone());
 }
 
+/// The running launcher, for code that tells the window something without being handed it.
+pub fn app() -> Option<&'static AppHandle> {
+    APP.get()
+}
+
 /// Is the server resting (it had trouble and isn't being asked right now)?
 pub fn offline() -> bool {
     OFFLINE.load(Ordering::Relaxed)
@@ -103,7 +108,8 @@ fn host(url: &str) -> String {
 ///
 /// Cloud saves going up or coming down rest on their own ("{host}/saves"): a big upload that's cut
 /// off or too slow says nothing about the list or the account. So does usage and logs
-/// ("{host}/stats"). Only the site's own gate marks it Offline.
+/// ("{host}/stats"), and playtime ("{host}/play"), which a site without that call yet fails
+/// every time. Only the site's own gate marks it Offline.
 fn key(url: &str) -> String {
     let h = host(url);
     let parsed = reqwest::Url::parse(url).ok();
@@ -111,6 +117,8 @@ fn key(url: &str) -> String {
     let action = parsed.as_ref().and_then(|u| u.query_pairs().find(|(k, _)| k == "a").map(|(_, v)| v.to_string())).unwrap_or_default();
     if path.ends_with("/api/launcher.php") && matches!(action.as_str(), "save-put" | "save-get" | "save-delete") {
         format!("{h}/saves")
+    } else if path.ends_with("/api/launcher.php") && action == "play" {
+        format!("{h}/play")
     } else if path.ends_with("/api/launcher-ping.php") || path.ends_with("/api/logs.php") || (path.ends_with("/api/launcher.php") && matches!(action.as_str(), "events" | "hello" | "report")) {
         format!("{h}/stats")
     } else if path.ends_with("/api/gh.php") {
@@ -318,6 +326,12 @@ pub fn forced() -> bool {
 /// The one way to ask the server. A site that's resting isn't asked at all; trouble makes it rest.
 /// The answer comes back whatever its status, for the caller to read.
 pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Result<reqwest::Response, crate::Error> {
+    send_allowing(rb, url, player, &[]).await
+}
+
+/// `send`, where some statuses are a normal answer and not trouble: the Android list's 403 (signed
+/// out, or not a tester) mustn't make the whole site rest.
+pub async fn send_allowing(rb: reqwest::RequestBuilder, url: &str, player: bool, normal: &[u16]) -> Result<reqwest::Response, crate::Error> {
     if !forced() && resting(url, player) {
         if busy() && is_api(&key(url)) {
             return Err(crate::Error::Net(format!("{} is busy, retrying in {}s. Using what's saved on this PC.", host(url), wait_left(url).max(1))));
@@ -330,7 +344,7 @@ pub async fn send(rb: reqwest::RequestBuilder, url: &str, player: bool) -> Resul
     match crate::ech::send(rb).await {
         Ok(r) => {
             let code = r.status().as_u16();
-            if trouble_status(code) {
+            if trouble_status(code) && !normal.contains(&code) {
                 went_badly_as(url, if matches!(code, 429 | 503) { retry_after(&r) } else { None }, started, code == 429 || code >= 500);
             } else {
                 went_well(url);
@@ -482,6 +496,12 @@ mod tests {
 
     /// The tests that read or change the site's Offline mark, one at a time.
     static SITE: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn playtime_rests_on_its_own() {
+        let b = base();
+        assert_eq!(key(&format!("{b}/api/launcher.php?a=play")), "recomplauncher.com/play");
+    }
 
     #[test]
     fn saves_and_usage_rest_on_their_own() {
@@ -737,6 +757,180 @@ pub fn client_builder() -> reqwest::ClientBuilder {
         .redirect(redirects())
         // Slow DNS or a busy mobile connection can take a while to connect.
         .connect_timeout(Duration::from_secs(15))
+}
+
+// ---------- which server a failed download couldn't connect to, and why ----------
+
+/// A client that never follows redirects, so each step of a download link can be asked on its own.
+fn hop_client() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| {
+        let b = with_proxy(reqwest::Client::builder()).user_agent(concat!("RecompLauncher/", env!("CARGO_PKG_VERSION")));
+        b.redirect(reqwest::redirect::Policy::none()).connect_timeout(Duration::from_secs(15)).build().unwrap_or_default()
+    })
+}
+
+/// The error from the server a download link really failed at. reqwest follows redirects inside
+/// itself and labels a failure with the first address, so a project's server that sends every
+/// download on to its CDN (git.magicbean.dev to git-cdn.magicbean.dev) got the blame for the CDN.
+/// The link is asked again one redirect at a time until a step fails; `None` when every step
+/// answers now, or the chain can't be followed (too long, or down to plain http).
+pub async fn failed_hop(url: &str) -> Option<reqwest::Error> {
+    let mut at = reqwest::Url::parse(url).ok()?;
+    for _ in 0..10 {
+        // One byte is plenty: only whether it answers, and where it sends the download next.
+        let asked = hop_client().get(at.clone()).header(reqwest::header::RANGE, "bytes=0-0").timeout(QUICK).send().await;
+        let r = match asked {
+            Ok(r) => r,
+            Err(e) => return Some(e),
+        };
+        if !r.status().is_redirection() {
+            return None;
+        }
+        let next = r.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).and_then(|l| at.join(l).ok())?;
+        if next.scheme() != "https" && at.scheme() == "https" {
+            return None;
+        }
+        at = next;
+    }
+    None
+}
+
+/// The errors under this one, outermost first (reqwest's, hyper's, then the system's or TLS's).
+fn causes(e: &reqwest::Error) -> Vec<&(dyn std::error::Error + 'static)> {
+    let mut out = vec![];
+    let mut at = std::error::Error::source(e);
+    while let Some(s) = at {
+        out.push(s);
+        at = s.source();
+    }
+    out
+}
+
+/// The connection opened but the secure handshake didn't finish: what came back wasn't TLS, or
+/// its certificate wasn't one to trust. rustls reports both as invalid data. A router filter,
+/// antivirus or VPN that blocks a site by name usually does this, where a site that's down or
+/// unreachable refuses or never answers instead.
+pub fn tls_failed(e: &reqwest::Error) -> bool {
+    let ios = causes(e).into_iter().filter_map(|s| s.downcast_ref::<std::io::Error>());
+    ios.flat_map(io_kinds).any(|k| k == std::io::ErrorKind::InvalidData)
+}
+
+/// An io error's kind and the kinds of the io errors it wraps. reqwest wraps rustls's InvalidData
+/// in one of kind Other, and an io error's `source()` skips the error it wraps, so `get_ref` it is.
+fn io_kinds(e: &std::io::Error) -> Vec<std::io::ErrorKind> {
+    let mut out = vec![];
+    let mut at = Some(e);
+    while let Some(i) = at {
+        out.push(i.kind());
+        at = i.get_ref().and_then(|inner| inner.downcast_ref::<std::io::Error>());
+    }
+    out
+}
+
+/// The deepest reason under an error, in its own words, for the trail ("received corrupt message
+/// of type InvalidContentType", "Connection refused"). reqwest's own text alone says only "error
+/// sending request".
+pub fn cause(e: &reqwest::Error) -> String {
+    causes(e).last().map(|s| s.to_string()).unwrap_or_else(|| e.to_string())
+}
+
+#[cfg(test)]
+mod connection_failure_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// A server that answers anything with a plain-text page, the way a blocking filter answers a
+    /// secure connection it won't let through. Its port.
+    fn plain_text_server() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                let _ = s.read(&mut [0u8; 1024]);
+                let _ = s.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+            }
+        });
+        port
+    }
+
+    /// A plain http server whose every answer sends the download on to `to`. Its port.
+    fn redirect_server(to: String) -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                let _ = s.read(&mut [0u8; 1024]);
+                let _ = s.write_all(format!("HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\n\r\n").as_bytes());
+            }
+        });
+        port
+    }
+
+    fn closed_port() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    }
+
+    fn get_error(url: &str) -> reqwest::Error {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(reqwest::Client::new().get(url).send()).unwrap_err()
+    }
+
+    #[test]
+    fn a_handshake_answered_in_plain_text_is_a_secure_connection_failure() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
+        assert!(e.is_connect());
+        assert!(tls_failed(&e), "{}", cause(&e));
+    }
+
+    #[test]
+    fn a_secure_connection_failure_says_so_and_names_the_server() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
+        let msg = crate::Error::from(e).to_string();
+        assert!(msg.starts_with("Couldn't open a secure connection to 127.0.0.1."), "{msg}");
+    }
+
+    #[test]
+    fn a_refused_connection_is_not_a_secure_connection_failure() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", closed_port()));
+        assert!(e.is_connect());
+        assert!(!tls_failed(&e));
+    }
+
+    #[test]
+    fn the_cause_is_the_deepest_reason() {
+        let e = get_error(&format!("https://127.0.0.1:{}/", plain_text_server()));
+        assert_ne!(cause(&e), e.to_string());
+    }
+
+    #[test]
+    fn the_failed_hop_is_the_server_the_link_was_sent_on_to() {
+        let cdn = plain_text_server();
+        let start = redirect_server(format!("https://127.0.0.1:{cdn}/file.zip"));
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let e = rt.block_on(failed_hop(&format!("http://127.0.0.1:{start}/file.zip"))).unwrap();
+        assert_eq!(e.url().and_then(|u| u.port()), Some(cdn));
+        assert!(tls_failed(&e));
+    }
+
+    #[test]
+    fn a_link_that_answers_has_no_failed_hop() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten() {
+                let mut s = s;
+                let _ = s.read(&mut [0u8; 1024]);
+                let _ = s.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Length: 1\r\n\r\nx");
+            }
+        });
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        assert!(rt.block_on(failed_hop(&format!("http://127.0.0.1:{port}/file.zip"))).is_none());
+    }
 }
 
 #[cfg(test)]

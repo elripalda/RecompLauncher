@@ -76,7 +76,7 @@ impl Site {
         let app = App {
             dir, http: reqwest::Client::builder().no_proxy().build().unwrap(), lib: Mutex::new(lib),
             jobs: Mutex::new(HashMap::new()), running: Mutex::new(HashMap::new()), pids: Mutex::new(HashMap::new()), started: Mutex::new(HashMap::new()),
-            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::new(HashSet::new()), overlay_open: AtomicBool::new(false), looked: Mutex::new(HashSet::new()), headless: AtomicBool::new(false),
+            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::new(HashSet::new()), uninstalling: Mutex::default(), overlay_open: AtomicBool::new(false), looked: Mutex::new(HashSet::new()), headless: AtomicBool::new(false),
         };
         Self { app, approved, catalogs, stop, server: Some(server) }
     }
@@ -118,4 +118,73 @@ fn manual_checks_keep_cached_approval_when_the_site_fails() {
         assert_eq!(check_updates_for(&site.app, true).await.unwrap().get("game").map(String::as_str), Some("v2"));
         assert_eq!(site.catalogs.load(Ordering::SeqCst), 2);
     });
+}
+
+/// Hookshot installed from its GitHub project at v2.1.0, after the catalog moved it to its own
+/// Forgejo server, where v2.3.2 came out. Both projects' release lists are on disk and fresh, so
+/// nothing is asked of the network.
+struct MovedHookshot(App);
+
+impl MovedHookshot {
+    fn new(test: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("rl-moved-hookshot-{}-{test}", std::process::id()));
+        std::fs::create_dir_all(dir.join("cache/releases")).unwrap();
+        // As the site sends it: a Forgejo project's repo without the launcher's "forgejo:".
+        let cat = json!({"apps": [{"id": "hookshot", "host": "forgejo", "repo": "git.notrexed.dev/Hookshot/Hookshot", "tag": "v2.3.2"}]});
+        std::fs::write(dir.join("cache/pc-catalog.json"), cat.to_string()).unwrap();
+        let github = json!([
+            hookshot_release("nightly", true, &["Hookshot-v2.2.0-rc.1-114-g8b762704-Windows-x64.zip", "Hookshot-v2.2.0-rc.1-114-g8b762704-x86_64.AppImage"]),
+            hookshot_release("rc", true, &["Hookshot-v2.2.0-rc.1-x86_64.AppImage"]),
+            hookshot_release("v2.1.0", false, &["Hookshot-v2.1.0-Windows-x64.zip", "Hookshot-v2.1.0-x86_64.AppImage"]),
+        ]);
+        std::fs::write(dir.join("cache/releases/NotRexed__Hookshot.json"), github.to_string()).unwrap();
+        let forgejo = json!([hookshot_release("v2.3.2", false, &["Hookshot-v2.3.2-Windows-x64.zip", "Hookshot-v2.3.2-x86_64.AppImage"])]);
+        std::fs::write(dir.join("cache/releases/forgejo_git.notrexed.dev__Hookshot__Hookshot.json"), forgejo.to_string()).unwrap();
+        let mut lib = Library::default();
+        let installed = Installed { id: "hookshot".into(), name: "Hookshot".into(), repo: "NotRexed/Hookshot".into(), tag: "v2.1.0".into(), path: dir.join("hookshot"), ..Default::default() };
+        lib.installed.insert("hookshot".into(), installed);
+        Self(App {
+            dir, http: reqwest::Client::new(), lib: Mutex::new(lib),
+            jobs: Mutex::default(), running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
+            download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(), uninstalling: Mutex::default(), overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
+        })
+    }
+}
+
+impl Drop for MovedHookshot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0.dir);
+    }
+}
+
+/// Out yesterday, so it's in the news too.
+fn hookshot_release(tag: &str, prerelease: bool, files: &[&str]) -> Value {
+    let date = (chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339();
+    let assets: Vec<Value> = files.iter().map(|name| json!({"name": name, "browser_download_url": format!("https://example.invalid/{name}"), "size": 10})).collect();
+    json!({"tag_name": tag, "prerelease": prerelease, "published_at": date, "assets": assets})
+}
+
+// Hookshot has builds for Windows and Linux on x86-64 only.
+#[cfg(all(target_arch = "x86_64", any(target_os = "linux", target_os = "windows")))]
+#[test]
+fn the_badge_offers_the_release_of_the_project_a_game_moved_to() {
+    let hookshot = MovedHookshot::new("badge");
+    let updates = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(check_updates_for(&hookshot.0, false)).unwrap();
+    assert_eq!(updates.get("hookshot").map(String::as_str), Some("v2.3.2"));
+}
+
+#[test]
+fn the_update_check_leaves_a_moved_games_own_project_until_its_next_install() {
+    let hookshot = MovedHookshot::new("own-project");
+    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(check_updates_for(&hookshot.0, false)).unwrap();
+    let repo = hookshot.0.lib.lock().unwrap().installed["hookshot"].repo.clone();
+    assert_eq!(repo, "NotRexed/Hookshot");
+}
+
+#[test]
+fn the_news_shows_the_releases_of_the_project_a_game_moved_to() {
+    let hookshot = MovedHookshot::new("news");
+    let news = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(news_for(&hookshot.0)).unwrap();
+    let tags: Vec<&str> = news.iter().map(|n| n.tag.as_str()).collect();
+    assert_eq!(tags, ["v2.3.2"]);
 }

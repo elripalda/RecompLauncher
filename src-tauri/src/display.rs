@@ -1,5 +1,8 @@
 //! Monitor selection and window placement for the launcher and Big Picture mode.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
@@ -30,6 +33,11 @@ struct WindowState {
 }
 
 static BIG_PICTURE_WINDOW: Mutex<Option<WindowState>> = Mutex::new(None);
+
+/// The main window is in Big Picture mode now.
+pub fn in_big_picture() -> bool {
+    BIG_PICTURE_WINDOW.lock().unwrap().is_some()
+}
 
 /// Returns the monitors Tauri currently reports as connected.
 pub fn enumerate_monitors(app: &AppHandle) -> Vec<MonitorInfo> {
@@ -203,12 +211,14 @@ pub fn leave_tv_mode(app: &AppHandle) -> Result<(), String> {
         (state.x, state.y)
     };
 
-    window
-        .set_size(PhysicalSize::new(state.width, state.height))
-        .map_err(|e| format!("Couldn't restore the launcher size: {e}"))?;
+    // Place first, size second: moving from the TV onto a screen with another scale makes Windows
+    // rescale the window, which would grow (or shrink) a size set before the move.
     window
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|e| format!("Couldn't restore the launcher position: {e}"))?;
+    window
+        .set_size(PhysicalSize::new(state.width, state.height))
+        .map_err(|e| format!("Couldn't restore the launcher size: {e}"))?;
     if state.maximized {
         window
             .maximize()

@@ -13,7 +13,7 @@ test('every console has its own media, and anything else is a disc', () => {
   }
   for (const k of MediaArt.KINDS) {
     const out = MediaArt.render(k.id, { cover: 'c.jpg', hero: 'h.jpg', logo: 'l.png' });
-    assert.match(out, new RegExp(`class="md md-(cart|disc|umd) md-k-${k.id}"`), k.id);
+    assert.match(out, new RegExp(`class="mdisc md-(cart|disc|umd) md-k-${k.id}"`), k.id);
     assert.equal((out.match(/<svg /g) || []).length, (out.match(/<\/svg>/g) || []).length, k.id);
     assert.match(MediaArt.ghost(k.id), /md-ghost/);
   }
@@ -72,10 +72,11 @@ test('the setup screens show the media in place of the old disc, desktop and Big
   assert.match(html, /<link rel="stylesheet" href="media-art\.css">/);
   assert.ok(html.indexOf('media-art.js') < html.indexOf('app.js'));
   const su = fn(app, 'suDraw');
-  assert.match(su, /const mdState = SU\.stage === 'pick' \? 'ghost' : SU\.stage === 'convert' \? 'is-busy'/);
+  assert.match(su, /const mdState = SU\.stage === 'convert' \? 'is-busy'/);
+  // Before Set Up, the steps draw it: ghosted until a file is in.
+  assert.match(read('setup-steps.js'), /const art = gameMediaHtml\(game, any \? '' : 'ghost'\);/);
   assert.match(su, /<div class="su-media">\$\{gameMediaHtml\(a, mdState\)\}<\/div>/);
   assert.match(su, /mediaState\(d, 'is-busy'\)/);
-  assert.match(named, /\$\{gameMediaHtml\(game, selected \? '' : 'ghost'\)\}/);
   assert.match(tv, /const med = \(state\) => `<div class="tv-media">\$\{gameMediaHtml\(a, state\)\}<\/div>`/);
   assert.match(tv, /\$\{med\(cur <= 0 \? 'is-in' : 'is-busy'\)\}/);
   for (const src of [app, tv, named, css, tvcss]) assert.doesNotMatch(src, /sdisc|bigdisc/);
@@ -108,7 +109,7 @@ test('Console Labels on Covers: a setting, the site\'s PNG over the top, badges 
 
 test('the media moves only when the player allows motion', () => {
   const m = read('media-art.css');
-  assert.match(m, /@media \(prefers-reduced-motion:reduce\)\{\.md,\.md \*\{animation:none!important\}\}/);
+  assert.match(m, /@media \(prefers-reduced-motion:reduce\)\{\.mdisc,\.mdisc \*\{animation:none!important\}\}/);
   assert.match(m, /\.md-disc\.is-busy \.md-spin,\.md-umd\.is-busy \.md-spin\{animation:mdSpin/);
   assert.match(m, /\.md-cart\.is-in\{animation:mdSlide/);
 });

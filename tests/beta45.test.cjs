@@ -51,14 +51,20 @@ test('a banner slide with four buttons of its own leaves Details to the cover', 
   assert.match(app, /class="sl-cover" data-act="open"/);
 });
 
-test('a save folder only noticed while playing says so', () => {
-  const start = account.indexOf('const savesGuessed = ');
-  const savesGuessed = new Function(`${account.slice(start, account.indexOf('\n', start))} return savesGuessed;`)();
-  assert.equal(savesGuessed({ spots: [{ from: 'found' }] }), true);
-  assert.equal(savesGuessed({ spots: [{ from: 'game' }] }), true);
-  assert.equal(savesGuessed({ spots: [{ from: 'found' }, { from: 'developer' }] }), false);
-  assert.equal(savesGuessed({ spots: [{ from: 'player' }] }), false);
-  assert.equal(savesGuessed({ spots: [] }), false);
+test('a game nobody says where it saves asks the player to pick its folder', () => {
+  const start = account.indexOf('const savesUnknown = ');
+  const savesUnknown = new Function(`${account.slice(start, account.indexOf('\n', start))} return savesUnknown;`)();
+  assert.equal(savesUnknown({ spots: [] }), true);
+  assert.equal(savesUnknown({ spots: [{ from: 'developer' }] }), false);
+  assert.equal(savesUnknown({ spots: [{ from: 'player' }] }), false);
+  assert.equal(savesUnknown(null), false);
+  // The same pick on the desktop and in Big Picture.
+  const tv = read('tv.js');
+  assert.match(account, /if \(savesUnknown\(s\)\) return `<div class="stack">\$\{unknownCard\(id\)\}/);
+  assert.match(tv, /data-tvact="gs-place"/);
+  assert.match(tv, /case 'gs-place': return pickSavesFolder\(id\);/);
+  assert.match(tv, /async function pickSavesFolder\(id\) \{[\s\S]{0,400}invoke\(placeCommand\(TV\.saves\[id\]\)/);
+  assert.match(account, /case 'saves-place': \{[\s\S]{0,400}invoke\(placeCommand\(S\.saves\[id\]\)/);
 });
 
 test('the Settings section list sits below the window bar', () => {

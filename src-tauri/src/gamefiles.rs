@@ -49,7 +49,8 @@ fn settings_files_in(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         let p = e.path();
         let Ok(ty) = e.file_type() else { continue };
         if ty.is_dir() {
-            if depth > 0 {
+            // The old release's settings an update set aside aren't the game's any more.
+            if depth > 0 && e.file_name() != crate::swap::FOLDER {
                 settings_files_in(&p, depth - 1, out);
             }
         } else if ty.is_file() {

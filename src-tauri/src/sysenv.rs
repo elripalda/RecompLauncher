@@ -13,6 +13,11 @@ const LISTS: [&str; 17] = [
     "LD_LIBRARY_PATH", "LD_PRELOAD", "PATH", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "GSETTINGS_SCHEMA_DIR", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_SYSTEM_PATH_1_0",
     "GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GIO_MODULE_DIR", "GDK_PIXBUF_MODULE_FILE", "GTK_PATH", "QT_PLUGIN_PATH", "PYTHONPATH", "PERLLIB", "GI_TYPELIB_PATH",
 ];
+/// Settings the launcher's own AppImage forces for itself, by the values it forces: linuxdeploy's
+/// GTK hook pins the theme to Adwaita (a custom theme breaks inside an AppImage), and its AppRun
+/// stops Python writing bytecode. A game uses the PC's own GTK and Python, so it gets the player's
+/// theme back; a theme the player set themselves (anything else) stays.
+const FORCED: [(&str, &[&str]); 2] = [("GTK_THEME", &["Adwaita:light", "Adwaita:dark"]), ("PYTHONDONTWRITEBYTECODE", &["1"])];
 /// Single paths an AppImage points into itself: gone when they do.
 const SINGLE: [&str; 5] = ["PYTHONHOME", "GTK_EXE_PREFIX", "GTK_DATA_PREFIX", "GST_PLUGIN_SCANNER", "GTK_IM_MODULE_FILE"];
 
@@ -38,6 +43,7 @@ pub fn changes_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<Change> {
     }
     let appdir = appdir.trim_end_matches('/').to_string();
     out.extend(OWN.iter().filter(|k| get(k).is_some()).map(|k| (*k, None)));
+    out.extend(FORCED.iter().filter(|(k, v)| get(k).is_some_and(|now| v.contains(&now.as_str()))).map(|(k, _)| (*k, None)));
     for k in LISTS {
         let Some(v) = get(k) else { continue };
         let kept: Vec<&str> = v.split(':').filter(|e| !e.is_empty() && !inside(e, &appdir)).collect();
@@ -71,6 +77,16 @@ pub fn changes_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<Change> {
 fn changes() -> &'static [Change] {
     static C: OnceLock<Vec<Change>> = OnceLock::new();
     C.get_or_init(|| if cfg!(any(test, target_os = "linux")) { changes_from(&|k| std::env::var(k).ok()) } else { vec![] })
+}
+
+/// A variable as the programs the launcher starts get it: the PC's own value, without the
+/// launcher's AppImage folders in it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn for_games(k: &str) -> Option<OsString> {
+    match changes().iter().find(|(name, _)| *name == k) {
+        Some((_, v)) => v.clone(),
+        None => std::env::var_os(k),
+    }
 }
 
 pub fn clean_std(c: &mut std::process::Command) {
@@ -156,7 +172,12 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     if let Ok(exe) = std::env::current_exe() {
         use std::os::unix::process::CommandExt;
         // Only returns when it couldn't start again; then it carries on as it is.
-        let _ = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
+        let mut again = std::process::Command::new(exe);
+        again.args(std::env::args_os().skip(1));
+        // Test control's variables left the environment at the start (test_control::take_from_env);
+        // this is still the start the tester asked for, so it keeps test control.
+        crate::test_control::for_own_restart(&mut again);
+        let _ = again.exec();
     }
 }
 
@@ -623,9 +644,29 @@ mod tests {
         // Not an AppImage: nothing changes.
         assert!(changes_from(&|k| if k == "PATH" { Some("/usr/bin".into()) } else { None }).is_empty());
     }
+
+    #[test]
+    fn the_theme_and_python_setting_the_launchers_appimage_forces_never_reach_a_game() {
+        let forced: HashMap<&str, &str> = HashMap::from([("APPIMAGE", "/home/a/RecompLauncher.AppImage"), ("GTK_THEME", "Adwaita:dark"), ("PYTHONDONTWRITEBYTECODE", "1")]);
+        let c = changes_from(&|k| forced.get(k).map(|s| s.to_string()));
+        assert!(c.contains(&("GTK_THEME", None)));
+        assert!(c.contains(&("PYTHONDONTWRITEBYTECODE", None)));
+    }
+
+    #[test]
+    fn a_theme_the_player_set_reaches_a_game() {
+        let theirs: HashMap<&str, &str> = HashMap::from([("APPIMAGE", "/home/a/RecompLauncher.AppImage"), ("GTK_THEME", "Breeze-Dark")]);
+        let c = changes_from(&|k| theirs.get(k).map(|s| s.to_string()));
+        assert!(!c.iter().any(|(k, _)| *k == "GTK_THEME"));
+        // Not run as an AppImage, the launcher's own theme setting is the player's too.
+        let native: HashMap<&str, &str> = HashMap::from([("GTK_THEME", "Adwaita:dark")]);
+        assert!(changes_from(&|k| native.get(k).map(|s| s.to_string())).is_empty());
+    }
 }
 
 /// Whether this Linux has FUSE 2 (libfuse.so.2), which most AppImages need to mount themselves.
+/// Only the launcher's own AppImage asks now (its update restarts it): games are never run as
+/// AppImages (see plain.rs).
 #[cfg(target_os = "linux")]
 pub fn has_fuse2() -> bool {
     let dirs = ["/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/run/host/usr/lib", "/run/host/usr/lib64"];

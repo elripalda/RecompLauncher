@@ -3,7 +3,9 @@
 // or controller.
 (() => {
   'use strict';
-  const STEPS = ['lang', 'welcome', 'play', 'games', 'library', 'choices', 'data', 'account', 'done'];
+  const STEPS = ['lang', 'welcome', 'play', 'games', 'library', 'choices', 'data', 'account', 'cloud', 'done'];
+  // Cloud saves for every game is only a question once they're signed in.
+  const steps = () => STEPS.filter((k) => k !== 'cloud' || (S.account && S.account.signedIn));
   const O = { el: null, step: 0, scanning: false, scanned: false, dir: 1 };
   const LOGO = '<svg viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="oobg" x1="0" y1="38" x2="0" y2="218" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34f2e8"/><stop offset="1" stop-color="#377bb6"/></linearGradient></defs><g fill="url(#oobg)" transform="translate(4 -2)"><path d="M40 40H88V168H116L64 220L12 168H40Z"/><path d="M104 40H172L216 84V116L180 152H104V116H164L180 100V92L164 76H104Z"/><path d="M132 168H184L236 220H184Z"/></g></svg>';
   const ICON = {
@@ -16,6 +18,8 @@
     user: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>',
     plus: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8.5" r="3.4"/><path d="M3.5 20a6.6 6.6 0 0 1 11.6-4.3M18.5 14v6M15.5 17h6"/></svg>',
     cloud: '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2.5 2.5 3-3.5" /></svg>',
+    all: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.8 3.8 0 0 1 17.5 18z"/><path d="m9.5 13.5 2 2 3.2-3.6"/></svg>',
+    pick: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.5 6.5 1.5 1.5 2.5-3"/><circle cx="5.2" cy="12" r=".6"/><circle cx="5.2" cy="17.5" r=".6"/></svg>',
     check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>',
   };
   const $o = (s) => O.el && O.el.querySelector(s);
@@ -42,7 +46,14 @@
   }
   window.firstRun = firstRun;
 
-  const games = () => Object.keys(S.owned || {}).map((id) => byId(id) || { id, name: id }).filter(Boolean);
+  // One per game the player has, not per recomp, or two Zeldas would fill the row with Zeldas.
+  const games = () => ownedGames().map(gameShown);
+  // A game's name and cover: those of the version the catalog recommends, when it has several.
+  const gameShown = (a) => {
+    const g = a.title ? index().titles.get(a.title) : null;
+    const lead = (g && byId(g.pick)) || a;
+    return { name: (g && g.name) || a.game || a.name, cover: lead.cover || a.cover };
+  };
   const sw = (k, label, sub) => `<div class="oob-row"><div class="k"><b>${esc(label)}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.settings[k] !== false}" aria-label="${esc(label)}" data-o="sw" data-k="${k}"></button></div>`;
   const covers = (list) => `<div class="oob-covers">${list.slice(0, 6).map((a) => `<div class="oob-cover" title="${esc(a.name)}">${a.cover ? pic(a.cover) : `<span>${esc(a.name)}</span>`}</div>`).join('')}</div>`;
 
@@ -82,7 +93,7 @@
         // As a Flatpak: ~/Games/ROMs is read directly, no picker. Offered until it's added.
         const romBtn = S.flatpak && !dirs.some((d) => /\/Games\/ROMs\/?$/.test(d)) ? `<button type="button" class="btn main" data-o="romdir" title="${esc(t('Put your ROMs and disc images here and the launcher finds them on its own.'))}">${ICON.folder}${esc(t('Use Games/ROMs'))}</button>` : '';
         const emuBtn = emus.length ?`<button type="button" class="btn main oob-add" data-o="emus">${ICON.folder}${esc(tf('Add {n} from {emus}', { n: emus.length, emus: [...new Set(emus.map((x) => x.emu))].join(', ') }))}</button>` : '';
-        return `<h1>${esc(t('Where do you keep your games?'))}</h1><p class="oob-lead">${esc(t('Add the folders with your disc images, ROMs and game backups. The launcher finds the games that have recomps. Nothing leaves your PC.'))}</p>
+        return `<h1>${esc(t('Where do you keep your ROMs?'))}</h1><p class="oob-lead">${esc(t('Add the folders with your disc images, ROMs and game backups. The launcher finds the games that have recomps. Nothing leaves your PC.'))}</p>
           <div class="oob-box">${dirs.map((d) => `<div class="oob-dir">${ICON.folder}<span title="${esc(d)}">${esc(d)}</span><button type="button" class="btn sm" data-o="rm" data-path="${esc(d)}">${esc(t('Remove'))}</button></div>`).join('')}
           ${emuBtn}${romBtn
             // The Flatpak: Games/ROMs first and highlighted, the picker beside it.
@@ -117,7 +128,7 @@
       case 'account': {
         const a = S.account || {};
         if (a.signedIn) {
-          return `<div class="oob-logo oob-cloud">${ICON.cloud}</div><h1>${esc(t('You\'re signed in'))}</h1><p class="oob-lead">${esc(tf('As {name}. Each game asks before you first play it whether its saves go to your account.', { name: a.user.username }))}</p>`;
+          return `<div class="oob-logo oob-cloud">${ICON.cloud}</div><h1>${esc(t('You\'re signed in'))}</h1><p class="oob-lead">${esc(tf('As {name}. Next, pick which games back up their saves.', { name: a.user.username }))}</p>`;
         }
         return `<div class="oob-logo oob-cloud">${ICON.cloud}</div><h1>${esc(t('Keep your saves safe'))}</h1><p class="oob-lead">${esc(t('With a free RecompStore account, your saves go to the cloud after you play, ready on any PC. Everything works without one too.'))}</p>
           <div class="oob-two">
@@ -125,22 +136,32 @@
             <button type="button" class="oob-pick" data-o="acc" data-v="new">${ICON.plus}<b>${esc(t('Create an account'))}</b><span>${esc(t('Takes a minute in your browser. It\'s the same account as recompstore.com.'))}</span></button>
           </div>`;
       }
+      case 'cloud': {
+        // The same two answers as the question signed-in players get later (account.js), picked
+        // like How Will You Play. Every game is marked until they pick: Continue keeps it.
+        const all = (S.settings.ui || {}).cloud_all !== false;
+        const [every, mine] = window.cloudAllChoices();
+        const tag = (c) => (c.tag ? `<em class="oob-rec">${esc(c.tag)}</em>` : '');
+        const pick = (c, icon, on) => `<button type="button" role="radio" aria-checked="${on}" class="oob-pick" data-o="cloud" data-v="${c.v}">${icon}<b>${esc(c.label)}${tag(c)}</b><span>${esc(c.sub)}</span></button>`;
+        return `<h1>${esc(t('Back up your saves?'))}</h1><p class="oob-lead">${esc(t('After you play, a game\'s saves can go to your account, ready on any PC. A copy always stays on this PC.'))}</p>
+          <div class="oob-two" role="radiogroup" aria-label="${esc(t('Back up your saves?'))}">${pick(every, ICON.all, all)}${pick(mine, ICON.pick, !all)}</div>`;
+      }
       default: {
         const found = games();
         return `<div class="oob-logo big done">${LOGO}</div><h1>${esc(t('You\'re all set'))}</h1>
-          <p class="oob-lead">${esc(found.length ? tn(found.length, 'One of your games has a recomp. It\'s in your Library, ready to install.', '{n} of your games have recomps. They\'re in your Library, ready to install.') : t('Find something to play in Discover.'))}</p>${found.length ? covers(found) : ''}`;
+          <p class="oob-lead">${esc(found.length ? tn(found.length, 'One of your games has a recomp. It\'s in your Library, ready to install.', '{n} of your games have recomps. They\'re in your Library, ready to install.') : t('Find something to play in the Catalog.'))}</p>${found.length ? covers(found) : ''}`;
       }
     }
   }
 
   function draw() {
     if (!O.el) return;
-    const k = STEPS[O.step];
+    const k = steps()[O.step];
     const stage = $o('.oob-stage');
     stage.innerHTML = `<div class="oob-step ${O.dir < 0 ? 'back' : ''}" data-step="${k}">${body(k)}</div>`;
-    const last = O.step === STEPS.length - 1;
+    const last = O.step === steps().length - 1;
     $o('.oob-foot').innerHTML = `<div class="oob-side">${O.step > 0 ? `<button type="button" class="btn" data-o="back">${esc(t('Back'))}</button>` : ''}</div>
-      <div class="oob-dots" aria-hidden="true">${STEPS.map((s, i) => `<i class="${i === O.step ? 'on' : i < O.step ? 'past' : ''}"></i>`).join('')}</div>
+      <div class="oob-dots" aria-hidden="true">${steps().map((s, i) => `<i class="${i === O.step ? 'on' : i < O.step ? 'past' : ''}"></i>`).join('')}</div>
       <div class="oob-side r">${k === 'games' && !(S.settings.rom_dirs || []).length ? `<button type="button" class="btn" data-o="next">${esc(t('Skip'))}</button>` : ''}<button type="button" class="btn main" data-o="${last ? 'finish' : 'next'}"${O.scanning ? ' disabled' : ''}>${esc(last ? t('Start playing') : k === 'account' && !(S.account && S.account.signedIn) ? t('No thanks') : t('Continue'))}</button></div>`;
     O.el.setAttribute('aria-label', t('Set up RecompLauncher'));
     const f = $o('.oob-step [aria-checked="true"]') || $o('.oob-step .btn.main') || $o('.oob-foot .btn.main');
@@ -149,7 +170,7 @@
 
   async function save(patch) {
     const next = Object.assign({}, S.settings, patch);
-    try { await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { fail(e); }
+    try { if (!S.settingsMissing) await invoke('save_settings', { settings: next }); S.settings = next; } catch (e) { fail(e); }
   }
 
   async function scan() {
@@ -188,6 +209,10 @@
       }
       case 'play':
         await save({ start_in_tv: b.dataset.v === 'tv' });
+        $$o('.oob-pick').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+        return;
+      case 'cloud':
+        await window.setCloudAll(b.dataset.v === 'true');
         $$o('.oob-pick').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
         return;
       case 'add': {
@@ -232,12 +257,15 @@
     }
   }
 
-  function go(d) {
+  async function go(d) {
     const n = O.step + d;
-    if (n < 0 || n >= STEPS.length) return;
+    if (n < 0 || n >= steps().length) return;
+    // Continue on the cloud step without picking keeps the one marked: every game.
+    const leavingCloud = d > 0 && steps()[O.step] === 'cloud';
+    if (leavingCloud && (S.settings.ui || {}).cloud_all == null) await window.setCloudAll(true);
     O.dir = d;
     O.step = n;
-    if (STEPS[n] === 'library') invoke('libraries').then((l) => { S.libs = l; if (STEPS[O.step] === 'library') draw(); }).catch(() => {});
+    if (steps()[n] === 'library') invoke('libraries').then((l) => { S.libs = l; if (steps()[O.step] === 'library') draw(); }).catch(() => {});
     draw();
   }
 
@@ -284,7 +312,7 @@
     else if (e.key === 'Escape' && O.step > 0) { e.preventDefault(); go(-1); }
   }
   // Signed in while setup is open: the Account step shows it.
-  window.oobRedraw = () => { if (O.el && STEPS[O.step] === 'account') draw(); };
+  window.oobRedraw = () => { if (O.el && steps()[O.step] === 'account') draw(); };
   window.oobPad = (b) => {
     if (!O.el || document.querySelector('.scrim')) return false;
     if (['up', 'down', 'left', 'right'].includes(b)) nearest(b);

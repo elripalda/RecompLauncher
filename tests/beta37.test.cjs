@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
-const app = read('app.js'), tv = read('tv.js'), setup = read('setup-inputs.js');
+const app = read('app.js'), tv = read('tv.js');
 const fn = (src, name) => src.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))[0];
 const base = () => ({
   t: (x) => x, tf: (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]), tn: (n, one, many) => (n === 1 ? one : many).replace('{n}', n),
@@ -12,73 +12,82 @@ const base = () => ({
   baseName: (x) => x.split(/[\\/]/).pop(), CHECK: '<svg class="ok"></svg>', DISC_S: '<svg class="no"></svg>',
 });
 
-// ---- NVIDIA DLSS row (desktop and Big Picture share namedInputsView) ----
-function setupCtx() { const c = vm.createContext(base()); vm.runInContext(setup, c); return c; }
+// ---- NVIDIA DLSS row (on the Extras step, desktop and Big Picture alike) ----
+const { stepsContext } = require('./steps-context.cjs');
 const disc = { id: 'disc', label: 'Disc', role: 'disc', path: '/d.iso', active: true, file: true };
 const dlss = (o = {}) => Object.assign({ id: 'dlss', label: 'NVIDIA DLSS', role: 'runtime', shared: 'nvidia.dlss', optional: true, active: true, runtime: true, file: false, path: null, off: false, ships: false }, o);
+const extras = (c, inputs, ns = {}) => c.stepsView('g', { needs: 'x', kind: '', inputs, prepare_options: [] }, Object.assign({ at: 1 }, ns), { name: 'G' });
 
 test('the DLSS row has nothing to choose and never holds setup back', () => {
-  const c = setupCtx();
-  const html = c.namedInputsView('g', { inputs: [disc, dlss()] }, { extras: true });
+  const c = stepsContext();
+  const html = extras(c, [disc, dlss()]);
   assert.match(html, /NVIDIA DLSS/);
   assert.match(html, /Downloaded from NVIDIA/);
-  assert.doesNotMatch(html, /data-ni="file" data-input="dlss"/);
-  assert.doesNotMatch(html, /data-ni="run" disabled/, 'setup can run without it');
-  assert.match(html, /data-ni="dlss-off"/);
+  assert.doesNotMatch(html, /data-ss="file" data-input="dlss"/);
+  assert.doesNotMatch(html, /data-ss="run" disabled/, 'setup can run without it');
+  assert.match(html, /role="switch" aria-checked="true" aria-label="NVIDIA DLSS" data-ss="dlss-off"/);
   // Even when a profile marks it required.
-  assert.doesNotMatch(c.namedInputsView('g', { inputs: [disc, dlss({ optional: false })] }), /data-ni="run" disabled/);
+  assert.doesNotMatch(extras(c, [disc, dlss({ optional: false })]), /data-ss="run" disabled/);
 });
 test('the DLSS row shows its download, a failure with Try Again, off, and a shipped file', () => {
-  const c = setupCtx();
-  const downloading = c.namedInputsView('g', { inputs: [disc, dlss()] }, { extras: true, dlss: { done: 29, total: 58 } });
+  const c = stepsContext();
+  const downloading = extras(c, [disc, dlss()], { dlss: { done: 29, total: 58 } });
   assert.match(downloading, /Downloading from NVIDIA 50%/);
   assert.match(downloading, /ni-bar/);
-  const failed = c.namedInputsView('g', { inputs: [disc, dlss()] }, { extras: true, dlss: { failed: true } });
+  const failed = extras(c, [disc, dlss()], { dlss: { failed: true } });
   assert.match(failed, /Couldn&#39;t get NVIDIA&#39;s DLSS file\. The game runs without it\./);
-  assert.match(failed, /data-ni="dlss-retry"/);
-  assert.doesNotMatch(failed, /data-ni="run" disabled/);
-  const off = c.namedInputsView('g', { inputs: [disc, dlss({ off: true })] }, { extras: true });
+  assert.match(failed, /data-ss="dlss-retry"/);
+  assert.doesNotMatch(failed, /data-ss="run" disabled/);
+  const off = extras(c, [disc, dlss({ off: true })]);
   assert.match(off, /Off for this game/);
-  assert.match(off, /data-ni="dlss-on"/);
-  const ships = c.namedInputsView('g', { inputs: [disc, dlss({ ships: true })] }, { extras: true });
+  assert.match(off, /data-ss="dlss-on"/);
+  const ships = extras(c, [disc, dlss({ ships: true })]);
   assert.match(ships, /Using the DLSS file this game ships/);
-  assert.doesNotMatch(ships, /data-ni="dlss-(on|off|retry)"/);
+  assert.doesNotMatch(ships, /data-ss="dlss-(on|off|retry)"/);
 });
-test('Big Picture draws the same rows and fetches DLSS the same way', () => {
-  assert.match(tv, /namedInputsShell\(id, su, TS\.named, a, true\)/);
+test('Big Picture draws the same steps and fetches DLSS the same way', () => {
+  assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
   assert.match(tv, /runtimeFetch\(id, TS\.named/);
 });
 
 // ---- the scan pill, players, Dreamcast ----
-test('the scan pill is one plain label: Verified, Checking or Not verified, with no scanner names', () => {
+test('the scan pill is one plain label: Safe with the VirusTotal mark, Checking or Not verified', () => {
   const c = vm.createContext(Object.assign(base(), { S: { scans: {}, os: 'windows' }, scanAsk: new Map(), SCAN_TIP: 'Scanned before release and checked by the RecompStore team.', invoke: async () => ({}), document: { querySelectorAll: () => [], body: { classList: { contains: () => false } } }, window: {}, CSS: { escape: (x) => x } }));
-  vm.runInContext(fn(app, 'scanVerdict') + fn(app, 'scanInfo') + fn(app, 'scanPill'), c);
+  vm.runInContext(app.match(/^const VT_MARK = .*$/m)[0] + fn(app, 'scanVerdict') + fn(app, 'scanInfo') + fn(app, 'scanLink') + fn(app, 'scanPill'), c);
   c.S.scans['g@v1'] = [{ verdict: 'green', scanner: 'clamav', for: ['windows'] }];
   c.S.scans['g@v2'] = [{ verdict: 'green', scanner: 'virustotal', for: ['windows'] }];
   for (const tag of ['v1', 'v2']) {
     const pill = c.scanPill({ id: 'g', tag, update: true });
     assert.match(pill, /class="scan-pill ok"/);
-    assert.match(pill, /Verified update/);
+    assert.match(pill, /Safe Update/);
     assert.doesNotMatch(pill, /data-act|ClamAV|VirusTotal|engines/);
   }
-  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), />Verified</);
-  // A minor flag the team okayed is Verified; one nobody has looked at yet is Checking.
+  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), /<i><svg viewBox="0 0 24 24" aria-hidden="true"><path [^>]*><\/svg><\/i>Safe</);
+  // A minor flag the team okayed is Safe; one nobody has looked at yet is Checking.
   c.S.scans['g@v3'] = [{ verdict: 'yellow', scanner: 'virustotal', found: 1, engines: 75, reviewed: true, for: ['windows'] }];
-  assert.match(c.scanPill({ id: 'g', tag: 'v3', update: true }), /scan-pill ok.*Verified update/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v3', update: true }), /scan-pill ok.*Safe Update/);
   c.S.scans['g@v4'] = [{ verdict: 'yellow', scanner: 'virustotal', found: 1, engines: 75, for: ['windows'] }];
   const wait = c.scanPill({ id: 'g', tag: 'v4' });
   assert.match(wait, /scan-pill wait.*Checking/);
   assert.doesNotMatch(wait, /1 of 75|engines/);
   c.S.scans['g@v5'] = [{ verdict: 'grey', for: ['windows'] }];
   assert.match(c.scanPill({ id: 'g', tag: 'v5' }), /Checking/);
+  // With a report link: a button that opens it (this system's file first); without one, the plain pill.
+  c.S.scans['g@v7'] = [{ verdict: 'green', for: ['linux'], link: 'https://www.virustotal.com/gui/file/aaa' }, { verdict: 'green', for: ['windows'], link: 'https://www.virustotal.com/gui/file/bbb' }];
+  const linked = c.scanPill({ id: 'g', tag: 'v7' });
+  assert.match(linked, /<button type="button" class="scan-pill ok"[^>]*data-act="scan-report" data-url="https:\/\/www\.virustotal\.com\/gui\/file\/bbb" title="Open the VirusTotal report"/);
+  c.S.scans['g@v8'] = [{ verdict: 'green', for: ['linux'], link: 'https://www.virustotal.com/gui/file/ccc' }];
+  assert.match(c.scanPill({ id: 'g', tag: 'v8' }), /data-url="https:\/\/www\.virustotal\.com\/gui\/file\/ccc"/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), /<span class="scan-pill ok"[^>]*title="Checked by the RecompStore team"/);
   c.S.scans['g@v6'] = [{ verdict: 'red', for: ['windows'] }];
   assert.match(c.scanPill({ id: 'g', tag: 'v6' }), /scan-pill bad.*Not verified/);
   // No scan for that host: the checksum, when it matched.
   c.S.scans['g@v7'] = [];
   assert.match(c.scanPill({ id: 'g', tag: 'v7', verified: true }), /Checksum matched/);
-  assert.match(c.scanPill({ id: 'g', tag: 'v1' }), /title="Scanned before release and checked by the RecompStore team\."/);
-  // Nothing a player sees names the scanners.
-  for (const src of [app, tv]) assert.doesNotMatch(src, /ClamAV|VirusTotal|engines flagged|Clean ·/);
+  assert.match(c.scanPill({ id: 'g', tag: 'v4' }), /title="Scanned before release and checked by the RecompStore team\."/);
+  // VirusTotal shows as its mark and on the button that opens its report; the other scanner and
+  // the engine counts never do.
+  for (const src of [app, tv]) assert.doesNotMatch(src, /ClamAV|engines flagged|Clean ·/);
 });
 test('players show only when the catalog has them', () => {
   const c = vm.createContext(base());
@@ -167,7 +176,7 @@ test('one small shared grain tile covers the big gradients and blurred art', () 
   assert.ok(png.length < 64 * 1024, 'stays small');
   const css = read('app.css'), tvcss = read('tv.css'), ov = read('overlay.css');
   assert.match(css, /--noise:url\(img\/noise\.png\)/);
-  for (const sel of ['.gp-amb::after', '.slide::after', '.upd-start', '.dl-hero', '.mc', '.beta-hero']) assert.ok(css.includes(`${sel}{`) && new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(css), sel);
+  for (const sel of ['.gp-amb::after', '.slide::after', '.upd-start', '.mc', '.beta-hero']) assert.ok(css.includes(`${sel}{`) && new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(css), sel);
   for (const sel of ['.tv-full::after', '.tv-glow', '.tv-boot']) assert.ok(new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(tvcss), sel);
   assert.match(tvcss, /\.tv-ambient::after/);
   assert.match(ov, /\.stage\{[^}]*url\(img\/noise\.png\)/);

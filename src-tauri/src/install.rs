@@ -314,6 +314,21 @@ pub async fn download(
     download_with_api(http, asset, dir, id, cancel, report, api).await
 }
 
+/// A download that couldn't connect, as the player sees it: named for the server that really
+/// failed (a project's link is often sent on to another server for the file), and written to the
+/// trail with its cause, so a report says which server and why without asking the player.
+async fn connect_failure(name: &str, src: &str, e: reqwest::Error) -> Error {
+    if !e.is_connect() && !e.is_timeout() {
+        return e.into();
+    }
+    let hop = crate::net::failed_hop(src).await.filter(|h| h.is_connect() || h.is_timeout());
+    let e = hop.unwrap_or(e);
+    let host = e.url().and_then(|u| u.host_str()).unwrap_or("its server").to_string();
+    let what = if crate::net::tls_failed(&e) { "no secure connection to" } else { "couldn't connect to" };
+    crate::trail::note(format!("{name}: {what} {host} ({})", crate::net::cause(&e)));
+    e.into()
+}
+
 async fn download_with_api(
     http: &reqwest::Client,
     asset: &Asset,
@@ -366,6 +381,8 @@ async fn download_with_api(
     let mut src = asset.browser_download_url.clone();
     let mut by_api = false;
     let mut api_tried = false;
+    // When the site says the file was uploaded: a kept download carries that date, not today's.
+    let mut uploaded: Option<std::time::SystemTime> = None;
     // The same alternate route helps when the edge drops a connection or never answers. It is
     // tried once per download, after repeated failures, with the byte offset and hash preserved.
     let mut try_api = |tries: u32, src: &mut String, by_api: &mut bool| {
@@ -411,7 +428,7 @@ async fn download_with_api(
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(connect_failure(&asset.name, &src, e).await),
         };
         if !r.status().is_success() {
             // GitHub's busy moments (502, 503, 504, or "slow down"): wait a little longer each time and
@@ -461,6 +478,8 @@ async fn download_with_api(
             out = None;
         }
         total = r.content_length().map(|n| n + done).unwrap_or(asset.size);
+        let last_modified = r.headers().get(reqwest::header::LAST_MODIFIED).and_then(|v| v.to_str().ok());
+        uploaded = last_modified.and_then(uploaded_at);
         if out.is_none() {
             out = Some(if resumed { tokio::fs::OpenOptions::new().append(true).open(&part).await? } else { tokio::fs::File::create(&part).await? });
         }
@@ -536,7 +555,18 @@ async fn download_with_api(
         }
     }
     tokio::fs::rename(&part, &file).await?;
+    if let Some(when) = uploaded {
+        // Only the file's date: a drive that can't set it still has the right file.
+        let _ = std::fs::File::options().write(true).open(&file).and_then(|f| f.set_modified(when));
+    }
     Ok(Downloaded { file, sha256: got, verified: want.is_some() })
+}
+
+/// A Last-Modified answer ("Wed, 27 Aug 2025 00:55:54 GMT") as a time. GitHub's is the upload date.
+fn uploaded_at(header: &str) -> Option<std::time::SystemTime> {
+    let when = chrono::DateTime::parse_from_rfc2822(header).ok()?;
+    let secs = u64::try_from(when.timestamp()).ok()?;
+    Some(std::time::UNIX_EPOCH + Duration::from_secs(secs))
 }
 
 /// A path inside an archive, made safe to join onto the folder: no absolute paths, no `..`.
@@ -669,14 +699,17 @@ fn un7z(file: &Path, to: &Path) -> Result<(), Error> {
     .map_err(|e| Error::Msg(format!("Couldn't open the 7z: {e}")))
 }
 
-fn untar(file: &Path, to: &Path, xz: bool) -> Result<(), Error> {
-    let f = fs::File::open(file)?;
-    if xz {
-        return Err(Error::Msg(".tar.xz isn't supported yet".into()));
-    }
-    let mut t = tar::Archive::new(flate2::read::GzDecoder::new(f));
+/// A tarball, compressed with gzip, xz or zstd. tar skips entries that would land outside the folder.
+fn untar(file: &Path, to: &Path, k: &str) -> Result<(), Error> {
+    let f = io::BufReader::new(fs::File::open(file)?);
+    let read: Box<dyn io::Read> = match k {
+        // Several xz streams one after another (parallel compressors write them) are one file.
+        "tar.xz" => Box::new(xz2::read::XzDecoder::new_multi_decoder(f)),
+        "tar.zst" => Box::new(zstd::stream::read::Decoder::with_buffer(f)?),
+        _ => Box::new(flate2::read::GzDecoder::new(f)),
+    };
+    let mut t = tar::Archive::new(read);
     t.set_preserve_permissions(true);
-    // tar skips entries that would land outside the folder.
     t.unpack(to)?;
     Ok(())
 }
@@ -693,12 +726,12 @@ fn root(dir: &Path) -> PathBuf {
 
 /// A file operation that Windows can refuse for a few seconds (access denied, or in use) while an
 /// antivirus looks at a file that was just unpacked: tried again for up to about ten seconds.
-fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+pub(crate) fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     let mut last = None;
     for i in 0..20 {
         match op() {
             Ok(v) => return Ok(v),
-            Err(e) if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied => {
+            Err(e) if in_use(&e) => {
                 last = Some(e);
                 std::thread::sleep(std::time::Duration::from_millis(if i < 4 { 250 } else { 600 }));
             }
@@ -708,72 +741,48 @@ fn patient<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     Err(last.unwrap_or_else(|| io::Error::other("busy")))
 }
 
-/// What to tell the player when a file can't be put in place.
-fn denied(e: io::Error, what: &Path) -> io::Error {
-    if matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied {
-        io::Error::new(
-            e.kind(),
-            format!(
-                "Windows wouldn't let the launcher write {}. Close the game if it's running, check that your antivirus isn't holding the folder, or pick a library folder outside Program Files, then try again.",
-                what.display()
-            ),
-        )
-    } else {
-        e
-    }
+/// A file another program has open (a running game, an antivirus), or one the launcher may not change.
+pub(crate) fn in_use(e: &io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33)) || e.kind() == io::ErrorKind::PermissionDenied
 }
 
-/// Move everything in `from` into `to`, replacing files of the same name and leaving the rest
-/// (saves, settings, the game files people added) alone.
-fn overlay(from: &Path, to: &Path) -> io::Result<()> {
-    patient(|| fs::create_dir_all(to)).map_err(|e| denied(e, to))?;
+/// Files unpacked in staging moved into `to`, also in staging, each replacing what has its name (an
+/// AppImage's own recomplauncher.json wins over one beside it in a zip, as its manifest does).
+/// Folders on both sides merge, except a Mac app: one signed unit, replaced whole.
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+fn merge_into(from: &Path, to: &Path) -> io::Result<()> {
+    fs::create_dir_all(to)?;
     for e in fs::read_dir(from)? {
         let e = e?;
-        let src = e.path();
         let dest = to.join(e.file_name());
-        let ty = e.file_type()?;
-        // A signed app is one unit. Merging leaves obsolete files and can invalidate its seal.
-        if ty.is_dir() && crate::macos::is_bundle(&src) {
-            replace_bundle(&src, &dest)?;
-        } else if ty.is_dir() {
-            if dest.is_file() || fs::symlink_metadata(&dest).map(|m| m.is_symlink()).unwrap_or(false) {
-                patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
-            }
-            overlay(&src, &dest)?;
-        } else {
-            if fs::symlink_metadata(&dest).map(|m| m.is_symlink()).unwrap_or(false) {
-                patient(|| fs::remove_file(&dest)).map_err(|e| denied(e, &dest))?;
-            } else if dest.is_dir() {
-                patient(|| fs::remove_dir_all(&dest)).map_err(|e| denied(e, &dest))?;
-            }
-            if patient(|| fs::rename(&src, &dest)).is_err() {
-                #[cfg(unix)]
-                if ty.is_symlink() {
-                    if dest.exists() {
-                        fs::remove_file(&dest)?;
-                    }
-                    std::os::unix::fs::symlink(fs::read_link(&src)?, &dest)?;
-                    continue;
-                }
-                patient(|| fs::copy(&src, &dest)).map_err(|e| denied(e, &dest))?;
-            }
+        let there = fs::symlink_metadata(&dest).ok();
+        let both_folders = e.file_type()?.is_dir() && there.as_ref().is_some_and(|m| m.is_dir()) && !crate::macos::is_bundle(&e.path());
+        if both_folders {
+            merge_into(&e.path(), &dest)?;
+            continue;
         }
+        match there {
+            Some(m) if m.is_dir() => fs::remove_dir_all(&dest)?,
+            Some(_) => fs::remove_file(&dest)?,
+            None => {}
+        }
+        fs::rename(e.path(), &dest)?;
     }
     Ok(())
 }
 
-/// After an update: the files the previous release put in the game's folder that this release no
-/// longer has, removed. Unpacking only adds and replaces, so a source file or library an old
-/// version had stays behind and can break a build or load in place of the new one (DKB Recomp
-/// 0.2.0's runtime/gfx_present.c broke 0.3.0's link with duplicate symbols). A file changed since
-/// that install (settings the game rewrote, a file the player edited) and `keep` (the program the
-/// player starts) stay. Returns what it removed.
-pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u64, keep: Option<&Path>) -> Vec<PathBuf> {
+/// For an update: the files the previous release put in the game's folder that this release no
+/// longer has, for the update to take away with the rest of the old release (see `swap`). Left
+/// behind, a source file or library an old version had can break a build or load in place of the
+/// new one (DKB Recomp 0.2.0's runtime/gfx_present.c broke 0.3.0's link with duplicate symbols). A
+/// file changed since that install (settings the game rewrote, a file the player edited) and
+/// `keep` (the program the player starts) stay.
+pub fn dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed_at: u64, keep: Option<&Path>) -> Vec<PathBuf> {
     // Case doesn't tell files apart on Windows and Mac: a file only renamed in case is still there.
     let fold = |p: &Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
     let still_shipped: std::collections::HashSet<String> = new.iter().map(|p| fold(p)).collect();
     let kept = keep.map(fold);
-    let mut removed = vec![];
+    let mut gone = vec![];
     for rel in old {
         let name = fold(rel);
         if still_shipped.contains(&name) || kept.as_deref() == Some(name.as_str()) {
@@ -789,58 +798,90 @@ pub fn remove_dropped(target: &Path, old: &[PathBuf], new: &[PathBuf], installed
         }
         let since = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
         let changed = since.map(|d| d.as_secs() > installed_at).unwrap_or(true);
-        if changed || fs::remove_file(&path).is_err() {
-            continue;
+        if !changed {
+            gone.push(rel.clone());
         }
-        remove_empty_parents(target, &path);
-        removed.push(rel.clone());
     }
-    removed
+    gone
 }
 
-/// Keep the selected program through an update, following release renames and moves.
-pub fn updated_exe(id: &str, target: &Path, mut exe: Option<PathBuf>, files: &[PathBuf], kept: bool) -> Option<PathBuf> {
-    let old = exe.as_ref()?;
+/// The program an update starts from (see updated_exe), or None to find it again once the update is
+/// in: one the update takes away is gone. `picked`: the player chose it, so it stays while it's there.
+pub fn kept_exe(exe: Option<PathBuf>, game: &Path, os: &str, dropped: &[PathBuf], picked: bool, names: &[&str]) -> Option<PathBuf> {
+    let exe = exe?;
+    if !game.join(&exe).is_file() || dropped.contains(&exe) {
+        return None;
+    }
+    if picked {
+        return Some(exe);
+    }
+    // A game imported as a Mac app starts what the new app's Info.plist names: a release can rename
+    // its program, and the old one may stay on as a helper.
+    if os == "macos" && crate::macos::is_bundle(game) {
+        return None;
+    }
+    // One the launcher picked that's one of the game's tools (an older version's guess) isn't kept.
+    (!looks_like_tool(&exe, names)).then_some(exe)
+}
+
+/// Keep the selected program through an update, following release renames and moves. Run before
+/// the update's files go in. Also returns the old release's AppImage a differently named new one
+/// replaces, for the update to take away.
+pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathBuf], kept: bool) -> (Option<PathBuf>, Option<PathBuf>) {
+    let Some(old) = exe.clone() else { return (None, None) };
     // A player's program outside the install belongs to them. Neither a release's AppImage nor
     // a file with the same name replaces it, including paths through parent folders or links.
     if !old.components().all(|c| matches!(c, Component::Normal(_))) {
-        return exe;
+        return (exe, None);
     }
-    let Ok(root) = fs::canonicalize(target) else { return exe };
-    let Ok(path) = fs::canonicalize(target.join(old)) else { return exe };
+    let Ok(root) = fs::canonicalize(target) else { return (exe, None) };
+    let Ok(path) = fs::canonicalize(target.join(&old)) else { return (exe, None) };
     if !path.starts_with(root) {
-        return exe;
+        return (exe, None);
     }
-    if let Some(old) = exe.clone() {
-        let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-        let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
-        if let (true, Some(n)) = (is_appimage, new_appimage) {
-            if *n != old {
-                let _ = std::fs::remove_file(target.join(&old));
-                exe = Some(n.clone());
-            }
+    let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
+    let new_appimage = files.iter().find(|f| !mac_metadata(f) && f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+    if let (true, Some(n)) = (is_appimage, new_appimage) {
+        if *n != old {
+            return (Some(n.clone()), Some(old));
         }
+    }
+    // The AppImage an older launcher installed, and the new release unpacked (on Linux every game
+    // plays from a plain folder): its AppRun starts the game now, and the old AppImage goes.
+    if let Some(start) = is_appimage.then(|| unpacked_start(files, &old)).flatten() {
+        return (Some(start), Some(old));
     }
     // The program the player picked isn't one of the new release's files (it was moved inside the
     // release, say): the new release's file of the same name, so Play starts the update.
-    let exe = match exe {
-        Some(e) if kept && !files.iter().any(|f| *f == e) => {
-            let name = e.file_name().map(|n| n.to_ascii_lowercase());
-            match files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) {
-                Some(f) => {
-                    crate::trail::note(format!("Install {id}: the program you picked is at {} in this release now", f.display()));
-                    Some(f.clone())
-                }
-                None => Some(e),
-            }
-        }
-        e => e,
-    };
-    exe
+    if !kept || files.contains(&old) {
+        return (exe, None);
+    }
+    let name = old.file_name().map(|n| n.to_ascii_lowercase());
+    let Some(moved) = files.iter().find(|f| f.file_name().map(|n| n.to_ascii_lowercase()) == name) else { return (exe, None) };
+    crate::trail::note(format!("Install {id}: the program you picked is at {} in this release now", moved.display()));
+    (Some(moved.clone()), None)
+}
+
+/// The AppRun that starts an unpacked AppImage among a release's files: the one at the top, else
+/// the one in the folder named after the AppImage (see unpack_appimages), else the only one.
+pub fn unpacked_start(files: &[PathBuf], image: &Path) -> Option<PathBuf> {
+    let top = PathBuf::from("AppRun");
+    if files.contains(&top) {
+        return Some(top);
+    }
+    let own = image.with_extension("").join("AppRun");
+    if files.contains(&own) {
+        return Some(own);
+    }
+    let one_down: Vec<&PathBuf> = files.iter().filter(|f| f.components().count() == 2 && f.file_name().is_some_and(|n| n == "AppRun")).collect();
+    match one_down.as_slice() {
+        [only] => Some((*only).clone()),
+        _ => None,
+    }
 }
 
 /// The folders above a removed file that it leaves empty, up to (not including) `top`.
-fn remove_empty_parents(top: &Path, file: &Path) {
+pub(crate) fn remove_empty_parents(top: &Path, file: &Path) {
     let mut dir = file.parent();
     while let Some(d) = dir.filter(|d| *d != top && d.starts_with(top)) {
         if fs::remove_dir(d).is_err() {
@@ -848,25 +889,6 @@ fn remove_empty_parents(top: &Path, file: &Path) {
         }
         dir = d.parent();
     }
-}
-
-fn replace_bundle(from: &Path, to: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(to).is_err() {
-        return fs::rename(from, to);
-    }
-    // Staging is on the library's drive. Keep the old bundle until the new one is in place;
-    // on a failed rename restore it. A pre-existing backup name is never overwritten.
-    let backup_dir = from.with_extension("app.previous");
-    fs::create_dir(&backup_dir)?;
-    let backup = backup_dir.join("previous");
-    fs::rename(to, &backup)?;
-    if let Err(error) = fs::rename(from, to) {
-        fs::rename(&backup, to)?;
-        let _ = fs::remove_dir(&backup_dir);
-        return Err(error);
-    }
-    let _ = fs::remove_dir_all(backup_dir);
-    Ok(())
 }
 
 /// Unpack (or place) the downloaded file into `target`. Returns the files it put there, relative.
@@ -906,7 +928,91 @@ pub fn unpack_as_is(file: &Path, target: &Path, staging: &Path) -> Result<Vec<Pa
     unpack_with(file, target, staging, false)
 }
 
+/// What the marker of a swap that isn't a game's release says instead of a download's SHA-256: no
+/// game's record has it, so a launcher closed in the middle undoes it (see swap::recover).
+const NOT_A_RELEASE: &str = "not-a-release";
+
+/// Unpacked beside `target` first, then put in all at once (see swap): a mod, an installer or a
+/// copy of a game goes in whole, or `target` stays as it was. Nothing keeps a list of what such an
+/// unpack put there before, so none of what's there counts as its own: a file of it where `target`
+/// has a folder (or a folder where it has a file) stops it, rather than setting the player's files
+/// aside. A file over a file of the same name is replaced, as it always was.
 fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> Result<Vec<PathBuf>, Error> {
+    let staged = stage_with(file, staging, strip_top)?;
+    let placed = crate::swap::put_in_place(target, &staged.root, &staged.files, NOT_A_RELEASE, &[], &[]);
+    let _ = fs::remove_dir_all(staging);
+    placed?.finish();
+    Ok(staged.files)
+}
+
+/// A release unpacked in its staging folder, ready to go into the game's folder.
+pub struct Staged {
+    /// Where its files start, inside the staging folder.
+    pub root: PathBuf,
+    /// Its files, relative to `root`.
+    pub files: Vec<PathBuf>,
+}
+
+impl Staged {
+    /// For an update of a game whose folder is a Mac app itself (an app the player picked when
+    /// importing it): the release's one app goes in, its files in place of the old app's, never
+    /// nested inside it. Also every file of the old app's Contents the new one doesn't have, for the
+    /// update to take away: a signed app must hold exactly what it was signed with. What the game
+    /// keeps beside Contents ({data}) stays. Any other game: as it is, nothing more taken away.
+    pub fn for_game(self, game: &Path, os: &str) -> Result<(Staged, Vec<PathBuf>), Error> {
+        if os != "macos" || !crate::macos::is_bundle(game) || crate::macos::is_bundle(&self.root) {
+            return Ok((self, vec![]));
+        }
+        let mut apps = vec![];
+        for e in fs::read_dir(&self.root)? {
+            let p = e?.path();
+            if crate::macos::is_bundle(&p) {
+                apps.push(p);
+            }
+        }
+        let [app] = apps.as_slice() else {
+            return Err(Error::Msg("This release doesn't have exactly one Mac app, so it can't replace the app the game was imported as. Nothing was changed.".into()));
+        };
+        let top = app.strip_prefix(&self.root).unwrap_or(app).to_path_buf();
+        let files: Vec<PathBuf> = self.files.iter().filter_map(|f| f.strip_prefix(&top).ok()).map(Path::to_path_buf).collect();
+        let shipped: std::collections::HashSet<&PathBuf> = files.iter().collect();
+        let fold = |p: &Path| p.to_string_lossy().to_lowercase();
+        let by_fold: std::collections::HashMap<String, &PathBuf> = files.iter().map(|f| (fold(f), f)).collect();
+        // A file only renamed in case is, on a Mac's usual drive, the one the update replaces: taken
+        // away as well, the update would fail moving it twice. On a drive that tells case apart, it's
+        // another file and goes.
+        let renamed = |f: &PathBuf| by_fold.get(&fold(f)).is_some_and(|s| same_entry(&game.join(f), &game.join(s)));
+        let mut old = vec![];
+        // Links too, never followed: a Mac app's frameworks link inside it.
+        list(game, &game.join("Contents"), &mut old);
+        let leftovers = old.into_iter().filter(|f| !shipped.contains(f) && !renamed(f)).collect();
+        Ok((Staged { root: app.clone(), files }, leftovers))
+    }
+}
+
+/// Whether two paths name the same file (or link) on disk, as the drive sees them.
+#[cfg(unix)]
+fn same_entry(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (fs::symlink_metadata(a), fs::symlink_metadata(b)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// Only Macs replace an imported app (see for_game).
+#[cfg(not(unix))]
+fn same_entry(_: &Path, _: &Path) -> bool {
+    false
+}
+
+/// Unpack (or place) the downloaded file into `staging`, the way a game's release is: a single
+/// folder at the top unwrapped. Nothing of the game's is touched (see `swap`).
+pub fn stage(file: &Path, staging: &Path) -> Result<Staged, Error> {
+    stage_with(file, staging, true)
+}
+
+fn stage_with(file: &Path, staging: &Path, strip_top: bool) -> Result<Staged, Error> {
     let name = file.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
     // A .rar (a plugin's download, a mod): unpacked the way mods are, then put in place below.
     let k = if name.to_lowercase().ends_with(".rar") { "rar" } else { kind(&name).ok_or_else(|| Error::Msg(format!("{name} isn't a kind of file the launcher can install")))? };
@@ -923,8 +1029,7 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
         "zip" => unzip(file, staging)?,
         "7z" => un7z(file, staging)?,
         "rar" => crate::gamebanana::extract(file, staging)?,
-        "tar.gz" => untar(file, staging, false)?,
-        "tar.xz" => untar(file, staging, true)?,
+        "tar.gz" | "tar.xz" | "tar.zst" => untar(file, staging, k)?,
         #[cfg(target_os = "macos")]
         "dmg" => undmg(file, staging)?,
         "appimage" | "exe" | "msi" => {
@@ -946,6 +1051,10 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
     let from = if strip_top { root(staging) } else { staging.to_path_buf() };
     #[cfg(target_os = "macos")]
     let from = if strip_top { unwrap_mac_zip(from, staging)? } else { from };
+    // On Linux every game plays from a plain folder: the release's AppImages are unpacked here, so
+    // their files are the game's files from now on.
+    #[cfg(target_os = "linux")]
+    unpack_appimages(&from, staging)?;
     validate_links(&from, &from)?;
     // Bundles must be self-contained when moved or replaced as a unit.
     for entry in fs::read_dir(&from)? {
@@ -954,49 +1063,91 @@ fn unpack_with(file: &Path, target: &Path, staging: &Path, strip_top: bool) -> R
             validate_links(&entry.path(), &entry.path())?;
         }
     }
-    // In the Flatpak an AppImage can't mount itself (no FUSE): the release's AppImage is unpacked
-    // here like an archive, so its files are the game's files from now on.
-    #[cfg(target_os = "linux")]
-    if crate::flatpak::sandboxed() {
-        unpack_appimage_in(&from, staging);
-    }
     let mut files = vec![];
     list(&from, &from, &mut files);
-    overlay(&from, target)?;
-    let _ = fs::remove_dir_all(staging);
-    Ok(files)
+    Ok(Staged { root: from, files })
 }
 
-/// The one AppImage at the top of a release (on its own, or out of a zip): its contents (AppRun,
-/// usr/, the desktop file, an embedded recomplauncher.json) put in its place and the AppImage
-/// removed. Two or more AppImages, or one that doesn't unpack cleanly, stay as they are: Play
-/// unpacks those itself.
+/// What an AppImage that wouldn't unpack says, before its name and why. The install then takes the
+/// release's tarball when it has one (see lib.rs).
+pub const APPIMAGE_UNPACK: &str = "APPIMAGE_UNPACK|";
+
+/// Every AppImage in a release, unpacked in staging (see appimage::unpack) and the AppImage taken
+/// out, so the launcher never runs one. The only one, at the top of the release (on its own or out
+/// of a zip), becomes the top, its AppRun beside the rest. Any other unpacks into a folder named
+/// after it. Err names the one that didn't unpack, and why.
 #[cfg(target_os = "linux")]
-fn unpack_appimage_in(dir: &Path, staging: &Path) {
-    let images: Vec<PathBuf> = fs::read_dir(dir)
-        .map(|r| r.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().map(|x| x.eq_ignore_ascii_case("appimage")).unwrap_or(false)).collect())
-        .unwrap_or_default();
-    let [image] = images.as_slice() else { return };
+pub(crate) fn unpack_appimages(dir: &Path, staging: &Path) -> Result<(), Error> {
+    let images = appimages_in(dir);
+    let alone_at_top = images.len() == 1 && images[0].parent() == Some(dir);
     let work = staging.with_extension("appdir");
-    let _ = fs::remove_dir_all(&work);
-    if fs::create_dir_all(&work).is_err() {
-        return;
+    for image in &images {
+        let name = image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let into = if alone_at_top { dir.to_path_buf() } else { image.with_extension("") };
+        let _ = fs::remove_dir_all(&work);
+        let unpacked = unpack_one(image, &work, &into);
+        let _ = fs::remove_dir_all(&work);
+        if let Err(e) = unpacked {
+            return Err(Error::Msg(format!("{APPIMAGE_UNPACK}{name}: {e}")));
+        }
+        crate::trail::note(format!("Install: unpacked {name} into a plain folder"));
     }
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(image, fs::Permissions::from_mode(0o755));
+    Ok(())
+}
+
+/// An AppImage the player has (one they bring in, or one an older launcher left in a game's
+/// folder) unpacked into `staging` as if it were a release: read, never run, and left as it is.
+#[cfg(target_os = "linux")]
+pub fn stage_appimage(image: &Path, staging: &Path) -> Result<Staged, Error> {
+    let _ = fs::remove_dir_all(staging);
+    let name = image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let unpacked = crate::appimage::unpack(image, staging).and_then(|()| {
+        let has_start = staging.join("AppRun").is_file();
+        has_start.then_some(()).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "it has no AppRun"))
+    });
+    if let Err(e) = unpacked {
+        let _ = fs::remove_dir_all(staging);
+        return Err(Error::Msg(format!("{APPIMAGE_UNPACK}{name}: {e}")));
     }
-    // `--appimage-extract` writes squashfs-root into the folder it runs in, and needs no FUSE.
-    let mut c = std::process::Command::new(image);
-    c.arg("--appimage-extract").current_dir(&work).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    crate::sysenv::clean_std(&mut c);
-    let appdir = work.join("squashfs-root");
-    let ok = c.status().map(|s| s.success()).unwrap_or(false) && appdir.join("AppRun").is_file() && validate_links(&appdir, &appdir).is_ok();
-    if ok && overlay(&appdir, dir).is_ok() {
-        let _ = fs::remove_file(image);
-        crate::trail::note(format!("Install: unpacked {} for the Flatpak", image.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+    validate_links(staging, staging)?;
+    let mut files = vec![];
+    list(staging, staging, &mut files);
+    Ok(Staged { root: staging.to_path_buf(), files })
+}
+
+/// One AppImage unpacked in `work`, then its files moved into `into` and the AppImage removed.
+#[cfg(target_os = "linux")]
+fn unpack_one(image: &Path, work: &Path, into: &Path) -> io::Result<()> {
+    crate::appimage::unpack(image, work)?;
+    // Every AppImage starts from its AppRun; without one there's nothing to play.
+    if !work.join("AppRun").is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "it has no AppRun"));
     }
-    let _ = fs::remove_dir_all(&work);
+    fs::remove_file(image)?;
+    merge_into(work, into)
+}
+
+/// The AppImages anywhere in `dir`: regular files named `….AppImage`, never through a link.
+#[cfg(target_os = "linux")]
+fn appimages_in(dir: &Path) -> Vec<PathBuf> {
+    let mut out = vec![];
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+            let Ok(ty) = e.file_type() else { continue };
+            let path = e.path();
+            if ty.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
+            if ty.is_file() && named && !mac_metadata(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// A Mac disk image: opened read-only where Finder doesn't show it, what's on it (the .app and
@@ -1091,7 +1242,7 @@ fn unwrap_mac_zip(mut from: PathBuf, staging: &Path) -> Result<PathBuf, Error> {
         }
         // Files beside the ZIP stay with the game it holds.
         fs::remove_file(zips[0].path())?;
-        overlay(&root(&layer), &from)?;
+        merge_into(&root(&layer), &from)?;
         // The layer can sit inside `from` (a ZIP at the top of the download): not part of the game.
         let _ = fs::remove_dir_all(&layer);
     }
@@ -1163,12 +1314,12 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 21;
+pub const EXE_RULES: u8 = 22;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
-/// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
+/// build_deps.sh, ttt2-server). A release's files are told apart by them too (assets::tool_build).
+pub(crate) const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
 const BUILD_TOOLS: [&str; 66] = [
@@ -1254,10 +1405,35 @@ fn want_has_stem(low: &str, names: &[&str]) -> bool {
     names.iter().any(|n| tokens(n).iter().any(|t| t.len() > 3 && low == *t))
 }
 
-/// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
-/// player is asked.
+/// find_exe, but never a tool, and never only a guess: when every program in it is a tool, or the
+/// best one is picked for its size alone and another program could be the game, there's no telling
+/// (None), and the player is asked.
 pub fn find_game_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
-    find_exe(dir, os, names).filter(|e| !looks_like_tool(e, names))
+    let list = match programs(dir, os, names) {
+        Programs::Given(p) => return p.filter(|e| !looks_like_tool(e, names)),
+        Programs::Weighed(list) => list,
+    };
+    let top = best(&list).filter(|c| !c.tool)?;
+    if only_a_guess(&list, top) {
+        return None;
+    }
+    Some(top.rel.clone())
+}
+
+/// Whether the program find_game_exe would start is only a guess, so it says None for it.
+pub fn unclear_game_exe(dir: &Path, os: &str, names: &[&str]) -> bool {
+    let Programs::Weighed(list) = programs(dir, os, names) else { return false };
+    best(&list).filter(|c| !c.tool).is_some_and(|top| only_a_guess(&list, top))
+}
+
+/// Nothing about the best program says it's the game: not its name, and it isn't a launch script.
+/// It won on size and place alone, so with another program left that isn't a tool, it could as well
+/// be a helper the game starts (a renderer, an entry runner) as the game.
+fn only_a_guess(list: &[Candidate], top: &Candidate) -> bool {
+    if top.named || top.script {
+        return false;
+    }
+    list.iter().any(|c| !c.tool && c.rel != top.rel)
 }
 
 /// Normalize a manual program selection to the executable stored in the library.
@@ -1312,7 +1488,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
             let p = e.path();
-            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
+            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) || e.file_name() == crate::swap::FOLDER {
                 continue;
             }
             if p.is_dir() {
@@ -1321,7 +1497,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
                 }
                 continue;
             }
-            if !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
+            if mac_metadata(&p) || !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
                 continue;
             }
             let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
@@ -1356,7 +1532,16 @@ pub fn looks_like_setup(p: &Path) -> bool {
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
 
+/// A Mac's metadata file ("._Game.exe"), which a Mac writes beside each file on a drive formatted
+/// for Windows, or into an archive it packs. It's never a program, whatever its name ends in.
+pub fn mac_metadata(p: &Path) -> bool {
+    p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))
+}
+
 pub fn is_program(p: &Path, os: &str) -> bool {
+    if mac_metadata(p) {
+        return false;
+    }
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     if os == "windows" {
         return n.ends_with(".exe");
@@ -1408,9 +1593,63 @@ pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
-    // An AppImage unpacked at install (the Flatpak): its AppRun starts it, as the AppImage did.
+    let list = match programs(dir, os, names) {
+        Programs::Given(p) => return p,
+        Programs::Weighed(list) => list,
+    };
+    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
+    // is asked rather than a tool started.
+    best(&list).filter(|c| !c.tool).map(|c| c.rel.clone())
+}
+
+/// A program find_exe weighed, relative to the game's folder.
+struct Candidate {
+    rel: PathBuf,
+    score: i64,
+    /// Its name has a word of the game's names in it.
+    named: bool,
+    /// A script the release starts the game with.
+    script: bool,
+    tool: bool,
+}
+
+/// What a folder says about the program that starts it.
+enum Programs {
+    /// The folder names it itself (a Mac app's Info.plist, an unpacked AppImage's AppRun), or
+    /// says nothing in it can start.
+    Given(Option<PathBuf>),
+    /// Every program that could be the game, in the order they were found.
+    Weighed(Vec<Candidate>),
+}
+
+/// The highest score, the first found of equals.
+fn best(list: &[Candidate]) -> Option<&Candidate> {
+    let mut top: Option<&Candidate> = None;
+    for c in list {
+        if top.map(|t| c.score > t.score).unwrap_or(true) {
+            top = Some(c);
+        }
+    }
+    top
+}
+
+fn programs(dir: &Path, os: &str, names: &[&str]) -> Programs {
+    // A Mac app that is the game's folder itself: the program its Info.plist names, never a helper
+    // inside it, and nothing when that program is missing or not for this Mac.
+    if os == "macos" && crate::macos::is_bundle(dir) {
+        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now());
+        return Programs::Given(exe.and_then(|e| e.strip_prefix(dir).ok().map(Path::to_path_buf)));
+    }
+    // An AppImage unpacked at install: its AppRun starts it, as the AppImage did. One of a release's
+    // several AppImages unpacked into a folder named after it, when it's the only one.
     if os == "linux" && dir.join("AppRun").is_file() {
-        return Some(PathBuf::from("AppRun"));
+        return Programs::Given(Some(PathBuf::from("AppRun")));
+    }
+    if os == "linux" {
+        let one_down: Vec<PathBuf> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| Path::new(&e.file_name()).join("AppRun")).filter(|r| dir.join(r).is_file()).collect();
+        if let [only] = one_down.as_slice() {
+            return Programs::Given(Some(only.clone()));
+        }
     }
     let mut want: Vec<String> = names.iter().flat_map(|n| tokens(n)).filter(|t| t.len() > 2 && t != "recomp" && t != "the").collect();
     // Initials too: VCSLauncher.exe is Vice City Stories' launcher, mcla.exe Midnight Club Los
@@ -1431,12 +1670,13 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     }
     want.sort();
     want.dedup();
-    let mut best: Option<(i64, PathBuf)> = None;
+    let mut list: Vec<Candidate> = vec![];
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
             let mut p = e.path();
-            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
+            // The old release's program waits there while an update goes in: never the game.
+            if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) || e.file_name() == crate::swap::FOLDER {
                 continue;
             }
             let bundle_name = if os == "macos" && crate::macos::is_bundle(&p) {
@@ -1513,18 +1753,16 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             if t.iter().any(|x| x == "recompiled" || x == "recomp") {
                 s += 10;
             }
+            let Ok(rel) = p.strip_prefix(dir).map(Path::to_path_buf) else { continue };
             // One of its tools: behind every program that isn't.
-            if p.strip_prefix(dir).map(|r| looks_like_tool(r, names)).unwrap_or(false) {
+            let tool = looks_like_tool(&rel, names);
+            if tool {
                 s -= 1000;
             }
-            if best.as_ref().map(|(b, _)| s > *b).unwrap_or(true) {
-                best = Some((s, p));
-            }
+            list.push(Candidate { rel, score: s, named: named > 0, script, tool });
         }
     }
-    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
-    // is asked rather than a tool started.
-    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf)).filter(|r| !looks_like_tool(r, names))
+    Programs::Weighed(list)
 }
 
 #[cfg(test)]
@@ -1645,7 +1883,7 @@ mod tests {
         fs::write(&old, b"player's separate program").unwrap();
         fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(fs::read(&old).unwrap(), b"player's separate program");
         assert_eq!(got, Some(old));
@@ -1661,7 +1899,7 @@ mod tests {
         fs::write(&old, b"player's separate program").unwrap();
         fs::write(target.join("bin/Game.exe"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["bin/Game.exe"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["bin/Game.exe"]), true);
 
         assert_eq!(got, Some(old.clone()));
         assert_eq!(fs::read(old).unwrap(), b"player's separate program");
@@ -1677,7 +1915,7 @@ mod tests {
         fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
         let old = PathBuf::from("../My Game.AppImage");
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(fs::read(d.join("My Game.AppImage")).unwrap(), b"player's separate program");
         assert_eq!(got, Some(old));
@@ -1697,7 +1935,7 @@ mod tests {
         std::os::unix::fs::symlink(&external, target.join("linked")).unwrap();
         let old = PathBuf::from("linked/Game.AppImage");
 
-        let got = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, _) = updated_exe("game", &target, Some(old.clone()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(fs::read(external.join("Game.AppImage")).unwrap(), b"player's separate program");
         assert_eq!(got, Some(old));
@@ -1710,11 +1948,23 @@ mod tests {
         fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
         fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["Game-v2.AppImage"]), true);
+        let (got, replaced) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["Game-v2.AppImage"]), true);
 
         assert_eq!(got, Some("Game-v2.AppImage".into()));
-        assert!(!target.join("Game-v1.AppImage").exists());
+        assert_eq!(replaced, Some("Game-v1.AppImage".into()));
         assert_eq!(fs::read(target.join("Game-v2.AppImage")).unwrap(), b"new release");
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
+    fn an_update_never_takes_a_macs_metadata_file_for_its_appimage() {
+        let target = tmp("update-appledouble-appimage");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let (got, _) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["._Game-v2.AppImage", "Game-v2.AppImage"]), true);
+
+        assert_eq!(got, Some("Game-v2.AppImage".into()));
         fs::remove_dir_all(target).unwrap();
     }
 
@@ -1725,7 +1975,7 @@ mod tests {
         fs::write(target.join("Game.exe"), b"old release").unwrap();
         fs::write(target.join("bin/Game.exe"), b"new release").unwrap();
 
-        let got = updated_exe("game", &target, Some("Game.exe".into()), &paths(&["bin/Game.exe"]), true);
+        let (got, _) = updated_exe("game", &target, Some("Game.exe".into()), &paths(&["bin/Game.exe"]), true);
 
         assert_eq!(got, Some("bin/Game.exe".into()));
         assert_eq!(fs::read(target.join("bin/Game.exe")).unwrap(), b"new release");
@@ -1733,17 +1983,15 @@ mod tests {
     }
 
     #[test]
-    fn an_update_removes_a_file_its_release_dropped() {
+    fn an_update_takes_away_a_file_its_release_dropped() {
         let d = tmp("dropped-gone");
         fs::create_dir_all(d.join("runtime")).unwrap();
         fs::write(d.join("runtime/gfx_present.c"), b"old").unwrap();
         fs::write(d.join("runtime/gfx_window.c"), b"new").unwrap();
         let old = paths(&["runtime/gfx_present.c", "runtime/gfx_window.c"]);
         let new = paths(&["runtime/gfx_window.c"]);
-        let removed = remove_dropped(&d, &old, &new, later(), None);
-        assert_eq!(removed, paths(&["runtime/gfx_present.c"]));
-        assert!(!d.join("runtime/gfx_present.c").exists());
-        assert!(d.join("runtime/gfx_window.c").exists());
+        let gone = dropped(&d, &old, &new, later(), None);
+        assert_eq!(gone, paths(&["runtime/gfx_present.c"]));
     }
 
     #[test]
@@ -1751,8 +1999,8 @@ mod tests {
         let d = tmp("dropped-changed");
         fs::write(d.join("game.ini"), b"edited by the player").unwrap();
         let installed_long_ago = crate::library::now() - 3600;
-        let removed = remove_dropped(&d, &paths(&["game.ini"]), &[], installed_long_ago, None);
-        assert!(removed.is_empty());
+        let gone = dropped(&d, &paths(&["game.ini"]), &[], installed_long_ago, None);
+        assert!(gone.is_empty());
         assert!(d.join("game.ini").exists());
     }
 
@@ -1760,8 +2008,8 @@ mod tests {
     fn an_update_keeps_the_program_the_player_starts() {
         let d = tmp("dropped-exe");
         fs::write(d.join("Game.exe"), b"exe").unwrap();
-        let removed = remove_dropped(&d, &paths(&["Game.exe"]), &[], later(), Some(Path::new("Game.exe")));
-        assert!(removed.is_empty());
+        let gone = dropped(&d, &paths(&["Game.exe"]), &[], later(), Some(Path::new("Game.exe")));
+        assert!(gone.is_empty());
         assert!(d.join("Game.exe").exists());
     }
 
@@ -1769,19 +2017,9 @@ mod tests {
     fn an_update_keeps_a_file_only_renamed_in_case() {
         let d = tmp("dropped-case");
         fs::write(d.join("Engine.dll"), b"dll").unwrap();
-        let removed = remove_dropped(&d, &paths(&["Engine.dll"]), &paths(&["engine.DLL"]), later(), None);
-        assert!(removed.is_empty());
+        let gone = dropped(&d, &paths(&["Engine.dll"]), &paths(&["engine.DLL"]), later(), None);
+        assert!(gone.is_empty());
         assert!(d.join("Engine.dll").exists());
-    }
-
-    #[test]
-    fn an_update_removes_a_folder_its_dropped_files_leave_empty() {
-        let d = tmp("dropped-folder");
-        fs::create_dir_all(d.join("old/deep")).unwrap();
-        fs::write(d.join("old/deep/a.bin"), b"a").unwrap();
-        remove_dropped(&d, &paths(&["old/deep/a.bin"]), &[], later(), None);
-        assert!(!d.join("old").exists());
-        assert!(d.exists());
     }
 
     #[test]
@@ -1789,8 +2027,8 @@ mod tests {
         let d = tmp("dropped-outside");
         fs::create_dir_all(d.join("game")).unwrap();
         fs::write(d.join("other.txt"), b"not the game's").unwrap();
-        let removed = remove_dropped(&d.join("game"), &paths(&["../other.txt"]), &[], later(), None);
-        assert!(removed.is_empty());
+        let gone = dropped(&d.join("game"), &paths(&["../other.txt"]), &[], later(), None);
+        assert!(gone.is_empty());
         assert!(d.join("other.txt").exists());
     }
 
@@ -1855,6 +2093,31 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    /// What a Mac writes beside a file on a drive or in an archive: "._" and the file's name.
+    fn mac_metadata_beside(p: &Path) {
+        let name = format!("._{}", p.file_name().unwrap().to_string_lossy());
+        fs::write(p.with_file_name(name), b"\x00\x05\x16\x07AppleDouble").unwrap();
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_the_setup() {
+        let d = tmp("appledouble-setup");
+        put(&d.join("Game.exe"), 2_000_000);
+        put(&d.join("Game-setup.exe"), 1_000_000);
+        mac_metadata_beside(&d.join("Game-setup.exe"));
+        assert_eq!(find_setup(&d, "windows", Some(Path::new("Game.exe"))), Some(PathBuf::from("Game-setup.exe")));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_linux_program() {
+        assert!(!is_program(Path::new("/games/x/._game.x86_64"), "linux"));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_windows_program() {
+        assert!(!is_program(Path::new("/games/x/._Game.exe"), "windows"));
     }
 
     #[test]
@@ -1948,6 +2211,39 @@ mod tests {
     }
 
     #[test]
+    fn a_staged_update_goes_in_whole_and_keeps_saves() {
+        let d = tmp("staged-update");
+        let zpath = d.join("Game-v2.zip");
+        fs::write(&zpath, zip_of(&[("Game-v2/Game.exe", b"new"), ("Game-v2/data/assets.bin", b"data")])).unwrap();
+        let target = d.join("lib/game");
+        fs::create_dir_all(target.join("saves")).unwrap();
+        fs::write(target.join("Game.exe"), b"old").unwrap();
+        fs::write(target.join("old-only.dll"), b"old").unwrap();
+        fs::write(target.join("saves/slot1.sav"), b"save").unwrap();
+        let staging = d.join("lib/.staging/game");
+
+        let staged = stage(&zpath, &staging).unwrap();
+        assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"old", "unpacking alone leaves the game as it is");
+        let old = paths(&["Game.exe", "old-only.dll"]);
+        let gone = dropped(&target, &old, &staged.files, later(), None);
+        crate::swap::put_in_place(&target, &staged.root, &staged.files, "sha", &gone, &old).unwrap().finish();
+
+        assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"new");
+        assert_eq!(fs::read(target.join("data/assets.bin")).unwrap(), b"data");
+        assert_eq!(fs::read(target.join("saves/slot1.sav")).unwrap(), b"save");
+        assert!(!target.join("old-only.dll").exists());
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn the_old_release_waiting_in_an_update_is_never_the_game() {
+        let target = tmp("swap-folder-not-the-game");
+        put(&target.join(crate::swap::FOLDER).join("old/SkyRacer.exe"), 4096);
+        put(&target.join("Readme.txt"), 10);
+        assert_eq!(find_exe(&target, "windows", &["SkyRacer"]), None);
+    }
+
+    #[test]
     fn tar_gz_unpacks() {
         let d = tmp("tgz");
         let tpath = d.join("Game-Linux.tar.gz");
@@ -1986,6 +2282,158 @@ mod tests {
         assert!(!is_program(&target.join("LICENSE"), "linux"));
     }
 
+    /// A tarball with one program in a folder, run permission and all.
+    fn tarball_into(w: impl io::Write) {
+        let mut t = tar::Builder::new(w);
+        let mut h = tar::Header::new_gnu();
+        h.set_size(10);
+        h.set_mode(0o755);
+        h.set_cksum();
+        t.append_data(&mut h, "Game/run.sh", &b"#!/bin/sh\n"[..]).unwrap();
+        t.finish().unwrap();
+    }
+
+    #[test]
+    fn tar_xz_unpacks() {
+        let d = tmp("txz");
+        let tpath = d.join("Game-Linux.tar.xz");
+        let mut xz = xz2::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
+        tarball_into(&mut xz);
+        xz.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+        assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");
+    }
+
+    #[test]
+    fn tar_zst_unpacks() {
+        let d = tmp("tzst");
+        let tpath = d.join("Game-Linux.tar.zst");
+        let mut zst = zstd::stream::write::Encoder::new(fs::File::create(&tpath).unwrap(), 1).unwrap();
+        tarball_into(&mut zst);
+        zst.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_release_appimage_is_unpacked_and_never_kept() {
+        let d = tmp("stage-appimage");
+        let image = d.join("Game-1.0-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::game_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("usr/bin/game")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+        assert_eq!(find_exe(&staged.root, "linux", &["Game"]), Some(PathBuf::from("AppRun")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_release_dwarfs_appimage_is_unpacked_too() {
+        let d = tmp("stage-dwarfs-appimage");
+        let image = d.join("Game-anylinux-x86_64.AppImage");
+        fs::write(&image, crate::appimage::tests::dwarfs_game_image()).unwrap();
+        let staged = stage(&image, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("usr/bin/game")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+        assert_eq!(find_exe(&staged.root, "linux", &["Game"]), Some(PathBuf::from("AppRun")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_appimage_in_a_zip_unpacks_beside_the_rest() {
+        let d = tmp("stage-appimage-zip");
+        let image = crate::appimage::tests::game_image();
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game/Game-x86_64.AppImage", image.as_slice()), ("Game/README.txt", b"read me")])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("README.txt")));
+        assert!(!staged.files.contains(&PathBuf::from("Game-x86_64.AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn several_appimages_each_unpack_into_a_folder_of_their_own() {
+        let d = tmp("stage-appimages");
+        let image = crate::appimage::tests::game_image();
+        let zpath = d.join("Game-linux.zip");
+        fs::write(&zpath, zip_of(&[("Game.AppImage", image.as_slice()), ("Editor.AppImage", image.as_slice())])).unwrap();
+        let staged = stage(&zpath, &d.join("st")).unwrap();
+        assert!(staged.files.contains(&PathBuf::from("Game/AppRun")));
+        assert!(staged.files.contains(&PathBuf::from("Editor/AppRun")));
+        assert!(!staged.files.iter().any(|f| f.to_string_lossy().ends_with(".AppImage")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_appimage_that_wont_unpack_stops_the_install() {
+        let d = tmp("stage-bad-appimage");
+        let image = d.join("Game-x86_64.AppImage");
+        fs::write(&image, b"#!/bin/sh\necho it's a script\n").unwrap();
+        let Err(Error::Msg(m)) = stage(&image, &d.join("st")) else { panic!("it must not install") };
+        assert!(m.starts_with(APPIMAGE_UNPACK), "{m}");
+    }
+
+    #[test]
+    fn an_update_from_an_old_appimage_install_starts_its_apprun() {
+        let target = tmp("update-unpacked");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        let (got, replaced) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["AppRun", "usr/bin/game"]), true);
+        assert_eq!(got, Some("AppRun".into()));
+        assert_eq!(replaced, Some("Game-v1.AppImage".into()));
+    }
+
+    #[test]
+    fn the_apprun_of_an_unpacked_appimage_is_found_among_the_files() {
+        assert_eq!(unpacked_start(&paths(&["AppRun", "Tool/AppRun"]), Path::new("Game.AppImage")), Some("AppRun".into()));
+        assert_eq!(unpacked_start(&paths(&["Game/AppRun", "Tool/AppRun"]), Path::new("Game.AppImage")), Some("Game/AppRun".into()));
+        assert_eq!(unpacked_start(&paths(&["Other/AppRun"]), Path::new("Game.AppImage")), Some("Other/AppRun".into()));
+        assert_eq!(unpacked_start(&paths(&["A/AppRun", "B/AppRun"]), Path::new("Game.AppImage")), None);
+    }
+
+    #[test]
+    fn a_mod_goes_into_the_game_whole_and_leaves_its_files() {
+        let d = tmp("mod-whole");
+        let target = d.join("game");
+        fs::create_dir_all(target.join("mods")).unwrap();
+        fs::write(target.join("mods/theirs.pak"), b"player's").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("mods/new.pak", b"new mod")])).unwrap();
+        let files = unpack_as_is(&zpath, &target, &d.join("st")).unwrap();
+        assert_eq!(files, paths(&["mods/new.pak"]));
+        assert_eq!(fs::read(target.join("mods/new.pak")).unwrap(), b"new mod");
+        assert_eq!(fs::read(target.join("mods/theirs.pak")).unwrap(), b"player's");
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn a_mod_never_sets_aside_a_folder_of_the_players_files() {
+        let d = tmp("mod-folder-in-the-way");
+        let target = d.join("game");
+        fs::create_dir_all(target.join("config")).unwrap();
+        fs::write(target.join("config/mine.ini"), b"player's").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("config", b"a file where the game has a folder")])).unwrap();
+        assert!(unpack_as_is(&zpath, &target, &d.join("st")).is_err());
+        assert_eq!(fs::read(target.join("config/mine.ini")).unwrap(), b"player's");
+        assert!(!target.join(crate::swap::FOLDER).exists());
+    }
+
+    #[test]
+    fn a_mod_isnt_put_in_while_an_update_waits_to_be_settled() {
+        let d = tmp("mod-waits");
+        let target = d.join("game");
+        fs::create_dir_all(target.join(crate::swap::FOLDER)).unwrap();
+        fs::write(target.join(crate::swap::FOLDER).join("update.json"), b"{}").unwrap();
+        let zpath = d.join("mod.zip");
+        fs::write(&zpath, zip_of(&[("new.pak", b"new mod")])).unwrap();
+        assert!(unpack_as_is(&zpath, &target, &d.join("st")).is_err());
+        assert!(!target.join("new.pak").exists());
+    }
+
     #[test]
     fn picks_the_game_not_the_helpers() {
         let d = tmp("exe");
@@ -2014,6 +2462,48 @@ mod tests {
         let got = download_split(&http, &url, "big.bin", &dir, "t", Arc::new(AtomicBool::new(false)), &|_| {}).await.unwrap().unwrap();
         eprintln!("split download: {:.1} s, sha256 {}", t.elapsed().as_secs_f64(), got.sha256);
         assert_eq!(got.sha256, std::env::var("RL_SPLIT_SHA").unwrap());
+    }
+
+    #[test]
+    fn two_programs_that_dont_name_the_game_are_left_to_the_player() {
+        let d = tmp("unclear-two");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        assert!(find_game_exe(&d, "windows", &["Night Harbor"]).is_none());
+    }
+
+    #[test]
+    fn a_program_named_for_the_game_is_still_picked_beside_others() {
+        let d = tmp("unclear-named");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        put(&d.join("NightHarbor.exe"), 2_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("NightHarbor.exe")));
+    }
+
+    #[test]
+    fn a_lone_program_that_doesnt_name_the_game_is_still_picked() {
+        let d = tmp("unclear-lone");
+        put(&d.join("bin/Engine.exe"), 30_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("bin/Engine.exe")));
+    }
+
+    #[test]
+    fn a_program_beside_only_tools_is_still_picked() {
+        let d = tmp("unclear-tools");
+        put(&d.join("bin/Engine.exe"), 30_000_000);
+        put(&d.join("tools/Packer.exe"), 40_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("bin/Engine.exe")));
+    }
+
+    #[test]
+    fn a_guessed_program_is_reported_as_unclear() {
+        let d = tmp("unclear-report");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        assert!(unclear_game_exe(&d, "windows", &["Night Harbor"]));
+        put(&d.join("NightHarbor.exe"), 2_000_000);
+        assert!(!unclear_game_exe(&d, "windows", &["Night Harbor"]));
     }
 
     #[test]
@@ -2293,6 +2783,119 @@ mod mac_archive_tests {
         assert!(fs::read_link(target.join("Game.app/Contents/Frameworks/Engine.framework/Versions/Current")).is_ok());
     }
 
+    /// A game imported as the app itself (its folder is Game.app), with a file the next release
+    /// no longer has and a save in {data}.
+    fn imported_app(d: &Path) -> PathBuf {
+        fs::write(d.join("old.zip"), app_zip(&[("Game.app/Contents/Resources/obsolete", b"old", 0o644)])).unwrap();
+        unpack(&d.join("old.zip"), &d.join("Applications"), &d.join("stage")).unwrap();
+        let app = d.join("Applications/Game.app");
+        fs::create_dir_all(app.join("recompdata")).unwrap();
+        fs::write(app.join("recompdata/save.sav"), b"player progress").unwrap();
+        app
+    }
+
+    /// What an update does with the release (see lib.rs): staged, then put in place.
+    fn update_app(app: &Path, release: Vec<u8>, d: &Path) -> Result<Vec<PathBuf>, Error> {
+        fs::write(d.join("new.zip"), release).unwrap();
+        let staged = stage(&d.join("new.zip"), &d.join("stage"))?;
+        let (staged, old_files) = staged.for_game(app, "macos")?;
+        crate::swap::put_in_place(app, &staged.root, &staged.files, "sha", &old_files, &[])?.finish();
+        Ok(staged.files)
+    }
+
+    #[test]
+    fn mac_imported_app_update_goes_in_without_nesting() {
+        let d = temp("imported-nest");
+        let app = imported_app(&d);
+        let files = update_app(&app, app_zip(&[]), &d).unwrap();
+        assert!(!app.join("Game.app").exists());
+        assert_eq!(fs::read(app.join("Contents/MacOS/Game")).unwrap(), b"program");
+        assert!(files.contains(&PathBuf::from("Contents/MacOS/Game")), "the record's files are the app's own");
+    }
+
+    #[test]
+    fn mac_imported_app_update_takes_away_what_the_new_app_lacks() {
+        let d = temp("imported-obsolete");
+        let app = imported_app(&d);
+        update_app(&app, app_zip(&[]), &d).unwrap();
+        assert!(!app.join("Contents/Resources/obsolete").exists());
+    }
+
+    #[test]
+    fn mac_imported_app_update_keeps_the_games_data() {
+        let d = temp("imported-data");
+        let app = imported_app(&d);
+        update_app(&app, app_zip(&[]), &d).unwrap();
+        assert_eq!(fs::read(app.join("recompdata/save.sav")).unwrap(), b"player progress");
+    }
+
+    #[test]
+    fn mac_imported_app_update_keeps_framework_links() {
+        let d = temp("imported-links");
+        let app = imported_app(&d);
+        update_app(&app, app_zip(&[]), &d).unwrap();
+        let link = app.join("Contents/Frameworks/Engine.framework/Versions/Current");
+        assert_eq!(fs::read_link(link).unwrap(), PathBuf::from("A"));
+    }
+
+    /// The imported app with Artwork.txt, updated to one that ships it as artwork.txt.
+    fn case_renamed_update(d: &Path) -> (PathBuf, Result<Vec<PathBuf>, Error>) {
+        let app = imported_app(d);
+        fs::write(app.join("Contents/Resources/Artwork.txt"), b"old art").unwrap();
+        let release = app_zip(&[("Game.app/Contents/Resources/artwork.txt", b"new art", 0o644)]);
+        let updated = update_app(&app, release, d);
+        (app, updated)
+    }
+
+    #[test]
+    fn mac_imported_app_update_renamed_only_in_case_goes_in() {
+        let d = temp("imported-case");
+        let (app, updated) = case_renamed_update(&d);
+        assert!(updated.is_ok(), "{:?}", updated.err());
+        assert_eq!(fs::read(app.join("Contents/Resources/artwork.txt")).unwrap(), b"new art");
+    }
+
+    #[test]
+    fn mac_imported_app_update_renamed_only_in_case_leaves_no_old_copy() {
+        let d = temp("imported-case-old");
+        let (app, _) = case_renamed_update(&d);
+        let (old, new) = (app.join("Contents/Resources/Artwork.txt"), app.join("Contents/Resources/artwork.txt"));
+        // On a drive that ignores case both names are the one new file.
+        assert!(!old.exists() || same_entry(&old, &new));
+    }
+
+    #[test]
+    fn mac_release_without_an_app_leaves_the_imported_app_as_it_was() {
+        let d = temp("imported-no-app");
+        let app = imported_app(&d);
+        let loose = archive(&[("OtherGame", b"program", 0o755)], &[]);
+        assert!(update_app(&app, loose, &d).is_err());
+        assert_eq!(fs::read(app.join("Contents/Resources/obsolete")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn a_game_folder_that_is_not_an_app_is_staged_as_before() {
+        let d = temp("not-imported-app");
+        fs::write(d.join("new.zip"), app_zip(&[])).unwrap();
+        let staged = stage(&d.join("new.zip"), &d.join("stage")).unwrap();
+        let root = staged.root.clone();
+        let (staged, old_files) = staged.for_game(&d.join("installed"), "macos").unwrap();
+        assert_eq!(staged.root, root);
+        assert!(old_files.is_empty());
+    }
+
+    #[test]
+    fn an_app_named_game_folder_off_a_mac_is_staged_as_before() {
+        let d = temp("app-folder-linux");
+        let app = imported_app(&d);
+        fs::write(d.join("new.zip"), app_zip(&[])).unwrap();
+        let staged = stage(&d.join("new.zip"), &d.join("stage")).unwrap();
+        let root = staged.root.clone();
+        let (staged, old_files) = staged.for_game(&app, "linux").unwrap();
+        assert_eq!(staged.root, root);
+        assert!(old_files.is_empty());
+    }
+
     #[test]
     fn mac_archive_rejects_links_outside_staging() {
         for (label, link) in [("absolute", "/tmp"), ("relative", "../../outside")] {
@@ -2401,12 +3004,11 @@ mod mac_discovery_tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn mac_manual_setup_starts_the_selected_bundle() {
+    fn mac_picked_program_starts_the_selected_bundle() {
         let d = temp("manual-setup");
         let app = bundle(&d, "Engine");
         let g = crate::library::Installed { path: d.clone(), ..Default::default() };
-        let manual = crate::library::ManualSetup { exe: Some(PathBuf::from("My Game.app")), how: "none".into(), ..Default::default() };
-        let (exe, args) = crate::manual_plan(&g, &manual).unwrap().unwrap();
+        let (exe, args) = crate::own_plan(&g, Some(Path::new("My Game.app"))).unwrap().unwrap();
         assert_eq!(exe, app.join("Contents/MacOS/Engine"));
         assert!(args.is_empty());
     }
@@ -2418,6 +3020,106 @@ mod mac_discovery_tests {
             bundle(&d, declared);
             assert!(find_game_exe(&d, "macos", &["My Game"]).is_none());
         }
+    }
+
+    #[test]
+    fn mac_app_as_the_games_folder_starts_its_declared_program() {
+        let app = bundle(&temp("app-root"), "Engine");
+        assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine")));
+    }
+
+    #[test]
+    fn an_imported_apps_update_drops_the_saved_program_for_its_new_info_plist() {
+        let app = bundle(&temp("app-update-renamed"), "Engine");
+        let saved = Some(PathBuf::from("Contents/MacOS/Engine"));
+        assert!(kept_exe(saved, &app, "macos", &[], false, &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn an_imported_apps_update_keeps_the_program_the_player_picked() {
+        let app = bundle(&temp("app-update-picked"), "Engine");
+        let saved = Some(PathBuf::from("Contents/MacOS/MyGameHelper"));
+        assert_eq!(kept_exe(saved.clone(), &app, "macos", &[], true, &["My Game"]), saved);
+    }
+
+    #[test]
+    fn a_picked_program_the_update_takes_away_is_not_kept() {
+        let app = bundle(&temp("app-update-picked-gone"), "Engine");
+        let saved = PathBuf::from("Contents/MacOS/Engine");
+        assert!(kept_exe(Some(saved.clone()), &app, "macos", &[saved], true, &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn a_found_program_in_a_plain_folder_is_kept_through_an_update() {
+        let d = temp("plain-update");
+        bundle(&d, "Engine");
+        let saved = Some(PathBuf::from("My Game.app/Contents/MacOS/Engine"));
+        assert_eq!(kept_exe(saved.clone(), &d, "macos", &[], false, &["My Game"]), saved);
+    }
+
+    #[test]
+    fn an_imported_app_finds_its_renamed_program_after_the_update() {
+        let app = bundle(&temp("app-update-find"), "Engine2");
+        program(&app.join("Contents/MacOS/Engine2"), &mach(native_cpu(), 2));
+        let _ = fs::remove_file(app.join("Contents/MacOS/Engine"));
+        assert_eq!(find_game_exe(&app, "macos", &["My Game"]), Some(PathBuf::from("Contents/MacOS/Engine2")));
+    }
+
+    #[test]
+    fn mac_app_as_the_games_folder_with_a_bad_program_is_not_guessed_into() {
+        let app = bundle(&temp("app-root-invalid"), "Missing");
+        assert!(find_game_exe(&app, "macos", &["My Game"]).is_none());
+    }
+
+    #[test]
+    fn mac_app_picked_as_the_folder_is_known_by_its_name() {
+        let app = bundle(&temp("import-app"), "Engine");
+        let entry = serde_json::json!({"name": "My Game"});
+        let (root, exe, fits) = crate::adopt::check_folder(&app, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(root, app, "the app itself, never its Contents folder");
+        assert_eq!(exe, Some(PathBuf::from("Contents/MacOS/Engine")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_folder_holding_only_the_app_stays_the_games_folder() {
+        let d = temp("import-folder");
+        bundle(&d, "Engine");
+        let entry = serde_json::json!({"name": "My Game"});
+        let (root, exe, fits) = crate::adopt::check_folder(&d, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(root, d);
+        assert_eq!(exe, Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_app_of_another_game_does_not_fit() {
+        let app = bundle(&temp("import-other"), "Engine");
+        let entry = serde_json::json!({"name": "Unrelated Title"});
+        let (_, _, fits) = crate::adopt::check_folder(&app, &entry, &["Unrelated Title".to_string()], "macos");
+        assert!(!fits);
+    }
+
+    #[test]
+    fn mac_app_named_in_the_profile_fits() {
+        let d = temp("import-profile-app");
+        bundle(&d, "Engine");
+        fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["My Game.app"]}}"#).unwrap();
+        let entry = serde_json::json!({"name": "Other Name"});
+        let (_, exe, fits) = crate::adopt::check_folder(&d, &entry, &["Other Name".to_string()], "macos");
+        assert_eq!(exe, Some(PathBuf::from("My Game.app")));
+        assert!(fits);
+    }
+
+    #[test]
+    fn mac_build_fits_when_the_profile_names_only_other_systems_programs() {
+        let d = temp("import-profile-windows");
+        bundle(&d, "Engine");
+        fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["MyGame.exe"]}}"#).unwrap();
+        let entry = serde_json::json!({"name": "My Game"});
+        let (_, exe, fits) = crate::adopt::check_folder(&d, &entry, &["My Game".to_string()], "macos");
+        assert_eq!(exe, Some(PathBuf::from("My Game.app/Contents/MacOS/Engine")));
+        assert!(fits);
     }
 
     #[test]
@@ -2598,5 +3300,22 @@ mod connection_fallback_tests {
         let request = server.join().unwrap()[0].to_ascii_lowercase();
         assert!(request.contains("\r\naccept: application/octet-stream\r\n"));
         assert!(request.contains("\r\nrange: bytes=2-\r\n"));
+    }
+
+    #[tokio::test]
+    async fn a_download_keeps_the_date_its_site_gives() {
+        let dir = TempDir::new();
+        let dated = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nLast-Modified: Wed, 27 Aug 2025 00:55:54 GMT\r\nConnection: close\r\n\r\nabcdef";
+        let (url, server) = download_site(vec![dated]);
+        let result = download_with_api(&reqwest::Client::new(), &asset(url), &dir.0, "date-test", Arc::new(AtomicBool::new(false)), &|_| {}, None).await;
+        let got = result.unwrap_or_else(|e| panic!("the download should finish: {e}"));
+        let modified = fs::metadata(&got.file).unwrap().modified().unwrap();
+        assert_eq!(modified, std::time::UNIX_EPOCH + Duration::from_secs(1_756_256_154));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_date_that_isnt_one_is_left_alone() {
+        assert_eq!(uploaded_at("yesterday"), None);
     }
 }

@@ -1,11 +1,11 @@
 /* A game's media (media-art.js): the layers, the shadow for each look, and how each kind moves.
-   States on .md: is-in (just arrived), is-busy (working), is-done (finished). */
-.md{position:relative;width:100%;aspect-ratio:600/420;--md-cast:.85;contain:layout}
+   States on .mdisc: is-in (just arrived), is-busy (working), is-done (finished). */
+.mdisc{position:relative;width:100%;aspect-ratio:600/420;--md-cast:.85;contain:layout}
 .md-l{position:absolute;inset:0;width:100%;height:100%;overflow:visible;display:block}
 .md-spin{transform-origin:50% 50%;will-change:transform}
 .md-cast{opacity:var(--md-cast)}
-body.oled .md{--md-cast:1}
-body.light .md{--md-cast:.42}
+body.oled .mdisc{--md-cast:1}
+body.light .mdisc{--md-cast:.42}
 .md-glow,.md-arrow,.md-shimmer{opacity:0}
 .md-ghost{color:var(--line3,rgba(244,248,252,.24))}
 
@@ -22,7 +22,7 @@ body.light .md{--md-cast:.42}
 /* Working: discs spin with the light staying put; cartridges pulse their arrow and catch a sheen
    across the label; both glow underneath. */
 .md-disc.is-busy .md-spin,.md-umd.is-busy .md-spin{animation:mdSpin 1.5s linear infinite}
-.md.is-busy .md-glow{animation:mdGlow 2.4s ease-in-out infinite}
+.mdisc.is-busy .md-glow{animation:mdGlow 2.4s ease-in-out infinite}
 .md-cart.is-busy .md-arrow{animation:mdArrow 1.6s ease-in-out infinite}
 .md-cart.is-busy .md-shimmer{opacity:1;animation:mdSheen 3s cubic-bezier(.45,0,.25,1) infinite}
 @keyframes mdSpin{to{transform:rotate(360deg)}}
@@ -31,9 +31,9 @@ body.light .md{--md-cast:.42}
 @keyframes mdSheen{0%{transform:translateX(0)}60%,100%{transform:translateX(560px)}}
 
 /* Done: one bright glow, and the disc coasts to a stop. */
-.md.is-done .md-glow{animation:mdDone 1.1s ease-out both}
+.mdisc.is-done .md-glow{animation:mdDone 1.1s ease-out both}
 .md-disc.is-done .md-spin,.md-umd.is-done .md-spin{animation:mdCoast 1.1s cubic-bezier(.15,.75,.3,1) both}
 @keyframes mdDone{0%{opacity:0}25%{opacity:.7}100%{opacity:0}}
 @keyframes mdCoast{from{transform:rotate(-200deg)}}
 
-@media (prefers-reduced-motion:reduce){.md,.md *{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.mdisc,.mdisc *{animation:none!important}}

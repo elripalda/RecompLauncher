@@ -1,0 +1,27 @@
+// For the Android check only (.github/workflows/android.yml puts it in Gradle's init.d): Maven
+// Central turns shared CI machines away when they ask too often (429 Too Many Requests), so Gradle
+// gets Maven Central's files from Google's copy of it, which serves the same files.
+def mirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+def central = ~'^https://repo(1)?\\.maven\\.(apache\\.)?org/maven2/?$'
+
+def useMirror = { RepositoryHandler repos ->
+  repos.withType(MavenArtifactRepository).configureEach { r ->
+    if (r.url.toString() ==~ central) r.url = mirror
+  }
+}
+
+beforeSettings { settings ->
+  // Plugins: the mirror first, then the plugin portal (which sends Maven Central's files to
+  // Maven Central itself).
+  settings.pluginManagement.repositories {
+    maven { url mirror }
+    gradlePluginPortal()
+    google()
+  }
+  useMirror(settings.pluginManagement.repositories)
+}
+
+allprojects {
+  useMirror(buildscript.repositories)
+  useMirror(repositories)
+}

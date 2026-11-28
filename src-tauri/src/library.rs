@@ -5,27 +5,48 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Set Up By Hand: how a game starts and gets the player's game files, as the player said.
+/// A copy read whole, with no errors: which file, as it was then, and its checksum.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct ManualSetup {
-    /// The program that starts it (in its folder, or anywhere).
-    #[serde(default)]
-    pub exe: Option<PathBuf>,
-    /// The player's game files: a disc image, a ROM, or a folder.
-    #[serde(default)]
-    pub copy: Option<PathBuf>,
-    /// "folder": put in a folder inside the game's folder (`into`, "." for the folder itself);
-    /// "arg": handed to the program on its command line (`arg`, with {copy} for where they are);
-    /// "none": the game asks for them itself.
-    #[serde(default)]
-    pub how: String,
-    #[serde(default)]
-    pub into: String,
-    /// A single file's name there, when the game wants it named a certain way.
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub arg: String,
+pub struct CopyCheck {
+    pub path: PathBuf,
+    pub size: u64,
+    /// Its modified time, in seconds.
+    pub modified: i64,
+    pub crc32: String,
+}
+
+impl CopyCheck {
+    /// The file as it is now: None when it can't be read.
+    pub fn stamp(path: &Path) -> Option<(u64, i64)> {
+        let m = std::fs::metadata(path).ok()?;
+        let t = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64;
+        Some((m.len(), t))
+    }
+
+    /// Its checksum, when `path` is the file it read and it hasn't changed since.
+    pub fn still(&self, path: &Path) -> Option<&str> {
+        let (size, modified) = Self::stamp(path)?;
+        (self.path == path && self.size == size && self.modified == modified).then_some(self.crc32.as_str())
+    }
+}
+
+/// Who sets a game up. Switching only changes this: what the player picked for each way (their
+/// program, their copy) stays recorded, so switching back
+/// finds it as it was.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SetupMode {
+    /// The launcher, with Easy Setup (on games it can do; other games start as they come).
+    #[default]
+    Easy,
+    /// The player (Skip Easy Setup): Play runs the release's program, or the one they picked.
+    Own,
+}
+
+impl SetupMode {
+    fn is_easy(&self) -> bool {
+        *self == SetupMode::Easy
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -73,39 +94,37 @@ pub struct Installed {
     /// Each time it was played: [started, seconds]. The newest 500.
     #[serde(default)]
     pub sessions: Vec<[u64; 2]>,
-    /// The player's copy of the game (disc image or folder), for recomps the launcher sets up.
-    #[serde(default)]
-    pub game_copy: Option<PathBuf>,
-    /// The `prepare.version` the launcher last built `game_copy` with. A manifest that changes it
-    /// asks the player to build again. Empty also for setups from before it was kept, which is
-    /// the same as a manifest with no version, so nobody rebuilds just for a launcher update.
+    /// The release (its tag) the last Easy Setup that worked finished on. Empty: never set up.
+    /// A game whose setup does something Play doesn't (a setup step, a disc to unpack) is set up
+    /// while this is the installed `tag`; a new release builds it again. Picking other files
+    /// clears it. One game of several keeps its own in `games`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub prepare_version: String,
+    pub set_up: String,
+    /// A build (a setup step, a disc unpacked) started and didn't finish: stopped, the launcher
+    /// closed, or the PC went off partway. What it wrote over the last build may be half there,
+    /// so the game builds again before it plays, even on the release `set_up` names. One game of
+    /// several keeps its own in `games`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub build_cut: bool,
+    /// Read once from a library saved before named inputs were the one way (format 3), to tell
+    /// which games were set up then: see `SetupUpgrade`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgrade: Option<SetupUpgrade>,
     /// Brought into the Library from a folder where it already plays: its game files are there, so
     /// Easy Setup doesn't ask for the player's copy.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub files_in_place: bool,
-    /// Set Up By Hand: the player says which program starts it and how it gets their game files.
-    /// While it's on, it's used instead of the launcher's own setup for this game.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manual: Option<ManualSetup>,
-    /// The game's update the player picked, for recomps that need one beside their copy.
-    #[serde(default)]
-    pub update_copy: Option<PathBuf>,
-    /// Named Easy Setup selections; shared keys are kept separately.
+    /// Who sets this game up.
+    #[serde(default, skip_serializing_if = "SetupMode::is_easy")]
+    pub mode: SetupMode,
+    /// The files the player picked for Easy Setup, by input id: `game` for their copy of the game,
+    /// `update` for its update, and the rest by the manifest's ids. Shared keys are kept apart.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub setup_inputs: BTreeMap<String, PathBuf>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub inputs_ready: String,
-    /// The player chose the build already on this PC (its game folder) instead of building it.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub prebuilt: bool,
-    /// The player's own build of a game its setup builds into a folder of its own (`folders.game`,
-    /// often under the home folder): kept wherever they put it, and used in that folder's place for
-    /// starting it, its settings file and its saves. A build by the launcher goes back to the setup's
-    /// own folder.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub build_dir: Option<PathBuf>,
+    /// The disc image a picked file was unpacked from (`extract`), by input id: the game reads the
+    /// unpacked folder (in `setup_inputs`), so Free Up Space can offer the image.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unpacked_from: BTreeMap<String, PathBuf>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub input_staged: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -146,26 +165,40 @@ pub struct Installed {
     /// Install updates as soon as they're found.
     #[serde(default)]
     pub auto_update: bool,
+    /// Build it again right after an automatic update to a new release, in the background, when
+    /// nothing has to be asked (the launcher queues them, one at a time). Off: Play builds it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rebuild_after_update: bool,
     /// A developer's own build, added from a folder on this PC: never updated, moved or deleted.
     #[serde(default)]
     pub local: bool,
+    /// Its folder is one the launcher unpacked the player's AppImage into (plain.rs), so it's the
+    /// launcher's own: uninstalling can delete it, even for a game the player added.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unpacked: bool,
+    /// The player's AppImage it came from, by its name without the version
+    /// (game-x86-64.appimage): a newer one they bring in updates it. Its path isn't kept.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from_appimage: String,
     /// The look the game starts with (looks.rs), empty for the game's own picture.
     #[serde(default)]
     pub look: String,
     /// How strong it is, 0 to 100.
     #[serde(default = "half")]
     pub look_amount: u8,
-    /// Cloud saves for this game: None until the player is asked (before its first Play while
-    /// signed in), then their answer.
+    /// Cloud saves for this game, when the player switched them for it (its Manage tab). None:
+    /// what they picked for every game (see `cloud_on`).
     #[serde(default)]
     pub cloud: Option<bool>,
-    /// Where the launcher noticed the game saving, as templates (`{local}/Game/saves`), for games
-    /// whose developer or catalog doesn't say.
-    #[serde(default)]
-    pub found_saves: Vec<String>,
-    /// Where the player says the game saves (Saves, Change): ahead of everything else.
+    /// Where the player says the game saves (Saves, Change). Only used while neither its developer
+    /// nor the catalog names a folder (saves::spots): a pick made before one was named is stale.
     #[serde(default)]
     pub save_place: Option<String>,
+    /// The player's folder in place of the one its developer or the catalog names (Saves, Change
+    /// on that folder), for a game they set up themselves. Its own field, not `save_place`: old
+    /// stale picks there must not come back. Ignored while Easy Setup is on (saves::with_override).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_override: Option<String>,
     /// More folders the player added (a launcher with several games, each saving in its own).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub more_save_places: Vec<String>,
@@ -218,6 +251,50 @@ pub struct Installed {
     /// one from the catalog is applied on the next Play.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub boot_hash: String,
+    /// The files Easy Setup read whole, by input id, and what it read: Set Up Again with the same
+    /// file, unchanged since, doesn't read it all again (a Switch 2 package is over 20 GB).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub input_checks: BTreeMap<String, CopyCheck>,
+}
+
+/// How a game was set up in a library from before format 3, kept until the launcher has read it
+/// once with the game's profile (lib.rs, `upgrade_setups`): a setup current then is marked as set
+/// up on the installed release, so nobody builds again just for this launcher. One that was due a
+/// new build then gets no mark and builds on the next Play.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct SetupUpgrade {
+    /// It had named inputs set up (an old fingerprint was kept).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inputs_ready: bool,
+    /// The `prepare.version` it was last built with.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prepare_version: String,
+    /// One game of several whose own inputs were set up, by id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub games_ready: Vec<String>,
+}
+
+impl Installed {
+    /// Cloud saves on for this game: its own switch when it was set, otherwise what the player
+    /// picked for every game (`ui.cloud_all`, asked once after signing in; not asked yet is off).
+    /// Paired with `cloudOn` in ui/app.js, which shows it on the switches: change both together.
+    pub fn cloud_on(&self, ui: &Value) -> bool {
+        let every_game = ui.get("cloud_all").and_then(Value::as_bool).unwrap_or(false);
+        self.cloud.unwrap_or(every_game)
+    }
+
+    /// Its installer is downloaded and waits for Set Up: its folder is made by that installer, so
+    /// a folder that isn't there yet isn't a missing game.
+    pub fn installer_waits(&self) -> bool {
+        !self.installer_setup.is_empty() && self.exe.is_none() && !self.path.is_dir()
+    }
+
+    /// The player sets this game up their own way (Skip Easy Setup). Only its own mode counts: the
+    /// Settings switch is for new games, and a game installed under it took it as its mode then.
+    pub fn player_sets_up(&self) -> bool {
+        self.mode == SetupMode::Own
+    }
+
 }
 
 fn half() -> u8 {
@@ -287,13 +364,23 @@ pub struct Settings {
     /// The first-run setup has been gone through.
     #[serde(default)]
     pub setup_done: bool,
-    /// Settings → Run in background. Keep the existing field name so saved choices still apply.
+    /// Settings → Close to tray (called Run in background before; the field name never changed).
     #[serde(default)]
     pub close_to_tray: bool,
+    /// Settings → Start with your PC. The system's own startup list is what counts: this follows
+    /// it (see autostart.rs), and changes only through set_start_at_login.
+    #[serde(default)]
+    pub start_at_login: bool,
     /// Settings → Controllers: the left stick moves around the launcher as the d-pad does. Off,
     /// only the d-pad does (for players whose stick drifts, or who move a mouse with it).
     #[serde(default = "yes")]
     pub pad_stick: bool,
+    /// Settings → Controllers: the controller moves around the desktop view too. Off, the desktop
+    /// view leaves the controller alone (for players who use it as a mouse, where its buttons would
+    /// also press things in the launcher); holding Menu still opens Big Picture mode. Its switch,
+    /// Controller as a Mouse, shows the opposite: on when this is false.
+    #[serde(default = "yes")]
+    pub pad_desktop: bool,
     /// On Linux: recomps with only a Windows version install that and play through Proton.
     #[serde(default)]
     pub proton: bool,
@@ -337,6 +424,11 @@ pub struct Settings {
     /// finishes downloading (an update too), its setup opens straight away. Off: it waits for Set Up.
     #[serde(default = "yes")]
     pub auto_install: bool,
+    /// Settings → Update All Games Automatically: every installed game takes its new release as
+    /// soon as the launcher finds it, like each game's own Update automatically. Off by default,
+    /// so nobody's games start updating by themselves after the launcher updates.
+    #[serde(default)]
+    pub auto_update_all: bool,
 }
 
 fn yes() -> bool {
@@ -371,7 +463,9 @@ impl Default for Settings {
             start_in_tv: false,
             setup_done: false,
             close_to_tray: false,
+            start_at_login: false,
             pad_stick: true,
+            pad_desktop: true,
             proton: false,
             proton_auto: false,
             tray_told: false,
@@ -392,17 +486,23 @@ impl Default for Settings {
             linux_graphics: String::new(),
             steam_sync: false,
             auto_install: true,
+            auto_update_all: false,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Library {
+    /// The file's format (`library_convert::FORMAT`): an older one is converted when it's read.
+    #[serde(default)]
+    pub format: u32,
     /// Old ids retained for Steam and desktop shortcuts after correcting a project match.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub project_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub installed: BTreeMap<String, Installed>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) removed_play_history: BTreeMap<String, PlayHistory>,
     #[serde(default)]
     pub settings: Settings,
     /// What the last ROM scan found.
@@ -414,6 +514,9 @@ pub struct Library {
     /// For recomps by developers the player follows: the version last seen, to tell a new one apart.
     #[serde(default)]
     pub seen_versions: BTreeMap<String, String>,
+    /// Coming Soon recomps in the last catalog, so a saved one that came out can be told apart.
+    #[serde(default)]
+    pub seen_soon: Vec<String>,
     /// Mods the launcher put in, by game id.
     #[serde(default)]
     pub mods: BTreeMap<String, Vec<crate::mods::ModRec>>,
@@ -421,6 +524,133 @@ pub struct Library {
     /// Library first, or kept when a game is uninstalled): put on the game when it's installed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub arts: BTreeMap<String, ArtSet>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub(crate) struct PlayHistory {
+    #[serde(flatten)]
+    recomp: crate::games::Played,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    games: BTreeMap<String, crate::games::Played>,
+}
+
+/// One game's time on this PC as the website keeps it: seconds played here, ever, and when last;
+/// for its play time card, the sessions this PC kept and the longest of them, and the recent ones
+/// ([start, secs]) for this week, this month and the bars. Only recent ones go: older sessions
+/// would only make each send bigger, as the card shows nothing of them but count and longest.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct PlayEntry {
+    pub game: String,
+    pub secs: u64,
+    pub last: u64,
+    pub count: u64,
+    pub longest: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub recent: Vec<[u64; 2]>,
+}
+
+/// How far back a play time card looks: a month, plus a day for time zones.
+pub const PLAY_RECENT_SECS: u64 = 31 * 86400;
+
+/// A developer's own builds ("local-…", "own-…") aren't catalog games: their time stays on this PC.
+fn own_build(id: &str) -> bool {
+    id.starts_with("local-") || id.starts_with("own-")
+}
+
+/// `since`: the oldest session start that still counts as recent.
+fn entry(game: String, p: &crate::games::Played, since: u64) -> Option<PlayEntry> {
+    if p.played_secs == 0 {
+        return None;
+    }
+    let longest = p.sessions.iter().map(|s| s[1]).max().unwrap_or(0);
+    let recent = p.sessions.iter().filter(|s| s[0] >= since).copied().collect();
+    let count = p.sessions.len() as u64;
+    Some(PlayEntry { game, secs: p.played_secs, last: p.last_played, count, longest, recent })
+}
+
+impl Library {
+    /// Every game's time on this PC, for the account: installed games and what's kept from
+    /// uninstalled ones. A recomp with several games also sends each game as "recomp--game".
+    /// `only`: just those ids (a recomp's id brings its games along). Sessions that started
+    /// before `since` count toward count and longest but aren't sent themselves.
+    pub fn play_entries(&self, only: Option<&[String]>, since: u64) -> Vec<PlayEntry> {
+        let wanted = |id: &str| only.is_none_or(|ids| ids.iter().any(|w| w == id));
+        let mut out = Vec::new();
+        for (id, g) in &self.installed {
+            if g.local || own_build(id) || !wanted(id) {
+                continue;
+            }
+            let recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, sessions: g.sessions.clone(), ..Default::default() };
+            out.extend(entry(id.clone(), &recomp, since));
+            for (sub, p) in &g.games {
+                out.extend(entry(crate::games::full(id, sub), p, since));
+            }
+        }
+        for (id, h) in &self.removed_play_history {
+            if own_build(id) || !wanted(id) || self.installed.contains_key(id) {
+                continue;
+            }
+            out.extend(entry(id.clone(), &h.recomp, since));
+            for (sub, p) in &h.games {
+                out.extend(entry(crate::games::full(id, sub), p, since));
+            }
+        }
+        out
+    }
+
+    /// A project's new id takes over the play history kept for its old one, so a renamed
+    /// project's uninstalled time isn't left behind under an id nothing uses any more.
+    pub(crate) fn move_play_history(&mut self, old: &str, new: &str) {
+        let Some(history) = self.removed_play_history.remove(old) else { return };
+        let kept = self.removed_play_history.entry(new.to_string()).or_default();
+        kept.recomp.absorb(history.recomp);
+        for (sub, played) in history.games {
+            kept.games.entry(sub).or_default().absorb(played);
+        }
+    }
+
+    /// Forgets this PC's play time for an installed game (issue #487: some setups start the game
+    /// and count as play). A recomp's id clears it and all its games; one game of several clears
+    /// that game and takes its time off the recomp's, so the two still add up.
+    /// -> the ids the website keeps this PC's time under, to clear there too. None: not installed.
+    pub fn reset_play(&mut self, id: &str) -> Option<Vec<String>> {
+        if let Some(g) = self.installed.get_mut(id) {
+            let mut ids = vec![id.to_string()];
+            ids.extend(g.games.keys().map(|sub| crate::games::full(id, sub)));
+            g.played_secs = 0;
+            g.last_played = 0;
+            g.sessions.clear();
+            for p in g.games.values_mut() {
+                clear_played(p);
+            }
+            return Some(ids);
+        }
+        let (rid, sub) = crate::games::split(id)?;
+        let g = self.installed.get_mut(rid)?;
+        let p = g.games.get_mut(sub)?;
+        g.played_secs = g.played_secs.saturating_sub(p.played_secs);
+        // Each of its sessions was counted on the recomp too, as the same [start, secs].
+        for s in &p.sessions {
+            if let Some(i) = g.sessions.iter().position(|x| x == s) {
+                g.sessions.remove(i);
+            }
+        }
+        if let Some(end) = g.sessions.iter().map(|s| s[0] + s[1]).max() {
+            g.last_played = end;
+        }
+        if g.played_secs == 0 {
+            g.last_played = 0;
+        }
+        clear_played(p);
+        Some(vec![id.to_string(), rid.to_string()])
+    }
+}
+
+/// No time and no sessions; its setup stays as it is.
+fn clear_played(p: &mut crate::games::Played) {
+    p.played_secs = 0;
+    p.last_played = 0;
+    p.sessions.clear();
 }
 
 /// A game's own pictures without the game: what Customize keeps for it.
@@ -464,21 +694,46 @@ impl Library {
         self.project_aliases.get(id).filter(|new| self.installed.contains_key(*new)).cloned().unwrap_or_else(|| id.to_string())
     }
 
-    /// A game into the Library: pictures the player picked for it before go on it.
+    /// A game into the Library: restore its pictures and play history.
     pub fn put(&mut self, id: &str, mut g: Installed) {
         if let Some(a) = self.arts.remove(id) {
             a.onto(&mut g);
+        }
+        // Added to, not replaced: a record that already has time (a rename, a backup) keeps it.
+        if let Some(history) = self.removed_play_history.remove(id) {
+            let mut recomp = crate::games::Played { played_secs: g.played_secs, last_played: g.last_played, sessions: std::mem::take(&mut g.sessions), ..Default::default() };
+            recomp.absorb(history.recomp);
+            g.played_secs = recomp.played_secs;
+            g.last_played = recomp.last_played;
+            g.sessions = recomp.sessions;
+            for (sub, played) in history.games {
+                g.games.entry(sub).or_default().absorb(played);
+            }
         }
         g.exe = g.exe.map(|e| unix_path(&g.path, e));
         self.installed.insert(id.to_string(), g);
     }
 
-    /// A game out of the Library: its own pictures stay for it.
+    /// A game out of the Library: keep its pictures and play history.
     pub fn forget(&mut self, id: &str) -> Option<Installed> {
         let g = self.installed.remove(id)?;
         let a = ArtSet::of(&g);
         if !a.is_empty() {
             self.arts.insert(id.to_string(), a);
+        }
+        let mut history = PlayHistory::default();
+        history.recomp.played_secs = g.played_secs;
+        history.recomp.last_played = g.last_played;
+        history.recomp.sessions = g.sessions.clone();
+        for (sub, played) in &g.games {
+            let mut played = played.clone();
+            played.set_up.clear();
+            if played != crate::games::Played::default() {
+                history.games.insert(sub.clone(), played);
+            }
+        }
+        if history != PlayHistory::default() {
+            self.removed_play_history.insert(id.to_string(), history);
         }
         Some(g)
     }
@@ -522,31 +777,47 @@ impl Library {
         for g in self.installed.values_mut() {
             let base = g.path.clone();
             g.exe = g.exe.take().map(|e| unix_path(&base, e));
-            if let Some(m) = g.manual.as_mut() {
-                m.exe = m.exe.take().map(|e| unix_path(&base, e));
-            }
         }
     }
 
     pub fn load(dir: &Path) -> Library {
         let p = dir.join("library.json");
+        let mut converted = false;
         let mut l = match std::fs::read(&p) {
-            Ok(b) => match serde_json::from_slice(&b) {
-                Ok(l) => l,
+            Ok(b) => match serde_json::from_slice::<Value>(&b) {
+                Ok(mut v) => {
+                    converted = crate::library_convert::to_current(&mut v);
+                    match serde_json::from_value::<Library>(v.clone()) {
+                        Ok(l) => l,
+                        Err(_) => {
+                            // A file this launcher can't read whole: everything in it that it can
+                            // read is kept (each game on its own), and the file itself is kept for
+                            // a look later.
+                            let _ = std::fs::rename(&p, dir.join("library.broken.json"));
+                            Library::lenient(&v)
+                        }
+                    }
+                }
                 Err(_) => {
-                    // A file this launcher can't read whole: everything in it that it can read is
-                    // kept (each game on its own), and the file itself is kept for a look later.
-                    let got = serde_json::from_slice::<Value>(&b).map(|v| Library::lenient(&v)).unwrap_or_default();
                     let _ = std::fs::rename(&p, dir.join("library.broken.json"));
-                    got
+                    Library::default()
                 }
             },
             Err(_) => Library::default(),
         };
+        l.format = crate::library_convert::FORMAT;
+        // A phone has no home folder to put the library in: it goes in the launcher's own folder.
+        if cfg!(target_os = "android") && !l.settings.library_dir.is_absolute() {
+            l.settings.library_dir = dir.join("Library");
+        }
+        if converted {
+            let _ = l.save(dir);
+        }
         // A library an older launcher set aside as broken (and then started empty): its games come
         // back, those that aren't here already.
         let broken = dir.join("library.broken.json");
-        if let Some(v) = std::fs::read(&broken).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+        if let Some(mut v) = std::fs::read(&broken).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+            crate::library_convert::to_current(&mut v);
             let old = Library::lenient(&v);
             let mut back = 0;
             for (id, g) in old.installed {
@@ -589,13 +860,22 @@ impl Library {
                 l.settings = s;
             }
         }
-        let field = |k: &str| v.get(k).cloned().unwrap_or(Value::Null);
-        l.roms = serde_json::from_value(field("roms")).unwrap_or_default();
-        l.seen_apps = serde_json::from_value(field("seen_apps")).unwrap_or_default();
-        l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
-        l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
-        l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
-        l
+        // Every other field, each one kept when it reads: one that doesn't is left out, not the
+        // rest with it. Taken by what the file has rather than a list here, so a field added later
+        // (the player's pictures, say) isn't lost when the library is read this way.
+        let Some(fields) = v.as_object() else { return l };
+        let mut have = serde_json::to_value(&l).unwrap_or(Value::Null);
+        for (k, val) in fields {
+            if k == "installed" || k == "settings" {
+                continue;
+            }
+            let mut next = have.clone();
+            next[k] = val.clone();
+            if serde_json::from_value::<Library>(next.clone()).is_ok() {
+                have = next;
+            }
+        }
+        serde_json::from_value(have).unwrap_or(l)
     }
 
     pub fn save(&self, dir: &Path) -> std::io::Result<()> {
@@ -608,7 +888,7 @@ impl Library {
     /// Games whose folder can't be found right now: deleted, or on a drive that isn't connected.
     /// They stay in the Library, shown as missing, until the player finds them or takes them out.
     pub fn missing(&self) -> Vec<String> {
-        self.installed.values().filter(|g| !g.path.is_dir()).map(|g| g.id.clone()).collect()
+        self.installed.values().filter(|g| !g.path.is_dir() && !g.installer_waits()).map(|g| g.id.clone()).collect()
     }
 }
 
@@ -662,10 +942,47 @@ mod tests {
     }
 
     #[test]
+    fn the_controller_moves_around_the_desktop_view_by_default_and_for_settings_saved_before_it() {
+        // On keeps what every launcher before the switch did.
+        assert!(super::Settings::default().pad_desktop);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(settings.pad_desktop);
+    }
+
+    #[test]
+    fn the_controller_turned_off_on_the_desktop_view_stays_off() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","pad_desktop":false}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(!restored.pad_desktop);
+    }
+
+    #[test]
+    fn update_all_games_automatically_is_off_by_default_and_for_settings_saved_before_it() {
+        assert!(!super::Settings::default().auto_update_all);
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(!settings.auto_update_all);
+    }
+
+    #[test]
+    fn update_all_games_automatically_turned_on_stays_on() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games","auto_update_all":true}"#).unwrap();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let restored: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert!(restored.auto_update_all);
+    }
+
+    #[test]
     fn run_in_background_is_off_by_default() {
         assert!(!super::Settings::default().close_to_tray);
         let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
         assert!(!settings.close_to_tray);
+    }
+
+    #[test]
+    fn start_with_your_pc_is_off_by_default() {
+        let settings: super::Settings = serde_json::from_str(r#"{"library_dir":"/games"}"#).unwrap();
+        assert!(!settings.start_at_login);
     }
 
     #[test]
@@ -722,6 +1039,197 @@ mod tests {
     }
 
     use super::*;
+
+    /// A library file with one game this launcher can't read (a number saved as text), beside a
+    /// cover the player chose for a game that isn't installed.
+    fn library_with_a_broken_game() -> Value {
+        serde_json::json!({
+            "installed": { "a": { "id": "a", "name": "A", "tag": "v1", "path": "/x/a", "played_secs": "lots" } },
+            "settings": { "library_dir": "/lib" },
+            "arts": { "c": { "cover_file": "/covers/c.png" } }
+        })
+    }
+
+    #[test]
+    fn reading_a_damaged_library_keeps_the_players_pictures() {
+        let l = Library::lenient(&library_with_a_broken_game());
+        assert_eq!(l.arts.get("c").and_then(|a| a.cover_file.clone()), Some(PathBuf::from("/covers/c.png")));
+    }
+
+    #[test]
+    fn a_damaged_library_is_saved_again_with_the_players_pictures() {
+        let d = std::env::temp_dir().join(format!("rl-library-damaged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("library.json"), library_with_a_broken_game().to_string()).unwrap();
+        Library::load(&d);
+        let again = Library::load(&d);
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(again.arts.contains_key("c"));
+    }
+
+    #[test]
+    fn reading_a_damaged_library_keeps_every_field_that_reads() {
+        let mut v = library_with_a_broken_game();
+        v["seen_apps"] = serde_json::json!(["x"]);
+        v["mods"] = serde_json::json!("not a list of mods");
+        let l = Library::lenient(&v);
+        assert_eq!(l.seen_apps, vec!["x".to_string()]);
+        assert!(l.mods.is_empty());
+    }
+
+    #[test]
+    fn reinstall_restores_saved_play_history() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "series".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played {
+            played_secs: 90, last_played: 200, sessions: vec![[110, 90]], set_up: "v1".into(), ..Default::default()
+        });
+        l.put("series", g);
+        l.forget("series").unwrap();
+
+        let saved = serde_json::to_value(&l).unwrap();
+        let mut l: Library = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(Library::lenient(&saved).removed_play_history, l.removed_play_history);
+        l.put("series", Installed { id: "series".into(), ..Default::default() });
+
+        let g = &l.installed["series"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
+        let game = &g.games["first"];
+        assert_eq!((game.played_secs, game.last_played, game.sessions.as_slice()), (90, 200, &[[110, 90]][..]));
+        assert!(game.set_up.is_empty());
+        assert!(l.removed_play_history.is_empty());
+    }
+
+    #[test]
+    fn restored_play_history_adds_to_time_already_there() {
+        let mut l = Library::default();
+        l.put("x", Installed { id: "x".into(), played_secs: 60, last_played: 100, sessions: vec![[40, 60]], ..Default::default() });
+        l.forget("x").unwrap();
+        l.put("x", Installed { id: "x".into(), played_secs: 30, last_played: 300, sessions: vec![[270, 30]], ..Default::default() });
+
+        let g = &l.installed["x"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (90, 300, &[[40, 60], [270, 30]][..]));
+    }
+
+    #[test]
+    fn renamed_project_takes_its_old_play_history() {
+        let mut l = Library::default();
+        l.put("old", Installed { id: "old".into(), played_secs: 60, last_played: 100, ..Default::default() });
+        l.forget("old").unwrap();
+        l.move_play_history("old", "new");
+        l.put("new", Installed { id: "new".into(), ..Default::default() });
+
+        assert_eq!(l.installed["new"].played_secs, 60);
+        assert!(l.removed_play_history.is_empty());
+    }
+
+    fn series_with_two_games() -> Library {
+        let mut l = Library::default();
+        let mut g = Installed { id: "series".into(), played_secs: 150, last_played: 400, sessions: vec![[100, 50], [300, 100]], set_up: "v1".into(), ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 50, last_played: 150, sessions: vec![[100, 50]], set_up: "v1".into(), ..Default::default() });
+        g.games.insert("second".into(), crate::games::Played { played_secs: 100, last_played: 400, sessions: vec![[300, 100]], ..Default::default() });
+        l.installed.insert("series".into(), g);
+        l
+    }
+
+    #[test]
+    fn reset_play_clears_a_recomp_and_its_games() {
+        let mut l = series_with_two_games();
+        let ids = l.reset_play("series").unwrap();
+        assert_eq!(ids, vec!["series", "series--first", "series--second"]);
+        let g = &l.installed["series"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.len()), (0, 0, 0));
+        assert_eq!(g.games["second"].played_secs, 0);
+        assert!(l.play_entries(None, 0).is_empty());
+    }
+
+    #[test]
+    fn reset_play_keeps_setup_state() {
+        let mut l = series_with_two_games();
+        l.reset_play("series").unwrap();
+        assert_eq!(l.installed["series"].set_up, "v1");
+        assert_eq!(l.installed["series"].games["first"].set_up, "v1");
+    }
+
+    #[test]
+    fn reset_play_of_one_game_takes_its_time_off_the_recomp() {
+        let mut l = series_with_two_games();
+        let ids = l.reset_play("series--second").unwrap();
+        assert_eq!(ids, vec!["series--second", "series"]);
+        let g = &l.installed["series"];
+        assert_eq!((g.played_secs, g.last_played, g.sessions.as_slice()), (50, 150, &[[100, 50]][..]));
+        assert_eq!(g.games["second"].played_secs, 0);
+        assert_eq!(g.games["first"].played_secs, 50);
+    }
+
+    #[test]
+    fn reset_play_of_a_game_not_installed_is_none() {
+        let mut l = series_with_two_games();
+        assert!(l.reset_play("other").is_none());
+        assert!(l.reset_play("series--third").is_none());
+    }
+
+    #[test]
+    fn play_entries_cover_installed_games_and_their_games() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "bundle".into(), played_secs: 90, last_played: 200, ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 60, last_played: 150, ..Default::default() });
+        l.put("bundle", g);
+
+        let ids: Vec<String> = l.play_entries(None, 0).into_iter().map(|e| e.game).collect();
+        assert_eq!(ids, ["bundle", "bundle--first"]);
+    }
+
+    #[test]
+    fn play_entries_include_uninstalled_games() {
+        let mut l = Library::default();
+        l.put("gone", Installed { id: "gone".into(), played_secs: 30, last_played: 100, ..Default::default() });
+        l.forget("gone").unwrap();
+
+        let gone = PlayEntry { game: "gone".into(), secs: 30, last: 100, count: 0, longest: 0, recent: vec![] };
+        assert_eq!(l.play_entries(None, 0), [gone]);
+    }
+
+    #[test]
+    fn play_entries_carry_each_games_recent_sessions() {
+        let mut l = Library::default();
+        let mut g = Installed { id: "bundle".into(), played_secs: 90, last_played: 200, sessions: vec![[110, 90]], ..Default::default() };
+        g.games.insert("first".into(), crate::games::Played { played_secs: 60, last_played: 150, sessions: vec![[90, 60]], ..Default::default() });
+        l.put("bundle", g);
+
+        let recent: Vec<Vec<[u64; 2]>> = l.play_entries(None, 0).into_iter().map(|e| e.recent).collect();
+        assert_eq!(recent, [vec![[110, 90]], vec![[90, 60]]]);
+    }
+
+    #[test]
+    fn older_sessions_count_but_are_not_sent() {
+        let mut l = Library::default();
+        let sessions = vec![[10, 500], [100, 60], [200, 30]];
+        l.put("g", Installed { id: "g".into(), played_secs: 590, last_played: 230, sessions, ..Default::default() });
+
+        let e = &l.play_entries(None, 100)[0];
+        assert_eq!((e.count, e.longest, e.recent.as_slice()), (3, 500, &[[100, 60], [200, 30]][..]));
+    }
+
+    #[test]
+    fn play_entries_leave_out_own_builds_and_unplayed_games() {
+        let mut l = Library::default();
+        l.put("local-test", Installed { id: "local-test".into(), played_secs: 30, local: true, ..Default::default() });
+        l.put("fresh", Installed { id: "fresh".into(), ..Default::default() });
+
+        assert!(l.play_entries(None, 0).is_empty());
+    }
+
+    #[test]
+    fn play_entries_for_one_game_only() {
+        let mut l = Library::default();
+        l.put("a", Installed { id: "a".into(), played_secs: 30, ..Default::default() });
+        l.put("b", Installed { id: "b".into(), played_secs: 40, ..Default::default() });
+
+        let ids: Vec<String> = l.play_entries(Some(&["b".to_string()]), 0).into_iter().map(|e| e.game).collect();
+        assert_eq!(ids, ["b"]);
+    }
 
     #[test]
     fn round_trip_and_old_files_still_load() {
@@ -804,4 +1312,87 @@ pub fn unix_path(base: &Path, e: PathBuf) -> PathBuf {
         }
     }
     fixed
+}
+
+#[cfg(test)]
+mod installer_waits_tests {
+    use super::*;
+
+    #[test]
+    fn a_game_whose_installer_waits_for_set_up_is_not_missing() {
+        let mut lib = Library::default();
+        let gone = std::env::temp_dir().join(format!("rl-not-there-{}", std::process::id()));
+        // Downloaded installer, Set Up not run yet: the folder doesn't exist and that's expected.
+        lib.installed.insert("hopper".into(), Installed { id: "hopper".into(), path: gone.clone(), installer: true, installer_setup: "C:/x/HopperSetup.exe".into(), ..Default::default() });
+        // A plain game whose folder is gone is missing.
+        lib.installed.insert("skyracer".into(), Installed { id: "skyracer".into(), path: gone.join("sky"), ..Default::default() });
+        assert_eq!(lib.missing(), vec!["skyracer".to_string()]);
+        // Once its installer ran (no setup waiting) a gone folder is missing again.
+        lib.installed.get_mut("hopper").unwrap().installer_setup.clear();
+        let mut m = lib.missing();
+        m.sort();
+        assert_eq!(m, vec!["hopper".to_string(), "skyracer".to_string()]);
+    }
+}
+
+#[cfg(test)]
+mod mode_tests {
+    use super::*;
+
+    fn picked() -> Installed {
+        Installed { exe: Some(PathBuf::from("bin/hopper.exe")), exe_rules: u8::MAX, ..Default::default() }
+    }
+
+    #[test]
+    fn switching_who_sets_it_up_keeps_the_players_program() {
+        let mut g = picked();
+        g.mode = SetupMode::Own;
+        assert!(g.player_sets_up());
+        // Easy Setup on: only the mode changes; the pick is still there for coming back.
+        g.mode = SetupMode::Easy;
+        assert!(!g.player_sets_up());
+        assert_eq!(g.exe, Some(PathBuf::from("bin/hopper.exe")));
+        assert_eq!(g.exe_rules, u8::MAX);
+    }
+
+    #[test]
+    fn an_installed_game_is_easy_setup_by_its_own_mode() {
+        assert!(!Installed::default().player_sets_up());
+    }
+
+    #[test]
+    fn the_mode_is_written_only_when_it_is_not_easy_setup() {
+        let easy = serde_json::to_value(Installed::default()).unwrap();
+        assert!(easy.get("mode").is_none());
+        let own = serde_json::to_value(Installed { mode: SetupMode::Own, ..Default::default() }).unwrap();
+        assert_eq!(own["mode"], "own");
+    }
+}
+
+#[cfg(test)]
+mod copy_check_tests {
+    use super::*;
+
+    #[test]
+    fn a_copy_read_before_counts_only_while_it_is_the_same_file_unchanged() {
+        let d = std::env::temp_dir().join(format!("rl-copy-check-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let nup = d.join("game.nup");
+        std::fs::write(&nup, b"package").unwrap();
+        let (size, modified) = CopyCheck::stamp(&nup).unwrap();
+        let check = CopyCheck { path: nup.clone(), size, modified, crc32: "e0f3ccfa".into() };
+        assert_eq!(check.still(&nup), Some("e0f3ccfa"));
+        // Another file, even with the same size and time.
+        let other = d.join("other.nup");
+        std::fs::write(&other, b"package").unwrap();
+        assert_eq!(check.still(&other), None);
+        // The same file, changed: read again.
+        std::fs::write(&nup, b"a longer package").unwrap();
+        assert_eq!(check.still(&nup), None);
+        // Gone: nothing to go by.
+        std::fs::remove_file(&nup).unwrap();
+        assert_eq!(check.still(&nup), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

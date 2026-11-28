@@ -1,0 +1,248 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { stepsContext: context, read } = require('./steps-context.cjs');
+const copy = (x) => Object.assign({ needs: 'Your disc', kind: 'iso_or_folder', copy: null, inputs: [], prepare_options: [] }, x);
+const disc = (n, p = null) => ({ id: 'disc' + n, label: 'Disc ' + n, role: 'disc', file: true, active: true, path: p });
+const dlc = (id, p = null) => ({ id, label: id, role: 'dlc', optional: true, file: true, active: true, path: p });
+const vs = (on, extra) => Object.assign({ id: 'vs', label: 'Build tools', required: true, license: { name: 'VS', url: 'https://example.com/vs' }, on }, extra);
+const ids = (m) => m.steps.map((s) => s.id).join(',');
+
+test('a game that needs one file and nothing else is one page', () => {
+  const c = context();
+  const m = c.stepsModel('g', copy(), {});
+  assert.equal(ids(m), 'game');
+  assert.equal(m.missing.length, 1);
+  assert.ok(m.blocked);
+});
+
+test('steps with nothing in them are left out: Discs, Add-ons, Extras only when there is something', () => {
+  const c = context();
+  const su = { needs: 'x', kind: '', inputs: [disc(1), disc(2), dlc('dreams'), { id: 'dlss', label: 'NVIDIA DLSS', role: 'runtime', runtime: true, optional: true, active: true }], prepare_options: [] };
+  const m = c.stepsModel('g', su, {});
+  assert.equal(ids(m), 'game,addons,extras');
+  assert.equal(m.steps[0].name, 'Discs');
+  assert.equal(m.missing.length, 2, 'the DLC and DLSS never hold setup back');
+});
+
+test('a game on four discs counts the copy box as disc 1', () => {
+  const c = context();
+  // (Lost Odyssey: the first disc is the copy box, the other three are disc rows)
+  const su = copy({ needs: 'Disc 1', kind: 'iso', copy: '/d/disc1.iso', inputs: [disc(2, '/d/2.iso'), disc(3, '/d/3.iso'), disc(4)] });
+  const m = c.stepsModel('g', su, {});
+  assert.equal(m.steps[0].name, 'Discs');
+  // (what the left side's "{ready} of {total} discs selected" counts)
+  const discs = c.discRows(m.own);
+  assert.equal(discs.map((r) => r.id).join(','), 'game,disc2,disc3,disc4');
+  assert.equal(discs.filter((r) => r.path).length, 3);
+});
+
+test('a copy found in the folders fills its box, tagged, and Set Up can start', () => {
+  const c = context({ g: { path: '/roms/Game.iso' } });
+  const m = c.stepsModel('g', copy(), {});
+  assert.equal(m.missing.length, 0);
+  const html = c.stepsView('g', copy(), {}, { name: 'Recomp', game: 'Game' });
+  assert.match(html, /<span class="ss-src">Found in your folders<\/span>/);
+  assert.match(html, /Game\.iso/);
+});
+
+test('the copy box is titled with the game it is based on', () => {
+  const c = context();
+  const html = c.stepsView('g', copy(), {}, { name: 'Recomp', game: 'Game' });
+  assert.match(html, /<div class="k"><b>Game<\/b><span title="Your disc">Your disc<\/span>/);
+});
+
+test('a single named input\'s label is said once in its box, under the game\'s name', () => {
+  const c = context();
+  const jar = { id: 'jar', label: 'Your copy: Game.jar', role: 'game', file: true, active: true, path: null, extensions: ['jar'] };
+  const su = { kind: '', inputs: [jar], prepare_options: [] };
+  const html = c.stepsView('g', su, {}, { name: 'Recomp', game: 'Game' });
+  assert.match(html, /<div class="k"><b>Game<\/b><span title="Your copy: Game\.jar">Your copy: Game\.jar<\/span>/);
+});
+
+test('the copy box keeps the same buttons empty or filled', () => {
+  const c = context();
+  const btns = (html) => html.match(/data-ss="(file|folder)"/g).join();
+  const empty = c.stepsView('g', copy(), {}, { name: 'R', game: 'G' });
+  const filled = c.stepsView('g', copy(), { copy: '/roms/G.iso' }, { name: 'R', game: 'G' });
+  assert.equal(btns(empty), btns(filled));
+  assert.doesNotMatch(filled, /data-ss="clear"/, 'choosing again is how the copy changes');
+});
+
+// A Switch recomp whose input takes only a folder (exefs and romfs): its picker shows no .nsp, so
+// the box says why. Only the manifest's formats decide it.
+const FOLDER_HINT = /<span class="ss-hint">This game takes a folder, not a file\.<\/span>/;
+const SWITCH_FILES = () => ({ type: 'file', exts: ['xci', 'nsp', 'nup', 'nca'], folder: false });
+const folderInput = (x) => Object.assign({ id: 'base', label: 'The folder with exefs and romfs', role: 'game', file: false, folder: true, active: true, path: null, extensions: [] }, x);
+const named = (inputs) => ({ needs: 'x', kind: '', inputs, prepare_options: [] });
+// The whole window (stepsShell) draws the game's media too.
+const withMedia = (extra) => context({}, Object.assign({ MediaArt: require('../ui/media-art.js') }, extra));
+
+test('an input that takes only a folder says so in its box, under its label', () => {
+  const c = context();
+  const html = c.stepsView('g', named([folderInput()]), {}, { name: 'R', game: 'G' });
+  assert.match(html, FOLDER_HINT);
+  assert.match(html, /<span title="The folder with exefs and romfs">The folder with exefs and romfs<\/span>/);
+});
+
+test('an input that takes a file or a folder has no folder hint', () => {
+  const c = context();
+  const either = folderInput({ file: true, extensions: ['nsp', 'xci'] });
+  const html = c.stepsView('g', named([either]), {}, { name: 'R', game: 'G' });
+  assert.doesNotMatch(html, FOLDER_HINT);
+  assert.match(html, /<span class="fmt">\.nsp<\/span>/);
+});
+
+test('the folder hint goes once a folder is chosen', () => {
+  const c = context();
+  const html = c.stepsView('g', named([folderInput({ path: '/r/switch/Game' })]), {}, { name: 'R', game: 'G' });
+  assert.doesNotMatch(html, FOLDER_HINT);
+});
+
+test('a folder-only row among several says it takes a folder too', () => {
+  const c = context();
+  const su = named([folderInput(), disc(2)]);
+  const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.match(html, /<div class="ss-row"><span class="st">.*?<b>The folder with exefs and romfs<\/b><div class="line"><span class="ss-hint">/);
+});
+
+test('a folder-only update row says "This takes a folder", not "This game"', () => {
+  const c = context();
+  const update = folderInput({ id: 'upd', label: 'The update, extracted', role: 'update' });
+  const html = c.stepsView('g', named([folderInput(), update]), {}, { name: 'R', game: 'G' });
+  assert.match(html, /<b>The update, extracted<\/b><div class="line"><span class="ss-hint">This takes a folder, not a file\.<\/span>/);
+});
+
+test('a folder-only copy shows none of its console\'s file types', () => {
+  const c = context({}, { copyFormats: SWITCH_FILES });
+  const su = { needs: 'The folder with exefs and romfs', kind: 'folder', copy: null, inputs: [], prepare_options: [] };
+  const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.match(html, FOLDER_HINT);
+  assert.doesNotMatch(html, /\.nsp/);
+});
+
+test('the drop area asks for a folder when that is all the copy takes', () => {
+  const c = withMedia();
+  const html = c.stepsShell('g', named([folderInput()]), {}, { name: 'R', game: 'G' }, false);
+  assert.match(html, /<b>Drop your game&#39;s folder here<\/b>/);
+});
+
+test('the drop area still asks for a folder when the game needs an update too', () => {
+  const c = withMedia({ copyFormats: SWITCH_FILES, copyDrop: () => 'Drop your game file here' });
+  const update = { id: 'upd', label: 'The update', role: 'update', file: true, active: true, path: null, extensions: ['nsp'] };
+  const html = c.stepsShell('g', named([folderInput(), update]), {}, { name: 'R', game: 'G' }, false);
+  assert.match(html, /<b>Drop your game&#39;s folder here<\/b>/);
+});
+
+test('Big Picture shows the same folder hint', () => {
+  const c = withMedia();
+  const html = c.stepsShell('g', named([folderInput()]), {}, { name: 'R', game: 'G' }, true);
+  assert.match(html, FOLDER_HINT);
+});
+
+test('a required extra that is off holds Set Up, and marks the Extras step', () => {
+  const c = context();
+  const su = copy({ copy: '/roms/G.iso', prepare_options: [vs(false)] });
+  const m = c.stepsModel('g', su, { at: 1 });
+  assert.ok(m.reqOff && m.blocked);
+  const html = c.stepsView('g', su, { at: 1 }, { name: 'R' });
+  assert.match(html, /class="s now req"/);
+  assert.match(html, /<span class="su-req-tag">Required<\/span>/);
+  assert.match(html, /Turn on the option marked Required to continue/);
+  assert.match(html, /data-ss="run" disabled/);
+  su.prepare_options[0].on = true;
+  assert.equal(c.stepsModel('g', su, { at: 1 }).blocked, false);
+});
+
+test('the last step says what Set Up starts, in the developer\'s words', () => {
+  const c = context();
+  const su = copy({ copy: '/roms/G.iso', prepare_label: 'Building the game (10 minutes)', build_where: '/home/p/Games/Hop' });
+  const html = c.stepsView('g', su, {}, { name: 'R' });
+  assert.match(html, /<span>Then<\/span><b>Building the game \(10 minutes\)<\/b>/);
+  assert.match(html, /<span>Builds into<\/span><b>\/home\/p\/Games\/Hop<\/b>/);
+});
+
+test('shared keys are their own group and say they are kept once', () => {
+  const c = context();
+  const su = { needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Your game', role: 'game', file: true, active: true, path: '/g.nsp' }, { id: 'prod', label: 'prod.keys', role: 'key', shared: 'switch.prod-keys', file: true, active: true, path: 'kept' }], prepare_options: [] };
+  const html = c.stepsView('g', su, {}, { name: 'R' });
+  assert.match(html, /<p class="ss-cap">Keys <i>/);
+  assert.match(html, /<span class="ss-src shared">Already on this PC<\/span>/);
+});
+
+test('labels and paths from the profile are escaped', () => {
+  const c = context();
+  const su = { needs: 'x', kind: '', inputs: [{ ...disc(1, '/<img>.iso'), label: '<script>bad</script>' }, disc(2)], prepare_options: [{ id: 'o', label: '<b>x</b>', on: true }] };
+  const html = c.stepsView('g', su, {}, { name: '<i>n</i>' }) + c.stepsView('g', su, { at: 1 }, { name: 'n' });
+  assert.doesNotMatch(html, /<script>bad|<img>|<b>x<\/b>|<i>n<\/i>/);
+});
+
+test('the desktop window and the change of an option draw the steps', () => {
+  const app = read('app.js');
+  assert.match(app, /stage: 'steps', named: \{ at: 0, error: note \}/);
+  assert.match(app, /if \(SU\.stage === 'steps'\) return ssDraw\(\);/);
+  assert.match(app, /if \(SU\.stage === 'steps'\) ssDraw\(\);\n\}\);/);
+  assert.match(app, /stepsDrop\(id, paths\[0\], SU\.named\)/);
+  assert.match(read('index.html'), /<script src="setup-inputs\.js"><\/script>\r?\n<script src="setup-steps\.js"><\/script>/);
+});
+
+test('Big Picture opens the same steps: A presses, B goes back a step before it closes', () => {
+  const tv = read('tv.js');
+  assert.match(tv, /Object\.assign\(TS, \{ id, stage: 'steps', named: \{ at: 0 \}/);
+  assert.match(tv, /body = stepsShell\(id, su, TS\.named, a, true\);/);
+  assert.match(tv, /b\.dataset\.key = `ss:\$\{act\}:\$\{input\}`;/);
+  assert.match(tv, /back: \(\) => \{\n\s+if \(TS\.stage !== 'steps' \|\| !\(TS\.named\.at > 0\)\) return false;\n\s+TS\.named\.at -= 1;/);
+  assert.match(tv, /const go = await stepsRun\(id, ns, TS\.optsSaving\);/);
+  assert.doesNotMatch(tv, /namedInputsShell|TS\.stage === 'pick'/);
+});
+
+test('a game whose setup step kept the copy builds again without it, on both screens', async () => {
+  const c = context();
+  const su = copy({ kept: true });
+  const m = c.stepsModel('g', su, {});
+  assert.ok(m.kept);
+  assert.equal(m.missing.length, 0, 'what it kept stands in for the copy');
+  assert.equal(m.blocked, false);
+  const html = c.stepsView('g', su, {}, { name: 'R', game: 'G' });
+  assert.match(html, /<h2>Build It Again<\/h2><p>Your copy isn&#39;t needed: it&#39;s built again from what it kept last time\.<\/p>/);
+  assert.match(html, /data-ss="file"/, 'the copy can still be picked, to build from it instead');
+  assert.match(c.stepsView('g', su, { copy: '/roms/G.nup' }, { name: 'R', game: 'G' }), /<h2>Insert your copy<\/h2>/);
+  c.S.setup.g = su;
+  assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { kept: true });
+  // A copy picked anyway is used: the player chose it.
+  assert.deepEqual({ ...(await c.stepsRun('g', { copy: '/roms/G.nup' }, null)) }, { copy: '/roms/G.nup' });
+  const app = read('app.js'), tv = read('tv.js');
+  assert.match(app, /if \(go\.kept\) return suBegin\('', true\);/);
+  assert.match(tv, /if \(go\.kept\) return tsBegin\('', true\);/);
+  assert.match(app, /const order = \(SU\.kept \? \[\] : \['read', 'verify'\]\)/);
+  assert.match(tv, /const order = \(TS\.kept \? \[\] : \['read', 'verify'\]\)/);
+  assert.match(app, /\/\^NEED_REBUILD\\\|kept\$\/\.test\([^\n]*\) S\.setupNote = null;/);
+});
+
+// #374: a game with its copy (game) and named inputs (dlc, nvidia.dlss) both.
+test('Set Up hands over the copy in its box when the game has named inputs too', async () => {
+  const c = context();
+  c.S.setup.g = copy({ inputs: [dlc('dlc')] });
+  assert.deepEqual({ ...(await c.stepsRun('g', { copy: '/roms/AoE.nsp' }, null)) }, { copy: '/roms/AoE.nsp' });
+});
+
+test('a copy found in the folders is handed over too when the game has named inputs', async () => {
+  const c = context({ g: { path: '/roms/AoE.nsp' } });
+  c.S.setup.g = copy({ inputs: [dlc('dlc')] });
+  assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { copy: '/roms/AoE.nsp' });
+});
+
+test('named inputs without a game copy still start setup_inputs_run alone', async () => {
+  const c = context();
+  c.S.setup.g = { needs: 'x', kind: '', inputs: [disc(1, '/roms/D1.iso')], prepare_options: [] };
+  assert.deepEqual({ ...(await c.stepsRun('g', {}, null)) }, { inputs: true });
+});
+
+test('both screens set a game with named inputs up with setup_inputs_run and the copy', () => {
+  for (const [src, who] of [[read('app.js'), 'SU'], [read('tv.js'), 'TS']]) {
+    const named = `const named = ((S.setup[${who}.id] || {}).inputs || []).length > 0;`;
+    const run = `const run = named ? invoke('setup_inputs_run', { id: ${who}.id, copy: path || null }) : invoke('setup_copy', { id: ${who}.id, path });`;
+    assert.ok(src.includes(named), `${who}: knows the game has named inputs`);
+    assert.ok(src.includes(run), `${who}: starts setup_inputs_run with the copy`);
+    assert.match(src, /kept: !path && !named/);
+  }
+});

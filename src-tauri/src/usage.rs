@@ -18,7 +18,12 @@ fn api() -> String {
 
 /// This launcher's random ID, made the first time it's needed.
 pub fn install_id(dir: &Path) -> String {
-    let f = dir.join("install.id");
+    random_id(dir, "install.id")
+}
+
+/// A random 32-character ID kept in `file` in the data folder, made the first time it's needed.
+pub fn random_id(dir: &Path, file: &str) -> String {
+    let f = dir.join(file);
     if let Ok(s) = std::fs::read_to_string(&f) {
         let s = s.trim().to_string();
         if s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -126,7 +131,7 @@ fn mac_gpu(json: &str) -> (String, String) {
     (name, detail)
 }
 
-#[cfg(all(not(windows), not(target_os = "macos")))]
+#[cfg(all(not(windows), not(target_os = "macos"), not(target_os = "android")))]
 fn read_pc() -> PcInfo {
     let cpu = std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| s.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split(':').nth(1)).map(|x| x.trim().to_string())).unwrap_or_default();
     let ram_gb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| s.lines().next().and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok())).map(|k| ((k as f64) / 1048576.0).round() as u32).unwrap_or(0);
@@ -140,9 +145,24 @@ fn read_pc() -> PcInfo {
     PcInfo { osver, cpu, cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(0), ram_gb, gpu, gpu_driver }
 }
 
+/// An Android phone or handheld: its maker and model, its Android version, its chip and memory,
+/// from the system's own properties (the same ones Settings > About phone shows).
+#[cfg(target_os = "android")]
+fn read_pc() -> PcInfo {
+    let prop = |k: &str| std::process::Command::new("/system/bin/getprop").arg(k).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let ram_gb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| s.lines().next().and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok())).map(|k| ((k as f64) / 1048576.0).round() as u32).unwrap_or(0);
+    let release = prop("ro.build.version.release");
+    let osver = if release.is_empty() { "Android".to_string() } else { format!("Android {release}") };
+    let (maker, model) = (prop("ro.product.manufacturer"), prop("ro.product.model"));
+    // "samsung SM-S921B", without the maker twice when the model already starts with it.
+    let device = if maker.is_empty() || model.to_lowercase().starts_with(&maker.to_lowercase()) { model } else { format!("{maker} {model}") };
+    let chip = [prop("ro.soc.model"), prop("ro.board.platform")].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
+    PcInfo { osver, cpu: [device, chip].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · "), cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(0), ram_gb, gpu: String::new(), gpu_driver: String::new() }
+}
+
 /// The graphics card on Linux, from /sys (no tools needed): NVIDIA, then AMD, then Intel, then
 /// any other, skipping a virtual machine's. Named from the system's PCI list when it has one.
-#[cfg(all(not(windows), not(target_os = "macos")))]
+#[cfg(all(not(windows), not(target_os = "macos"), not(target_os = "android")))]
 fn linux_gpu() -> (String, String) {
     let rd = |p: &Path| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
     let mut cards: Vec<(u32, String, String, String)> = vec![];
@@ -183,7 +203,7 @@ fn linux_gpu() -> (String, String) {
 }
 
 /// A card's name from the system's PCI list ("VanGogh [AMD Custom GPU 0405]" → "AMD Custom GPU 0405").
-#[cfg(all(not(windows), not(target_os = "macos")))]
+#[cfg(all(not(windows), not(target_os = "macos"), not(target_os = "android")))]
 fn pci_name(vendor: &str, device: &str) -> Option<String> {
     let list = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"].iter().find_map(|p| std::fs::read_to_string(p).ok())?;
     pci_lookup(&list, vendor, device)
@@ -595,39 +615,6 @@ pub fn sign_in_needed(code: u16, v: &Value) -> Option<Error> {
     Some(Error::Msg(format!("NEED_SIGNIN|{text}")))
 }
 
-/// The Coming Soon games the signed-in player asked to hear about (one email when each comes out).
-/// Empty when they aren't signed in.
-#[tauri::command]
-pub async fn notifies(app: AppHandle) -> Res<Vec<String>> {
-    let st = app.state::<App>();
-    let Some(t) = token(&st.dir) else { return Ok(vec![]) };
-    let url = pc_api();
-    let req = st.http.get(&url).query(&[("a", "notifies")]).bearer_auth(&t).header("X-RL-Token", t.as_str()).timeout(crate::net::QUICK);
-    let r = crate::net::send(req, &url, true).await?;
-    let v: Value = r.json().await.unwrap_or(Value::Null);
-    Ok(v.get("apps").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default())
-}
-
-/// Notify Me on a Coming Soon game: on (one email when it comes out) or off. The site's own words
-/// when it says no (an email that isn't confirmed yet, say).
-#[tauri::command]
-pub async fn notify(app: AppHandle, id: String, on: bool) -> Res<bool> {
-    let st = app.state::<App>();
-    let t = token(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
-    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
-        return Err(Error::Msg("That isn't a recomp.".into()));
-    }
-    let url = pc_api();
-    let body = format!("a=notify&app={id}&on={}", if on { 1 } else { 0 });
-    let req = st.http.post(&url).header("Content-Type", "application/x-www-form-urlencoded").body(body).bearer_auth(&t).header("X-RL-Token", t.as_str()).timeout(crate::net::QUICK);
-    let r = crate::net::send(req, &url, true).await?;
-    let v: Value = r.json().await.unwrap_or(Value::Null);
-    if !v.get("ok").and_then(Value::as_bool).unwrap_or(false) {
-        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("The website didn't take it. Try again later.").to_string()));
-    }
-    Ok(v.get("on").and_then(|x| x.as_bool().or_else(|| x.as_i64().map(|n| n != 0))).unwrap_or(on))
-}
-
 /// The signed-in player's reports, with what developers answered.
 #[tauri::command]
 pub async fn my_reports(app: AppHandle) -> Res<Value> {
@@ -662,6 +649,33 @@ pub async fn report_reply(app: AppHandle, id: i64, text: String) -> Res<Value> {
         return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("Your answer didn't go through. Try again later.").to_string()));
     }
     Ok(v)
+}
+
+/// The player deletes their own review of a recomp (Edit Your Review, Delete Review): the site takes
+/// back every review the account has of it, with its log and the answers on it. true when there was
+/// one to delete.
+#[tauri::command]
+pub async fn review_delete(app: AppHandle, id: String) -> Res<bool> {
+    let st = app.state::<App>();
+    let t = token(&st.dir).ok_or_else(|| Error::Msg("Sign in to delete your review.".into()))?;
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = pc_api();
+    let req = st.http.post(&url).json(&json!({"a": "feedback-delete", "id": id})).header("X-RL-Token", t).timeout(crate::net::QUICK);
+    let r = crate::net::send(req, &url, true).await?;
+    let code = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if let Some(e) = sign_in_needed(code, &v) {
+        return Err(e);
+    }
+    let ok = v.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    if code >= 400 || !ok {
+        return Err(Error::Msg(v.get("error").and_then(Value::as_str).unwrap_or("Your review couldn't be deleted. Try again later.").to_string()));
+    }
+    // The copy of its reviews kept on this PC has this one in it: asked again the next time.
+    let _ = std::fs::remove_file(st.dir.join("cache/reports").join(format!("{id}.json")));
+    Ok(v.get("removed").and_then(Value::as_bool).unwrap_or(false))
 }
 
 // ---------- Request a recomp: a project link the player wants in the launcher ----------
