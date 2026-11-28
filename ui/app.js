@@ -445,7 +445,8 @@ async function playSync(ids) {
 }
 setInterval(() => { if (!document.hidden) { libSync(); playSync().then((changed) => changed && render(true)); sponsSync(); homeSync(); } }, 10 * 60 * 1000);
 // Sponsor spots in the app for this account, from the website (Sponsors in the admin). Home shows
-// one between Ready to Play and Recently Updated when there is one.
+// one between Ready to Play and Recently Updated when there is one, unless Show sponsored content is
+// off (sponsOff).
 async function sponsSync() {
   const before = JSON.stringify(S.spons || []);
   let s = [];
@@ -456,9 +457,12 @@ async function sponsSync() {
   if (JSON.stringify(s) !== before && S.view === 'home') render(true);
 }
 const sponsFor = (slot) => (S.spons || []).find((x) => x.slot === slot) || null;
+// Show sponsored content off in Settings (desktop or Big Picture): no sponsor spot or banner on
+// Home in either view, and no partner store card on game pages.
+const sponsOff = () => !!((S.settings || {}).ui || {}).hide_buy;
 function sponsBand(slot) {
   const x = sponsFor(slot);
-  if (!x) return '';
+  if (!x || sponsOff()) return '';
   const img = /^https?:/i.test(x.img) ? x.img : SITE + x.img;
   return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(x.id))}" data-sp="${esc(String(x.id))}" aria-label="${esc(x.alt || '')}"><img src="${esc(media(img))}" alt="${esc(x.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(x.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
@@ -2015,7 +2019,7 @@ function homeBox(x) {
 // A banner spot the website placed: what's booked in it, drawn like the App Home Banner.
 function homeBanner(x) {
   const sp = x && x.sp;
-  if (!sp || !sp.id || !sp.img) return '';
+  if (!sp || !sp.id || !sp.img || sponsOff()) return '';
   const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
   return `<section class="shelf sp-band"><button type="button" class="sp-tile" data-act="sp-go" data-id="${esc(String(sp.id))}" data-sp="${esc(String(sp.id))}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" loading="lazy" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
 }
@@ -2615,7 +2619,7 @@ async function loadIg() {
 }
 const igOn = () => !!(IG.data && IG.data.on === true && IG.data.launcher === true);
 function igEntry(a) {
-  if (!a || !igOn() || (S.settings.ui || {}).hide_buy) return null;
+  if (!a || !igOn() || sponsOff()) return null;
   const e = (IG.data.l || {})[a.id];
   return e && typeof e === 'object' && !e.off && e.t ? e : null;
 }
@@ -5479,7 +5483,6 @@ function pageSettings() {
           + row(t('Clock'), t('How times show in the launcher, Big Picture mode and the quick menu.'), clockSelect(ui.clock)))
         + group(t('Catalog'), row(t('Refresh Catalog'), t('Get the newest list of recomps, their releases and their art now, instead of waiting for the next check.'), `<button type="button" class="btn" data-act="refresh">${esc(t('Refresh now'))}</button>`)
           + row(t('Hide AI-assisted recomps'), t('Recomps whose developers used AI tools for code, art, writing or voice won\'t show in the Catalog.'), sw('hide_ai', st.hide_ai, t('Hide AI-assisted recomps')))
-          + (igOn() ? row(t('Show where to buy the original game'), t('A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.'), sw('hide_buy', !ui.hide_buy, t('Show where to buy the original game'), 'ui-toggle')) : '')
           + row(t('Show the AI-assisted tag'), t('The tag on game pages. What the developer used AI for is always in the game\'s Overview.'), sw('show_ai_tag', ui.show_ai_tag, t('Show the AI-assisted tag'), 'ui-toggle'))
           + row(t('Hidden games'), (ui.hidden || []).length ? t('Games you hid from the Catalog and Home. Right-click a game to hide it.') : t('Right-click a game in the Catalog and pick Hide from Catalog to keep it out of the way.'), `<button type="button" class="btn" data-act="hidden-list"${(ui.hidden || []).length ? '' : ' disabled'}>${esc(t('Show Hidden Games'))}</button>`))
         + (S.os === 'windows' ? group(t('Portable'), portableRow(row)) : S.os === 'linux' ? group(t('Windows recomps'), row(t('Play Windows recomps with Proton'), t('Recomps that only have a Windows version install that one and play through Proton. Steam\'s Proton, GE-Proton, umu-launcher and Wine are found on their own.') + ' ' + t('With this off, those recomps are left out of the Catalog, search and game pages.'), sw('proton', st.proton, t('Play Windows recomps with Proton'))) + geRow(row)) : '')
@@ -5489,7 +5492,8 @@ function pageSettings() {
           + row(t('Share anonymous usage stats'), t('When the launcher is open and which recomps are being played, under a random ID that isn\'t linked to you or your account.'), sw('share_stats', st.data_asked && st.share_stats, t('Share anonymous usage stats')))
           + row(t('Your IDs'), S.ids ? tf('Diagnostics {a} · Stats {b}. Quote them to have what was sent removed. A reset starts new ones.', { a: S.ids.usage.slice(0, 8), b: S.ids.stats.slice(0, 8) }) : t('Quote them to have what was sent removed. A reset starts new ones.'), `<span class="set-ctl2"><button type="button" class="btn" data-act="copy-ids">${esc(t('Copy'))}</button><button type="button" class="btn" data-act="reset-ids">${esc(t('Reset'))}</button></span>`))
         + (S.canStartAtLogin ? group(t('Starting up'), row(t('Start with your PC'), startAtLoginNote(), sw('start_at_login', st.start_at_login, t('Start with your PC')))) : '')
-        + group(t('When you close the window'), row(t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'), sw('close_to_tray', st.close_to_tray, t('Close to tray'))));
+        + group(t('When you close the window'), row(t('Close to tray'), t('Keep RecompLauncher running when you close the window. Turn off to exit on close. Quit always exits.'), sw('close_to_tray', st.close_to_tray, t('Close to tray'))))
+        + group(t('Sponsored'), row(t('Show sponsored content'), t('The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.'), sw('hide_buy', !ui.hide_buy, t('Show sponsored content'), 'ui-toggle')));
       break;
     case 'report':
       body = window.reportSection ? window.reportSection(group) : '';
