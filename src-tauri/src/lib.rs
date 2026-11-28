@@ -411,10 +411,6 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let cat = getting_ready(catalog::catalog(&st.http, &st.dir, false), &cancel).await?.data;
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
-    // A Forgejo project's own setup file, so Easy Setup is ready when the download is in.
-    if catalog::is_forgejo(&repo) {
-        catalog::repo_profile(&st.http, &st.dir, &repo, false).await;
-    }
     // Its project is down and the list says so: the release from the RecompLauncher backup (each
     // file checked against its SHA-256). When the backup can't help, its own releases as usual.
     let backup_ok = catalog::backup_on(&entry);
@@ -5460,7 +5456,7 @@ const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero
 /// game, origin, cover, hero, logo), once its releases have a version for this PC. Returns
 /// { id, known, name }.
 #[tauri::command]
-async fn add_github(app: AppHandle, st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
+async fn add_github(_app: AppHandle, st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
     let repo = repo_of_link(&st, &link).await?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
@@ -5513,10 +5509,6 @@ async fn add_github(app: AppHandle, st: State<'_, App>, link: String, info: Opti
         list.retain(|e| str_of(e, "id") != id);
         list.push(entry.clone());
         catalog::save_mine(&st.dir, &list)?;
-    }
-    // A Forgejo project's own setup file, read now so Easy Setup shows for it straight away.
-    if fj && catalog::repo_profile(&st.http, &st.dir, &repo, true).await {
-        let _ = app.emit("profiles-fresh", ());
     }
     Ok(json!({"id": id, "known": false, "name": str_of(&entry, "name")}))
 }
@@ -7977,7 +7969,6 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     if !force {
         if let Some((mut f, stale)) = catalog::catalog_now(&st.dir) {
             merged_mine(&app, &st, &mut f.data);
-            refresh_repo_profiles(&app, &st, &f.data, false);
             move_to_one_road(&st, &f.data);
             if stale {
                 let app = app.clone();
@@ -7998,36 +7989,11 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     // not (one question, and the player's own doing).
     let mut f = if force { net::now(catalog::catalog(&st.http, &st.dir, true)).await? } else { catalog::catalog(&st.http, &st.dir, false).await? };
     merged_mine(&app, &st, &mut f.data);
-    refresh_repo_profiles(&app, &st, &f.data, force);
     move_to_one_road(&st, &f.data);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
     }
     Ok(f)
-}
-
-/// Forgejo projects' own recomplauncher.json, read in the background when it isn't on disk yet or
-/// is old (`force`: the player pressed Refresh). The window hears when one came or changed
-/// ("profiles-fresh"), so Easy Setup shows for it.
-fn refresh_repo_profiles(app: &AppHandle, st: &App, cat: &Value, force: bool) {
-    let due = catalog::repo_profiles_due(&st.dir, cat, force);
-    if due.is_empty() {
-        return;
-    }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let st = app.state::<App>();
-        let mut changed = false;
-        for repo in due {
-            if catalog::repo_profile(&st.http, &st.dir, &repo, true).await {
-                trail::note(format!("Setup file for {repo} read from its project"));
-                changed = true;
-            }
-        }
-        if changed {
-            let _ = app.emit("profiles-fresh", ());
-        }
-    });
 }
 
 /// merge_mine, with the list sent to the window without the entries moved over, and the window
@@ -11104,7 +11070,7 @@ pub fn run() {
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, pads_window_off, pad_right_stick, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,

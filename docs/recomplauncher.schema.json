@@ -232,7 +232,7 @@
     },
     "repo": {
       "type": "string",
-      "description": "Your GitHub repo, owner/name. Only needed for profiles built into the launcher."
+      "description": "Your project's repo, owner/name: says which project the file is for, so a file copied into another project is never used for it."
     },
     "game": {
       "type": "object",
