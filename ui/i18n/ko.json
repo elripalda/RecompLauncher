@@ -2952,6 +2952,7 @@
  "The game was removed during setup.": "설정 중에 게임이 제거되었습니다.",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "게임 폴더에 자체 ReShade 설정이 있어서 런처의 셰이더가 꺼져 있습니다. 셰이더를 쓰려면 폴더에서 ReShade를 빼세요.",
  "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "이 게임의 클라우드 저장이 일시 중지되었습니다. 저장 폴더가 너무 커서 찾아볼 수 없습니다. 다시 켜려면 저장 위치에서 저장 폴더를 고르세요.",
+ "Your save couldn't be copied after you played, so it didn't go to the cloud. If the folder its copies go in can't be written to, pick a Backup Folder on the Saves page, then try again.": "플레이 후 저장 데이터를 복사하지 못해 클라우드에 올라가지 않았습니다. 사본을 두는 폴더에 쓸 수 없다면 저장 데이터 페이지의 백업 폴더에서 다른 폴더를 고른 뒤 다시 시도하세요.",
  "The installer isn't there anymore. Use Update again to download it.": "설치 프로그램이 더 이상 없습니다. 업데이트를 다시 사용해 다운로드하세요.",
  "The launcher's window isn't open.": "런처 창이 열려 있지 않습니다.",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "왼쪽 스틱으로 방향 패드처럼 런처를 이동합니다. 스틱 쏠림이 있거나 마우스처럼 쓴다면 끄세요. 방향 패드는 계속 작동합니다.",

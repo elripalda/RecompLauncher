@@ -2952,6 +2952,7 @@
  "The game was removed during setup.": "เกมถูกนำออกระหว่างการตั้งค่า",
  "The game's folder has its own ReShade settings, so the launcher's shader is off. Take ReShade out of the folder to use shaders.": "โฟลเดอร์ของเกมมีการตั้งค่า ReShade ของตัวเอง เชดเดอร์ของตัวเปิดเกมจึงปิดอยู่ นำ ReShade ออกจากโฟลเดอร์เพื่อใช้เชดเดอร์",
  "Cloud saves for this game are paused: its save folder is too big to look through. Pick its save folder under Where it saves to turn them back on.": "เซฟบนคลาวด์ของเกมนี้หยุดชั่วคราว: โฟลเดอร์เซฟของเกมใหญ่เกินกว่าจะค้นหาได้ เลือกโฟลเดอร์เซฟของเกมที่ ตำแหน่งที่เซฟ เพื่อเปิดใช้อีกครั้ง",
+ "Your save couldn't be copied after you played, so it didn't go to the cloud. If the folder its copies go in can't be written to, pick a Backup Folder on the Saves page, then try again.": "คัดลอกเซฟหลังเล่นไม่ได้ จึงไม่ได้ขึ้นคลาวด์ หากเขียนลงโฟลเดอร์ที่เก็บสำเนาไม่ได้ ให้เลือก โฟลเดอร์ข้อมูลสำรอง ใหม่ที่หน้า เซฟ แล้วลองอีกครั้ง",
  "The installer isn't there anymore. Use Update again to download it.": "ไม่มีตัวติดตั้งแล้ว ใช้ อัปเดต อีกครั้งเพื่อดาวน์โหลด",
  "The launcher's window isn't open.": "หน้าต่างของตัวเปิดเกมไม่ได้เปิดอยู่",
  "The left stick moves around the launcher like the d-pad. Turn it off if your stick drifts or you use it as a mouse; the d-pad still works.": "สติกซ้ายเลื่อนไปมาในตัวเปิดเกมได้เหมือนปุ่มทิศทาง ปิดไว้ถ้าสติกของคุณดริฟต์หรือคุณใช้เป็นเมาส์ ปุ่มทิศทางยังใช้ได้",

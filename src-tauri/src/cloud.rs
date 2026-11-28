@@ -1120,7 +1120,9 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     can_reach(&spots)?;
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
     // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
-    let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
+    let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await?;
+    note_copy(&st.dir, id, &g, copy.as_ref().err());
+    let copy = copy?;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         if let Some(l) = newest_unsent(&st.dir, id, &g) {
             if let Err(e) = upload(app, id, &l.name).await {
@@ -1152,6 +1154,27 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
         }
     }
     Ok(copy)
+}
+
+/// The copy after a session couldn't be written. A fixed text, so the window can translate it.
+const NOT_COPIED: &str = "Your save couldn't be copied after you played, so it didn't go to the cloud. If the folder its copies go in can't be written to, pick a Backup Folder on the Saves page, then try again.";
+
+/// A copy that couldn't be written is kept as the game's problem: its page says why instead of
+/// "Waiting to upload" for good. A game added from the player's own folder keeps its copies
+/// beside that folder, which can be somewhere protected (Program Files, a read-only drive). The
+/// next copy that's made clears it.
+fn note_copy(dir: &Path, id: &str, g: &Installed, failed: Option<&Error>) {
+    let mut s = saves::state(dir, id);
+    let was = s.problem.as_ref().is_some_and(|p| p.kind == "copy");
+    match failed {
+        Some(Error::Io(e)) => {
+            crate::trail::note(format!("Saves: {id}'s copy after playing wasn't made (copies go in {}): {e}", saves::dir_of(dir, id, g).display()));
+            s.problem = Some(saves::Problem { kind: "copy".into(), text: NOT_COPIED.into(), at: crate::library::now() });
+        }
+        None if was => s.problem = None,
+        _ => return,
+    }
+    saves::set_state(dir, id, &s);
 }
 
 /// When this PC's save was made, for the "which save?" choice: the time of the first copy holding
@@ -3027,6 +3050,52 @@ mod status_tests {
         sign_in_for_tests(&d, "A");
         note_failure(&d, "g", &Error::Msg(FULL_TEXT.into()));
         note_folder_too_big(&d, "g", None);
+        assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "full");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_copy_that_cant_be_written_is_said_and_the_next_copy_clears_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmp("not-copied");
+        let app = d.join("app");
+        sign_in_for_tests(&app, "A");
+        // A game added from a folder of the player's: its copies go beside that folder.
+        let protected = d.join("protected");
+        let inst = protected.join("game");
+        std::fs::create_dir_all(inst.join("save")).unwrap();
+        std::fs::write(inst.join("save/slot.sav"), "a save").unwrap();
+        let game = Installed { id: "g".into(), path: inst, files_in_place: true, ..Default::default() };
+        let spots = vec![Spot { template: "{install}/save".into(), from: "catalog" }];
+        let mode = |m| std::fs::set_permissions(&protected, std::fs::Permissions::from_mode(m)).unwrap();
+        mode(0o555);
+        // Root writes there anyway: nothing to check then.
+        if std::fs::write(protected.join("probe"), "").is_ok() {
+            mode(0o755);
+            std::fs::remove_dir_all(d).unwrap();
+            return;
+        }
+        let failed = saves::backup(&app, "g", &spots, &game);
+        note_copy(&app, "g", &game, failed.as_ref().err());
+        let p = saves::state(&app, "g").problem.unwrap();
+        assert_eq!((p.kind.as_str(), p.text.as_str()), ("copy", NOT_COPIED));
+        mode(0o755);
+        let made = saves::backup(&app, "g", &spots, &game);
+        assert!(made.as_ref().unwrap().is_some());
+        note_copy(&app, "g", &game, made.as_ref().err());
+        assert!(saves::state(&app, "g").problem.is_none());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_copy_keeps_other_problems() {
+        let d = tmp("copy-other");
+        sign_in_for_tests(&d, "A");
+        let game = Installed { id: "g".into(), ..Default::default() };
+        note_failure(&d, "g", &Error::Msg(FULL_TEXT.into()));
+        note_copy(&d, "g", &game, None);
+        note_copy(&d, "g", &game, Some(&Error::Msg("A save folder that's too big.".into())));
         assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "full");
         std::fs::remove_dir_all(d).unwrap();
     }
