@@ -27,7 +27,7 @@ function ctx(S) {
     httpsOnly: (u) => (/^https:\/\/\S+$/i.test(String(u || '')) ? String(u) : '')
   });
   vm.runInContext(line('const HOME_ROWS') + line('const HOME_GO') + line('const homeClosed') + line('const HOME_ICONS = {').replace('{', '{};'), c);
-  vm.runInContext(line('const homeIcon') + line('const HOME_TR_BASE'), c);
+  vm.runInContext(line('const homeIcon') + line('const HOME_TR_BASE') + '\n' + line('const sponsOff'), c);
   vm.runInContext(fn('homePlan') + fn('homeLayout') + fn('homeBoxShows') + fn('homeWord') + fn('homeBoxAct') + fn('homeBox') + fn('homeBanner'), c);
   return c;
 }
@@ -88,6 +88,11 @@ test('A banner from the list is drawn with its booking, so its views and clicks 
   const html = page({ v: 1, items: [{ k: 'banner', id: 1, slot: 'app_home', sp: { id: 9, img: '/media/sponsors/a.png', alt: 'Ad', house: false } }], hide: Object.keys(ROWS) });
   assert.match(html, /data-act="sp-go" data-id="9" data-sp="9"/);
   assert.match(html, /src="https:\/\/site\/media\/sponsors\/a.png"/);
+});
+
+test('Show sponsored content off: a booked banner from the list isn\'t drawn', () => {
+  const home = { v: 1, items: [{ k: 'banner', id: 1, slot: 'app_home', sp: { id: 9, img: '/a.png' } }], hide: Object.keys(ROWS) };
+  assert.equal(page(home, { settings: { ui: { hide_buy: true } } }), '');
 });
 
 test('An info box shows its words in the player\'s language when the website translated them', () => {
