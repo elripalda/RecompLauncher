@@ -3656,5 +3656,10 @@
  "Won't Run": "無法執行",
  "Your RecompStore Account": "你的 RecompStore 帳戶",
  "Go Back to This Version": "回到這個版本",
- "Android Games": "Android 遊戲"
+ "Android Games": "Android 遊戲",
+ "Networking": "網路",
+ "Always": "一律",
+ "Never": "從不",
+ "Hide the Site's Name": "隱藏網站名稱",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "適用於依名稱封鎖啟動器網站的網路。為了隱藏名稱，啟動器可能會向 Cloudflare 和 Google 查詢網站的金鑰。自動模式只會在一般連線被封鎖時這麼做。"
 }

@@ -3656,5 +3656,10 @@
  "Won't Run": "Não arranca",
  "Your RecompStore Account": "A tua conta RecompStore",
  "Go Back to This Version": "Voltar a esta versão",
- "Android Games": "Jogos Android"
+ "Android Games": "Jogos Android",
+ "Networking": "Rede",
+ "Always": "Sempre",
+ "Never": "Nunca",
+ "Hide the Site's Name": "Ocultar o nome do site",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Para redes que bloqueiam os sites do launcher pelo nome. Para ocultar o nome, o launcher pode pedir à Cloudflare e à Google a chave do site. Automático só o faz quando a ligação normal está bloqueada."
 }

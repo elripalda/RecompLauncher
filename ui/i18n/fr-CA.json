@@ -1596,5 +1596,10 @@
  "Go Back to This Version": "Revenir à cette version",
  "Players": "joueurs",
  "Size": "taille",
- "Version": "version"
+ "Version": "version",
+ "Networking": "Réseau",
+ "Always": "Toujours",
+ "Never": "Jamais",
+ "Hide the Site's Name": "Masquer le nom du site",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Pour les réseaux qui bloquent les sites du launcher par leur nom. Pour masquer le nom, le launcher peut demander la clé du site à Cloudflare et Google. Automatique ne le fait que si la connexion habituelle est bloquée."
 }

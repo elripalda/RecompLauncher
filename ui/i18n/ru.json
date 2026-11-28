@@ -3656,5 +3656,10 @@
  "Won't Run": "Не запускается",
  "Your RecompStore Account": "Ваш аккаунт RecompStore",
  "Go Back to This Version": "Вернуться к этой версии",
- "Android Games": "Игры для Android"
+ "Android Games": "Игры для Android",
+ "Networking": "Сеть",
+ "Always": "Всегда",
+ "Never": "Никогда",
+ "Hide the Site's Name": "Скрывать имя сайта",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Для сетей, которые блокируют сайты лаунчера по имени. Чтобы скрыть имя, лаунчер может запросить ключ сайта у Cloudflare и Google. В режиме «Автоматически» это происходит, только если обычное подключение заблокировано."
 }

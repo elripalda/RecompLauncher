@@ -653,7 +653,7 @@ mod tests {
     }
 }
 
-// ---------- the proxy (Settings → Network) ----------
+// ---------- the proxy (Settings → Networking) ----------
 
 /// Off, the system's (HTTPS_PROXY / ALL_PROXY / HTTP_PROXY), or the player's own address. Every
 /// request the launcher makes (the list, GitHub, downloads, the website) goes through it.

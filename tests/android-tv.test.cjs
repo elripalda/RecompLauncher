@@ -15,7 +15,7 @@ function settingsContext(os, touch = false) {
     tf: (s, values) => s.replace(/\{(\w+)\}/g, (_, k) => values[k]),
     backdrop: () => '', bar: () => '', region: (s) => s, pageHead: (s, sub) => `${s}|${sub}`,
     homePinned: () => false, bgMode: () => '', langName: () => 'English',
-    svg: () => '', hints: () => '', HEART: '', clockRow: () => '', startAtLoginNote: () => '',
+    svg: () => '', hints: () => '', HEART: '', clockRow: () => '', hideNameItem: () => '', startAtLoginNote: () => '',
   });
   c.window = c;
   c.monitorPicked = () => ''; c.monitorName = () => '';

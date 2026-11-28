@@ -3656,5 +3656,10 @@
  "Won't Run": "起動しない",
  "Your RecompStore Account": "RecompStore アカウント",
  "Go Back to This Version": "このバージョンに戻す",
- "Android Games": "Android ゲーム"
+ "Android Games": "Android ゲーム",
+ "Networking": "ネットワーク",
+ "Always": "常に",
+ "Never": "しない",
+ "Hide the Site's Name": "サイト名を隠す",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "ランチャーのサイトを名前でブロックするネットワーク向けです。名前を隠すため、ランチャーは Cloudflare と Google にサイトの鍵を問い合わせることがあります。自動では、通常の接続がブロックされたときだけ問い合わせます。"
 }

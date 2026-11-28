@@ -305,7 +305,7 @@ fn half() -> u8 {
 pub struct Settings {
     /// Where new games go.
     pub library_dir: PathBuf,
-    /// Settings → Network: "off", "system" (or empty, the default) or "custom", with the custom
+    /// Settings → Networking: "off", "system" (or empty, the default) or "custom", with the custom
     /// address, its user, and its password sealed (secret::seal), never stored in the clear.
     #[serde(default)]
     pub proxy: String,

@@ -3656,5 +3656,10 @@
  "Won't Run": "Çalışmıyor",
  "Your RecompStore Account": "RecompStore hesabın",
  "Go Back to This Version": "Bu sürüme dön",
- "Android Games": "Android Oyunları"
+ "Android Games": "Android Oyunları",
+ "Networking": "Ağ",
+ "Always": "Her zaman",
+ "Never": "Asla",
+ "Hide the Site's Name": "Sitenin adını gizle",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Launcher'ın sitelerini adına göre engelleyen ağlar için. Adı gizlemek için launcher, sitenin anahtarını Cloudflare ve Google'a sorabilir. Otomatik, bunu yalnızca normal bağlantı engellendiğinde yapar."
 }

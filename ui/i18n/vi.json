@@ -3777,5 +3777,10 @@
  "Won't Run": "Không chạy được",
  "Your RecompStore Account": "Tài khoản RecompStore của bạn",
  "Go Back to This Version": "Quay về phiên bản này",
- "Android Games": "Trò chơi Android"
+ "Android Games": "Trò chơi Android",
+ "Networking": "Mạng",
+ "Always": "Luôn luôn",
+ "Never": "Không bao giờ",
+ "Hide the Site's Name": "Ẩn tên trang web",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Dành cho mạng chặn các trang của launcher theo tên. Để ẩn tên, launcher có thể hỏi Cloudflare và Google khóa của trang. Tự động chỉ làm vậy khi cách kết nối thông thường bị chặn."
 }

@@ -144,7 +144,7 @@ impl From<reqwest::Error> for Error {
             Error::Net(format!("Couldn't open a secure connection to {h}. Something on your network or PC may be blocking it: a router's security filter, an antivirus or a VPN."))
         } else if e.is_connect() && net::proxy_shown().is_some() {
             // Through a proxy that didn't answer: that's what to check, not the site.
-            Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Network, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
+            Error::Net(format!("Couldn't reach the proxy {}. Check it in Settings → Networking, or turn the proxy off.", net::proxy_shown().unwrap_or_default()))
         } else if e.is_connect() {
             match site {
                 Some(h) => Error::Net(format!("Couldn't reach {h}. Check your connection, or try again in a minute.")),
@@ -9539,7 +9539,7 @@ fn leave_tv_mode(app: AppHandle) -> Res<()> {
     display::leave_tv_mode(&app).map_err(Error::Msg)
 }
 
-/// Settings → Network: the proxy every request goes through. `pass` None keeps the saved one; the
+/// Settings → Networking: the proxy every request goes through. `pass` None keeps the saved one; the
 /// password is sealed like the other secrets and never comes back to the window.
 #[tauri::command(async)]
 fn set_proxy(st: State<'_, App>, mode: String, url: String, user: String, pass: Option<String>) -> Res<Value> {
@@ -10719,7 +10719,7 @@ pub fn run() {
                     let _ = std::fs::remove_file(d.join(f));
                 }
             }
-            // The player's proxy (Settings → Network): off, the system's, or their own.
+            // The player's proxy (Settings → Networking): off, the system's, or their own.
             {
                 let l = Library::load(&dir);
                 let pass = secret::open(&l.settings.proxy_pass).unwrap_or_default();

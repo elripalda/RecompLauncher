@@ -3656,5 +3656,10 @@
  "Won't Run": "Tidak mau jalan",
  "Your RecompStore Account": "Akun RecompStore kamu",
  "Go Back to This Version": "Kembali ke versi ini",
- "Android Games": "Game Android"
+ "Android Games": "Game Android",
+ "Networking": "Jaringan",
+ "Always": "Selalu",
+ "Never": "Tidak pernah",
+ "Hide the Site's Name": "Sembunyikan nama situs",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Untuk jaringan yang memblokir situs launcher berdasarkan namanya. Untuk menyembunyikan nama itu, launcher bisa meminta kunci situs ke Cloudflare dan Google. Otomatis hanya melakukannya saat cara biasa diblokir."
 }

@@ -3646,5 +3646,10 @@
  "Your RecompStore Account": "Sua conta RecompStore",
  "Go Back to This Version": "Voltar para esta versão",
  "Players": "jogadores",
- "Android Games": "Jogos para Android"
+ "Android Games": "Jogos para Android",
+ "Networking": "Rede",
+ "Always": "Sempre",
+ "Never": "Nunca",
+ "Hide the Site's Name": "Ocultar o nome do site",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Para redes que bloqueiam os sites do launcher pelo nome. Para ocultar o nome, o launcher pode pedir a chave do site ao Cloudflare e ao Google. Automático só faz isso quando a conexão normal está bloqueada."
 }

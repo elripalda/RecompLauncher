@@ -3656,5 +3656,10 @@
  "Won't Run": "Start niet",
  "Your RecompStore Account": "Je RecompStore-account",
  "Go Back to This Version": "Terug naar deze versie",
- "Android Games": "Android-games"
+ "Android Games": "Android-games",
+ "Networking": "Netwerk",
+ "Always": "Altijd",
+ "Never": "Nooit",
+ "Hide the Site's Name": "Naam van de site verbergen",
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Voor netwerken die de sites van de launcher op naam blokkeren. Om de naam te verbergen kan de launcher Cloudflare en Google om de sleutel van de site vragen. Automatisch doet dat alleen als de gewone verbinding wordt geblokkeerd."
 }
