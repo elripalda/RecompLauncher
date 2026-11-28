@@ -4175,8 +4175,7 @@ function suPump() {
     }
     SU.q.shift();
     SU.extras = ev.extras;
-    // `from`: where and when the step's first event came, for its time left (stepLeft).
-    SU.steps[ev.step] = Object.assign({ from: { at: Date.now(), pct: ev.pct || 0 } }, SU.steps[ev.step], ev);
+    SU.steps[ev.step] = stepEvent(SU.steps[ev.step], ev);
     if (ev.step === 'done') { SU.result = ev; profileSaid(SU.id, 'files', true); return suAfterCopy(); }
   }
   suDraw();
@@ -4899,15 +4898,24 @@ async function loadDlHist() {
   if (window.tvRedraw) window.tvRedraw();
 }
 const took = (s) => (s < 60 ? tf('{n} sec', { n: Math.max(1, s) }) : tf('{n} min', { n: Math.round(s / 60) }));
-// A setup step's time left, from how fast its pct has moved since its first event: said only after
+// A setup step's time left, from how fast its pct has moved since `from` (stepEvent): said only after
 // a few seconds and a bit of progress, so the first jumps don't promise too much. A step that sends
 // no pct (Setting it up, a build that prints no progress) says nothing.
-function stepLeft(s) {
+function stepLeft(s, now = Date.now()) {
   const f = s && s.from;
   if (!f || !(s.pct < 1)) return '';
-  const moved = s.pct - f.pct, secs = (Date.now() - f.at) / 1000;
+  const moved = s.pct - f.pct, secs = (now - f.at) / 1000;
   if (moved < 0.02 || secs < 5) return '';
   return tf('{time} left', { time: took(Math.max(1, Math.round((secs * (1 - s.pct)) / moved))) });
+}
+// A setup event merged into its step, desktop and Big Picture alike. `from`: where and when the
+// time left counts from, started again when the pct goes back or the step's text changes (Getting
+// the extras can run several phases, each from 0).
+function stepEvent(prev, ev, now = Date.now()) {
+  const pct = ev.pct || 0;
+  const again = !prev || !prev.from || pct < (prev.pct || 0) || (ev.text != null && ev.text !== prev.text);
+  const from = again ? { at: now, pct } : prev.from;
+  return Object.assign({}, prev, ev, { from });
 }
 // (0.91) Each download's speed over its last minute and a half; its newest point gives the time left on Downloads.
 // A short download barely drew a line with one point a second, so the speed is worked out here from

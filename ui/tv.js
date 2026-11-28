@@ -2585,8 +2585,8 @@
       }
       TS.q.shift();
       TS.extras = ev.extras;
-      // `from` gives the step's time left, as on the desktop (stepLeft, app.js).
-      TS.steps[ev.step] = Object.assign({ from: { at: Date.now(), pct: ev.pct || 0 } }, TS.steps[ev.step], ev);
+      // Its time left, as on the desktop (stepEvent and stepLeft, app.js).
+      TS.steps[ev.step] = stepEvent(TS.steps[ev.step], ev);
       if (ev.step === 'done') {
         TS.result = ev;
         const sid = TS.id;

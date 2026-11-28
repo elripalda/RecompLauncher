@@ -2,42 +2,80 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
 const app = read('app.js'), tv = read('tv.js');
+const fn = (src, name, indent = '') => src.match(new RegExp(`^${indent}(?:async )?function ${name}\\([^]*?^${indent}}`, 'm'))[0];
+const line = (src, re) => src.match(re)[0];
+// took, STEP_QUIET, stepLeft and stepEvent, as app.js has them.
+const left = app.slice(app.indexOf('const took = '), app.indexOf('// (0.91) Each download'));
+const MIN = 60000;
 
-// stepLeft out of app.js, with took and a tf that fills in its values.
-function load() {
-  const start = app.indexOf('const took = ');
-  const end = app.indexOf('// (0.91) Each download');
-  assert.ok(start >= 0 && end > start);
-  const tf = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => v[k]);
-  return new Function('tf', `${app.slice(start, end)} return stepLeft;`)(tf);
+// What both screens need, with a clock the test moves and the intervals it can fire.
+function base() {
+  const c = {
+    clock: 0, ticks: [], toasts: [], closed: [], invoked: [],
+    t: (s) => s, N_: (s) => s, esc: String,
+    tf: (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => v[k]),
+    baseName: (p) => String(p).split('/').pop(),
+    verifyLine: (s, d) => d,
+    byId: () => ({ name: 'Test Game' }),
+    S: { library: {}, setup: {}, view: 'home' },
+    setupClosed: (id) => c.closed.push(id),
+    invoke: (cmd, args) => { c.invoked.push(cmd); return Promise.resolve(); },
+    toast: (s) => c.toasts.push(s),
+    gameMediaHtml: () => '', media: (u) => u, cssUrl: (u) => u, thumbOf: (u) => u,
+    profileSaid: () => {}, render: () => {}, refreshGame: () => {}, sfx: () => {},
+  };
+  c.Date = { now: () => c.clock };
+  c.setInterval = (f) => { c.ticks.push(f); return c.ticks.length; };
+  c.clearInterval = (n) => { if (n) c.ticks[n - 1] = null; };
+  c.setTimeout = () => 0; c.clearTimeout = () => {};
+  c.tick = () => c.ticks.forEach((f) => f && f());
+  return c;
 }
-const ago = (sec) => Date.now() - sec * 1000;
 
-test('half a step in 30 seconds leaves 30 seconds', () => {
-  assert.equal(load()({ pct: 0.5, from: { at: ago(30), pct: 0 } }), '30 sec left');
+// ---------- the estimate itself ----------
+function estimate() {
+  const c = vm.createContext(base());
+  vm.runInContext(left, c);
+  return c;
+}
+
+test('half a step in 30 seconds leaves 30 seconds; a long step says minutes', () => {
+  const c = estimate();
+  assert.equal(c.stepLeft({ pct: 0.5, from: { at: 0, pct: 0 } }, 30000), '30 sec left');
+  assert.equal(c.stepLeft({ pct: 0.25, from: { at: 0, pct: 0 } }, MIN), '3 min left');
+  // The rate counts from `from`, not from 0.
+  assert.equal(c.stepLeft({ pct: 0.6, from: { at: 0, pct: 0.4 } }, 10000), '20 sec left');
 });
 
-test('a long step says minutes', () => {
-  assert.equal(load()({ pct: 0.25, from: { at: ago(60), pct: 0 } }), '3 min left');
+test('nothing is said in the first seconds, for a step with no progress, or a finished one', () => {
+  const c = estimate();
+  assert.equal(c.stepLeft({ pct: 0.5, from: { at: 0, pct: 0 } }, 2000), '');
+  assert.equal(c.stepLeft({ pct: 0, from: { at: 0, pct: 0 } }, 10 * MIN), '');
+  assert.equal(c.stepLeft({ pct: 1, from: { at: 0, pct: 0 } }, MIN), '');
+  assert.equal(c.stepLeft(undefined), '');
 });
 
-test('the rate counts from where the step was when it first showed', () => {
-  assert.equal(load()({ pct: 0.6, from: { at: ago(10), pct: 0.4 } }), '20 sec left');
+test('0 → 1, then 0 → 0.5: the second run is timed on its own', () => {
+  const c = estimate();
+  let s = c.stepEvent(undefined, { pct: 0, text: 'Compiling' }, 0);
+  s = c.stepEvent(s, { pct: 1, text: 'Compiling' }, 10 * MIN);
+  s = c.stepEvent(s, { pct: 0, text: 'Compiling' }, 10 * MIN);
+  s = c.stepEvent(s, { pct: 0.5, text: 'Compiling' }, 10 * MIN + 30000);
+  assert.deepEqual({ ...s.from }, { at: 10 * MIN, pct: 0 });
+  assert.equal(c.stepLeft(s, 10 * MIN + 30000), '30 sec left');
 });
 
-test('nothing is said in the first seconds', () => {
-  assert.equal(load()({ pct: 0.5, from: { at: ago(2), pct: 0 } }), '');
-});
-
-test('a step that sends no progress says nothing', () => {
-  assert.equal(load()({ from: { at: ago(60), pct: 0 } }), '');
-  assert.equal(load()({ pct: 0, from: { at: ago(60), pct: 0 } }), '');
-});
-
-test('a finished step says nothing', () => {
-  assert.equal(load()({ pct: 1, from: { at: ago(60), pct: 0 } }), '');
+test('a new phase (its text changes) is timed on its own too', () => {
+  const c = estimate();
+  let s = c.stepEvent(undefined, { pct: 0, text: 'Downloading' }, 0);
+  s = c.stepEvent(s, { pct: 0.5, text: 'Downloading' }, 10000);
+  s = c.stepEvent(s, { pct: 0.5, text: 'Compiling' }, 10000);
+  s = c.stepEvent(s, { pct: 0.6, text: 'Compiling' }, 110000);
+  // 0.1 in 100 s: 0.4 left is about 7 minutes, not the minute the fast download would say.
+  assert.equal(c.stepLeft(s, 110000), '7 min left');
 });
 
 test('the desktop setup window has Run in Background while it runs', () => {
