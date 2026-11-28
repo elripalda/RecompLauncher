@@ -3657,5 +3657,10 @@
  "Your RecompStore Account": "Tu cuenta de RecompStore",
  "Go Back to This Version": "Volver a esta versión",
  "Android Games": "Juegos de Android",
- "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Para definir también variables para el juego, escríbelas antes de %command%, como en Steam: NAME=value %command% --option."
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Para definir también variables para el juego, escríbelas antes de %command%, como en Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Pon %command% una sola vez en las opciones de inicio.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Antes de %command%, las opciones de inicio solo pueden definir variables, como NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "El nombre de una variable solo puede tener letras, números y _, y no puede empezar por un número.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Los nombres que empiezan por RECOMPLAUNCHER son del launcher, así que las opciones de inicio no pueden definirlos.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "No se pueden leer las opciones de inicio de este juego. Cámbialas en su pestaña Administrar."
 }

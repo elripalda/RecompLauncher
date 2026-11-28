@@ -3657,5 +3657,10 @@
  "Your RecompStore Account": "Ваш акаунт RecompStore",
  "Go Back to This Version": "Повернутися до цієї версії",
  "Android Games": "Ігри для Android",
- "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Щоб задати грі ще й змінні, напиши їх перед %command%, як у Steam: NAME=value %command% --option."
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Щоб задати грі ще й змінні, напиши їх перед %command%, як у Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Вкажи %command% у параметрах запуску лише один раз.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Перед %command% параметри запуску можуть лише задавати змінні, наприклад NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Ім'я змінної може містити лише літери, цифри та _ і не може починатися з цифри.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Імена, що починаються з RECOMPLAUNCHER, належать лаунчеру, тож параметри запуску не можуть їх задавати.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Не вдається прочитати параметри запуску цієї гри. Зміни їх на вкладці «Керування»."
 }

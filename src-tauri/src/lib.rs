@@ -3363,7 +3363,7 @@ fn start_game_with_monitor_context(
     }
     // The player's launch options: their arguments go last, their variables are set after everyone
     // else's below, so what they typed wins.
-    let player = if clean { launch_options::Options::default() } else { launch_options::parse(&g.args).map_err(|e| Error::Msg(format!("{e} Change them on its Manage tab.")))? };
+    let player = if clean { launch_options::Options::default() } else { launch_options::parse(&g.args).map_err(|_| Error::Msg(launch_options::UNREADABLE.into()))? };
     args.extend(player.args.iter().cloned());
     #[cfg(unix)]
     {

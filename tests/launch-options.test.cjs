@@ -36,3 +36,17 @@ test('every language has the new line', () => {
     assert.ok(v && v.includes('%command%') && v.includes('NAME=value'), f);
   }
 });
+
+// The core's reasons are fixed texts (consts), so the window's fail() finds them in every language.
+test('every reason launch options are refused is translated', () => {
+  const rs = fs.readFileSync(path.join(__dirname, '../src-tauri/src/launch_options.rs'), 'utf8');
+  const reasons = [...rs.matchAll(/^pub const [A-Z_]+: &str = "([^"]+)";/gm)].map((m) => m[1]).filter((s) => s !== '%command%');
+  assert.equal(reasons.length, 5);
+  assert.doesNotMatch(rs, /Err\(format!/);
+  const dir = path.join(__dirname, '../ui/i18n');
+  for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !['en-GB.json', 'fr-CA.json'].includes(f))) {
+    const lang = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const r of reasons) assert.ok(lang[r], `${f}: ${r}`);
+  }
+  assert.match(app, /const fail = \(e\) => toast\(t\(String\(e && e\.message \? e\.message : e\)/);
+});
