@@ -2751,7 +2751,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http、https 或 socks5，例如 http://127.0.0.1:7890 或 socks5://host:1080。使用者名稱和密碼為選填。",
  "User": "使用者",
  "Password": "密碼",
- "Network": "網路",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "啟動器要求的去向：清單、GitHub、下載和網站。如果您的網路無法連上 GitHub，請使用 Proxy。",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "移除 NVIDIA DLSS 檔案",

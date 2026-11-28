@@ -2751,7 +2751,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http, https hoặc socks5, ví dụ http://127.0.0.1:7890 hoặc socks5://host:1080. Người dùng và mật khẩu không bắt buộc.",
  "User": "Người dùng",
  "Password": "Mật khẩu",
- "Network": "Mạng",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "Nơi các yêu cầu của trình khởi chạy đi qua: danh sách, GitHub, tải xuống và trang web. Hãy dùng proxy nếu mạng của bạn không vào được GitHub.",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "Gỡ tệp NVIDIA DLSS",

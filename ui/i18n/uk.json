@@ -2751,7 +2751,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http, https або socks5, наприклад http://127.0.0.1:7890 або socks5://host:1080. Користувач і пароль необов'язкові.",
  "User": "Користувач",
  "Password": "Пароль",
- "Network": "Мережа",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "Куди йдуть запити лаунчера: список, GitHub, завантаження й сайт. Увімкни проксі, якщо GitHub недоступний із твоєї мережі.",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "Видалити файл NVIDIA DLSS",

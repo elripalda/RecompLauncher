@@ -2751,7 +2751,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http, https, atau socks5, seperti http://127.0.0.1:7890 atau socks5://host:1080. Pengguna dan kata sandi opsional.",
  "User": "Pengguna",
  "Password": "Kata sandi",
- "Network": "Jaringan",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "Ke mana permintaan launcher dikirim: daftar, GitHub, unduhan, dan situs web. Gunakan proxy jika GitHub tidak bisa dijangkau dari jaringanmu.",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "Hapus file NVIDIA DLSS",

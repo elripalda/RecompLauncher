@@ -2751,7 +2751,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http, https 또는 socks5. 예: http://127.0.0.1:7890 또는 socks5://host:1080. 사용자와 비밀번호는 선택 사항입니다.",
  "User": "사용자",
  "Password": "비밀번호",
- "Network": "네트워크",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "런처의 요청이 가는 곳: 목록, GitHub, 다운로드, 웹사이트. 내 네트워크에서 GitHub에 연결할 수 없을 때 사용하세요.",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "NVIDIA DLSS 파일 제거",

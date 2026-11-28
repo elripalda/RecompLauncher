@@ -2740,7 +2740,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http, https o socks5, como http://127.0.0.1:7890 o socks5://host:1080. El usuario y la contraseña son opcionales.",
  "User": "Usuario",
  "Password": "Contraseña",
- "Network": "Red",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "Por dónde van las solicitudes del lanzador: la lista, GitHub, las descargas y el sitio web. Usa uno si no se puede acceder a GitHub desde tu red.",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "Quitar el archivo de NVIDIA DLSS",

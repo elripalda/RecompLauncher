@@ -2751,7 +2751,6 @@
  "http, https or socks5, like http://127.0.0.1:7890 or socks5://host:1080. User and password are optional.": "http, https หรือ socks5 เช่น http://127.0.0.1:7890 หรือ socks5://host:1080 ชื่อผู้ใช้และรหัสผ่านไม่บังคับ",
  "User": "ผู้ใช้",
  "Password": "รหัสผ่าน",
- "Network": "เครือข่าย",
  "Where the launcher's requests go: the list, GitHub, downloads and the website. Use one if GitHub can't be reached from your network.": "ปลายทางของคำขอจากตัวเปิดเกม: รายการ GitHub การดาวน์โหลด และเว็บไซต์ ใช้พร็อกซีหากเครือข่ายของคุณเข้า GitHub ไม่ได้",
  "NVIDIA DLSS": "NVIDIA DLSS",
  "Remove NVIDIA DLSS File": "ลบไฟล์ NVIDIA DLSS",
