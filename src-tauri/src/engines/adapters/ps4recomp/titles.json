@@ -1,0 +1,74 @@
+[
+  {
+    "title_id": "CUSA05070",
+    "name": "Yakuza 0",
+    "upstream_status": "Playble",
+    "notes": "Starts, settings works, cutscenes and gameplay works in first mission",
+    "cover": "https://image.api.playstation.com/gs2-sec/appkgo/prod/CUSA05133_00/1/i_ed3b9af3bf0b3c64e2f662e54d1be23a16f91f1a1b1ee4e967926a57fc20fd45/i/icon0.png",
+    "hero": "https://image.api.playstation.com/gs2-sec/appkgo/prod/CUSA05133_00/1/i_ed3b9af3bf0b3c64e2f662e54d1be23a16f91f1a1b1ee4e967926a57fc20fd45/i/icon0.png",
+    "source": "https://github.com/wie-project/PS4Recomp/blob/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d/README.md#compatibility-status",
+    "artwork_source": "https://store.playstation.com/en-us/concept/203727",
+    "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json",
+    "title_metadata_sha256": "eef25af776ab951fb027da01eacb81ad9a43a939f14465e6414945268df36816"
+  },
+  {
+    "title_id": "CUSA01113",
+    "name": "Gravity Rush Remastered",
+    "upstream_status": "Playable",
+    "notes": "Boots, menus, cutscenes, gravity shift via DualSense gyro",
+    "cover": "https://image.api.playstation.com/vulcan/img/rnd/202010/2320/2lfQr4uLgI8usrz5anG6a9wC.png",
+    "hero": "https://image.api.playstation.com/vulcan/img/rnd/202010/2822/xfBX6xdqAKBzsPFdoDCHACjz.png",
+    "source": "https://github.com/wie-project/PS4Recomp/blob/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d/README.md#compatibility-status",
+    "artwork_source": "https://store.playstation.com/en-us/concept/226357",
+    "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json",
+    "title_metadata_sha256": "eef25af776ab951fb027da01eacb81ad9a43a939f14465e6414945268df36816"
+  },
+  {
+    "title_id": "CUSA02343",
+    "name": "Uncharted: The Nathan Drake Collection",
+    "upstream_status": "Playable",
+    "notes": "Tested in *Drake’s Fortune* only: intro, cutscenes, gunplay, HUD and 2D overlays at 1080p; the other collection entries are untested.",
+    "cover": "https://image.api.playstation.com/vulcan/img/rnd/202011/1101/zC3kulm2Ho3ZE38ZUYHW7WMK.png",
+    "hero": "https://image.api.playstation.com/vulcan/img/rnd/202011/1101/pU4jqPrzsCsM782XkWn8zXti.png",
+    "source": "https://github.com/wie-project/PS4Recomp/blob/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d/README.md#compatibility-status",
+    "artwork_source": "https://store.playstation.com/en-us/concept/205353",
+    "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json",
+    "title_metadata_sha256": "eef25af776ab951fb027da01eacb81ad9a43a939f14465e6414945268df36816"
+  },
+  {
+    "title_id": "CUSA14836",
+    "name": "Catherine: Full Body",
+    "upstream_status": "In-Game",
+    "notes": "Starts. Has a graphic artifacts",
+    "cover": "https://image.api.playstation.com/cdn/UP2611/CUSA14836_00/Ibf5t8Fwi9IgemaZbVjD6z6724XuNHK8.png",
+    "hero": "https://image.api.playstation.com/cdn/UP2611/CUSA14836_00/vwBWM2cSByMTN05ob5pbtbVTdx8W7mW1.jpg",
+    "source": "https://github.com/wie-project/PS4Recomp/blob/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d/README.md#compatibility-status",
+    "artwork_source": "https://store.playstation.com/en-us/concept/232987",
+    "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json",
+    "title_metadata_sha256": "eef25af776ab951fb027da01eacb81ad9a43a939f14465e6414945268df36816"
+  },
+  {
+    "title_id": "CUSA03173",
+    "name": "Bloodborne: Game of the Year Edition",
+    "upstream_status": "In-Game",
+    "notes": "Starts, settings, cutscenes and character editor works. The gameplay starts",
+    "cover": "https://image.api.playstation.com/vulcan/img/rnd/202011/0713/WSZqsrnejjt85wYmUqeBQvMQ.png",
+    "hero": "https://image.api.playstation.com/vulcan/img/rnd/202010/2614/DbHk1vfm0crso6MJZevAqfLA.png",
+    "source": "https://github.com/wie-project/PS4Recomp/blob/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d/README.md#compatibility-status",
+    "artwork_source": "https://store.playstation.com/en-us/concept/200520",
+    "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json",
+    "title_metadata_sha256": "eef25af776ab951fb027da01eacb81ad9a43a939f14465e6414945268df36816"
+  },
+  {
+    "title_id": "CUSA00557",
+    "name": "The Last of Us Remastered",
+    "upstream_status": "Bootable / In-Game",
+    "notes": "Boots, renders 3D graphics and audio",
+    "cover": "https://image.api.playstation.com/vulcan/img/rnd/202011/1020/FKgazVvG7BcWouCr39mIiXkW.png",
+    "hero": "https://image.api.playstation.com/vulcan/img/rnd/202010/2716/BBqU20XqwVuBXS3F3mvaSiLE.png",
+    "source": "https://github.com/wie-project/PS4Recomp/blob/354fdaeeb02c0ad6258aa7f87c677102e2ccbb2d/README.md#compatibility-status",
+    "artwork_source": "https://store.playstation.com/en-us/concept/228638",
+    "title_metadata_source": "https://github.com/andshrew/PlayStation-Titles/blob/aab201da1730a8373d586110188053b282befecd/Json/PS4_Titles.json",
+    "title_metadata_sha256": "eef25af776ab951fb027da01eacb81ad9a43a939f14465e6414945268df36816"
+  }
+]

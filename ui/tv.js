@@ -1745,7 +1745,7 @@
     const play = gamePlaytime(a);
     const rows = [
       ...checks.map((r) => [r.k, okMark(r.v)]),
-      [esc(t('Version')), esc(g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : (S.held || {})[parentId(id)] ? t('updates paused') : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
+      [esc(t('Version')), esc(g && 'engine_build' in g ? installedVersion(g) : g ? `${g.tag || t('Not known')} · ${g.pinned ? t('picked by you') : S.updates[parentId(id)] ? tf('{v} is out', { v: S.updates[parentId(id)] }) : (S.held || {})[parentId(id)] ? t('updates paused') : t('up to date')}` : a.version ? 'v' + String(a.version).replace(/^v/i, '') : '—')],
       ...(installedScan ? [[esc(t('Safety')), installedScan]] : []),
       ...(g || play?.last_played ? playtimeRows(a, play).map(([label, value]) => [esc(label), esc(value)]) : [[esc(t('Downloads')), esc(a.downloads ? fmtN(a.downloads) : '—')]]),
       ...(modsOk && g ? [[esc(t('Mods')), esc(tf('{n} installed', { n: (S.mods[id].installed || []).length }))]] : []),
@@ -2040,6 +2040,7 @@
   // X on any game: everything you can do with it, in a sheet from the side.
   function gameSheet(id) {
     const a = libAppOf(id), g = S.library[id];
+    const engine = 'engine_build' in (g || {});
     const onPage = GAMEVIEWS.includes(TV.view) && TV.arg === id;
     const pinned = pins().includes(id);
     const m = mainItem(a);
@@ -2070,9 +2071,9 @@
         ...(S.account && S.account.signedIn ? [{ label: cloudOn(g) ? t('Turn off cloud saves') : t('Turn on cloud saves'), sub: cloudOn(g) ? t('Its saves stay on this PC from now on') : t('Its saves go to your account after you play'), icon: 'cloud', run: async () => { try { S.library[id] = await invoke('saves_cloud', { id, on: !cloudOn(g) }); toast(cloudOn(g) ? t('Cloud saves are off for it. What\'s in the cloud stays there.') : t('Cloud saves are on for it.')); } catch (e) { fail(e); } } }] : []),
         ...(window.tvBetaItem && window.tvBetaItem(id) ? [window.tvBetaItem(id)] : []),
         // The same switch as the game's Manage tab on the desktop, and the same skip list under Settings.
-        ...(!g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
-        ...(!g.local && window.holdItem ? [(() => { const on = window.holdItem(id)[0]?.check; return { label: on ? t('Resume Updates') : t('Pause Updates'), sub: on ? ((S.held || {})[id] ? tf('{v} is out', { v: S.held[id] }) : t('It updates like the rest again')) : t('It stays on the version it has'), icon: 'pause', run: async () => { await window.toggleHold(id); draw(true); } }; })()] : []),
-        { label: t('Older releases'), sub: t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
+        ...(!engine && !g.local && window.autoUpdates ? [(() => { const on = window.autoUpdates(id); return { label: on ? t('Turn off automatic updates') : t('Update automatically'), sub: on ? t('Updates wait for you in Downloads') : t('Installs new releases as soon as the launcher finds them. Your saves are backed up first.'), icon: 'refresh', run: async () => { await window.toggleAutoUpdate(id); draw(true); } }; })()] : []),
+        ...(!engine && !g.local && window.holdItem ? [(() => { const on = window.holdItem(id)[0]?.check; return { label: on ? t('Resume Updates') : t('Pause Updates'), sub: on ? ((S.held || {})[id] ? tf('{v} is out', { v: S.held[id] }) : t('It updates like the rest again')) : t('It stays on the version it has'), icon: 'pause', run: async () => { await window.toggleHold(id); draw(true); } }; })()] : []),
+        { label: engine ? t('Versions') : t('Older releases'), sub: engine ? installedVersion(g) : t('Go back to an older one, or forward again'), icon: 'history', run: () => versionsSheet(id) },
         { label: t('Open its folder'), sub: g.path, icon: 'folder', run: () => invoke('open_folder', { id }).catch(fail) },
         ...(!S.running.has(id) && window.hasOwnPlaytime(id) ? [{ label: t('Reset Play Time'), sub: t('Its play time on this PC starts again from zero'), icon: 'history', run: () => { closeSheet(); setTimeout(() => window.resetPlaytime(id), 250); } }] : []),
         ...(!S.running.has(id) && !S.jobs[id] && !S.uninstalling.has(id) ? [{ gap: true, label: t('Uninstall'), sub: t('Take it off this PC'), icon: 'bin', cls: 'danger', run: () => tvUninstall(id) }] : []),
@@ -2451,6 +2452,20 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
+      tsRun: {
+      if ('engine_build' in (S.library[id] || {})) {
+        const event = TS.steps[TS.step] || {};
+        const progress = engineSetupProgress(event.engine_progress || { text: event.text });
+        const old = $('.engine-progress', el);
+        // Keep controller focus on the same action while new measurements come in.
+        if (el.dataset.stage === 'run' && old) {
+          old.outerHTML = progress;
+          return;
+        }
+        body = `${med('is-busy')}<div class="tt"><h2>${esc(a.name)}</h2></div>${progress}
+        <div class="two" style="margin-top:20px"><button type="button" class="tv-btn" data-f data-key="ts:0" data-sheet="0"><span>${esc(t('Run in Background'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Cancel Setup'))}</span></button></div>`;
+        break tsRun;
+      }
       const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
@@ -2468,10 +2483,12 @@
       body = `${med(cur <= 0 ? 'is-in' : 'is-busy')}<div class="tt"><div class="pct">${esc(tf('{pct}%', { pct: Math.floor((have / tot) * 100) }))}</div><p>${esc(tf('Setting up {name}', { name: a.name }))}</p></div>
         <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
         <div class="two" style="margin-top:20px"><button type="button" class="tv-btn" data-f data-key="ts:0" data-sheet="0"><span>${esc(t('Run in Background'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Cancel Setup'))}</span></button></div>`;
+      }
       items = [
         { run: () => {
           TS.stage = 'bg';
           closeSheet();
+          draw(true);
           toast(tf('Setup for {name} will continue in the background.', { name: a.name }));
         } },
         { run: () => {
@@ -2479,6 +2496,7 @@
           if (S.setupJobs) delete S.setupJobs[id];
           TS.stage = 'cancelled';
           closeSheet();
+          draw(true);
           toast(tf('Setup for {name} was cancelled.', { name: a.name }));
         } }
       ];
@@ -2643,14 +2661,23 @@
     }
     tsDraw();
   }
-  T.event.listen('setup', ({ payload: p }) => { if (TV.on && TS.id && p.id === TS.id && TS.stage === 'run') { TS.q.push(p); tsPump(); } });
+  T.event.listen('setup', ({ payload: p }) => {
+    if (!TV.on) return;
+    if (p.id === TS.id && TS.stage === 'run') { TS.q.push(p); tsPump(); }
+    else if ('engine_build' in (S.library[p.id] || {})) soon();
+  });
   window.tvSetup = tvSetup;
-  window.tvSetupBusy = () => !!(TV.on && TS.id);
+  window.tvSetupBusy = (id) => !!(TV.on && TS.id && (!id || TS.id === id));
 
   async function versionsSheet(id) {
+    const g = S.library[id];
+    if ('engine_build' in (g || {})) {
+      const head = engineVersionCard(libAppOf(id), true);
+      closeSheet();
+      return sheet(t('Versions'), [{ label: t('Close'), run: closeSheet }], 'tv-engine-versions', head);
+    }
     let list = [];
     try { list = await invoke('versions', { id }); } catch (e) { return fail(e); }
-    const g = S.library[id];
     // By name, the newest too: with no version the install goes to the one the store let out (#393).
     const items = list.slice(0, 8).map((v) => ({ label: v.name || v.tag, sub: [v.tag, v.newest ? t('the newest') : '', g && g.tag === v.tag ? t('installed') : '', date(v.date)].filter(Boolean).join(' · '), run: () => (g && g.tag === v.tag ? null : startInstall(id, undefined, v.tag)) }));
     if (!items.length) return toast(t('No other versions for this PC.'));

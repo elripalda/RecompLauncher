@@ -5,6 +5,8 @@ src-tauri/gen/*
 !src-tauri/gen/android/
 *.log
 .DS_Store
+__pycache__/
+*.py[cod]
 dist/arch/
 
 # Flatpak build files made by the Flatpak workflow / local builds

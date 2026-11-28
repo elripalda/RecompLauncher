@@ -1,0 +1,15 @@
+{
+  "repository": "boykopovar/AnyPS5",
+  "release": "v0.1.5",
+  "release_revision": "62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+  "retrieved_at": "2026-11-19",
+  "report_cutoff": "2026-11-11T00:00:00Z",
+  "verified_ancestors": {
+    "b11c7bf84f": {
+      "revision": "b11c7bf84f5d2f636ff60166cc3371bd071e24d5",
+      "comparison": "https://api.github.com/repos/boykopovar/AnyPS5/compare/b11c7bf84f5d2f636ff60166cc3371bd071e24d5...62bd7dd61e2b8a7a59262c4c145edff549bae5b9",
+      "ahead_by": 8063,
+      "behind_by": 0
+    }
+  }
+}

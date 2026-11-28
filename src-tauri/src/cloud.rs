@@ -635,6 +635,10 @@ pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
         let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
         return saves::spots(&[], &catalog_saves(&entry, true), g);
     }
+    if g.engine_build.is_some() {
+        let Ok(Some(profile)) = crate::engines::pinned_profile(g) else { return vec![] };
+        return saves::spots(&profile.saves, &[], g);
+    }
     if let Some(p) = own_saves(st, id) {
         // Only the game's own: the recomp's other places are the other games'. Its override too:
         // that's the recomp's, and one folder can't stand in for every game's.
@@ -1913,7 +1917,9 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
         let (target, peers) = {
             let lib = st.lib.lock().unwrap();
             let Some(target) = lib.installed.get(&id).cloned() else { return unavailable() };
-            let peers: Vec<_> = lib.installed.values().filter(|g| g.id != id && title(&g.id) == Some(group)).cloned().collect();
+            // A shared catalog title does not establish compatibility with an engine's save format.
+            if target.engine_build.is_some() { return unavailable(); }
+            let peers: Vec<_> = lib.installed.values().filter(|g| g.engine_build.is_none() && g.id != id && title(&g.id) == Some(group)).cloned().collect();
             (target, peers)
         };
         let available = |id: &str| !crate::setup_busy(id)
@@ -2325,7 +2331,7 @@ mod child_retry_tests {
             Self(App {
                 dir, http: reqwest::Client::new(), lib: Mutex::new(lib), jobs: Mutex::default(),
                 running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
-                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(), uninstalling: Mutex::default(),
+                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Arc::default(), uninstalling: Mutex::default(),
                 overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
             })
         }

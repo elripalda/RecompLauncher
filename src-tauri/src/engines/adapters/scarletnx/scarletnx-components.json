@@ -1,0 +1,18 @@
+{
+  "upstream_revision": "a42871f0304011bb81e86e5437be699e643920dd",
+  "release": "nightly-2026-11-19-a42871f",
+  "packages": {
+    "windows-x64": {
+      "name": "ScarletNX-windows-x86_64.zip",
+      "url": "https://github.com/scarletnx/nightly/releases/download/nightly-2026-11-19-a42871f/ScarletNX-windows-x86_64.zip",
+      "digest": "85c2826f3e49ddb1ecb5727a0a5d34e8059c39e1820ddeb7290a2fb02f9fb1d6",
+      "size": 114405221
+    },
+    "linux-x64": {
+      "name": "ScarletNX-linux-x86_64.AppImage",
+      "url": "https://github.com/scarletnx/nightly/releases/download/nightly-2026-11-19-a42871f/ScarletNX-linux-x86_64.AppImage",
+      "digest": "6e7f43ad8d58cdf688f7667bc56e0c59e2d02d975fef6617a4722f42ee742fc1",
+      "size": 61247740
+    }
+  }
+}

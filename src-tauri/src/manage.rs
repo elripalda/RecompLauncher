@@ -42,6 +42,13 @@ pub fn game_size(p: &Path) -> u64 {
 /// Move a game's folder to `to`. A rename when it's the same drive; otherwise a copy, reporting
 /// bytes as it goes, then the old folder is deleted once everything has been copied.
 pub fn move_dir(from: &Path, to: &Path, report: &dyn Fn(u64, u64)) -> Result<(), Error> {
+    move_with_copy(from, to, report, copy_tree)
+}
+
+pub(crate) type CopyTree = fn(&Path, &Path, &mut u64, u64, &dyn Fn(u64, u64)) -> io::Result<()>;
+
+pub(crate) fn move_with_copy(from: &Path, to: &Path, report: &dyn Fn(u64, u64), copy: CopyTree) -> Result<(), Error> {
+    checked_copy_root(from, to)?;
     if to.exists() && fs::read_dir(to).map(|mut r| r.next().is_some()).unwrap_or(false) {
         return Err(Error::Msg(format!("{} already has files in it.", to.display())));
     }
@@ -58,7 +65,7 @@ pub fn move_dir(from: &Path, to: &Path, report: &dyn Fn(u64, u64)) -> Result<(),
         }
     }
     let mut done = 0u64;
-    let r = copy_tree(from, to, &mut done, total, report);
+    let r = copy(from, to, &mut done, total, report);
     if let Err(e) = r {
         // Half a copy is no use to anyone: take it away and leave the game where it was.
         let _ = fs::remove_dir_all(to);
@@ -68,6 +75,32 @@ pub fn move_dir(from: &Path, to: &Path, report: &dyn Fn(u64, u64)) -> Result<(),
     // open) is only clutter, not a reason to say the move failed.
     let _ = fs::remove_dir_all(from);
     Ok(())
+}
+
+pub(crate) fn checked_copy_root(from: &Path, to: &Path) -> io::Result<PathBuf> {
+    use std::path::Component;
+    let base = from.canonicalize()?;
+    let absolute = if to.is_absolute() { to.to_path_buf() } else { std::env::current_dir()?.join(to) };
+    let mut destination = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            Component::CurDir => continue,
+            Component::ParentDir => { destination.pop(); }
+            Component::Prefix(_) | Component::RootDir => destination.push(part.as_os_str()),
+            Component::Normal(name) => {
+                destination.push(name);
+                match fs::symlink_metadata(&destination) {
+                    Ok(_) => destination = destination.canonicalize()?,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+    }
+    if destination.starts_with(&base) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Choose a destination outside the game's current folder."));
+    }
+    Ok(base)
 }
 
 fn copy_tree(from: &Path, to: &Path, done: &mut u64, total: u64, report: &dyn Fn(u64, u64)) -> io::Result<()> {
@@ -156,7 +189,7 @@ fn without_dots(path: &Path) -> PathBuf {
     out
 }
 
-fn copy_file(src: &Path, dst: &Path, done: &mut u64, total: u64, report: &dyn Fn(u64, u64)) -> io::Result<()> {
+pub(crate) fn copy_file(src: &Path, dst: &Path, done: &mut u64, total: u64, report: &dyn Fn(u64, u64)) -> io::Result<()> {
     let mut i = fs::File::open(src)?;
     let mut o = fs::File::create(dst)?;
     let mut buf = vec![0u8; 1 << 20];
@@ -395,6 +428,27 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
     }
 
+    #[cfg(unix)]
+    #[cfg(unix)]
+    #[cfg(unix)]
+    #[cfg(unix)]
+    #[test]
+    fn move_refuses_a_destination_inside_the_source_before_copying() {
+        let d = tmp("move-inside-source");
+        let source = d.join("game");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("data"), b"data").unwrap();
+        let target = source.join("nested/new");
+        let result = move_dir(&source, &target, &|_, _| {});
+        assert!(matches!(result, Err(Error::Io(ref error)) if error.kind() == io::ErrorKind::InvalidInput));
+        assert!(!source.join("nested").exists());
+        assert_eq!(fs::read(source.join("data")).unwrap(), b"data");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[cfg(unix)]
+    #[cfg(unix)]
     #[test]
     fn a_game_moves_into_a_deep_library_folder() {
         // Past Windows' old 260-character limit, the launcher's own copying still goes through.

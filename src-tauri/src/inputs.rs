@@ -243,8 +243,13 @@ fn key_path(dir: &Path, shared: &str) -> Option<PathBuf> {
 fn id_ok(s: &str) -> bool {
     !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
-/// Managed inputs are not save data, including a secret staged under a custom filename.
+const ENGINE_FILES: &[&str] = &[".engine-work", "Game.app", ".engine-prepared.json", ".engine-prepared.json.tmp", "preparation.log"];
+/// Managed inputs and engine output are excluded from save copies.
 pub fn excluded(g: &Installed, path: &Path) -> bool {
+    if g.engine_build.is_some() && ENGINE_FILES.iter().map(PathBuf::from).chain(g.files.iter().cloned()).any(|s| {
+        let target = g.path.join(s);
+        path.starts_with(&target) || target.canonicalize().ok().zip(path.canonicalize().ok()).is_some_and(|(a, b)| b.starts_with(a))
+    }) { return true; }
     g.input_staged.values().filter(|s| relative(s)).any(|s| {
         let target = g.path.join(s);
         target == path || target.canonicalize().ok().zip(path.canonicalize().ok()).is_some_and(|(a, b)| a == b)

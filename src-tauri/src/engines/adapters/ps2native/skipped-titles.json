@@ -1,0 +1,101 @@
+[
+  {
+    "name": "Gran Turismo 4",
+    "reason": "No unique serial for the selected region; edition needs more evidence.",
+    "candidates": [
+      {
+        "serial": "SCUS-90682",
+        "name": "Gran Turismo 4",
+        "name_en": "",
+        "region": "NTSC-U"
+      },
+      {
+        "serial": "SCUS-97328",
+        "name": "Gran Turismo 4",
+        "name_en": "",
+        "region": "NTSC-U"
+      },
+      {
+        "serial": "SCUS-97563",
+        "name": "Gran Turismo 4",
+        "name_en": "",
+        "region": "NTSC-U"
+      }
+    ],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L99"
+  },
+  {
+    "name": "The Super Dimension Fortress Macross",
+    "reason": "No exact normalized title or full title phrase in primary metadata.",
+    "candidates": [],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L104"
+  },
+  {
+    "name": "Armored Trooper VOTOMS (Japan)",
+    "reason": "No exact normalized title or full title phrase in primary metadata.",
+    "candidates": [],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L109"
+  },
+  {
+    "name": "Kidou Senshi Gundam: Ichinen Sensou (Japan)",
+    "reason": "No exact normalized title or full title phrase in primary metadata.",
+    "candidates": [],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L123"
+  },
+  {
+    "name": "Final Fantasy X International (Japan)",
+    "reason": "No unique serial for the selected region; edition needs more evidence.",
+    "candidates": [
+      {
+        "serial": "SLPM-65115",
+        "name": "ファイナルファンタジーⅩ インターナショナル",
+        "name_en": "Final Fantasy X International",
+        "region": "NTSC-J"
+      },
+      {
+        "serial": "SLPM-66677",
+        "name": "ファイナルファンタジーⅩ インターナショナル [Ultimate Hits]",
+        "name_en": "Final Fantasy X - International [Ultimate Hits]",
+        "region": "NTSC-J"
+      },
+      {
+        "serial": "SLPS-25088",
+        "name": "ファイナルファンタジーⅩ インターナショナル",
+        "name_en": "Final Fantasy X International",
+        "region": "NTSC-J"
+      }
+    ],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L125"
+  },
+  {
+    "name": "College Basketball 2K5",
+    "reason": "No exact normalized title or full title phrase in primary metadata.",
+    "candidates": [],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L128"
+  },
+  {
+    "name": "Auto Modellista (USA)",
+    "reason": "No unique serial for the selected region; edition needs more evidence.",
+    "candidates": [
+      {
+        "serial": "SLUS-20498",
+        "name": "Auto Modellista",
+        "name_en": "",
+        "region": "NTSC-U"
+      },
+      {
+        "serial": "SLUS-20642",
+        "name": "Auto Modellista",
+        "name_en": "",
+        "region": "NTSC-U"
+      }
+    ],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L131"
+  },
+  {
+    "name": "Mister Moskeeto (USA)",
+    "reason": "No exact normalized title or full title phrase in primary metadata.",
+    "candidates": [],
+    "evidence": "https://github.com/exoteric33/ps2-native-recomp/blob/9b0eef16ecd5df327eb23eb5adaf844251c2f29f/README.md#L136"
+  }
+]

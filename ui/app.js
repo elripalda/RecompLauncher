@@ -255,16 +255,16 @@ const autoInstall = () => S.settings.auto_install !== false;
 // Settings → Update All Games Automatically, or the game's own Update automatically. A game turned
 // off in its own Manage tab while Settings has it on is remembered apart (ui.auto_update_skip), so
 // that one game waits for the player; Pause Updates is different: it hides the update altogether.
-// A local build has no releases to update from, so it never updates.
+// Local builds and prepared engine games don't follow project releases.
 const autoUpdateAll = () => !!S.settings.auto_update_all;
 const autoUpSkipped = () => new Set(((S.settings.ui || {}).auto_update_skip || []).filter((x) => typeof x === 'string'));
 function autoUpdates(id) {
   const g = S.library[id];
-  if (!g || g.local) return false;
+  if (!g || g.local || 'engine_build' in g) return false;
   if (g.auto_update) return true;
   return autoUpdateAll() && !autoUpSkipped().has(id);
 }
-const installerDue = (id) => !!(S.library[id] && S.library[id].installer_setup);
+const installerDue = (id) => !!(S.library[id] && !('engine_build' in S.library[id]) && S.library[id].installer_setup);
 // The yellow Set Up: an installer waiting to run. A developer's setup steps are a note on the
 // game's page, never in the way of Play.
 const setupDue = (a) => !!a && installerDue(a.id);
@@ -273,12 +273,12 @@ const setupDue = (a) => !!a && installerDue(a.id);
 // built from the player's copy, or their own build, never reads as not set up.
 const setupStatus = (id) => { const su = S.setup[id]; return su && su !== 'loading' && su.status ? su.status : null; };
 // An Easy Setup game that isn't set up: its main button is Set up instead of Play.
-const easyNotReady = (id) => { const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready && !st.changed; };
+const easyNotReady = (id) => { const g = S.library?.[id]; if (g && 'engine_build' in g) return g.engine_build?.state === 'pending'; const st = setupStatus(id); return S.easy.has(id) && !!st && !st.ready && !st.changed; };
 // Its update changed how it's built (prepare.version): it's set up, and needs a new build to finish
 // the update. Play stays Play, with a line under it, and opens the update window (update-build.js).
 // Not only the catalog's Easy Setup games (S.easy): one brought in by hand builds the same way, and
 // a game the player sets up their own way is never `changed`.
-const updateBuildDue = (id) => { const st = setupStatus(id); return !!st && !st.ready && !!st.changed; };
+const updateBuildDue = (id) => { const st = setupStatus(id); return !('engine_build' in (S.library?.[id] || {})) && !!st && !st.ready && !!st.changed; };
 // Built from the player's copy, which isn't where it was anymore: the core says the game plays
 // without it, so its copy rows say so (desktop and Big Picture) instead of asking for it.
 // After an update, one built again from what its setup step kept doesn't need the copy either.
@@ -2790,8 +2790,11 @@ function gameTabs(a) {
   const id = a.id, inst = S.library[id];
   const su = S.setup[id];
   const local = inst && inst.local && inst.tag !== 'own';
-  const tabs = (local ? [['dev', t('Developer')], ['overview', t('Overview')]] : inst && inst.local ? [['overview', t('Overview')]] : [['overview', t('Overview')]].concat(a.repo ? [['updates', t('Updates')]] : [])).concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.achTabs ? window.achTabs(id) : [], window.pluginTabs ? window.pluginTabs(id) : []);
-  if (!tabs.some(([k]) => k === S.tab)) S.tab = local ? 'dev' : 'overview';
+  const engine = a.engine || 'engine_build' in (inst || {});
+  const updates = (engine || (a.repo && !inst?.local)) ? [['updates', engine ? t('Versions') : t('Updates')]] : [];
+  const base = local && !engine ? [['dev', t('Developer')], ['overview', t('Overview')]] : [['overview', t('Overview')], ...updates];
+  const tabs = base.concat((su && su !== 'loading') || (su === 'loading' && inst && S.easy.has(id)) ? [['settings', t('Game settings'), su && su.beta && su.settings && su.settings.length ? BETA_MARK() : '']] : [], inst && looksHere() ? [['looks', t('Shaders')]] : [], S.mods[id] && S.mods[id] !== 'loading' ? [['mods', t('Mods')]] : [], inst ? [['saves', t('Saves')]] : [], inst ? [['installed', t('Manage')]] : [], window.achTabs ? window.achTabs(id) : [], window.pluginTabs ? window.pluginTabs(id) : []);
+  if (!tabs.some(([k]) => k === S.tab)) S.tab = base[0][0];
   return tabs;
 }
 // ---------- how it runs, by the players' word ----------
@@ -3191,13 +3194,15 @@ function gameDisk(id) {
 }
 function gameStrip(a, inst) {
   const id = a.id, boxes = [];
+  // An engine game is built on this PC, so it has no release file for the store to have scanned.
+  const scanPill = a.engine || 'engine_build' in (inst || {}) ? () => '' : globalThis.scanPill;
   // Version, and how the store checked that release (a player's own game has none). Before installing
   // it's the latest release; with an update ready, the update's check, next to where it goes.
   // Scans are filed under the release's tag ("v1.0.1"), which the list gives apart from its version ("1.0.1").
   const up = inst && !inst.local ? S.updates[id] : '';
   let ver;
   if (inst) {
-    const have = inst.tag || (inst.installer_setup ? t('Not set up yet') : t('Not known'));
+    const have = installedVersion(inst);
     ver = up ? `${esc(have)}<span class="gs-to" aria-label="${esc(t('Update ready'))}">→</span><span class="gs-new">${esc(up)}</span>${scanPill({ id, tag: up, update: true })}`
       : esc(have) + (inst.local || !inst.tag ? '' : scanPill({ id, tag: inst.tag })) + ((S.held || {})[id] ? `<small>${esc(t('updates paused'))}</small>` : '');
   } else {
@@ -3252,6 +3257,8 @@ function gameBody(a) {
       ${a.credits ? `<div class="card"><h3 style="margin-bottom:8px">${esc(t('Credits'))}</h3><div class="md">${md(a.credits)}</div></div>` : ''}
       ${shelf('like', t('More like this'), moreLike(a), { quick: true })}
     </div>`;
+  } else if (S.tab === 'updates' && (a.engine || 'engine_build' in (inst || {}))) {
+    body = engineVersionCard(a);
   } else if (S.tab === 'updates') {
     const r = S.rels[a.repo];
     if (!r) { loadRels(a.repo); body = `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Loading the releases…'))}</p></div></div>`; }
@@ -3294,6 +3301,9 @@ function manageTab(a) {
 }
 // Which version it has, and how it gets the next one.
 function manageUpdateRows(id, inst) {
+  if ('engine_build' in inst) {
+    return [`<div class="set-row"><div class="k"><b>${esc(t('Installed version'))}</b><span>${esc(installedVersion(inst))}</span></div></div>`];
+  }
   const project = `<div class="set-row"><div class="k"><b>${esc(t('Project association'))}</b><span>${esc(inst.local ? t('Untracked · no updates') : inst.repo)}</span></div><button type="button" class="btn" data-act="project-association" data-id="${esc(id)}">${esc(t('Change…'))}</button></div>`;
   if (inst.local) return [project];
   const other = isLab(inst.repo) || isSF(inst.repo);
@@ -3313,6 +3323,7 @@ function manageUpdateRows(id, inst) {
 function manageStartRows(id, inst) {
   const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : null;
   const rows = [easyRow(id), programRow(id, inst)];
+  if ('engine_build' in inst) return engineStartRows(id, inst, rows);
   rows.push(`<div class="set-row"><div class="k"><b>${esc(t('Launch options'))}</b><span>${inst.args ? esc(inst.args) : esc(t('Extra options passed to the game when it starts.'))}</span></div><button type="button" class="btn" data-act="launch-opts" data-id="${esc(id)}">${esc(inst.args ? t('Change') : t('Add'))}</button></div>`);
   if (S.easy.has(id)) {
     const picked = (inst.setup_inputs || {}).game;
@@ -3580,6 +3591,7 @@ async function pickCopy(id, folder) {
 }
 // The game's update, when it needs one beside the copy and it isn't in yet.
 function needsCopySetup(g) {
+  if ('engine_build' in g) return g.engine_build?.state === 'pending';
   // One game of several whose own inputs aren't set up yet (the others still play).
   if (g._sub && g.ready === false) return true;
   // Brought in from a folder where it already plays, or played a while already: its files are there.
@@ -3823,7 +3835,7 @@ async function seenNewOpts(id, list) {
 // An Easy Setup game that's set up: Setup Options is in its "…" menu.
 function canSetUpAgain(id) {
   const su = S.setup[id];
-  return S.easy.has(id) && !!su && su !== 'loading' && !!su.needs && !!(su.copy || su.inputs_ready);
+  return !('engine_build' in (S.library?.[id] || {})) && S.easy.has(id) && !!su && su !== 'loading' && !!su.needs && !!(su.copy || su.inputs_ready);
 }
 // Before it plays: each new option is asked about once. Turn on keeps the tick and opens Set Up
 // Again; Not now keeps it off and the game starts as it is. True when it shouldn't start now.
@@ -4203,6 +4215,7 @@ T.event.listen('setup', ({ payload: p }) => {
       toast(p.text ? setupFailShort(p.text) : t("Setup didn't finish."), true);
       render(true);
       if (S.view === 'game') refreshGame();
+      if (window.tvRefresh) window.tvRefresh();
     }
   } else {
     const started = !S.setupJobs[p.id];
@@ -4245,7 +4258,10 @@ function suDraw() {
   const cov = a.cover ? media(a.cover) : '';
   const mdState = SU.stage === 'convert' ? 'is-busy' : SU.stage === 'run' ? (SU.step === 'read' && Date.now() - SU.at < 900 ? 'is-in' : 'is-busy') : SU.stage === 'ready' || SU.stage === 'update' ? 'is-done' : '';
   let right = '';
-  if (SU.stage === 'run') {
+  if (SU.stage === 'run' && 'engine_build' in (S.library[id] || {})) {
+    const event = SU.steps[SU.step] || {};
+    right = `<span class="kick">${esc(t('Setting up'))}</span><h2>${esc(a.name)}</h2>${engineSetupProgress(event.engine_progress || { text: event.text })}`;
+  } else if (SU.stage === 'run') {
     const order = (SU.kept ? [] : ['read', 'verify']).concat(SU.extras ? ['extras'] : [], ['setup']);
     const st = SU.steps;
     const sub = {
@@ -4990,11 +5006,13 @@ function dlTitle(builds, buildsWaiting) {
 // Building the game, with its % once the build step runs; a setup with no build step of its own is
 // Setting up. Before the build step the bar only moves (pct 0).
 function setupProg(ev) {
+  if (ev.engine_progress) return engineSetupProg(ev);
   const pct = ev.step === 'extras' ? Math.min(100, Math.max(0, Math.round((ev.pct || 0) * 100))) : 0;
   return { label: ev.extras ? t('Building the game') : t('Setting up'), pct };
 }
 // The same in one line: "Building the game · 42%".
 function setupLine(ev) {
+  if (ev.engine_progress) return setupProgressLabel(ev);
   const sp = setupProg(ev);
   return sp.pct ? tf('Building the game · {pct}%', { pct: sp.pct }) : sp.label;
 }
@@ -6357,7 +6375,7 @@ function holdUpdates() {
 }
 function holdItem(id) {
   const g = S.library[id];
-  if (!g || g.local) return [];
+  if (!g || g.local || 'engine_build' in g) return [];
   return [{ act: 'hold-up', id, label: t('Pause Updates'), icon: 'pause', check: heldIds().has(id) }];
 }
 async function toggleHold(id) {
@@ -6383,7 +6401,7 @@ window.toggleAutoUpdate = toggleAutoUpdate;
 // when Settings doesn't already cover it.
 async function toggleAutoUpdate(id) {
   const g = S.library[id];
-  if (!g) return;
+  if (!g || g.local || 'engine_build' in g) return;
   const on = !autoUpdates(id);
   const all = autoUpdateAll();
   const setOwn = on ? !all : !!g.auto_update;
@@ -6428,7 +6446,8 @@ function afterCatalog() {
 // download it had started), so that check's answer still applies to it.
 function stillChecked(id, was) {
   const g = S.library[id];
-  if (!g || !was || g.local || g.pinned || g.installer_setup) return false;
+  // A prepared engine game keeps its pinned build: release updates never apply to it.
+  if (!g || !was || g.local || g.pinned || g.installer_setup || 'engine_build' in g) return false;
   // A download started since shows here at once. One that's done shows in the keys below: every
   // download writes a new install record, with a new updated_at.
   if (was.download !== (S.dlArgs || {})[id]) return false;
@@ -6512,7 +6531,11 @@ function applyEasySkip() {
   const ui = S.settings.ui || {}, skip = new Set(ui.easy_skip || []), lib = S.library || {};
   const record = (id) => lib[id] || (typeof parentId === 'function' ? lib[parentId(id)] : undefined);
   const own = (id) => { const g = record(id); return g ? g.mode === 'own' : !!ui.easy_skip_all || skip.has(id); };
-  S.easy = new Set([...(S.easyAll || [])].filter((id) => !own(id)));
+  S.easy = new Set([...(S.easyAll || [])].filter((id) => {
+    const g = record(id);
+    if (g && 'engine_build' in g) return true;
+    return !own(id);
+  }));
 }
 // Settings → Start with your PC (desktop and Big Picture). The system's own startup list changes
 // first, and the switch shows what the system took: a Flatpak's desktop can ask the player first.
@@ -7108,6 +7131,7 @@ function exePath(inst) {
 // Easy Setup. Turning it back on keeps an executable the player picked, for switching back. Only on
 // games Easy Setup can do. The Settings switch is for new games, so it never hides this one.
 function easyRow(id) {
+  if ('engine_build' in (S.library?.[id] || {})) return '';
   if (!S.easyAll || !S.easyAll.has(id)) return '';
   const sub = t('The launcher sets this game up with your copy. Off: you set it up yourself.');
   return `<div class="set-row" id="easy-row"><div class="k"><b>${esc(t('Easy Setup'))}</b><span>${esc(sub)}</span></div><button type="button" class="switch" role="switch" aria-checked="${S.easy.has(id)}" aria-label="${esc(t('Easy Setup'))}" data-act="easy-skip" data-id="${esc(id)}"></button></div>`;
@@ -7117,8 +7141,11 @@ function easyRow(id) {
 // pick as it is, that the player manages the install (the pill). The way back is the Easy Setup
 // switch above it; Use Default only where that switch isn't (a game Easy Setup can't do).
 function programRow(id, inst) {
-  const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
   const path = exePath(inst);
+  if ('engine_build' in inst) {
+    return path ? `<div class="set-row exe-row"><div class="k"><b>${esc(t('Game Executable'))}</b><div class="path-box" title="${esc(path)}"><bdi>${esc(path)}</bdi></div></div></div>` : '';
+  }
+  const mine = selfManaged(id), easy = S.easyAll && S.easyAll.has(id);
   const sub = mine ? t('Play starts this file as it is. You manage this install, and Easy Setup is skipped.')
     : easy ? t('The file Play starts. Pick the game\'s own executable to manage it yourself: Play then starts just that file, without Easy Setup.')
       : t('The file Play starts.');
@@ -7754,6 +7781,7 @@ async function playGame(id, program) {
   if (S.missing && S.missing.has(parentId(id))) return missingModal(parentId(id));
   // Another game of the same recomp is running: one at a time, since they share one install.
   if (subOf(id) && S.running.has(parentId(id)) && !S.running.has(id)) return toast(tf('{name} is running. Close it first to play another of its games.', { name: (S.library[parentId(id)] || {}).name || '' }), true);
+  if (S.library[id]?.engine_build?.state === 'pending') return setupModal(id);
   if (installerDue(id)) return installerModal(id);
   // Its update needs a new build first: the update window builds it, then starts the game.
   if (updateBuildDue(id)) return updateBuildModal(id);
@@ -8872,18 +8900,19 @@ async function crashModal(p) {
   const details = `${g.name} ${g.tag || ''} closed with code ${codeShown} after ${p.secs} s on ${OS_NAME[S.os]} (RecompLauncher ${S.version}).` + (log ? `\n\n${log[0]}:\n${log[1]}` : '');
   // The game said it couldn't open one of its own files (the player's copy isn't where it looks).
   const EXT = '(?:xex|rpx|rpl|elf|dol|iso|wbfs|rvz|gcm|xci|nsp|nca|z64|n64|v64|bin|cue|chd|cso|pbp|xbe|self|sprx|szs|arc|pak|rarc|cpk|afs)';
+  const customArgs = !('engine_build' in g);
   // ReXGlue recomps ask for the game's files with --game_data_root: the player picks the folder once.
-  const needRoot = /--game_data_root was not provided/i.test(String((log && log[1]) || '') + ' ' + String(p.said || ''));
+  const needRoot = customArgs && /--game_data_root was not provided/i.test(String((log && log[1]) || '') + ' ' + String(p.said || ''));
   // Or the folder it was told about isn't there anymore (moved, renamed or deleted).
-  const gone = String((log && log[1]) || '').match(/game_data_root does not exist:\s*([^\r\n]+)/i);
+  const gone = customArgs && String((log && log[1]) || '').match(/game_data_root does not exist:\s*([^\r\n]+)/i);
   const said = String((log && log[1]) || '') + '\n' + String(p.said || '');
   // A folder it asks for on its command line ("--game <folder with code/ content/ meta/>"), or the
   // one already given there that doesn't have the file it looked for (default.xex one folder
   // down): the player picks it, and the launcher finds the right folder inside.
   let rootFlag = needRoot || gone ? '--game_data_root' : '', need = needRoot || gone ? ['default.xex'] : [];
-  const ask = !rootFlag && said.match(/(--[a-z][\w-]*)[ =]<([^>]*\b(?:folder|dir|directory|path)\b[^>]*)>/i);
+  const ask = customArgs && !rootFlag && said.match(/(--[a-z][\w-]*)[ =]<([^>]*\b(?:folder|dir|directory|path)\b[^>]*)>/i);
   if (ask) { rootFlag = ask[1]; need = (ask[2].match(/[\w.-]+(?=\/)/g) || []); }
-  const gotFlag = !rootFlag && String(g.args || '').match(/(--[\w-]*(?:root|dir|path|game|data)[\w-]*)[ =]("[^"]*"|\S+)/i);
+  const gotFlag = customArgs && !rootFlag && String(g.args || '').match(/(--[\w-]*(?:root|dir|path|game|data)[\w-]*)[ =]("[^"]*"|\S+)/i);
   // The graphics card or its driver can't run it.
   const gpu = /no Vulkan [\d.]+ device|vkCreateDevice\b[^\n]{0,80}failed|renderer init failed|doesn't implement the VK_KHR_surface|unable to create a d3d12 device|volkInitialize failed|vkCreateInstance failed|VK_ERROR_INCOMPATIBLE_DRIVER|vulkan (?:is )?not (?:supported|available)|does not support vulkan|failed to (?:create|initiali[sz]e) (?:the )?(?:vulkan|d3d12|directx 12)|unable to initiali[sz]e direct3d 12|unable to find (?:any )?devices? that supports? vulkan|\bvk[A-Z]\w+(?: could)? not (?:be )?located|Vulkan [\d.]+ is required,? but only|Required (?:Vulkan )?extensions are missing|unable to create (?:a )?vulkan instance|FeatureNotPresent|ErrorFeatureNotPresent|VK_ERROR_FEATURE_NOT_PRESENT/i.test(said);
   // OpenGL in particular: often a game that can draw another way, in its Game settings.
@@ -8933,9 +8962,9 @@ async function crashModal(p) {
   const madeOnly = dllOwn && made.length > 0;
   if (madeOnly) dllOwn = false;
   // It didn't understand the player's Launch options.
-  const badOpts = !!String(g.args || '').trim() && /unknown (?:option|argument|flag|parameter)|unrecognized (?:option|argument|command.line)|invalid (?:option|argument)|unexpected argument/i.test(said);
+  const badOpts = customArgs && !!String(g.args || '').trim() && /unknown (?:option|argument|flag|parameter)|unrecognized (?:option|argument|command.line)|invalid (?:option|argument)|unexpected argument/i.test(said);
   // It printed how it wants to be started (it needs the player's files passed to it).
-  const usage = !rootFlag && !badOpts && /^\s*usage:/im.test(said);
+  const usage = customArgs && !rootFlag && !badOpts && /^\s*usage:/im.test(said);
   // It printed how it's used and stopped at once: most often one of the game's tools (a converter,
   // a patcher) started instead of the game.
   const toolRan = usage && p.secs < 5;
@@ -9660,6 +9689,7 @@ function renameModal(id) {
 }
 function launchOptions(id) {
   const g = S.library[id];
+  if (!g || 'engine_build' in g) return;
   const m = modal(`<h2>${esc(tf('Launch options for {name}', { name: g.name }))}</h2><p>${esc(t('Added after everything else when the game starts. Put a setting with spaces in quotes.'))}</p>
     <input class="field" id="lo" type="text" value="${esc(g.args || '')}" placeholder="--example" spellcheck="false" autocomplete="off" aria-label="${esc(t('Launch options'))}">
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Save'))}</button></div>`, async (x, close) => {
@@ -10583,6 +10613,13 @@ T.event.listen('install', ({ payload: p }) => {
       // Auto-Install off (Settings → Updates): nothing opens by itself; Set Up on its page starts it.
       const auto = autoInstall();
       const after = () => {
+        // Engine setup needs the registered pending install so both views use its saved inputs.
+        if (byId(id)?.engine) {
+          return refreshState().then(() => {
+            if (auto && !busy) return setupModal(id);
+            toast(tf('{name} is installed. Set it up from its page.', { name }));
+          }).catch(fail);
+        }
         // Only an installer: its Set Up opens to run it (an update's too).
         if (isInstallerApp(byId(id))) { if (auto && !busy && !document.body.classList.contains('tv-on')) refreshState().then(() => { if (installerDue(id)) installerModal(id); }); else toast(tf('{name} is downloaded. Press Set Up to run its installer.', { name })); }
         // An update never opens the setup by itself: its files were asked for when it was first set up, and Play asks again if they're missing.
