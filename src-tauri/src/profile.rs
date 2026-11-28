@@ -876,6 +876,50 @@ pub fn find(game_dir: &Path, tag: &str, entry: &Value) -> Option<Profile> {
     Some(p)
 }
 
+/// `find` for an installed game. Once the catalog has moved on to a newer release, the copies this
+/// install kept of its own release's file (and of our profile pinned to it) stand in for the
+/// catalog's, so a newer release coming out takes nothing away from it: it's still that release's
+/// file, never another version's. And a game moved to Set Up by You (one_road.rs) never takes a
+/// profile of ours again: it starts with its program and its launch options only.
+pub fn find_for(g: &crate::library::Installed, entry: &Value) -> Option<Profile> {
+    let at = entry.get("tag").and_then(Value::as_str).unwrap_or("");
+    let kept;
+    let entry = if !g.tag.is_empty() && at != g.tag && (g.release_file.is_some() || g.ours_file.is_some()) {
+        let mut e = entry.clone();
+        e["tag"] = Value::String(g.tag.clone());
+        if let Some(f) = &g.release_file {
+            e["launcher"] = f.clone();
+            e["launcher_from"] = Value::String("release".into());
+        }
+        if let Some(o) = &g.ours_file {
+            e["ours"] = o.clone();
+        }
+        kept = e;
+        &kept
+    } else {
+        entry
+    };
+    let p = find(&g.path, &g.tag, entry)?;
+    if g.one_road == "moved" && matches!(p.origin, Origin::Store | Origin::Boot) {
+        return None;
+    }
+    Some(p)
+}
+
+/// What an installed game should keep from the catalog while it's at the game's own release: the
+/// release's file and our profile pinned to it. None: nothing new to keep.
+pub fn copies_to_keep(g: &crate::library::Installed, entry: &Value) -> Option<(Option<Value>, Option<Value>)> {
+    if g.tag.is_empty() || entry.get("tag").and_then(Value::as_str) != Some(g.tag.as_str()) {
+        return None;
+    }
+    let release = (entry.get("launcher_from").and_then(Value::as_str) == Some("release")).then(|| entry.get("launcher").cloned()).flatten();
+    let ours = entry.get("ours").filter(|o| o.get("tag").and_then(Value::as_str) == Some(g.tag.as_str())).cloned();
+    if release == g.release_file && ours == g.ours_file {
+        return None;
+    }
+    Some((release, ours))
+}
+
 /// `find`'s choice, as the files are written (before the older `game` field is read as an input).
 fn find_as_written(game_dir: &Path, tag: &str, entry: &Value) -> Option<Profile> {
     let release = if tag.is_empty() { entry.get("tag").and_then(Value::as_str).unwrap_or("") } else { tag };
@@ -930,7 +974,10 @@ fn with_ours(mut base: Value, origin: Origin, ours: &Value) -> Option<Profile> {
     let mut filled = vec![];
     if let (Some(b), Some(o)) = (base.as_object_mut(), ours.as_object()) {
         for (k, v) in o {
-            if !b.contains_key(k) && !matches!(k.as_str(), "format" | "$schema" | "repo") {
+            // What it starts and the copy it takes decide what Easy Setup is: those stay the project's
+            // own (or missing), never ours on top of their file, so Easy Setup is never credited to
+            // them for our parts.
+            if !b.contains_key(k) && !matches!(k.as_str(), "format" | "$schema" | "repo" | "start" | "game" | "inputs") {
                 b.insert(k.clone(), v.clone());
                 filled.push(k.clone());
             }
@@ -3728,6 +3775,50 @@ mod tests {
         assert_eq!(p.start.unwrap().program, ["game.exe"]);
         assert!(p.settings.is_empty(), "the project's own (empty) settings stay theirs");
         assert_eq!(p.saves, ["{local}/Game"]);
+        assert_eq!(p.ours_parts, ["saves"]);
+    }
+
+    #[test]
+    fn an_install_keeps_its_own_releases_file_when_a_newer_release_is_out() {
+        let v2 = release_entry();
+        let mut g = crate::library::Installed { id: "x".into(), tag: "v2".into(), ..Default::default() };
+        let (release, ours) = copies_to_keep(&g, &v2).unwrap();
+        g.release_file = release;
+        g.ours_file = ours;
+        assert!(copies_to_keep(&g, &v2).is_none(), "kept once, nothing new the second time");
+        // v3 is out: the catalog carries v3's file, and the v2 install still gets v2's own.
+        let v3 = serde_json::json!({ "tag": "v3", "launcher_from": "release", "launcher": { "format": 1, "start": { "program": ["new.exe"] } } });
+        let p = find_for(&g, &v3).unwrap();
+        assert_eq!(p.origin, Origin::Release);
+        assert_eq!(p.start.unwrap().program, ["game.exe"]);
+        assert!(copies_to_keep(&g, &v3).is_none(), "the catalog at another release keeps nothing");
+    }
+
+    #[test]
+    fn a_game_moved_to_set_up_by_you_never_takes_our_profile_again() {
+        let store = serde_json::json!({ "tag": "v1", "launcher_from": "store", "launcher": { "format": 1, "start": { "program": ["game.exe"], "args": ["--disc", "{game}"] } } });
+        let mut g = crate::library::Installed { id: "x".into(), tag: "v1".into(), ..Default::default() };
+        assert_eq!(find_for(&g, &store).unwrap().origin, Origin::Store);
+        // Its start is in its launch options now: Play adds nothing of ours, so nothing comes twice.
+        g.one_road = "moved".into();
+        assert!(find_for(&g, &store).is_none());
+        // The project's own file still counts.
+        assert_eq!(find_for(&g, &release_entry()).map(|p| p.origin), None, "another release's file isn't this install's");
+        g.tag = "v2".into();
+        assert_eq!(find_for(&g, &release_entry()).unwrap().origin, Origin::Release);
+    }
+
+    #[test]
+    fn our_profile_never_adds_what_decides_easy_setup_to_the_projects_file() {
+        let e = serde_json::json!({
+            "tag": "v2", "launcher_from": "release",
+            "launcher": { "format": 1, "settings": [] },
+            "ours": { "tag": "v2", "profile": { "format": 1, "start": { "program": ["ours.exe"] }, "game": { "kind": "iso", "label": "Disc" },
+                "inputs": [{ "id": "game", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }], "saves": ["{local}/G"] } },
+        });
+        let p = find_as_written(Path::new(""), "", &e).unwrap();
+        assert!(p.start.is_none() && p.game.is_none() && p.inputs.is_empty());
+        assert!(!p.easy_setup(), "no Easy Setup credited to the project from our parts");
         assert_eq!(p.ours_parts, ["saves"]);
     }
 

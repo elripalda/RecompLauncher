@@ -256,6 +256,13 @@ pub struct Installed {
     /// once the catalog stops carrying our profile).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub one_road: String,
+    /// The catalog's copy of this release's own recomplauncher.json (and our profile, when one is
+    /// pinned to this release), kept while the catalog is at this release: once a newer release is
+    /// out, the catalog carries that one's, and this install still gets its own (profile::find_for).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_file: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ours_file: Option<serde_json::Value>,
     /// The files Easy Setup read whole, by input id, and what it read: Set Up Again with the same
     /// file, unchanged since, doesn't read it all again (a Switch 2 package is over 20 GB).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
