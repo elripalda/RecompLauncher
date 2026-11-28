@@ -6740,7 +6740,7 @@ fn recent_log(st: State<'_, App>, id: String, since: u64) -> Option<(String, Str
 
 fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
     let p = recent_log_path(st, id, since)?;
-    let text = std::fs::read(&p).ok()?;
+    let text = log_end(&p);
     let text = String::from_utf8_lossy(&text);
     let lines: Vec<&str> = text.lines().collect();
     let tail = lines[lines.len().saturating_sub(60)..].join("\n");
@@ -6774,14 +6774,10 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
             if !(n.ends_with(".log") || n.ends_with("log.txt")) {
                 continue;
             }
-            // An empty log (made at start, nothing written before it closed) says nothing, and it
-            // would hide what the game printed.
-            if m.len() == 0 {
-                continue;
-            }
             let Ok(t) = m.modified() else { continue };
             let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) {
+            // A log that says nothing would hide what the game printed.
+            if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) && !says_nothing(&p) {
                 best = Some((t, p));
             }
         }
@@ -6792,7 +6788,7 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
         let m = std::fs::metadata(&p).ok()?;
         let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
+        (secs + 5 >= since && !says_nothing(&p)).then_some((t, p))
     });
     // Nor that: ReShade's, when it ran with a look.
     let best = best.or_else(|| {
@@ -6800,9 +6796,76 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
         let m = std::fs::metadata(&p).ok()?;
         let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
+        (secs + 5 >= since && !says_nothing(&p)).then_some((t, p))
     });
     best.map(|(_, p)| p)
+}
+
+/// A log with nothing in it to read: empty, or only blank lines, NULs and byte order marks, as a
+/// game leaves when it makes its log at start and closes before writing a line, or when it sizes
+/// the file ahead and never fills it.
+fn says_nothing(p: &Path) -> bool {
+    log_end(p).is_empty()
+}
+
+/// The end of a log as the player reads it: up to its last 64 KB of text, without the blank
+/// lines, NULs and byte order marks after it (a game that sizes its log ahead leaves the rest
+/// padding). Read from the end, so a big log costs no more than a small one; padding is looked
+/// through for up to 8 MB. Empty when the log says nothing.
+fn log_end(p: &Path) -> Vec<u8> {
+    use std::io::{Read, Seek, SeekFrom};
+    const WINDOW: u64 = 64 * 1024;
+    const MAX_PADDING: u64 = 8 * 1024 * 1024;
+    const BOM: &[u8] = b"\xef\xbb\xbf";
+    let Ok(mut f) = std::fs::File::open(p) else { return Vec::new() };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let pad = |c: &u8| c.is_ascii_whitespace() || *c == 0;
+    let mut read = |start: u64, end: u64| -> Option<Vec<u8>> {
+        let mut buf = vec![0u8; (end - start) as usize];
+        f.seek(SeekFrom::Start(start)).ok()?;
+        f.read_exact(&mut buf).ok()?;
+        Some(buf)
+    };
+    // Where the text ends: just after the last byte that isn't padding.
+    let mut end = len;
+    loop {
+        if end == 0 || len - end > MAX_PADDING {
+            return Vec::new();
+        }
+        let start = end.saturating_sub(WINDOW);
+        let Some(buf) = read(start, end) else { return Vec::new() };
+        match buf.iter().rposition(|c| !pad(c)) {
+            Some(i) => {
+                end = start + i as u64 + 1;
+                break;
+            }
+            None => end = start,
+        }
+    }
+    let start = end.saturating_sub(WINDOW);
+    let Some(mut text) = read(start, end) else { return Vec::new() };
+    // Byte order marks between the padding go too.
+    loop {
+        while text.last().is_some_and(pad) {
+            text.pop();
+        }
+        if !text.ends_with(BOM) {
+            break;
+        }
+        text.truncate(text.len() - BOM.len());
+    }
+    if start == 0 {
+        if text.starts_with(BOM) {
+            text.drain(..BOM.len());
+        }
+        if text.iter().all(pad) {
+            text.clear();
+        }
+    } else if let Some(i) = text.iter().position(|&c| c == b'\n') {
+        // Cut mid-line: start at the next whole one.
+        text.drain(..=i);
+    }
+    text
 }
 
 // ---------- Troubleshoot ----------
@@ -11921,6 +11984,68 @@ mod tests {
 
     fn a_minute_ago() -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 60
+    }
+
+    #[test]
+    fn a_game_log_of_blank_lines_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-blank-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "\r\n\r\n", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_game_log_of_a_byte_order_mark_alone_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-bom-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "\u{feff}", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_log_that_ends_in_blank_lines_still_shows_its_text() {
+        let d = std::env::temp_dir().join(format!("rl-trailing-blank-log-{}", std::process::id()));
+        let st = game_with_logs(&d, &format!("loading level 3\nerror: out of memory\n{}", "\r\n".repeat(100)), "fatal: missing rom\n");
+        let got = recent_log_of(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        let (path, tail) = got.unwrap();
+        assert_eq!(PathBuf::from(path), d.join("game/logs/game.log"));
+        assert_eq!(tail, "loading level 3\nerror: out of memory");
+    }
+
+    #[test]
+    fn a_log_padded_with_nuls_past_64_kb_still_shows_its_text() {
+        let d = std::env::temp_dir().join(format!("rl-padded-log-{}", std::process::id()));
+        let st = game_with_logs(&d, &format!("loading level 3\nerror: out of memory\n{}", "\0".repeat(200 * 1024)), "fatal: missing rom\n");
+        let got = recent_log_of(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        let (path, tail) = got.unwrap();
+        assert_eq!(PathBuf::from(path), d.join("game/logs/game.log"));
+        assert_eq!(tail, "loading level 3\nerror: out of memory");
+    }
+
+    #[test]
+    fn a_big_log_of_nuls_alone_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-nul-log-{}", std::process::id()));
+        let st = game_with_logs(&d, &"\0".repeat(200 * 1024), "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_big_log_shows_whole_lines_from_its_end() {
+        let d = std::env::temp_dir().join(format!("rl-big-log-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("big.log");
+        std::fs::write(&p, (0..20_000).map(|i| format!("line {i}\n")).collect::<String>()).unwrap();
+        let end = String::from_utf8(log_end(&p)).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(end.len() <= 64 * 1024);
+        assert!(end.starts_with("line "), "{:?}", &end[..20]);
+        assert!(end.ends_with("line 19999"));
     }
 
     #[test]
