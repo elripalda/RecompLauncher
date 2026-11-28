@@ -691,6 +691,7 @@ body.cpu-draw .tv-down{animation:none}
 /* Cover Flow: the name big under the row, and the game's colours glowing behind it. */
 .tv-flow-cap b{font:800 semi-expanded 46px/1.1 Archivo,sans-serif;letter-spacing:-.01em}
 .tv-flow-cap span{font-size:26px;color:var(--tvsoft,#c9d3e0)}
+.tv-flow-cap small{font-size:20px;color:var(--tvdim,#8f9cb0)}
 .tv-flow::before{content:"";position:absolute;left:50%;top:calc((var(--H,1080px) - 216px - 474px - 170px) / 2 + 237px);width:1500px;height:900px;transform:translate(-50%,-50%);pointer-events:none;background:radial-gradient(closest-side,color-mix(in srgb,var(--acc) 34%,transparent),color-mix(in srgb,var(--acc) 12%,transparent) 55%,transparent);transition:opacity .4s}
 /* The game you're on lights Home and the Library more strongly. */
 .tv-full.amb::after{background:var(--noise),radial-gradient(60% 65% at 85% 20%,color-mix(in srgb,var(--acc) 34%,transparent),transparent 72%),radial-gradient(55% 60% at 10% 95%,color-mix(in srgb,var(--acc) 24%,transparent),transparent 72%),radial-gradient(40% 40% at 50% 60%,color-mix(in srgb,var(--acc) 10%,transparent),transparent 75%),linear-gradient(180deg,transparent 62%,color-mix(in srgb,var(--tvbg) 50%,transparent))}
