@@ -3037,3 +3037,51 @@ body.light .set-row .k .svp-set{color:#127a45}
 .sp-tile:hover,.sp-tile:focus-visible{border-color:rgba(244,248,252,.3)}
 .sp-tile img{display:block;width:100%;height:auto;aspect-ratio:1456/180;object-fit:cover}
 .sp-tile .sp-tag{position:absolute;right:8px;bottom:8px;font:600 10px/1 inherit;letter-spacing:.04em;text-transform:uppercase;color:rgba(244,248,252,.85);background:rgba(11,18,32,.72);padding:4px 6px;border-radius:5px}
+
+/* ---------- Star on GitHub: the sidebar's button, its window and the Settings banner ---------- */
+/* --star colours stars on the page; the Star button is bright gold with dark text in both themes.
+   --gh-* is GitHub's own page, dark or light like the launcher, for the mock of its Star button. */
+:root{--star:#E3B341;--star-a:#FFC861;--star-b:#FF9F43;--star-ink:#1f1400;--gh-badge:#F0F6FC;--gh-badge-ink:#0D1117;
+  --gh-bg:#0d1117;--gh-line:#30363d;--gh-ink:#e6edf3;--gh-link:#4493f8;--gh-btn:#212830;--gh-btn-line:#3d444d}
+body.light{--star:#BF8700;--gh-badge:#1F2328;--gh-badge-ink:#fff;
+  --gh-bg:#fff;--gh-line:#d1d9e0;--gh-ink:#1f2328;--gh-link:#0969da;--gh-btn:#f6f8fa;--gh-btn-line:#d1d9e0}
+.star-cta{flex:none;position:relative;padding:6px 12px 10px}
+.star-cta[hidden]{display:none}
+/* A GitHub-style pill, with a glint of gold running round its edge. */
+.star-cta .sc-main{position:relative;width:100%;display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:999px;text-align:left;white-space:nowrap;font-weight:700;font-size:14px;color:var(--ink);background:var(--fill2);border:1px solid var(--line2);transition:border-color .15s,background .15s}
+.star-cta .sc-main::before{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1px;background:conic-gradient(from var(--sa,0deg),transparent 0 70%,var(--star) 85%,transparent 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:starOrbit 5s linear infinite;pointer-events:none}
+.star-cta .sc-main:hover{background:var(--fill3);border-color:color-mix(in srgb,var(--star) 55%,transparent)}
+.star-cta .sc-gh{display:flex;flex:none}
+.star-cta .sc-st{display:flex;margin-left:auto;color:var(--star)}
+.star-cta .sc-x{position:absolute;top:-4px;right:4px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:var(--dim);background:var(--side);border:1px solid var(--line2);opacity:0;transition:opacity .15s,color .15s}
+.star-cta:hover .sc-x,.star-cta .sc-x:focus-visible{opacity:1}
+.star-cta .sc-x:hover{color:var(--ink)}
+.side:is(.mini,.auto) .star-cta .sc-main{width:44px;padding:0 12px;margin-left:4px;overflow:hidden}
+/* The round button clips its hidden labels, so the glint runs just inside its edge instead. */
+.side:is(.mini,.auto) .star-cta .sc-main::before{inset:0}
+.side:is(.mini,.auto) .star-cta .sc-x{display:none}
+@property --sa{syntax:'<angle>';inherits:false;initial-value:0deg}
+@keyframes starOrbit{to{--sa:360deg}}
+/* The window. */
+.btn.star-go,.btn.star-go:hover{border:0;color:var(--star-ink);background:linear-gradient(135deg,var(--star-a),var(--star-b));box-shadow:0 10px 28px -12px rgba(255,159,67,.75)}
+.btn.star-go:hover{filter:brightness(1.06)}
+.star-m{display:flex;flex-direction:column;gap:14px}
+.star-m h2{margin:0}
+.star-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.star-steps li{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--muted)}
+.star-steps li span{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:12px;color:var(--star-ink);background:var(--star-a)}
+.star-fake{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:14px;background:var(--gh-bg);border:1px solid var(--gh-line);color:var(--gh-ink);font-size:13px}
+.star-fake .sf-repo{display:flex;gap:8px;align-items:center;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.star-fake .sf-repo b{font-weight:600;color:var(--gh-link)}
+.star-fake .sf-btn{flex:none;display:flex;gap:6px;align-items:center;height:28px;padding:0 12px;border-radius:6px;background:var(--gh-btn);border:1px solid var(--gh-btn-line);font-weight:600;position:relative}
+.star-fake .sf-btn svg{color:var(--star)}
+.star-fake .sf-btn::after{content:'';position:absolute;inset:-5px;border-radius:9px;border:2px solid var(--star-a);animation:starPing 1.8s ease-out infinite}
+@keyframes starPing{0%{opacity:.9;transform:scale(.92)}100%{opacity:0;transform:scale(1.18)}}
+/* Settings > About. */
+.star-badge{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;flex:none;color:var(--gh-badge-ink);background:var(--gh-badge);box-shadow:0 12px 30px -14px rgba(0,0,0,.7)}
+.star-banner{display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:20px;background:linear-gradient(120deg,color-mix(in srgb,var(--star-a) 15%,var(--card)),var(--card) 70%);border:1px solid color-mix(in srgb,var(--star-a) 32%,transparent)}
+body.light .star-banner{background:linear-gradient(120deg,color-mix(in srgb,var(--star-a) 22%,var(--card)),var(--card) 70%);border-color:color-mix(in srgb,var(--star-b) 35%,transparent)}
+.star-banner .k{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.star-banner .k b{font-size:16px}
+.star-banner .k span{color:var(--muted);font-size:14px}
+@media (prefers-reduced-motion:reduce){.star-cta .sc-main::before,.star-fake .sf-btn::after{animation:none}}

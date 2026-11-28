@@ -1137,3 +1137,13 @@ body.light .tv-badge.soon{color:#1a1400}
   .tv-kb-field{border:2px solid var(--acc)}
   .tv-ach-toast{border:1px solid rgba(242,193,78,.4)}
 }
+
+/* Settings > About > Star on GitHub (app.js has the window this follows). */
+.tv-star .tv-star-ic{flex:none;width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:var(--gh-badge-ink,#0D1117);background:var(--gh-badge,#F0F6FC)}
+.tv-star .tv-star-ic svg{color:inherit}
+.tv-star-sheet .star-steps{margin:0 0 16px;gap:12px}
+.tv-star-sheet .star-steps li{font-size:20px;gap:14px;color:var(--tvsoft,#a9c1d4)}
+.tv-star-sheet .star-steps li span{width:32px;height:32px;font-size:16px}
+.tv-star-sheet .star-fake{margin:0 0 16px;padding:16px 18px;font-size:18px}
+.tv-star-sheet .star-fake .sf-btn{height:36px;padding:0 16px}
+.tv-star-sheet .tv-star-later{opacity:.75}
