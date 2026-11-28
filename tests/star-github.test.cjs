@@ -87,6 +87,33 @@ test('Big Picture\'s Star on GitHub sheet goes through the same starOpen', () =>
   assert.equal(opened, 1);
 });
 
+// "How Are You Enjoying RecompLauncher?" answered I Like It: what its second step says.
+function enjoyAfterUp(ui) {
+  const start = app.indexOf('async function enjoyAsk(why) {');
+  const end = app.indexOf('// The launcher open a good while without a game ending');
+  assert.ok(start >= 0 && end > start);
+  const box = { innerHTML: '' };
+  let click;
+  const ctx = vm.createContext({
+    S: { settings: { ui } }, ENJOY: {}, t: (s) => s, esc: (s) => s, $: () => box,
+    enjoyDue: () => true, saveUi: () => Promise.resolve(), starOpen() {},
+    modal: (html, onClick) => { click = onClick; return {}; },
+  });
+  vm.runInContext(app.slice(start, end).replace('async function enjoyAsk', 'globalThis.enjoyAsk = async function'), ctx);
+  return ctx.enjoyAsk('dev').then(() => { click({ dataset: { x: 'up' } }, () => {}); return box.innerHTML; });
+}
+
+test('I Like It asks for a star when the player has not starred yet', async () => {
+  assert.match(await enjoyAfterUp({}), /data-x="star"/);
+  assert.match(await enjoyAfterUp({ star_hide: 1 }), /data-x="star"/);
+});
+
+test('I Like It only says thanks once the player has gone to star it', async () => {
+  const html = await enjoyAfterUp({ star_done: 1 });
+  assert.doesNotMatch(html, /data-x="star"/);
+  assert.match(html, /thanks for the star on GitHub/);
+});
+
 test('the sidebar button sits above the line over the account', () => {
   const at = html.indexOf('id="star-cta"');
   assert.ok(at > html.indexOf('class="side-scroll"'));

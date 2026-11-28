@@ -10665,6 +10665,12 @@ async function enjoyAsk(why) {
     const k = x.dataset.x, box = $('.modal', m);
     if (k === 'up') {
       saveUi({ enjoy_done: 'up' }, true).catch(() => {});
+      // Already went to star it (the sidebar or Settings): thanks, without asking again.
+      if ((S.settings.ui || {}).star_done) {
+        box.innerHTML = `<h2>${esc(t('Thank You for Supporting the Project'))}</h2><p>${esc(t('Glad you like it, and thanks for the star on GitHub.'))}</p>
+        <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`;
+        return;
+      }
       box.innerHTML = `<h2>${esc(t('Thank You for Supporting the Project'))}</h2><p>${esc(t('A star on GitHub helps more players find RecompLauncher.'))}</p>
         <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Maybe Later'))}</button><button type="button" class="btn main" data-x="star">${esc(t('Star on GitHub'))}</button></div>`;
       return;
