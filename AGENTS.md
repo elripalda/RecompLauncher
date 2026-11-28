@@ -20,6 +20,9 @@ value, a shared type, a launcher feature in FEATURES) must, in the same commit:
 
 `cargo test` fails when they drift (devtools.rs: the schema parity test).
 
+A change to what `src-tauri/src/roms.rs` finds or reads (a file type, a folder layout, an ID, a
+folder name) updates the console table in `docs/GAME-SCANNER.md` in the same commit.
+
 # Named Easy Setup input scope
 
 When changing named setup inputs or shared keys, read [docs/SETUP-INPUTS.md](docs/SETUP-INPUTS.md).

@@ -21,6 +21,8 @@ async function loadAccount(fresh) {
   try { S.account = await invoke('account_state', { fresh: !!fresh }); } catch (e) { S.account = S.account || { signedIn: false }; }
   // Signed in (or out) just now: what each game's Saves tab knew is out of date.
   if (was !== !!S.account.signedIn) { S.saves = {}; S.savesAll = null; S.myReports = null; forgetSaveStatus(); }
+  // Android's list is for testers only for now: it's asked for again with the new sign-in.
+  if (was !== !!S.account.signedIn && S.os === 'android' && S.cat && (S.listGate || was) && typeof loadCatalog === 'function') loadCatalog(true).then(() => { render(true); androidRedraw(); });
   renderAccountBits();
   if (S.account.signedIn && !S.myReports && !S.account.offline) loadMyReports();
   // The saved list, kept with the account.
@@ -68,6 +70,7 @@ function renderAccountBits() {
   if (S.view === 'game') refreshGame();
   if (S.view === 'saves' || S.view === 'achievements') render(true);
   if (window.tvRefresh && inTV()) window.tvRefresh();
+  if (window.phoneRefresh) window.phoneRefresh();
   if (window.oobRedraw) window.oobRedraw();
 }
 
@@ -97,7 +100,7 @@ async function signIn(create) {
   } else {
     invoke('open_url', { url: s.url }).catch(() => {});
     box = modal(`<div class="signin"><h2>${esc(create ? t('Create your account') : t('Sign in'))}</h2>
-      <p>${esc(t('Your browser opened recomplauncher.com. Sign in there and press Sign in to connect this PC.'))}</p>
+      <p>${esc(S.os === 'android' ? t('Your browser opened recomplauncher.com. Sign in there and press Sign in to connect this phone.') : t('Your browser opened recomplauncher.com. Sign in there and press Sign in to connect this PC.'))}</p>
       <div class="signin-two"><div class="signin-qr" aria-hidden="true">${s.qr}</div><div class="signin-code"><small>${esc(t('On another device? Scan the code, or go to recomplauncher.com/activate and type:'))}</small><b>${esc(s.code)}</b></div></div>
       <p class="signin-st" data-st><span class="spinr"></span>${esc(t('Waiting for you to sign in…'))}</p>
       <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="open">${esc(t('Open the browser again'))}</button></div></div>`, (x) => {
@@ -917,6 +920,8 @@ async function pickCloudAll() {
 async function askCloudAll() {
   const ui = S.settings.ui || {};
   if (cloudAsked || ui.cloud_all != null || !S.settings.setup_done) return;
+  // A phone's games are Android apps: their saves are their own, out of the launcher's reach.
+  if (S.os === 'android') return;
   if (!(S.account && S.account.signedIn) || document.body.classList.contains('first-run')) return;
   cloudAsked = true;
   await noModal();
@@ -994,6 +999,7 @@ async function beforeCloudPlay(id) {
   try { r = await invoke('saves_check', { id }); } catch (e) { fail(e); return false; }
   if (r.action === 'restored') toast(tf('Your newer save from {device} is in place.', { device: r.cloud.device || t('another PC') }));
   else if (r.action === 'offline') toast(t('Cloud saves can\'t be reached right now. Playing with this PC\'s save.'), true);
+  else if (r.action === 'no-access') toast(t('Allow All files access for RecompLauncher so it can reach this game\'s saves.'), true);
   // Its cloud save couldn't be written here (a read-only folder, say): the player says whether to
   // play with this PC's save instead. Nothing about the sync changes unless they do.
   else if (r.action === 'not-restored') {

@@ -34,7 +34,8 @@ async function whatsNew() {
   const ui = S.settings.ui || {};
   if (ui.seen_version === S.version) return;
   // A new install has nothing to compare with: just remember this version.
-  if (!ui.seen_version && !S.settings.setup_done) return saveUi({ seen_version: S.version });
+  // Android too: the release notes are the PC launcher's.
+  if ((!ui.seen_version && !S.settings.setup_done) || S.os === 'android') return saveUi({ seen_version: S.version });
   const from = ui.seen_version;
   // Show What's New After an Update off (Settings → Updates and Downloads): the notes stay in
   // Settings → Changelog.
@@ -203,6 +204,7 @@ const SIGNIN_TEXT = N_('Sign in to your RecompLauncher account to write a review
 const signedIn = () => !!(S.account && S.account.signedIn);
 async function signInToReport() {
   const msg = t(SIGNIN_TEXT);
+  if (window.phoneOn && window.phoneOn() && window.phoneSignInAsk) return window.phoneSignInAsk(msg);
   if (tvOn() && window.tvAsk) {
     const i = await window.tvAsk(msg, [{ label: t('Sign In'), icon: 'check' }, { label: t('Not now'), icon: 'chevL' }]);
     if (i === 0 && window.signIn) window.signIn(false);
@@ -229,7 +231,7 @@ const reviewAskOn = () => (S.settings.ui || {}).review_ask !== false;
 const setReviewAsk = (on) => saveUi({ review_ask: !!on }, true);
 // A game the account has a review of already, written on this PC or any other.
 const reviewedAlready = (id) => ((S.myReports && S.myReports.list) || []).some((x) => x.app === id);
-Object.assign(window, { reviewAskOn, setReviewAsk });
+Object.assign(window, { reviewAskOn, setReviewAsk, VERDICT, VERDICT_SUB, needSignIn, deleteReview });
 async function askRun(id, secs, asked_for) {
   const g = S.library[id];
   if (!g || g.local) return;
@@ -282,6 +284,8 @@ async function askRun(id, secs, asked_for) {
     if (note == null) return;
     return sent(send(verdict, note, !!(pre && pre.log)));
   }
+  // The phone layout (and its Big Picture mode) asks in a sheet of its own (phone.js).
+  if (window.phoneOn && window.phoneOn() && window.phoneReview) return window.phoneReview({ id, name: reviewName(id, g), secs: asked_for ? 0 : secs, auto: !asked_for, pre, specsLine, send, prev: asked_for ? myReviewOf(id) : null });
   // After a session it waits for any other window the launcher has open (a save to pick, say).
   if (!asked_for && typeof noModal === 'function') await noModal();
   // Changing a review: the dialog starts from what was said before.
@@ -463,6 +467,23 @@ T.event.listen('game', ({ payload: p }) => {
   if (p.state !== 'stopped' || (p.code != null && p.code !== 0)) return;
   if ((p.secs || 0) >= 600) setTimeout(() => askRun(p.id, p.secs), 1500);
 });
+// Android: the launcher sees a game open but not close. Coming back to the launcher ends the session
+// (as it does for cloud saves), and a long one is asked about, as a game closing is on a PC. Kept on
+// the phone, so a launcher Android closed while the game ran still asks when it opens again.
+const DROID_PLAY = 'rl-droid-play';
+window.droidPlayed = (id) => { try { localStorage.setItem(DROID_PLAY, JSON.stringify({ id, at: Date.now() })); } catch (e) { /* not asked this time */ } };
+function droidBack() {
+  if (S.os !== 'android' || document.hidden) return;
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(DROID_PLAY) || 'null'); localStorage.removeItem(DROID_PLAY); } catch (e) { return; }
+  const secs = p && p.id ? Math.round((Date.now() - Number(p.at || 0)) / 1000) : 0;
+  // Counted in the game's play time (half a day or more away isn't one session), then asked about
+  // when it was ten minutes or more, as on a PC.
+  if (secs >= 10 && secs < 43200) invoke('android_played', { id: p.id, secs }).then(refreshState).then(() => render()).catch(() => {});
+  if (secs >= 600 && secs < 86400) setTimeout(() => askRun(p.id, secs), 1500);
+}
+document.addEventListener('visibilitychange', droidBack);
+setTimeout(droidBack, 6000);
 
 // ---------- usage ----------
 // Installs and updates that finished or failed (the version once the Library has caught up).

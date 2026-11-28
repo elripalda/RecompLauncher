@@ -470,7 +470,8 @@ pub struct Check {
     #[serde(default)]
     pub n64_rev: Option<u8>,
     /// The disc or cartridge IDs it reads (`GZ2E01`, or `GZ2` for every region): a GameCube or
-    /// Wii disc's, an N64 cartridge's game code, a PlayStation disc's serial (crate::roms::copy_id).
+    /// Wii disc's, an N64, DS or Game Boy Advance cartridge's game code, a PlayStation disc's
+    /// serial (crate::roms::copy_id).
     #[serde(default)]
     pub ids: Vec<String>,
 }
@@ -822,6 +823,13 @@ const BUILT_IN: &[&str] = &[
 /// one for its repo, or one made from the catalog's boot profile when that
 /// says where the player's copy goes.
 pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
+    // On Android a game is an app of its own: Android keeps its files out of every other app's
+    // reach, so the launcher can't put the player's copy or any settings where the game reads
+    // them. No game has a profile there (no Easy Setup, no Game Settings): Play opens the game,
+    // and the game asks for what it needs itself.
+    if cfg!(target_os = "android") {
+        return None;
+    }
     let mut p = find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))?;
     p.lift_game();
     to_apprun(&mut p, game_dir);
@@ -1324,13 +1332,17 @@ pub fn pad_now() -> &'static str {
     *PAD.read().unwrap()
 }
 
-/// A name a game's environment may take: letters, digits and _, not starting with a digit, and
-/// never one of the launcher's own or the ones Windows and Linux need to find programs.
-pub fn env_name_ok(k: &str) -> bool {
+/// What any environment variable's name looks like: letters, digits and _, not starting with a
+/// digit, at most 64 characters.
+pub fn env_name_shape(k: &str) -> bool {
     let mut c = k.chars();
-    matches!(c.next(), Some(x) if x.is_ascii_alphabetic() || x == '_')
-        && c.all(|x| x.is_ascii_alphanumeric() || x == '_')
-        && k.len() <= 64
+    matches!(c.next(), Some(x) if x.is_ascii_alphabetic() || x == '_') && c.all(|x| x.is_ascii_alphanumeric() || x == '_') && k.len() <= 64
+}
+
+/// A name a game's environment may take: the right shape, and never one of the launcher's own or
+/// the ones Windows and Linux need to find programs.
+pub fn env_name_ok(k: &str) -> bool {
+    env_name_shape(k)
         && !k.to_ascii_uppercase().starts_with("RECOMPLAUNCHER")
         && !matches!(k.to_ascii_uppercase().as_str(), "PATH" | "PATHEXT" | "SYSTEMROOT" | "WINDIR" | "COMSPEC" | "LD_PRELOAD" | "LD_LIBRARY_PATH" | "HOME" | "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP")
 }

@@ -26,6 +26,9 @@ pub fn os_now() -> &'static str {
         "windows"
     } else if cfg!(target_os = "macos") {
         "macos"
+    } else if cfg!(target_os = "android") {
+        // Android games are APKs (assets.android in the Android catalog), never the Linux builds.
+        "android"
     } else {
         "linux"
     }

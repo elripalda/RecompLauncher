@@ -132,20 +132,30 @@ pub(crate) fn validate_runtime(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// A file named `….AppImage` that is one: every AppImage (type 2 of either kind, or an old type 1)
+/// starts like a Linux program. A start script some releases keep under an older AppImage name
+/// doesn't, so it is a plain file. Only its first 4 bytes are read. A file whose start can't be read
+/// (no permission, still being written) goes by its name, as it always did.
+pub(crate) fn is_real_appimage(path: &Path) -> bool {
+    use std::io::Read;
+    if !path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) {
+        return false;
+    }
+    let mut magic = [0u8; 4];
+    match fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)) {
+        Ok(()) => &magic == b"\x7fELF",
+        Err(_) => true,
+    }
+}
+
 /// Only an unambiguous, regular AppImage at the install root is eligible.
 /// Never follow a symlink or guess between several independent game builds.
 pub(crate) fn installed_image(dir: &Path) -> Option<PathBuf> {
     let mut image = None;
     for entry in fs::read_dir(dir).ok()?.flatten() {
         let path = entry.path();
-        if path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.eq_ignore_ascii_case("appimage"))
-            != Some(true)
-            || !entry.file_type().ok()?.is_file()
-            || crate::install::mac_metadata(&path)
-        {
+        let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
+        if !named || !entry.file_type().ok()?.is_file() || crate::install::mac_metadata(&path) || !is_real_appimage(&path) {
             continue;
         }
         if image.is_some() {
@@ -552,7 +562,7 @@ pub(crate) mod tests {
         let d = std::env::temp_dir().join(format!("rl-appledouble-image-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("Game.AppImage"), b"image").unwrap();
+        std::fs::write(d.join("Game.AppImage"), b"\x7fELF image").unwrap();
         std::fs::write(d.join("._Game.AppImage"), b"\x00\x05\x16\x07AppleDouble").unwrap();
         let got = installed_image(&d);
         let _ = std::fs::remove_dir_all(&d);
@@ -669,6 +679,45 @@ pub(crate) mod tests {
         assert!(out.finish().is_err());
         assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
         assert!(fs::symlink_metadata(to.join("lib")).unwrap().is_dir());
+    }
+
+    /// The same game as `game_image`, made by mksquashfs with extended attributes on every entry
+    /// (an SELinux label, the way any build on Fedora, Bazzite or Silverblue comes out), plus a
+    /// device of each kind, a pipe and a socket. So every entry is SquashFS's extended kind
+    /// (inode types 8 to 14). Built with:
+    ///   mksquashfs root xattrs.squashfs -comp gzip -all-root -mkfs-time 0 -all-time 0
+    ///     -xattrs-exclude '^security\.' -xattrs-add 'security.selinux=system_u:object_r:user_home_t:s0'
+    ///     -p 'dev d 755 0 0' -p 'dev/null c 666 0 0 1 3' -p 'dev/loop b 660 0 0 7 0'
+    ///     -p 'dev/fifo i 644 0 0 f' -p 'dev/sock i 644 0 0 s'
+    /// with `user.note` also set on usr and usr/data.bin.
+    #[cfg(unix)]
+    fn xattrs_game_image() -> Vec<u8> {
+        let mut bytes = image(None, Compressor::Gzip)[..128].to_vec();
+        bytes.extend(include_bytes!("../testdata/xattrs.squashfs"));
+        bytes
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_appimage_with_extended_attributes_unpacks_without_them() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new();
+        let image = dir.0.join("Game-x86_64.AppImage");
+        fs::write(&image, xattrs_game_image()).unwrap();
+        assert_eq!(manifest(&image).unwrap(), br#"{"format":1}"#);
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert_eq!(fs::read(to.join("usr/data.bin")).unwrap(), b"data");
+        assert_eq!(fs::read(to.join("usr/bin/game")).unwrap(), b"#!/bin/sh\necho game\n");
+        assert_eq!(fs::metadata(to.join("usr/bin/game")).unwrap().permissions().mode() & 0o7777, 0o755);
+        assert_eq!(fs::read_link(to.join("AppRun")).unwrap(), Path::new("usr/bin/game"));
+        assert_eq!(fs::read(to.join("recomplauncher.json")).unwrap(), br#"{"format":1}"#);
+        // Extended links are kept as stored, like any other link.
+        assert_eq!(fs::read_link(to.join("absolute")).unwrap(), Path::new("/etc/passwd"));
+        assert_eq!(fs::read_link(to.join("usr/escape")).unwrap(), Path::new("../../outside"));
+        // Devices, pipes and sockets aren't a game's files; their folder is all that comes out.
+        assert!(to.join("dev").is_dir());
+        assert_eq!(fs::read_dir(to.join("dev")).unwrap().count(), 0);
     }
 
     /// The same game as `game_image`, packed with DwarFS the way "runs anywhere" AppImages are.
@@ -840,6 +889,58 @@ pub(crate) mod tests {
         assert_eq!(installed_image(&dir.0), Some(a));
         fs::write(dir.0.join("another.AppImage"), []).unwrap();
         assert!(installed_image(&dir.0).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_script_named_like_an_appimage_isnt_one() {
+        let dir = TempDir::new();
+        let real = dir.0.join("Game.AppImage");
+        fs::write(&real, game_image()).unwrap();
+        let dwarfs = dir.0.join("Game-anylinux.appimage");
+        fs::write(&dwarfs, dwarfs_game_image()).unwrap();
+        let script = dir.0.join("OldName.AppImage");
+        fs::write(&script, b"#!/bin/sh\nexec ./Game.AppImage\n").unwrap();
+        let type1 = dir.0.join("Old.AppImage");
+        fs::write(&type1, b"\x7fELF\x02\x01\x01\x00AI\x01").unwrap();
+        assert!(is_real_appimage(&real));
+        assert!(is_real_appimage(&dwarfs));
+        assert!(is_real_appimage(&type1), "a type-1 AppImage is still one, and still stops at unpack");
+        assert!(!is_real_appimage(&script));
+        assert!(!is_real_appimage(&dir.0.join("Game.sh")), "only a file named like one");
+    }
+
+    #[test]
+    fn an_appimage_whose_start_cant_be_read_goes_by_its_name() {
+        let dir = TempDir::new();
+        // Shorter than a header (one still being written): its name says what it is.
+        let short = dir.0.join("Partial.AppImage");
+        fs::write(&short, b"\x7f").unwrap();
+        assert!(is_real_appimage(&short));
+        assert!(is_real_appimage(&dir.0.join("Gone.AppImage")));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let locked = dir.0.join("Locked.AppImage");
+            fs::write(&locked, b"#!/bin/sh\n").unwrap();
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+            // Root reads it anyway, and then it is the script it is.
+            if fs::File::open(&locked).is_err() {
+                assert!(is_real_appimage(&locked));
+            }
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_installed_image_is_the_real_one_beside_a_script() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("OldName.AppImage"), b"#!/bin/sh\nexec ./Game.AppImage\n").unwrap();
+        assert_eq!(installed_image(&dir.0), None, "a script alone is no image");
+        let real = dir.0.join("Game.AppImage");
+        fs::write(&real, game_image()).unwrap();
+        assert_eq!(installed_image(&dir.0), Some(real));
     }
 
     #[test]

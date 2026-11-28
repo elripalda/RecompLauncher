@@ -3,8 +3,12 @@
 //! The window (ui/) asks for things through the commands at the bottom; long jobs (downloads,
 //! games running) report back through events: `install` with a Progress, `game` when one starts
 //! or closes.
+// Android builds leave out the Windows, Linux and macOS ways of unpacking and setting up games.
+#![cfg_attr(mobile, allow(dead_code, unused_assignments))]
 
 pub mod ach;
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod adopt;
 pub mod xex;
 mod appimage;
@@ -31,6 +35,7 @@ pub mod info;
 pub mod inputs;
 pub mod ingame;
 pub mod install;
+pub mod launch_options;
 pub mod launchbox;
 pub mod library;
 pub mod library_convert;
@@ -43,7 +48,16 @@ pub mod media;
 pub mod mods;
 pub mod net;
 pub mod nup;
+#[cfg(desktop)]
 pub mod pads;
+#[cfg(mobile)]
+#[path = "pads_mobile.rs"]
+pub mod pads;
+#[cfg(mobile)]
+pub mod mobile;
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use mobile::*;
 #[cfg(target_os = "linux")]
 pub mod plain;
 pub mod own_setup;
@@ -58,6 +72,7 @@ pub mod setup_state;
 #[cfg(test)]
 mod setup_window_tests;
 pub mod sysenv;
+mod play_host;
 pub mod sysneeds;
 mod test_control;
 mod emus;
@@ -68,6 +83,10 @@ pub mod shortcuts;
 pub mod steam_sync;
 pub mod swap;
 pub mod trail;
+#[cfg(desktop)]
+pub mod tray;
+#[cfg(mobile)]
+#[path = "tray_mobile.rs"]
 pub mod tray;
 mod update_download;
 mod update_launch;
@@ -378,7 +397,11 @@ fn replacement<'a>(fresh: &'a [Release], was_pre: bool, have: &str, fits: impl F
     (!same_tag(&r.tag_name, have)).then_some(r)
 }
 
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, tag: Option<String>, file: Option<String>, cancel: Arc<AtomicBool>) -> Res<()> {
+    // Android installs the game's app through Android itself.
+    #[cfg(target_os = "android")]
+    return android::install(app, st, id, tag, cancel).await;
     let picked_tag = tag.is_some();
     let report = |p: Progress| {
         let _ = app.emit("install", p);
@@ -1344,12 +1367,154 @@ pub(crate) fn files_busy(st: &App, id: &str) -> Option<&'static str> {
     None
 }
 
+/// Android: the Library brought in line with the games installed on the device. True when it changed.
+#[tauri::command(async)]
+fn android_sync(st: State<'_, App>) -> bool {
+    #[cfg(target_os = "android")]
+    return android::sync(&st);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = st;
+        false
+    }
+}
+
+/// Android: whether All files access is allowed, which cloud saves need for games that keep their
+/// saves in shared storage: `{granted}`. Never on a PC, which needs no such thing.
+#[tauri::command(async)]
+fn android_files_access() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::files_access();
+    #[cfg(not(target_os = "android"))]
+    Ok(json!({ "granted": true }))
+}
+
+/// Android: opens Android's All files access page for the launcher.
+#[tauri::command(async)]
+fn android_ask_files_access() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::ask_files_access();
+    #[cfg(not(target_os = "android"))]
+    Ok(json!({ "granted": true }))
+}
+
+/// Android: the launcher is back in front, maybe after a game. Android doesn't say when another app
+/// closes, so this is when the sessions of the games it opened are finished: their saves copied,
+/// and sent with cloud saves on. Nothing on a PC, where the launcher sees each game end.
+#[tauri::command]
+async fn android_back(app: AppHandle) -> Res<()> {
+    #[cfg(target_os = "android")]
+    {
+        let _ = tokio::task::spawn_blocking(android::files_access).await;
+        cloud::finish_open_sessions(&app).await;
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = app;
+    Ok(())
+}
+
+/// Android: which way the window turns (Big Picture mode sideways, the phone layout either way).
+#[tauri::command(async)]
+fn android_orientation(landscape: bool) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::orientation(landscape);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = landscape;
+        Ok(())
+    }
+}
+
+/// Android: the phone layout draws under the clock bar and beside the camera hole itself, with
+/// dark or light icons on the bar; Big Picture mode hides the bars and keeps clear of the hole.
+#[tauri::command(async)]
+fn android_edges(phone: bool, light: bool) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::edges(phone, light);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (phone, light);
+        Ok(())
+    }
+}
+
+/// Android: how much room the clock bar, the camera hole and the system's bottom strip take at
+/// each edge of the window: `{top, right, bottom, left}`. All zero on a PC.
+#[tauri::command(async)]
+fn android_insets() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::insets();
+    #[cfg(not(target_os = "android"))]
+    Ok(json!({ "top": 0, "right": 0, "bottom": 0, "left": 0 }))
+}
+
+/// Android: whether this is a phone, a tablet or a handheld with a controller built in, which decides
+/// which Big Picture mode it gets. `{sw, pad}`; nothing on a PC.
+#[tauri::command(async)]
+fn android_device() -> Res<Value> {
+    #[cfg(target_os = "android")]
+    return android::device();
+    #[cfg(not(target_os = "android"))]
+    Ok(Value::Null)
+}
+
+/// Android: a light tick under the finger ("tick" for scrolling past something, "tap", "ok").
+#[tauri::command(async)]
+fn android_haptic(kind: String) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::haptic(&kind);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = kind;
+        Ok(())
+    }
+}
+
+/// Android: whether the launcher may install games' apps yet (with `ask`, Android's page to allow it
+/// opens when not). Always yes on a PC.
+#[tauri::command(async)]
+fn android_install_allowed(ask: Option<bool>) -> Res<bool> {
+    #[cfg(target_os = "android")]
+    return android::install_allowed(ask.unwrap_or(false));
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = ask;
+        Ok(true)
+    }
+}
+
+/// Android: a game's session, timed by the launcher (from opening the game to coming back to the
+/// launcher, since it can't see the game close), counted as a PC counts one. Nothing on a PC.
+#[tauri::command(async)]
+fn android_played(st: State<'_, App>, id: String, secs: u64) -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::played(&st, &id, secs);
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (st, id, secs);
+        Ok(())
+    }
+}
+
+/// Android: the launcher to the background, as the back button does in other apps.
+#[tauri::command(async)]
+fn android_to_back() -> Res<()> {
+    #[cfg(target_os = "android")]
+    return android::to_back();
+    #[cfg(not(target_os = "android"))]
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn uninstall(st: State<'_, App>, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
     uninstall_game(&st, id, delete_files, run_uninstaller, keep_saves)
 }
 
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 fn uninstall_game(st: &App, id: String, delete_files: bool, run_uninstaller: Option<bool>, keep_saves: Option<bool>) -> Res<Value> {
+    // Android uninstalls the game's app, after its own question.
+    #[cfg(target_os = "android")]
+    return android::uninstall(st, &id);
     // Marked first, so a second call (test control, another window) can't start on the same folder.
     let Some(_uninstalling) = start_uninstalling(st, &id) else { return Err(Error::Msg(UNINSTALLING.into())) };
     if st.running.lock().unwrap().contains_key(&id) {
@@ -2375,7 +2540,12 @@ fn direct_start(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, Vec<Strin
     if !exe.is_file() {
         return None;
     }
-    args.extend(join_paths(split_args(&g.args)));
+    // A shortcut can only carry arguments: variables in the launch options need the launcher.
+    let player = launch_options::parse(&g.args).ok()?;
+    if !player.env.is_empty() {
+        return None;
+    }
+    args.extend(player.args);
     Some((exe, args))
 }
 
@@ -2972,18 +3142,50 @@ impl Drop for Starting {
 static RUNS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 static RUN_NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
-    start_game_with_steam(app, id, None)
+/// Where a Play from a shortcut came from: Steam's launch context, handed over on Linux, and the
+/// copy Steam started on Windows, which starts the program itself (see play_host).
+#[derive(Default)]
+struct PlayFrom {
+    steam: Option<sysenv::SteamLaunch>,
+    host: Option<play_host::Host>,
 }
 
-fn start_game_with_steam(app: &AppHandle, id: &str, _steam: Option<&sysenv::SteamLaunch>) -> Res<()> {
-    start_game_with_monitor_context(app, id, _steam, None)
+impl PlayFrom {
+    fn handoff(args: &[String]) -> PlayFrom {
+        PlayFrom { steam: sysenv::steam_launch_from_args(args), host: play_host::Host::from_args(args) }
+    }
+}
+
+pub(crate) fn start_game(app: &AppHandle, id: &str) -> Res<()> {
+    start_game_from(app, id, &PlayFrom::default())
+}
+
+fn start_game_from(app: &AppHandle, id: &str, from: &PlayFrom) -> Res<()> {
+    start_game_with_monitor_context(app, id, from, None)
+}
+
+/// The game's program started: by the copy a Steam shortcut started when it waits to (so Steam's
+/// overlay and Steam Input reach the game), else here.
+fn spawn_game(cmd: &mut tokio::process::Command, host: Option<&play_host::Host>, output: Option<&Path>, id: &str) -> std::io::Result<play_host::Game> {
+    #[cfg(windows)]
+    if let Some(h) = host {
+        match play_host::start_through(h, cmd.as_std(), output) {
+            Ok(g) => {
+                trail::note(format!("Play {id}: started by the copy Steam started, for Steam's overlay and Steam Input"));
+                return Ok(g);
+            }
+            Err(Some(e)) => return Err(e),
+            Err(None) => trail::note(format!("Play {id}: the copy Steam started can't be reached, so it starts here")),
+        }
+    }
+    let _ = (host, output, id);
+    cmd.spawn().map(play_host::Game::Own)
 }
 
 fn start_game_with_monitor_context(
     app: &AppHandle,
     id: &str,
-    _steam: Option<&sysenv::SteamLaunch>,
+    from: &PlayFrom,
     target_monitor: Option<display::MonitorInfo>,
 ) -> Res<()> {
     let st = app.state::<App>();
@@ -3192,9 +3394,10 @@ fn start_game_with_monitor_context(
         let wine = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
         games::add_args(&mut args, &pk.game, paths, wine);
     }
-    if !clean {
-        args.extend(join_paths(split_args(&g.args)));
-    }
+    // The player's launch options: their arguments go last, their variables are set after everyone
+    // else's below, so what they typed wins.
+    let player = if clean { launch_options::Options::default() } else { launch_options::parse(&g.args).map_err(|_| Error::Msg(launch_options::UNREADABLE.into()))? };
+    args.extend(player.args.iter().cloned());
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -3334,16 +3537,18 @@ fn start_game_with_monitor_context(
     // Remote Play can stream its window.
     #[cfg(target_os = "linux")]
     if !matches!(ext.as_str(), "exe" | "cmd" | "bat") {
-        sysenv::steam_overlay_for_game(&mut cmd, _steam);
+        sysenv::steam_overlay_for_game(&mut cmd, from.steam.as_ref());
     }
     cmd.args(&args).current_dir(&cwd).kill_on_drop(false);
     // What the game prints, kept for this start: a game that closes right away usually says why
     // there, and the crash report takes it along.
     // Not for a game that asks its questions in its text window: what it prints has to stay there.
     let console = boot::of(&st.dir, id).map(|b| b.console).unwrap_or(false);
+    let mut output_to = None;
     if let Some(f) = game_output_file(&st.dir, id).filter(|_| !console) {
         if let Ok(f2) = f.try_clone() {
             cmd.stdout(std::process::Stdio::from(f)).stderr(std::process::Stdio::from(f2));
+            output_to = Some(game_output_path(&st.dir, id));
         }
     }
     // So a game can tell it was started from here, and from where: it can open full screen with
@@ -3384,6 +3589,13 @@ fn start_game_with_monitor_context(
     // A program in an unpacked AppImage: what its runtime would have set (APPDIR, OWD, ...).
     #[cfg(target_os = "linux")]
     appimage_env(&mut cmd, &exe, &g.path);
+    if !player.env.is_empty() {
+        let names: Vec<&str> = player.env.iter().map(|(k, _)| k.as_str()).collect();
+        trail::note(format!("Play {id}: variables from its launch options: {}", names.join(", ")));
+    }
+    for (k, v) in &player.env {
+        cmd.env(k, v);
+    }
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
     let mut ach_id = full_id.clone();
     let ach_session = {
@@ -3421,7 +3633,7 @@ fn start_game_with_monitor_context(
     }
     note_run(&st, id, &g, &exe, &args, &cwd, prof.as_ref(), look_run.is_some());
     trail::note(format!("Play {id}: {}{}", exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), if look_run.is_some() { " with a Look" } else { "" }));
-    let spawned = cmd.spawn();
+    let spawned = spawn_game(&mut cmd, from.host.as_ref(), output_to.as_deref(), id);
     // A program that has to run as administrator (Windows says so, error 740): Windows asks the
     // player, then it starts. A setup goes through the setup steps, which find the game after.
     #[cfg(windows)]
@@ -3580,8 +3792,8 @@ fn start_game_with_monitor_context(
         let start = Instant::now();
         let mut stopped = false;
         let code = tokio::select! {
-            r = child.wait() => r.ok().and_then(|s| s.code()),
-            _ = rx => { stopped = true; let _ = child.kill().await; None }
+            c = child.wait() => c,
+            _ = rx => { stopped = true; child.kill().await; None }
         };
         // Some games start through a small program that opens the game and closes (a launcher, an
         // updater): it's still being played while a program from its folder runs. Play time, and
@@ -3712,7 +3924,7 @@ fn start_game_with_monitor_context(
 // ---------- setting a recomp up ----------
 
 /// Launch options as typed: words, with "quoted words" kept together.
-fn split_args(s: &str) -> Vec<String> {
+pub(crate) fn split_args(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
     let (mut quoted, mut any) = (false, false);
@@ -3743,7 +3955,7 @@ fn split_args(s: &str) -> Vec<String> {
 /// A path with spaces typed without quotes (`D:\Games\CTR Nitro-Fueled\boot.bin`) comes out of
 /// split_args in pieces: put them back together when together they're a file or folder that's there
 /// and the first piece alone isn't.
-fn join_paths(args: Vec<String>) -> Vec<String> {
+pub(crate) fn join_paths(args: Vec<String>) -> Vec<String> {
     let looks_path = |s: &str| {
         let p = s.rsplit_once('=').map(|(_, v)| v).filter(|_| s.starts_with('-')).unwrap_or(s);
         let b = p.as_bytes();
@@ -4598,6 +4810,16 @@ mod win_job {
         SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as *const std::ffi::c_void, size)
     }
 
+    /// Whether a process is still in the job: one the step started and left running, after the
+    /// step itself ended.
+    pub fn has_processes(job: &Job) -> bool {
+        use windows::Win32::System::JobObjects::{JobObjectBasicAccountingInformation, QueryInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION};
+        let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        let size = std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32;
+        let asked = unsafe { QueryInformationJobObject(Some(job.0), JobObjectBasicAccountingInformation, &mut info as *mut _ as *mut std::ffi::c_void, size, None) };
+        asked.is_ok() && info.ActiveProcesses > 0
+    }
+
     /// None when Windows won't make the job: the process then runs as it did before, outside one.
     pub fn kill_on_close(child: &std::process::Child) -> Option<Job> {
         use std::os::windows::io::AsRawHandle;
@@ -4734,6 +4956,18 @@ fn spawn_just_written(c: &mut std::process::Command) -> std::io::Result<std::pro
     c.spawn()
 }
 
+/// Whether a process is left in a process group: the setup step's (process_group(0) made the
+/// step's id the group's), after the step itself ended.
+#[cfg(unix)]
+fn group_has_processes(group: u32) -> bool {
+    extern "C" {
+        fn kill(pid: std::ffi::c_int, sig: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    let Ok(group) = std::ffi::c_int::try_from(group) else { return false };
+    // Signal 0 sends nothing: it only says whether the group still has a process in it.
+    unsafe { kill(-group, 0) == 0 }
+}
+
 /// Runs the recomp's setup step. `writing` is called once the step has started, when it can
 /// write over the last build; a step that can't start (its program missing, no room, no Proton)
 /// never calls it. `out` gets every line it prints (the full log the player can open or send).
@@ -4748,7 +4982,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         return Err(setup_temp::NO_ROOM.into());
     }
     // A temp folder of its own on the game's drive, taken away however this returns.
-    let temp = setup_temp::SetupTemp::make(install)?;
+    let mut temp = setup_temp::SetupTemp::make(install)?;
     let data = profile::data_dir(install);
     let _ = std::fs::create_dir_all(&data);
     // A Windows step on Linux (a Windows-only game's builder): through the same Proton the game
@@ -4803,7 +5037,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     // On Windows the same, through a job that ends the step (and what it started) when the
     // launcher is gone. Held until the step is.
     #[cfg(windows)]
-    let _job = win_job::kill_on_close(&child);
+    let job = win_job::kill_on_close(&child);
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     if let Some(o) = child.stdout.take() {
         let tx = tx.clone();
@@ -4849,6 +5083,15 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     loop {
         read(&mut said, &mut too_long, &mut heard);
         if let Ok(Some(s)) = child.try_wait() {
+            // What the step started and left running (a build it handed off to) goes on with the
+            // temp folder it was given, so the folder stays until the next setup run.
+            #[cfg(unix)]
+            let left_running = group_has_processes(child.id());
+            #[cfg(windows)]
+            let left_running = job.as_ref().is_some_and(win_job::has_processes);
+            if left_running {
+                temp.leave();
+            }
             if s.success() {
                 return Ok(());
             }
@@ -4943,6 +5186,7 @@ fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_u
             return Err(Error::Msg("Untracked installations don't get automatic updates. Choose a project first.".into()));
         }
         if let Some(a) = args {
+            launch_options::parse(&a).map_err(Error::Msg)?;
             g.args = a.trim().to_string();
         }
         if let Some(a) = auto_update {
@@ -6334,7 +6578,15 @@ fn discord_info(st: &App, id: &str) -> (String, String, String) {
 // Async so it runs inside the async runtime, which starting and watching a process needs.
 // With `replace`, any other game that's running is closed first.
 #[tauri::command]
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Option<bool>, program: Option<String>) -> Res<()> {
+    // Android opens the game's app.
+    #[cfg(target_os = "android")]
+    {
+        let st = app.state::<App>();
+        let id = recomp_of(&st, &id);
+        return android::open(&st, &id);
+    }
     let from_big_picture = big_picture.unwrap_or(false);
     BIG_PICTURE.store(from_big_picture, Ordering::Relaxed);
     // One game of a recomp that carries several starts the recomp (start_game picks the game).
@@ -6381,7 +6633,7 @@ async fn play(app: AppHandle, id: String, replace: Option<bool>, big_picture: Op
     };
     #[cfg(not(windows))]
     let monitor = None;
-    start_game_with_monitor_context(&app, &full, None, monitor)
+    start_game_with_monitor_context(&app, &full, &PlayFrom::default(), monitor)
 }
 
 /// The game being played in each running recomp, by recomp id: its full id when it's one of
@@ -6538,7 +6790,7 @@ fn recent_log(st: State<'_, App>, id: String, since: u64) -> Option<(String, Str
 
 fn recent_log_of(st: &App, id: &str, since: u64) -> Option<(String, String)> {
     let p = recent_log_path(st, id, since)?;
-    let text = std::fs::read(&p).ok()?;
+    let text = log_end(&p);
     let text = String::from_utf8_lossy(&text);
     let lines: Vec<&str> = text.lines().collect();
     let tail = lines[lines.len().saturating_sub(60)..].join("\n");
@@ -6572,14 +6824,10 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
             if !(n.ends_with(".log") || n.ends_with("log.txt")) {
                 continue;
             }
-            // An empty log (made at start, nothing written before it closed) says nothing, and it
-            // would hide what the game printed.
-            if m.len() == 0 {
-                continue;
-            }
             let Ok(t) = m.modified() else { continue };
             let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) {
+            // A log that says nothing would hide what the game printed.
+            if secs + 5 >= since && best.as_ref().map(|b| t > b.0).unwrap_or(true) && !old_inside(&p, since) && !says_nothing(&p) {
                 best = Some((t, p));
             }
         }
@@ -6590,7 +6838,7 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
         let m = std::fs::metadata(&p).ok()?;
         let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
+        (secs + 5 >= since && !says_nothing(&p)).then_some((t, p))
     });
     // Nor that: ReShade's, when it ran with a look.
     let best = best.or_else(|| {
@@ -6598,9 +6846,76 @@ pub(crate) fn recent_log_path(st: &App, id: &str, since: u64) -> Option<PathBuf>
         let m = std::fs::metadata(&p).ok()?;
         let t = m.modified().ok()?;
         let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        (m.len() > 0 && secs + 5 >= since).then_some((t, p))
+        (secs + 5 >= since && !says_nothing(&p)).then_some((t, p))
     });
     best.map(|(_, p)| p)
+}
+
+/// A log with nothing in it to read: empty, or only blank lines, NULs and byte order marks, as a
+/// game leaves when it makes its log at start and closes before writing a line, or when it sizes
+/// the file ahead and never fills it.
+fn says_nothing(p: &Path) -> bool {
+    log_end(p).is_empty()
+}
+
+/// The end of a log as the player reads it: up to its last 64 KB of text, without the blank
+/// lines, NULs and byte order marks after it (a game that sizes its log ahead leaves the rest
+/// padding). Read from the end, so a big log costs no more than a small one; padding is looked
+/// through for up to 8 MB. Empty when the log says nothing.
+fn log_end(p: &Path) -> Vec<u8> {
+    use std::io::{Read, Seek, SeekFrom};
+    const WINDOW: u64 = 64 * 1024;
+    const MAX_PADDING: u64 = 8 * 1024 * 1024;
+    const BOM: &[u8] = b"\xef\xbb\xbf";
+    let Ok(mut f) = std::fs::File::open(p) else { return Vec::new() };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let pad = |c: &u8| c.is_ascii_whitespace() || *c == 0;
+    let mut read = |start: u64, end: u64| -> Option<Vec<u8>> {
+        let mut buf = vec![0u8; (end - start) as usize];
+        f.seek(SeekFrom::Start(start)).ok()?;
+        f.read_exact(&mut buf).ok()?;
+        Some(buf)
+    };
+    // Where the text ends: just after the last byte that isn't padding.
+    let mut end = len;
+    loop {
+        if end == 0 || len - end > MAX_PADDING {
+            return Vec::new();
+        }
+        let start = end.saturating_sub(WINDOW);
+        let Some(buf) = read(start, end) else { return Vec::new() };
+        match buf.iter().rposition(|c| !pad(c)) {
+            Some(i) => {
+                end = start + i as u64 + 1;
+                break;
+            }
+            None => end = start,
+        }
+    }
+    let start = end.saturating_sub(WINDOW);
+    let Some(mut text) = read(start, end) else { return Vec::new() };
+    // Byte order marks between the padding go too.
+    loop {
+        while text.last().is_some_and(pad) {
+            text.pop();
+        }
+        if !text.ends_with(BOM) {
+            break;
+        }
+        text.truncate(text.len() - BOM.len());
+    }
+    if start == 0 {
+        if text.starts_with(BOM) {
+            text.drain(..BOM.len());
+        }
+        if text.iter().all(pad) {
+            text.clear();
+        }
+    } else if let Some(i) = text.iter().position(|&c| c == b'\n') {
+        // Cut mid-line: start at the next whole one.
+        text.drain(..=i);
+    }
+    text
 }
 
 // ---------- Troubleshoot ----------
@@ -7221,24 +7536,52 @@ fn already_open(exe: &Path) -> bool {
     }
 }
 
-/// A log whose first dated line is from more than a day before `since`: one a game renamed or
-/// copied (log rotation keeps the old file's times), not the one from this start.
+/// A log whose newest dated line is from more than a day before `since`: one a game renamed or
+/// copied (log rotation keeps the old file's times), not the one from this start. A log the game
+/// adds to on every start begins with its first session's date, so its end is read too.
 fn old_inside(p: &Path, since: u64) -> bool {
-    use std::io::Read;
+    let Some(day) = newest_day_in(p) else { return false };
+    day * 86400 + 86400 < since as i64
+}
+
+/// The newest date (days since 1970) written in a log's first 400 bytes or near its end. The end
+/// is read back in 4 KB steps until a step holds a date, up to 256 KB, so a crash that ends in a
+/// long undated backtrace or register dump still finds the dated line before it.
+fn newest_day_in(p: &Path) -> Option<i64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(p).ok()?;
     let mut head = [0u8; 400];
-    let n = std::fs::File::open(p).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
-    let text = String::from_utf8_lossy(&head[..n]);
-    let b = text.as_bytes();
-    for i in 0..b.len().saturating_sub(10) {
+    let n = f.read(&mut head).unwrap_or(0);
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let floor = len.saturating_sub(256 * 1024);
+    let mut end = len;
+    let mut tail = None;
+    while tail.is_none() && end > floor {
+        let start = end.saturating_sub(4096).max(floor);
+        // Each step also reads 9 bytes past its end, so a date cut by the step's edge is still whole.
+        let mut step = vec![0u8; ((end + 9).min(len) - start) as usize];
+        if f.seek(SeekFrom::Start(start)).is_err() || f.read_exact(&mut step).is_err() {
+            break;
+        }
+        tail = days_in(&step).into_iter().max();
+        end = start;
+    }
+    days_in(&head[..n]).into_iter().chain(tail).max()
+}
+
+/// Every date like 2026-11-25 in some bytes, as days since 1970.
+fn days_in(b: &[u8]) -> Vec<i64> {
+    let mut out = vec![];
+    for i in 0..b.len().saturating_sub(9) {
         let d = &b[i..i + 10];
         let digits = |r: std::ops::Range<usize>| d[r].iter().all(u8::is_ascii_digit);
-        if d[0] == b'2' && d[1] == b'0' && digits(0..4) && d[4] == b'-' && digits(5..7) && d[7] == b'-' && digits(8..10) {
-            let num = |r: std::ops::Range<usize>| std::str::from_utf8(&d[r]).ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
-            let day = days_from_civil(num(0..4), num(5..7), num(8..10));
-            return day * 86400 + 86400 < since as i64;
+        if !(d[0] == b'2' && d[1] == b'0' && digits(0..4) && d[4] == b'-' && digits(5..7) && d[7] == b'-' && digits(8..10)) {
+            continue;
         }
+        let num = |r: std::ops::Range<usize>| std::str::from_utf8(&d[r]).ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+        out.push(days_from_civil(num(0..4), num(5..7), num(8..10)));
     }
-    false
+    out
 }
 
 /// Days since 1970-01-01 for a calendar date.
@@ -8119,6 +8462,24 @@ fn launcher_platform_entry(v: &Value, os: &str, arch: &str) -> Option<Value> {
             }
             for key in ["version", "url", "sha256", "notes", "min"] {
                 if let Some(value) = mac.get(key) {
+                    out[key] = value.clone();
+                }
+            }
+            Some(out)
+        }
+        // Android's APK, when one is published: the player downloads it and Android installs it over
+        // this one (the launcher can't replace its own app).
+        "android" => {
+            let apk = v.get("android")?;
+            if str_of(apk, "url").is_empty() {
+                return None;
+            }
+            let mut out = v.clone();
+            for key in ["linux", "macos", "android", "url", "sha256", "min", "size"] {
+                out.as_object_mut()?.remove(key);
+            }
+            for key in ["version", "url", "sha256", "notes", "min", "size"] {
+                if let Some(value) = apk.get(key) {
                     out[key] = value.clone();
                 }
             }
@@ -9101,6 +9462,8 @@ fn get_state(st: State<'_, App>) -> Value {
         // Where the web view draws on the processor, the page leaves out what keeps moving.
         "cpuDraw": cpu_draw(),
         "updateFailed": UPDATE_FAILED.lock().unwrap().clone(),
+        // Hidden in a crash report before it goes on GitHub.
+        "home": usage::home_for_reports(),
     })
 }
 
@@ -9526,6 +9889,10 @@ const SPLASH_MIN: std::time::Duration = std::time::Duration::from_millis(900);
 
 /// The small start window: the logo in the middle of the screen while the launcher gets ready.
 fn open_splash(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    // Android shows its own start screen, and the app is one window.
+    if cfg!(mobile) {
+        return None;
+    }
     tauri::WebviewWindowBuilder::new(app, "splash", tauri::WebviewUrl::App("splash.html".into()))
         .title("RecompLauncher")
         .inner_size(420.0, 280.0)
@@ -10024,25 +10391,27 @@ fn portable_remap(dir: &Path) {
     if was.len() == 2 && was != now {
         let file = dir.join("library.json");
         if let Some(mut v) = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
-            fn walk(v: &mut Value, was: &str, now: &str) {
-                match v {
-                    Value::String(s) => {
-                        if s.len() >= 2 && s[..2].eq_ignore_ascii_case(was) && (s.len() == 2 || matches!(s.as_bytes()[2], b'\\' | b'/')) {
-                            *s = format!("{now}{}", &s[2..]);
-                        }
-                    }
-                    Value::Array(a) => a.iter_mut().for_each(|x| walk(x, was, now)),
-                    Value::Object(o) => o.values_mut().for_each(|x| walk(x, was, now)),
-                    _ => {}
-                }
-            }
-            walk(&mut v, &was, &now);
+            remap_drive(&mut v, &was, &now);
             if let Ok(b) = serde_json::to_vec_pretty(&v) {
                 let _ = std::fs::write(&file, b);
             }
         }
     }
     let _ = std::fs::write(&mark, &now);
+}
+
+fn remap_drive(v: &mut Value, was: &str, now: &str) {
+    match v {
+        Value::String(s) => {
+            // Game names and settings are strings too; two bytes can split a Unicode character.
+            if s.get(..2).is_some_and(|drive| drive.eq_ignore_ascii_case(was)) && (s.len() == 2 || matches!(s.as_bytes()[2], b'\\' | b'/')) {
+                *s = format!("{now}{}", &s[2..]);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| remap_drive(x, was, now)),
+        Value::Object(o) => o.values_mut().for_each(|x| remap_drive(x, was, now)),
+        _ => {}
+    }
 }
 
 /// Whether this launcher is portable, and where it keeps its data, for Settings.
@@ -10126,7 +10495,9 @@ fn process_alive(pid: u32) -> bool {
 /// Started with `--play` (a Steam or desktop shortcut): this process stays open until the game
 /// closes, so Steam shows the player in the game for the whole session. The work is handed to a
 /// second copy (`--handoff`), which either becomes the launcher or passes the game to the one
-/// already running; this one only watches the game's marker.
+/// already running; this one only watches the game's marker. Started by Steam on Windows, it also
+/// starts the game's program when the launcher asks (see play_host), so Steam's overlay and Steam
+/// Input reach the game.
 fn wait_for_play(args: &[String]) -> bool {
     let Some(id) = play_arg(args) else { return false };
     if args.iter().any(|a| a == "--handoff") {
@@ -10138,9 +10509,17 @@ fn wait_for_play(args: &[String]) -> bool {
     // One game of several: the recomp's marker is the one written.
     let id = games::split(&id).filter(|(r, _)| !lib.installed.contains_key(&id) && lib.installed.contains_key(*r)).map(|(r, _)| r.to_string()).unwrap_or(id);
     let Ok(exe) = std::env::current_exe() else { return false };
-    let rest = sysenv::play_handoff_args(args, &|k| if cfg!(target_os = "linux") { std::env::var(k).ok() } else { None });
+    let mut rest = sysenv::play_handoff_args(args, &|k| if cfg!(target_os = "linux") { std::env::var(k).ok() } else { None });
+    let from_steam = sysenv::from_steam(&|k| std::env::var(k).ok());
+    let host = play_host::hosts_game(cfg!(windows), from_steam).then(play_host::listen).flatten();
+    if let Some(h) = &host {
+        rest.push(h.host().arg());
+    }
     if std::process::Command::new(exe).args(&rest).spawn().is_err() {
         return false;
+    }
+    if let Some(h) = host {
+        std::thread::spawn(move || h.serve());
     }
     let file = playing_file(&dir, &id);
     let fresh = |f: &Path| marker_alive(f) && std::fs::metadata(f).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() < 90).unwrap_or(false);
@@ -10158,8 +10537,8 @@ fn wait_for_play(args: &[String]) -> bool {
     true
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// The single-instance plugin, on the Flatpak's own D-Bus name when the launcher runs as one.
+#[cfg(desktop)]
 fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder<R> {
     let b = tauri_plugin_single_instance::Builder::new();
     #[cfg(target_os = "linux")]
@@ -10171,6 +10550,7 @@ fn single_instance<R: tauri::Runtime>() -> tauri_plugin_single_instance::Builder
     b
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // First, before any thread starts: the test control token leaves the environment here, so
     // games and tools the launcher starts never see it.
@@ -10186,7 +10566,13 @@ pub fn run() {
     }
     // Keep what the session's bursts leave in the allocator's arenas from staying (on Linux).
     sysenv::tune_allocator();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Android: installing, opening and uninstalling the games through Android, and the window (android.rs).
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android::plugin()).plugin(android::screen_plugin());
+    // Desktop only: a phone never starts a second copy of the launcher.
+    #[cfg(desktop)]
+    let builder = builder
         // A second launch (a shortcut, a Steam entry) hands its job to the launcher already running.
         // `--quit` (from the installer and uninstaller): the one running closes, wherever it is.
         // On D-Bus as the app id, not the Tauri identifier: a Flatpak may only own names under its
@@ -10203,7 +10589,7 @@ pub fn run() {
             }
             Some(id) => {
                 let id = app.state::<App>().lib.lock().unwrap().resolve_project_id(&id);
-                let steam = sysenv::steam_launch_from_args(&argv);
+                let from = PlayFrom::handoff(&argv);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let rid = recomp_of(&app.state::<App>(), &id);
@@ -10212,7 +10598,7 @@ pub fn run() {
                     }
                     ready_look(&app, &rid).await;
                     let sync = cloud::sync_quiet(&app, &id).await;
-                    if let Err(e) = sync.and_then(|()| start_game_with_steam(&app, &id, steam.as_ref())) {
+                    if let Err(e) = sync.and_then(|()| start_game_from(&app, &id, &from)) {
                         show_main(&app);
                         let _ = app.emit("toast", e.to_string());
                     }
@@ -10225,6 +10611,9 @@ pub fn run() {
                 }
             }
         }).build())
+        // F12 screenshots and the quick menu while a game runs (ingame.rs).
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    builder
         .on_window_event(|w, ev| {
             if w.label() != "main" {
                 return;
@@ -10289,7 +10678,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // Pictures through the disk cache: rlimg://<address>.
         .register_asynchronous_uri_scheme_protocol("rlimg", |ctx, req, responder| {
             let app = ctx.app_handle().clone();
@@ -10618,6 +11006,10 @@ pub fn run() {
             let handle = app.handle().clone();
             match play {
                 Some(id) => {
+                    // The copy Steam started (Windows) starts the program here too: one way for
+                    // both. Steam's launch context is this process's own, so it isn't taken from
+                    // the handoff.
+                    let from = PlayFrom { steam: None, host: play_host::Host::from_args(&std::env::args().collect::<Vec<_>>()) };
                     tauri::async_runtime::spawn(async move {
                         let rid = recomp_of(&handle.state::<App>(), &id);
                         if options_first(&handle, &rid) {
@@ -10625,7 +11017,7 @@ pub fn run() {
                         }
                         ready_look(&handle, &rid).await;
                         let sync = cloud::sync_quiet(&handle, &id).await;
-                        if let Err(e) = sync.and_then(|()| start_game(&handle, &id)) {
+                        if let Err(e) = sync.and_then(|()| start_game_from(&handle, &id, &from)) {
                             show_main(&handle);
                             let _ = handle.emit("toast", e.to_string());
                         }
@@ -10687,7 +11079,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            take_link, ui_ready, pause, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
+            take_link, ui_ready, pause, android_sync, android_files_access, android_ask_files_access, android_back, android_orientation, android_edges, android_insets, android_device, android_haptic, android_to_back, android_played, android_install_allowed, download_limits, installer::installer_run, installer::installer_cancel, installer::installer_check, installer::installer_done,
             emulator_folders,
             games_rom_folder,
             add_github,
@@ -10757,6 +11149,25 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_drive_remap_preserves_unicode_labels() {
+        let mut library = json!({
+            "installed": {"game": {"name": "ゼルダの伝説", "path": "E:\\Games\\ゼルダ", "exe": "遊ぶ.exe"}},
+            "settings": {"ui": {"label": "🎮 Library", "note": "Aé", "choices": ["界", "é", "", "E", null]}}
+        });
+        let mut expected = library.clone();
+        expected["installed"]["game"]["path"] = json!("F:\\Games\\ゼルダ");
+        super::remap_drive(&mut library, "E:", "F:");
+        assert_eq!(library, expected);
+    }
+
+    #[test]
+    fn portable_drive_remap_only_changes_matching_drive_paths() {
+        let mut paths = json!(["E:", "e:\\Games\\Game.exe", "E:/Games/data", "D:\\Games", "E:relative", "E::label", "Elsewhere", {"folder": "E:/nested", "number": 2}]);
+        super::remap_drive(&mut paths, "E:", "F:");
+        assert_eq!(paths, json!(["F:", "F:\\Games\\Game.exe", "F:/Games/data", "D:\\Games", "E:relative", "E::label", "Elsewhere", {"folder": "F:/nested", "number": 2}]));
+    }
+
 
     /// Uninstalling a Nix AppImage's game: its links into a store outside the folder go as links,
     /// and nothing they point at is ever deleted.
@@ -11684,6 +12095,68 @@ mod tests {
     }
 
     #[test]
+    fn a_game_log_of_blank_lines_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-blank-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "\r\n\r\n", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_game_log_of_a_byte_order_mark_alone_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-bom-log-{}", std::process::id()));
+        let st = game_with_logs(&d, "\u{feff}", "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_log_that_ends_in_blank_lines_still_shows_its_text() {
+        let d = std::env::temp_dir().join(format!("rl-trailing-blank-log-{}", std::process::id()));
+        let st = game_with_logs(&d, &format!("loading level 3\nerror: out of memory\n{}", "\r\n".repeat(100)), "fatal: missing rom\n");
+        let got = recent_log_of(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        let (path, tail) = got.unwrap();
+        assert_eq!(PathBuf::from(path), d.join("game/logs/game.log"));
+        assert_eq!(tail, "loading level 3\nerror: out of memory");
+    }
+
+    #[test]
+    fn a_log_padded_with_nuls_past_64_kb_still_shows_its_text() {
+        let d = std::env::temp_dir().join(format!("rl-padded-log-{}", std::process::id()));
+        let st = game_with_logs(&d, &format!("loading level 3\nerror: out of memory\n{}", "\0".repeat(200 * 1024)), "fatal: missing rom\n");
+        let got = recent_log_of(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        let (path, tail) = got.unwrap();
+        assert_eq!(PathBuf::from(path), d.join("game/logs/game.log"));
+        assert_eq!(tail, "loading level 3\nerror: out of memory");
+    }
+
+    #[test]
+    fn a_big_log_of_nuls_alone_doesnt_hide_what_the_game_printed() {
+        let d = std::env::temp_dir().join(format!("rl-nul-log-{}", std::process::id()));
+        let st = game_with_logs(&d, &"\0".repeat(200 * 1024), "fatal: missing rom\n");
+        let got = recent_log_path(&st, "g", a_minute_ago());
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(got, Some(game_output_path(&d, "g")));
+    }
+
+    #[test]
+    fn a_big_log_shows_whole_lines_from_its_end() {
+        let d = std::env::temp_dir().join(format!("rl-big-log-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("big.log");
+        std::fs::write(&p, (0..20_000).map(|i| format!("line {i}\n")).collect::<String>()).unwrap();
+        let end = String::from_utf8(log_end(&p)).unwrap();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(end.len() <= 64 * 1024);
+        assert!(end.starts_with("line "), "{:?}", &end[..20]);
+        assert!(end.ends_with("line 19999"));
+    }
+
+    #[test]
     fn an_empty_game_log_doesnt_hide_what_the_game_printed() {
         let d = std::env::temp_dir().join(format!("rl-empty-log-{}", std::process::id()));
         let st = game_with_logs(&d, "", "fatal: missing rom\n");
@@ -12100,6 +12573,17 @@ mod tests {
     }
 
     #[test]
+    fn android_launcher_updates_use_only_the_apk_entry() {
+        let feed = json!({"version":"2.0", "url":"https://example.com/windows.exe", "min":"2.0", "linux":{"url":"https://example.com/linux.AppImage"}});
+        assert!(launcher_platform_entry(&feed, "android", "arm64").is_none());
+        let feed = json!({"version":"2.0", "url":"https://example.com/windows.exe", "min":"2.0", "android":{"url":"https://example.com/app.apk", "version":"1.5"}});
+        let apk = launcher_platform_entry(&feed, "android", "arm64").unwrap();
+        assert_eq!(apk["url"], "https://example.com/app.apk");
+        assert_eq!(apk["version"], "1.5");
+        assert!(apk.get("min").is_none());
+    }
+
+    #[test]
     fn launcher_update_downloads_only_from_trusted_places() {
         let base = "http://127.0.0.1:8787/api";
         for ok in ["https://github.com/o/r/releases/download/v1/a.exe", "https://recomplauncher.com/launcher/a.exe", "http://127.0.0.1:8787/api/launcher/a.exe"] {
@@ -12318,6 +12802,46 @@ mod tests {
         assert_eq!(said.text(), "reason");
     }
 
+    /// A log file at `<temp>/rl-<name>-<pid>.log` with `text` in it.
+    fn log_with(name: &str, text: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("rl-{name}-{}.log", std::process::id()));
+        std::fs::write(&p, text).unwrap();
+        p
+    }
+
+    fn noon_on_the_test_day() -> u64 {
+        released_secs("2026-11-25T12:00:00Z").unwrap() as u64
+    }
+
+    #[test]
+    fn a_log_the_game_adds_to_each_start_is_this_starts_log() {
+        let filler = "[2020-01-01 10:00:05] loading\n".repeat(40);
+        let text = format!("[2020-01-01 10:00:00] first start\n{filler}[2026-11-25 12:00:01] fatal: out of memory\n");
+        let p = log_with("appended", &text);
+        let old = old_inside(&p, noon_on_the_test_day());
+        let _ = std::fs::remove_file(&p);
+        assert!(!old);
+    }
+
+    #[test]
+    fn a_log_that_ends_in_a_long_undated_trace_is_this_starts_log() {
+        let trace = "    at 0x00007ff6a1b2c3d4 in game.exe+0x1234 rax=0000000000000000\n".repeat(200);
+        let text = format!("[2020-01-01 10:00:00] first start\n[2026-11-25 12:00:01] fatal: access violation\n{trace}");
+        assert!(trace.len() > 10 * 1024);
+        let p = log_with("long-trace", &text);
+        let old = old_inside(&p, noon_on_the_test_day());
+        let _ = std::fs::remove_file(&p);
+        assert!(!old);
+    }
+
+    #[test]
+    fn a_log_with_only_old_dates_is_still_old() {
+        let p = log_with("rotated", "[2020-01-01 10:00:00] first start\n[2020-01-01 10:05:00] quit\n");
+        let old = old_inside(&p, noon_on_the_test_day());
+        let _ = std::fs::remove_file(&p);
+        assert!(old);
+    }
+
     #[test]
     fn a_setup_steps_colour_codes_are_taken_out() {
         assert_eq!(plain_line("\u{1b}[1;31merror:\u{1b}[0m vulkan missing"), "error: vulkan missing");
@@ -12391,6 +12915,64 @@ mod tests {
 #[cfg(test)]
 mod prepare_env_tests {
     use super::*;
+
+    fn step_named(dir: &Path, name: &str, script: &str) -> profile::Prepare {
+        std::fs::write(dir.join(name), script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        profile::Prepare { program: vec![name.into()], args: vec![], label: "Step".into(), options: vec![], version: String::new(), done: vec![], env: BTreeMap::new(), keeps_copy: false }
+    }
+
+    fn run_step(dir: &Path, pr: &profile::Prepare) -> Result<(), String> {
+        run_prepare(pr, dir, None, &[], &|_, _| {}, &|| false, &|| {}, None)
+    }
+
+    /// What a program the step left running wrote when it looked for its temp folder a second
+    /// after the step ended ("kept" or "gone"), waiting up to ten seconds for it.
+    fn what_the_helper_found(dir: &Path) -> String {
+        let until = Instant::now() + std::time::Duration::from_secs(10);
+        while Instant::now() < until {
+            let said = std::fs::read_to_string(dir.join("helper.txt")).unwrap_or_default();
+            if !said.trim().is_empty() {
+                return said.trim().to_string();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        String::new()
+    }
+
+    #[test]
+    fn a_program_the_step_left_running_keeps_its_temp_folder() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-helper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        #[cfg(windows)]
+        let pr = step_named(&dir, "handoff.bat", "@echo off\r\nstart \"\" /b cmd /c \"ping -n 2 127.0.0.1 >nul & if exist \"%TEMP%\\\" (echo kept>helper.txt) else (echo gone>helper.txt)\"\r\nexit /b 0\r\n");
+        #[cfg(not(windows))]
+        let pr = step_named(&dir, "handoff.sh", "#!/bin/sh\n( sleep 1; if [ -d \"$TMPDIR\" ]; then echo kept; else echo gone; fi > helper.txt ) &\nexit 0\n");
+        run_step(&dir, &pr).unwrap();
+        let found = what_the_helper_found(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(found, "kept");
+    }
+
+    #[test]
+    fn a_step_that_leaves_nothing_running_takes_its_temp_folder_away() {
+        let dir = std::env::temp_dir().join(format!("rl-prep-alone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        #[cfg(windows)]
+        let pr = step_named(&dir, "alone.bat", "@echo off\r\nexit /b 0\r\n");
+        #[cfg(not(windows))]
+        let pr = step_named(&dir, "alone.sh", "#!/bin/sh\nexit 0\n");
+        run_step(&dir, &pr).unwrap();
+        let gone = !dir.join(setup_temp::FOLDER).exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(gone);
+    }
 
     /// A setup step that writes down what it was given: its temp folder (and whether it was
     /// there), the launcher's names and one of its own from prepare.env.

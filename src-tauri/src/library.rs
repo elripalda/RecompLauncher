@@ -806,6 +806,10 @@ impl Library {
             Err(_) => Library::default(),
         };
         l.format = crate::library_convert::FORMAT;
+        // A phone has no home folder to put the library in: it goes in the launcher's own folder.
+        if cfg!(target_os = "android") && !l.settings.library_dir.is_absolute() {
+            l.settings.library_dir = dir.join("Library");
+        }
         if converted {
             let _ = l.save(dir);
         }
@@ -856,15 +860,22 @@ impl Library {
                 l.settings = s;
             }
         }
-        let field = |k: &str| v.get(k).cloned().unwrap_or(Value::Null);
-        l.roms = serde_json::from_value(field("roms")).unwrap_or_default();
-        l.seen_apps = serde_json::from_value(field("seen_apps")).unwrap_or_default();
-        l.seen_versions = serde_json::from_value(field("seen_versions")).unwrap_or_default();
-        l.seen_soon = serde_json::from_value(field("seen_soon")).unwrap_or_default();
-        l.project_aliases = serde_json::from_value(field("project_aliases")).unwrap_or_default();
-        l.mods = serde_json::from_value(field("mods")).unwrap_or_default();
-        l.removed_play_history = serde_json::from_value(field("removed_play_history")).unwrap_or_default();
-        l
+        // Every other field, each one kept when it reads: one that doesn't is left out, not the
+        // rest with it. Taken by what the file has rather than a list here, so a field added later
+        // (the player's pictures, say) isn't lost when the library is read this way.
+        let Some(fields) = v.as_object() else { return l };
+        let mut have = serde_json::to_value(&l).unwrap_or(Value::Null);
+        for (k, val) in fields {
+            if k == "installed" || k == "settings" {
+                continue;
+            }
+            let mut next = have.clone();
+            next[k] = val.clone();
+            if serde_json::from_value::<Library>(next.clone()).is_ok() {
+                have = next;
+            }
+        }
+        serde_json::from_value(have).unwrap_or(l)
     }
 
     pub fn save(&self, dir: &Path) -> std::io::Result<()> {
@@ -1028,6 +1039,44 @@ mod tests {
     }
 
     use super::*;
+
+    /// A library file with one game this launcher can't read (a number saved as text), beside a
+    /// cover the player chose for a game that isn't installed.
+    fn library_with_a_broken_game() -> Value {
+        serde_json::json!({
+            "installed": { "a": { "id": "a", "name": "A", "tag": "v1", "path": "/x/a", "played_secs": "lots" } },
+            "settings": { "library_dir": "/lib" },
+            "arts": { "c": { "cover_file": "/covers/c.png" } }
+        })
+    }
+
+    #[test]
+    fn reading_a_damaged_library_keeps_the_players_pictures() {
+        let l = Library::lenient(&library_with_a_broken_game());
+        assert_eq!(l.arts.get("c").and_then(|a| a.cover_file.clone()), Some(PathBuf::from("/covers/c.png")));
+    }
+
+    #[test]
+    fn a_damaged_library_is_saved_again_with_the_players_pictures() {
+        let d = std::env::temp_dir().join(format!("rl-library-damaged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("library.json"), library_with_a_broken_game().to_string()).unwrap();
+        Library::load(&d);
+        let again = Library::load(&d);
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(again.arts.contains_key("c"));
+    }
+
+    #[test]
+    fn reading_a_damaged_library_keeps_every_field_that_reads() {
+        let mut v = library_with_a_broken_game();
+        v["seen_apps"] = serde_json::json!(["x"]);
+        v["mods"] = serde_json::json!("not a list of mods");
+        let l = Library::lenient(&v);
+        assert_eq!(l.seen_apps, vec!["x".to_string()]);
+        assert!(l.mods.is_empty());
+    }
 
     #[test]
     fn reinstall_restores_saved_play_history() {

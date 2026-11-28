@@ -68,6 +68,8 @@ jobs:
       # Flathub's own checks. Only errors fail it (the release's missing commit is a warning).
       # Its check that recomplauncher.com answers is about the website, not the packaging: when the
       # site is slow or down it's reported, not a failure. Flathub checks it again on submission.
+      # The same for the app data's links (the GitHub repo and its issues): a link that didn't
+      # answer (url-not-reachable, like a 504 from GitHub) is reported; any other warning fails.
       - name: Lint the manifest and app data
         run: |
           flatpak install -y --noninteractive flathub org.flatpak.Builder
@@ -82,4 +84,10 @@ jobs:
               print("::warning::recomplauncher.com did not answer the linter (appid-url-not-reachable)")
           sys.exit(1 if [e for e in errors if e != "appid-url-not-reachable"] else 0)
           '
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream com.recomplauncher.RecompLauncher.metainfo.xml
+          rc=0
+          out=$(flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream com.recomplauncher.RecompLauncher.metainfo.xml 2>&1) || rc=$?
+          echo "$out"
+          if [ "$rc" -ne 0 ]; then
+            if ! printf '%s\n' "$out" | grep -q 'url-not-reachable' || printf '%s\n' "$out" | grep -E '^[EW]: ' | grep -vq 'url-not-reachable'; then exit "$rc"; fi
+            echo "::warning::a link in the app data did not answer the linter (url-not-reachable)"
+          fi

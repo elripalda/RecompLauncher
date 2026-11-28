@@ -115,9 +115,40 @@ pub fn add_place(now: &[String], dir: &Path, g: &Installed) -> Result<Vec<String
     Ok(out)
 }
 
+/// Android: the phone's shared storage (the folder a file manager opens at, `/storage/emulated/0`),
+/// known once the player has allowed All files access. None on a PC, and on a phone without it.
+static STORAGE: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+pub fn set_storage(p: Option<PathBuf>) {
+    *STORAGE.write().unwrap_or_else(|e| e.into_inner()) = p.filter(|p| p.is_absolute());
+}
+
+pub fn storage() -> Option<PathBuf> {
+    STORAGE.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// A save place an Android build can have: in shared storage, nowhere above it, and not in
+/// `Android/data` or `obb`, which Android keeps from other apps. The website checks the same.
+pub fn storage_place_ok(t: &str) -> bool {
+    let Some(rest) = t.strip_prefix("{storage}/") else { return false };
+    let parts: Vec<&str> = rest.split('/').collect();
+    let hidden = parts.len() >= 2 && parts[0].eq_ignore_ascii_case("android") && (parts[1].eq_ignore_ascii_case("data") || parts[1].eq_ignore_ascii_case("obb"));
+    !rest.is_empty() && !hidden && !rest.contains('{') && !rest.contains('\\') && parts.iter().all(|p| !p.is_empty() && *p != "." && *p != "..")
+}
+
+/// `{storage}` in a template, as `root`. Left as it is without one: no such folder exists, so it's
+/// never read as a place with no saves in it (the caller asks for access first).
+fn fill_storage(t: &str, root: Option<&Path>) -> String {
+    match (t.strip_prefix("{storage}"), root) {
+        (Some(rest), Some(r)) => format!("{}{rest}", r.to_string_lossy().trim_end_matches('/')),
+        _ => t.to_string(),
+    }
+}
+
 /// A template on this PC.
 pub fn resolve(template: &str, install: &Path) -> PathBuf {
-    let t = crate::profile::fill(template, install, None);
+    let t = fill_storage(template, storage().as_deref());
+    let t = crate::profile::fill(&t, install, None);
     PathBuf::from(if cfg!(windows) { t.replace('/', "\\") } else { t })
 }
 
@@ -179,6 +210,8 @@ pub fn templatize_for(p: &Path, g: &Installed) -> String {
 pub fn templatize(p: &Path, install: &Path) -> String {
     // `{data}` before `{install}`: it's inside it, and the narrower name is the one the game uses.
     let bases: Vec<(&str, Option<PathBuf>)> = vec![
+        // Android only: a game's folder in the phone's shared storage.
+        ("{storage}", storage()),
         ("{data}", Some(crate::profile::data_dir(install))),
         ("{install}", Some(install.to_path_buf())),
         ("{local}", dirs::data_local_dir()),
@@ -530,7 +563,18 @@ pub fn use_chosen_device(ui: &serde_json::Value) {
     *CHOSEN_DEVICE.lock().unwrap_or_else(|e| e.into_inner()) = name;
 }
 
+/// Android: the phone's own name ("samsung SM-S921B"), told by Android once the window starts.
+static PHONE_NAME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub fn set_phone_name(name: &str) {
+    *PHONE_NAME.lock().unwrap_or_else(|e| e.into_inner()) = name.trim().chars().take(DEVICE_NAME_MAX).collect();
+}
+
 pub fn system_device_name() -> String {
+    if cfg!(target_os = "android") {
+        let n = PHONE_NAME.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        return if n.is_empty() { "Android".into() } else { n };
+    }
     std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "This PC".into())
 }
 
@@ -2872,5 +2916,30 @@ mod account_scope_tests {
         sign_in(&d.0, "B");
         let s = state(&d.0, "g");
         assert_eq!((s.synced_hash.as_str(), s.pending.as_deref(), s.last_hash.as_str()), ("", None, "local"));
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+
+    #[test]
+    fn a_phone_save_place_is_filled_with_the_shared_storage_folder() {
+        let root = Path::new("/storage/emulated/0");
+        assert_eq!(fill_storage("{storage}/srb2kart", Some(root)), "/storage/emulated/0/srb2kart");
+    }
+
+    #[test]
+    fn without_all_files_access_the_place_stays_unfilled() {
+        assert_eq!(fill_storage("{storage}/srb2kart", None), "{storage}/srb2kart");
+    }
+
+    #[test]
+    fn only_places_inside_shared_storage_are_taken() {
+        assert!(storage_place_ok("{storage}/srb2kart"));
+        assert!(storage_place_ok("{storage}/Games/X/*.sav"));
+        for bad in ["{storage}/../etc", "/data/data/com.x", "{storage}/Android/data/com.x", "{storage}/android/OBB/x", "{storage}/", "{storage}/a//b", "{storage}/a/{install}", "{local}/x"] {
+            assert!(!storage_place_ok(bad), "{bad}");
+        }
     }
 }

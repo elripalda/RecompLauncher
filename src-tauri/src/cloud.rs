@@ -163,6 +163,7 @@ fn still_signed_in_as(dir: &Path, a: &Account, id: &str) -> bool {
 fn forget(app: &AppHandle) {
     let st = app.state::<App>();
     store(&st.dir, None);
+    forget_peeks();
     let _ = app.emit("account", json!({"signedIn": false}));
 }
 
@@ -551,6 +552,7 @@ pub async fn account_poll(app: AppHandle) -> Res<Value> {
         }
         let st = app.state::<App>();
         store(&st.dir, Some(&Account { token, user: user.clone(), ..Default::default() }));
+        forget_peeks();
         *LINK.lock().unwrap() = None;
         let _ = app.emit("account", json!({"signedIn": true, "user": user}));
         // Anything that was waiting to go up.
@@ -627,6 +629,14 @@ fn own_saves(st: &App, id: &str) -> Option<crate::GamePick> {
 
 /// Where this game's saves are, best first.
 pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
+    // Android: only the places the Android build keeps its saves in shared storage. The PC build's
+    // (its profile, a recomp's games, the player's picks) are other files, in folders a phone
+    // doesn't have.
+    if cfg!(target_os = "android") {
+        let cat = crate::cached_catalog(st);
+        let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
+        return saves::spots(&[], &catalog_saves(&entry, true), g);
+    }
     if let Some(p) = own_saves(st, id) {
         // Only the game's own: the recomp's other places are the other games'. Its override too:
         // that's the recomp's, and one folder can't stand in for every game's.
@@ -646,8 +656,46 @@ fn named_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
-    let from_cat: Vec<String> = entry.get("saves").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    named_spots(profile_saves, from_cat, g)
+    named_spots(profile_saves, catalog_saves(&entry, false), g)
+}
+
+/// The save places the catalog names for a game. On Android, its Android build's: folders in the
+/// phone's shared storage (`android_saves`, docs/BUILDING.md), as the game's own folder there is out
+/// of the launcher's reach.
+fn catalog_saves(entry: &Value, android: bool) -> Vec<String> {
+    let list = |k: &str| -> Vec<String> { entry.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() };
+    if android {
+        return list("android_saves").into_iter().filter(|t| saves::storage_place_ok(t)).collect();
+    }
+    list("saves")
+}
+
+/// The game's name in cloud saves. A phone's copies go under `<id>.android`, apart from a PC's: the
+/// Android build of a game keeps other files in other places, and a PC restoring them (or a phone
+/// restoring a PC's) would put them where they don't belong.
+fn cloud_id(id: &str) -> String {
+    cloud_id_for(id, cfg!(target_os = "android"))
+}
+
+fn cloud_id_for(id: &str, android: bool) -> String {
+    if android {
+        format!("{id}.android")
+    } else {
+        id.to_string()
+    }
+}
+
+/// Android without All files access: the game's save folders can't be read, so nothing is copied,
+/// restored or compared (an unreadable folder must never look like one with no save in it). A fixed
+/// text, so the window can translate it.
+pub const FILES_ACCESS: &str = "Allow All files access for RecompLauncher so it can reach this game's saves.";
+
+/// Checked before anything reads or writes a game's save folders.
+fn can_reach(spots: &[Spot]) -> Res<()> {
+    if cfg!(target_os = "android") && !spots.is_empty() && saves::storage().is_none() {
+        return Err(Error::Msg(FILES_ACCESS.into()));
+    }
+    Ok(())
 }
 
 /// The save folders a profile names are the developer's only when the profile came with the
@@ -713,7 +761,7 @@ pub struct CloudCopy {
 }
 
 async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
-    let v = get(app, &[("a", "saves"), ("game", id)]).await?;
+    let v = get(app, &[("a", "saves"), ("game", &cloud_id(id))]).await?;
     let list: Vec<CloudCopy> = serde_json::from_value(v.get("versions").cloned().unwrap_or(json!([]))).unwrap_or_default();
     let mut list = list;
     list.sort_by(|a, b| b.made.cmp(&a.made));
@@ -906,7 +954,7 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64, a: &A
     let req = st
         .http
         .put(&url)
-        .query(&[("a", "save-put"), ("game", id), ("hash", &man.hash), ("made", &made), ("played", &played), ("device", &man.device)])
+        .query(&[("a", "save-put"), ("game", &cloud_id(id)), ("hash", &man.hash), ("made", &made), ("played", &played), ("device", &man.device)])
         .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
         .header("Content-Type", "application/zip")
         .body(body)
@@ -1068,6 +1116,8 @@ pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>
     folder_free(&st, id)?;
     let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
+    // Without access the session stays open, and is finished once access is given.
+    can_reach(&spots)?;
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
     // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
@@ -1173,7 +1223,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&s
     let req = st
         .http
         .get(&url)
-        .query(&[("a", "save-get"), ("game", id), ("v", &c.v)])
+        .query(&[("a", "save-get"), ("game", &cloud_id(id)), ("v", &c.v)])
         .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
         .timeout(std::time::Duration::from_secs(300));
     let r = crate::net::send(req, &save_url("save-get"), true).await?;
@@ -1194,6 +1244,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&s
     let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
     tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
     let spots = spots_of(&st, id, &g);
+    can_reach(&spots)?;
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
     let checked = checked.map(String::from);
     let n = blocking(move || match checked {
@@ -1327,6 +1378,14 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     let spots = spots_of(&st, &id, &g);
+    // Android before All files access: the game plays with what's on the phone, and the player is
+    // told why nothing came down. Nothing about the sync changes.
+    if let Err(e) = can_reach(&spots) {
+        if manual {
+            return Err(e);
+        }
+        return Ok(json!({"action": "no-access"}));
+    }
     // Not knowing where it saves isn't the same as having no saves: a cloud copy put in place now
     // could land beside the real ones, or over them. Nothing syncs until the player picks a folder.
     if spots.is_empty() {
@@ -1473,6 +1532,7 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
         let (list, _) = cloud_list(&app, &id).await?;
         let top = list.first().filter(|c| c.v == cloud_version).ok_or_else(changed)?;
         let spots = spots_of(&st, &id, &g);
+        can_reach(&spots)?;
         let (g2, spots2) = (g.clone(), spots.clone());
         let (entries, infos, hash, _) = blocking(move || saves::current(&spots2, &g2)).await?;
         if hash != local_hash || entries.len() != infos.len() {
@@ -1558,11 +1618,12 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let mut offline = false;
     let mut next = Value::Null;
     if g.cloud == Some(true) && signed_in(&st.dir) {
+        let who = account_uid(&st.dir);
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
                 next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
                 // The badge above Play reads the same list, so it says the same thing.
-                keep_peek(&id, &state.synced_hash, &l);
+                keep_peek(&id, &state.synced_hash, &who, &l);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
@@ -1640,26 +1701,39 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
 
 /// A game's cloud list as last asked by its page, and the save this PC had synced then. Kept a few
 /// minutes, so opening a game's page again doesn't ask the website again; a sync since (another
-/// synced save) asks anew, since the list it kept may be the one it just changed.
+/// synced save) asks anew, since the list it kept may be the one it just changed. Each list is the
+/// account's it was asked for (account_uid), and only that account gets it back.
 struct Peek {
     at: std::time::Instant,
     synced: String,
+    account: String,
     list: Vec<CloudCopy>,
 }
 static PEEKED: Mutex<Option<std::collections::HashMap<String, Peek>>> = Mutex::new(None);
 const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
 
-fn peeked(id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+fn peeked(id: &str, synced: &str, account: &str) -> Option<Vec<CloudCopy>> {
     let kept = PEEKED.lock().unwrap();
     let p = kept.as_ref()?.get(id)?;
-    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
+    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced && p.account == account;
     fresh.then(|| p.list.clone())
 }
 
-fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
-    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), list: list.to_vec() };
+/// `account` is who was signed in when the list was asked for: a reply that comes after a switch
+/// stays that account's.
+fn keep_peek(id: &str, synced: &str, account: &str, list: &[CloudCopy]) {
+    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), account: account.to_string(), list: list.to_vec() };
     PEEKED.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), peek);
 }
+
+/// On sign-in and sign-out: no list kept for one account is left for the next.
+fn forget_peeks() {
+    *PEEKED.lock().unwrap() = None;
+}
+
+/// Held by the tests that keep or forget lists, since they all share PEEKED.
+#[cfg(test)]
+static PEEK_TESTS: Mutex<()> = Mutex::new(());
 
 /// For the badge above Play: a newer save from another PC that Play brings in by itself, or null.
 /// saves_status never asks the website, so on its own it would call that save "Up to date". This
@@ -1668,16 +1742,22 @@ fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
 pub async fn saves_peek(app: AppHandle, id: String) -> Res<Value> {
     let st = app.state::<App>();
     let g = game(&st, &id)?;
-    if g.cloud != Some(true) || !signed_in(&st.dir) || spots_of(&st, &id, &g).is_empty() {
+    let spots = spots_of(&st, &id, &g);
+    if g.cloud != Some(true) || !signed_in(&st.dir) || spots.is_empty() || can_reach(&spots).is_err() {
         return Ok(Value::Null);
     }
     let state = saves::state(&st.dir, &id);
-    let list = match peeked(&id, &state.synced_hash) {
+    let who = account_uid(&st.dir);
+    let list = match peeked(&id, &state.synced_hash, &who) {
         Some(list) => list,
         None => {
             // Offline or any other trouble: the badge keeps what this PC knows.
             let Ok((list, _)) = cloud_list(&app, &id).await else { return Ok(Value::Null) };
-            keep_peek(&id, &state.synced_hash, &list);
+            keep_peek(&id, &state.synced_hash, &who, &list);
+            // Signed in as someone else meanwhile: that list isn't theirs.
+            if account_uid(&st.dir) != who {
+                return Ok(Value::Null);
+            }
             list
         }
     };
@@ -1727,6 +1807,7 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
             // A fresh copy of what's there now (a running game's saves wait until it closes).
             if !running {
                 let spots = spots_of(&st, &id, &g);
+                can_reach(&spots)?;
                 let (dir, id2, g2) = (st.dir.clone(), id.clone(), g.clone());
                 blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
             }
@@ -1831,9 +1912,11 @@ pub async fn saves_backup(app: AppHandle, id: String) -> Res<Option<saves::Copy>
     }
     // Asked for by hand: "nothing changed" would hide that nothing is looked at.
     let g = game(&st, &id)?;
-    if spots_of(&st, &id, &g).is_empty() {
+    let spots = spots_of(&st, &id, &g);
+    if spots.is_empty() {
         return Err(Error::Msg(SAVES_UNKNOWN.into()));
     }
+    can_reach(&spots)?;
     after_session(&app, &id).await
 }
 
@@ -1926,6 +2009,7 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
         return Err(still_open(&program));
     }
     let spots = spots_of(&st, &id, &g);
+    can_reach(&spots)?;
     let (dir, id2) = (st.dir.clone(), id.clone());
     let file = saves::dir_of(&st.dir, &id, &g).join(&name);
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
@@ -1940,7 +2024,7 @@ pub async fn saves_cloud_delete(app: AppHandle, id: String, v: String) -> Res<()
     if !deletable(&list, &v) {
         return Err(Error::Msg("The newest cloud save stays: the next PC you play on brings it in.".into()));
     }
-    let r = post(&app, "save-delete", json!({"game": id, "v": v}), true).await?;
+    let r = post(&app, "save-delete", json!({"game": cloud_id(&id), "v": v}), true).await?;
     if let (Some(used), Some(quota)) = (r.get("used").and_then(Value::as_u64), r.get("quota").and_then(Value::as_u64)) {
         room_now(used, quota);
     }
@@ -2188,6 +2272,68 @@ mod account_tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// What the badge above Play gets for this game, for whoever is signed in now (nothing synced).
+    fn badge_list(dir: &Path, id: &str) -> Option<Vec<CloudCopy>> {
+        peeked(id, "", &account_uid(dir))
+    }
+
+    fn other_pcs_save() -> Vec<CloudCopy> {
+        vec![CloudCopy { v: "2".into(), hash: "from-other-pc".into(), ..Default::default() }]
+    }
+
+    #[test]
+    fn a_list_kept_for_one_account_is_not_the_next_accounts() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        keep_peek("peek-switch", "", &account_uid(&dir.0), &other_pcs_save());
+        // Someone else signs in on this PC; neither has synced this game here. The list is still
+        // kept (sign-in clears it too), but the account doesn't match.
+        sign_in_for_tests(&dir.0, "b");
+        assert!(badge_list(&dir.0, "peek-switch").is_none());
+    }
+
+    #[test]
+    fn a_reply_asked_for_before_a_switch_stays_the_old_accounts() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        let asked_as = account_uid(&dir.0);
+        sign_in_for_tests(&dir.0, "b");
+        forget_peeks();
+        // The website's answer to a's question only comes now.
+        keep_peek("peek-late", "", &asked_as, &other_pcs_save());
+        assert!(badge_list(&dir.0, "peek-late").is_none());
+        sign_in_for_tests(&dir.0, "a");
+        assert_eq!(badge_list(&dir.0, "peek-late").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn the_same_account_uses_its_kept_list_for_a_few_minutes() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        keep_peek("peek-kept", "", &account_uid(&dir.0), &other_pcs_save());
+        assert_eq!(badge_list(&dir.0, "peek-kept").map(|l| l.len()), Some(1));
+        // Older than PEEK_REST, it's asked again. (A PC up for less than that has no such Instant.)
+        if let Some(old) = std::time::Instant::now().checked_sub(PEEK_REST) {
+            PEEKED.lock().unwrap().as_mut().unwrap().get_mut("peek-kept").unwrap().at = old;
+            assert!(badge_list(&dir.0, "peek-kept").is_none());
+        }
+    }
+
+    #[test]
+    fn signing_out_forgets_the_kept_lists() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        keep_peek("peek-out", "", &account_uid(&dir.0), &other_pcs_save());
+        sign_out_for_tests(&dir.0);
+        forget_peeks();
+        sign_in_for_tests(&dir.0, "a");
+        assert!(badge_list(&dir.0, "peek-out").is_none());
     }
 
     #[test]
@@ -2554,14 +2700,16 @@ mod sync_tests {
 
     #[test]
     fn a_game_page_opened_again_uses_the_list_it_just_asked_for() {
-        super::keep_peek("peek-same", "synced", &[cloud("2", "from-other-pc")]);
-        assert_eq!(super::peeked("peek-same", "synced").map(|l| l.len()), Some(1));
+        let _one = super::PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        super::keep_peek("peek-same", "synced", "a", &[cloud("2", "from-other-pc")]);
+        assert_eq!(super::peeked("peek-same", "synced", "a").map(|l| l.len()), Some(1));
     }
 
     #[test]
     fn a_sync_since_the_last_look_asks_the_cloud_again() {
-        super::keep_peek("peek-synced", "before", &[cloud("2", "from-other-pc")]);
-        assert!(super::peeked("peek-synced", "after").is_none());
+        let _one = super::PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        super::keep_peek("peek-synced", "before", "a", &[cloud("2", "from-other-pc")]);
+        assert!(super::peeked("peek-synced", "after", "a").is_none());
     }
 
     #[test]
@@ -2909,5 +3057,28 @@ mod home_tests {
     #[test]
     fn home_list_without_items_is_left_alone() {
         assert!(!home_ok(&json!({"v": 1, "error": "Try again in a moment."})));
+    }
+}
+
+#[cfg(test)]
+mod android_tests {
+    use super::*;
+
+    #[test]
+    fn a_pc_reads_the_save_places_it_always_did() {
+        let e = json!({"saves": ["{local}/X"], "android_saves": ["{storage}/x"]});
+        assert_eq!(catalog_saves(&e, false), vec!["{local}/X".to_string()]);
+    }
+
+    #[test]
+    fn a_phone_reads_its_android_save_places_only_inside_shared_storage() {
+        let e = json!({"saves": ["{local}/X"], "android_saves": ["{storage}/x", "{storage}/../y", "{storage}/Android/data/z"]});
+        assert_eq!(catalog_saves(&e, true), vec!["{storage}/x".to_string()]);
+    }
+
+    #[test]
+    fn a_phone_keeps_its_cloud_copies_apart_from_a_pcs() {
+        assert_eq!(cloud_id_for("srb2kart", false), "srb2kart");
+        assert_eq!(cloud_id_for("srb2kart", true), "srb2kart.android");
     }
 }

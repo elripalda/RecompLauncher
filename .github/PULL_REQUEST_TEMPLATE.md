@@ -12,7 +12,10 @@
 
 ## Screenshots
 
-<!-- For anything you can see. Delete this part if there's nothing visual. -->
+<!-- For anything you can see: each new or changed screen on the desktop and in Big Picture, and
+in the light theme if it changes too. Required for a big UI change (a new or redesigned screen,
+window, row, button or layout); it isn't reviewed until they're here. Delete this part if
+there's nothing visual. -->
 
 ## Checklist
 

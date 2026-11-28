@@ -1,0 +1,10 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Android 12 and newer: the system's splash screen is the start-up screen's dark blue with no
+         icon, and hands straight over to the launcher's own start-up screen. -->
+    <style name="Theme.recomplauncher" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/boot_background</item>
+        <item name="android:windowSplashScreenBackground">@color/boot_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/boot_background</item>
+    </style>
+</resources>

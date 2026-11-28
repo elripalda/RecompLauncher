@@ -5,14 +5,18 @@
 //! It needs RecompLauncher's Discord application id: the catalog's top-level `"discord"`, or
 //! the one built in.
 
+#[cfg(desktop)]
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+#[cfg(desktop)]
 use std::sync::mpsc::{channel, Sender};
+#[cfg(desktop)]
 use std::sync::{Mutex, OnceLock};
 
 /// RecompLauncher's application on discord.com/developers (empty until it's made). The catalog's
 /// top-level `"discord"` overrides it.
 pub const APP_ID: &str = "1565871388504367154";
 /// The launcher's logo, shown small in the corner of the game's cover.
+#[cfg(desktop)]
 const LOGO: &str = "https://recomplauncher.com/assets/logo-512.png";
 
 pub enum Msg {
@@ -28,14 +32,17 @@ pub enum Msg {
     Shown(bool),
 }
 
+#[cfg(desktop)]
 static TX: OnceLock<Mutex<Sender<Msg>>> = OnceLock::new();
 
 /// What Discord is shown: a game, or the launcher itself.
+#[cfg(desktop)]
 enum Show<'a> {
     Game { game: &'a str, recomp: &'a str, cover: &'a str, start: u64, line: &'a str },
     Launcher { start: u64 },
 }
 
+#[cfg(desktop)]
 fn put(client: &mut Option<(String, DiscordIpcClient)>, app_id: &str, show: Show) {
     if app_id.is_empty() {
         return;
@@ -88,6 +95,7 @@ fn put(client: &mut Option<(String, DiscordIpcClient)>, app_id: &str, show: Show
     }
 }
 
+#[cfg(desktop)]
 fn tx() -> &'static Mutex<Sender<Msg>> {
     TX.get_or_init(|| {
         let (tx, rx) = channel::<Msg>();
@@ -145,6 +153,7 @@ fn tx() -> &'static Mutex<Sender<Msg>> {
 
 /// What the status shows after the launcher's own line changed (turned on or off, the window
 /// hidden or shown, a game closed).
+#[cfg_attr(mobile, allow(dead_code))]
 #[derive(Debug, PartialEq)]
 enum Idle<'a> {
     /// A game is showing: it stays as it is.
@@ -157,6 +166,7 @@ enum Idle<'a> {
 
 /// "In the launcher" only while the player can see it: closed to the tray, the launcher is just
 /// waiting by the clock, and saying they're in it would be wrong.
+#[cfg_attr(mobile, allow(dead_code))]
 fn idle_status(playing: bool, idle: Option<&(String, u64)>, shown: bool) -> Idle<'_> {
     if playing {
         return Idle::Game;
@@ -170,6 +180,7 @@ fn idle_status(playing: bool, idle: Option<&(String, u64)>, shown: bool) -> Idle
     Idle::Launcher(app_id, *start)
 }
 
+#[cfg(desktop)]
 fn show_idle(client: &mut Option<(String, DiscordIpcClient)>, what: Idle) {
     match what {
         Idle::Game => {}
@@ -182,6 +193,11 @@ fn show_idle(client: &mut Option<(String, DiscordIpcClient)>, what: Idle) {
     }
 }
 
+/// There's no Discord app for the launcher to talk to on a phone.
+#[cfg(mobile)]
+pub fn send(_m: Msg) {}
+
+#[cfg(desktop)]
 pub fn send(m: Msg) {
     let _ = tx().lock().unwrap().send(m);
 }
