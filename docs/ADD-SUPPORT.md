@@ -73,7 +73,13 @@ For raw copies, put the file name after
 6. **Check your work.** Validate `recomplauncher.json` against the schema with a JSON schema tool.
    Build the project if you can, and start it once without the new arguments to make sure nothing
    changed for players who don't use the launcher. In DEVELOPERS.md: "Checking your file".
-7. **Finish with the report** below, for the developer.
+7. **Trace every Linux path** before you open a pull request. For each path in
+   `recomplauncher.json` (`saves`, `config` files, `folders` such as logs, and `prepare.done`), find
+   where the game really writes on Linux when the launcher starts it: unpacked, with `APPIMAGE`
+   unset and `APPDIR` set to `{install}`. None may land under `{install}/usr/`, or on any other file
+   or folder the release ships: every update replaces those. In DEVELOPERS.md: "Where your game
+   writes".
+8. **Finish with the report** below, for the developer.
 
 ## Rules
 
