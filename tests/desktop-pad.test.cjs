@@ -36,6 +36,7 @@ function desktop(focused = false) {
     $$: () => [], MutationObserver: class { observe() {} },
     getComputedStyle: () => ({ visibility: 'visible' }), performance: { now: () => 1000 },
     calm: () => true, setTimeout: () => {}, requestAnimationFrame: () => {},
+    MouseEvent: class { constructor(type) { this.type = type; } },
   });
   vm.runInContext(app.slice(start, end), ctx);
   return { window, windowListeners, document, body, button, listeners, get clicks() { return clicks; } };
@@ -100,4 +101,26 @@ test('A can activate a dialog without first navigating the desktop', () => {
   d.dialog = { id: 'dialog', querySelectorAll: () => [d.button], contains: el => el === d.button };
   d.window.deskPad('a');
   assert.equal(d.clicks, 1);
+});
+
+function onAGame(d) {
+  const menus = [];
+  d.button.closest = selector => selector === '[data-id]' ? d.button : null;
+  d.button.dispatchEvent = event => { menus.push(event.type); return true; };
+  return menus;
+}
+
+test('X does not open a pre-focused game\'s menu before directional input', () => {
+  const d = desktop(true);
+  const menus = onAGame(d);
+  d.window.deskPad('x');
+  assert.deepEqual(menus, []);
+});
+
+test('directional input lets X open the highlighted game\'s menu', () => {
+  const d = desktop();
+  const menus = onAGame(d);
+  d.window.deskPad('down');
+  d.window.deskPad('x');
+  assert.deepEqual(menus, ['contextmenu']);
 });

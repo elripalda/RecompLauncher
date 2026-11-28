@@ -10509,6 +10509,8 @@ window.deskPad = (b) => {
     return true;
   }
   if (b === 'x' && cur) {
+    // Like A: a game the mouse clicked keeps focus, and X shouldn't open its menu before a direction.
+    if (root.id === 'app' && !PAD.armed) return true;
     const g = cur.closest('[data-id]');
     if (g) {
       PAD.from = cur;
