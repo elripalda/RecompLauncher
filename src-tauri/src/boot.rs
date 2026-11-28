@@ -91,9 +91,6 @@ pub const FEATURES: &[&str] = &[
     "settings.toml", "settings.ini", "settings.json", "settings.args", "settings.choices", "settings.slider", "settings.bindings", "settings.groups",
 ];
 
-/// The catalog says every recomp's profile is in it (`"boot_all": true`): the profiles built into
-/// this launcher are then only used when there's no catalog at all.
-static CATALOG_ALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// A version as numbers to compare: 0.90.0-beta.27 -> [0, 90, 0, 27] (a release with no beta part
 /// counts after its betas).
@@ -137,10 +134,8 @@ pub fn fit(b: &mut Value) {
     }
 }
 
-/// Called with each catalog as it's read: whether it carries every profile, and each profile fitted
-/// to what this launcher can do.
+/// Called with each catalog as it's read: each profile fitted to what this launcher can do.
 pub fn from_catalog(cat: &mut Value) {
-    CATALOG_ALL.store(cat.get("boot_all").and_then(Value::as_bool).unwrap_or(false), std::sync::atomic::Ordering::Relaxed);
     if let Some(apps) = cat.get_mut("apps").and_then(Value::as_array_mut) {
         for a in apps {
             if let Some(b) = a.get_mut("boot").filter(|b| b.is_object()) {
@@ -150,54 +145,10 @@ pub fn from_catalog(cat: &mut Value) {
     }
 }
 
-/// Built-in profiles still in use (the catalog doesn't carry them all yet).
-pub fn built_in_used() -> bool {
-    !CATALOG_ALL.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-/// The profiles this launcher shipped with, for catalog entries that don't carry one yet.
-static BUILT_IN: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-
-fn built_in() -> &'static Value {
-    BUILT_IN.get_or_init(|| serde_json::from_str(&crate::unpack(include_bytes!(concat!(env!("OUT_DIR"), "/boot-profiles.json.z")))).unwrap_or(Value::Null))
-}
-
-/// The shipped profiles, for the window (the game page's "Before you play"): none once the catalog
-/// carries them all.
-#[tauri::command(async)]
-pub fn boot_builtin() -> Value {
-    if built_in_used() {
-        built_in().clone()
-    } else {
-        Value::Object(Default::default())
-    }
-}
-
-/// A catalog entry's boot profile as JSON: its own, or the one this launcher shipped with.
+/// A catalog entry's old-style boot profile as JSON, fitted to this launcher. The catalog is the
+/// only source: the launcher carries no profiles of its own.
 pub fn raw(entry: &Value) -> Option<Value> {
-    let id = entry.get("id").and_then(Value::as_str);
-    // The catalog carries every profile: it's the only source (a fix there reaches players without
-    // a launcher update).
-    if !built_in_used() {
-        let mut b = entry.get("boot").filter(|b| b.is_object())?.clone();
-        fit(&mut b);
-        return Some(b);
-    }
-    let mut b = match entry.get("boot").filter(|b| b.is_object()) {
-        Some(b) => {
-            let mut b = b.clone();
-            // The catalog's own profile without game settings: the ones this launcher shipped with
-            // stay (they'd be lost otherwise: a profile published for a game's setup says nothing
-            // about its settings).
-            if b.get("settings").is_none() {
-                if let Some(s) = id.and_then(|i| built_in().get(i)).and_then(|p| p.get("settings")).filter(|s| s.is_object()) {
-                    b["settings"] = s.clone();
-                }
-            }
-            b
-        }
-        None => built_in().get(id?).cloned()?,
-    };
+    let mut b = entry.get("boot").filter(|b| b.is_object())?.clone();
     fit(&mut b);
     Some(b)
 }
@@ -437,10 +388,8 @@ mod tests {
         assert!(b.is_installer() && b.console);
         assert_eq!(b.then_start().unwrap(), PathBuf::from("dist/Launch Madden NFL 08.bat"));
         assert!(b.setup_in(Path::new("/tmp")).is_none());
-        // The ones shipped with the launcher load, and fill in for entries without one.
-        let b = Boot::from_entry(&serde_json::json!({"id": "tenkaichi3decomp"})).unwrap();
-        assert_eq!(b.setup.as_deref(), Some("Tenkaichi3Decomp-setup.exe"));
-        assert!(built_in().as_object().map(|o| o.len() > 200).unwrap_or(false));
+        // The launcher carries no profiles of its own: an entry without one has none.
+        assert!(Boot::from_entry(&serde_json::json!({"id": "tenkaichi3decomp"})).is_none());
         assert!(rel("C:/x.exe").is_none() && rel("a/../b").is_none() && rel("bin\\Game.exe") == Some(PathBuf::from("bin/Game.exe")));
     }
 
@@ -484,17 +433,6 @@ mod tests {
         assert!(p.start.unwrap().env.contains_key("MP_DISC"));
     }
 
-    #[test]
-    fn a_published_profile_keeps_the_shipped_settings() {
-        // AC6: the catalog's profile says how it's set up and nothing about settings.
-        let e: Value = serde_json::from_str(r#"{"id":"ac6-recomp","boot":{"kind":"portable","start":"ac6recomp.exe","start_is":"game","files":{"how":"folder","folder":"assets","accepts":"folder or iso","extract":"xdvdfs","contains":["default.xex"]}}}"#).unwrap();
-        let b = raw(&e).unwrap();
-        assert_eq!(b["files"]["folder"], "assets");
-        assert!(b["settings"]["settings"].as_array().is_some_and(|s| s.iter().any(|x| x["id"] == "resolution")));
-        // Its own settings win.
-        let e: Value = serde_json::from_str(r#"{"id":"ac6-recomp","boot":{"kind":"portable","start":"ac6recomp.exe","settings":{"config":[],"settings":[]}}}"#).unwrap();
-        assert_eq!(raw(&e).unwrap()["settings"]["settings"], serde_json::json!([]));
-    }
 
     #[test]
     fn a_linux_build_starts_its_own_program() {

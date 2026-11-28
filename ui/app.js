@@ -36,7 +36,7 @@ const S = {
   // settingsMissing: the settings haven't come in from the core yet, so they're changed here but never
   // written back (a half-empty copy would be refused, or lose the real ones).
   library: {}, arts: {}, settings: {}, settingsMissing: true, running: new Set(), uninstalling: new Set(), settingUp: new Set(), setupJobs: {}, jobs: {}, recent: [], roms: [], owned: {}, steam: false, pc: null, libs: [], shots: {},
-  cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), easyAll: new Set(), shelf: {}, slide: 0, lq: '',
+  cat: null, offline: false, updates: {}, rels: {}, builds: {}, reports: {}, runCounts: {}, info: {}, mods: {}, modList: {}, news: null, modQ: '', setup: {}, looks: {}, gb: {}, modSrc: {}, easy: new Set(), easyAll: new Set(), sup: {}, shelf: {}, slide: 0, lq: '',
   view: 'home', arg: null, back: [], q: '', dev: {}, setTab: 'general', endedOpen: false,
   find: { genre: '', origin: '', sort: 'popular', mine: true, great: false, easy: false, hideEnded: false },
   lib: { sel: null, filter: 'all', sort: 'played' },
@@ -117,17 +117,17 @@ window.dropIcon = (k) => {
 const isAI = (a) => !!(a && a.ai);
 // Something the player has to do by hand before the first play, from the game's boot profile.
 // A community server, not the game itself: it starts the server, so its button says so.
-// The profiles built into the launcher: only while the catalog doesn't carry every profile itself
-// ("boot_all"), and when there's no catalog at all.
 // How a game's profile did (Easy Setup, a settings change), for the admin: sent with the usage
 // reports, only when the player allows them.
 function profileSaid(id, step, ok, err) { invoke('profile_report', { id, step, ok, error: err ? String(err && err.message ? err.message : err) : null }).catch(() => {}); }
 window.profileSaid = profileSaid;
-function builtinBoot() { return (S.cat && S.cat.boot_all) ? {} : (S.bootBuiltin || {}); }
-const isServer = (a) => !!(((a && a.boot) || builtinBoot()[a && a.id] || {}).server);
+// A fact about the game the store keeps on its listing (player_note, multiplayer, server). Catalogs
+// from before they moved there carry them in its old-style boot profile.
+const listingFact = (a, k) => (a && a[k] != null ? a[k] : ((a && a.boot) || {})[k]);
+const isServer = (a) => !!listingFact(a, 'server');
 // A line on what the player's copy should look like, by the console it's from (How to Set Up).
 function setupGuide(a) {
-  const b = (a && a.boot) || builtinBoot()[a && a.id] || {};
+  const b = (a && a.boot) || {};
   const w = String((b.files || {}).what || '');
   if (!w || /no game data/i.test(w)) return '';
   if (/\bN64\b|\.z64/i.test(w)) return t('Use your own ROM: .z64, .n64 and .v64 all work. When you pick it, the launcher checks it\'s the right game and version, then puts it where the game reads it.');
@@ -139,7 +139,7 @@ function setupGuide(a) {
   return '';
 }
 // More than one player (split-screen, co-op, online), from its README or its labels in the store.
-const isMulti = (a) => !!((((a && a.boot) || builtinBoot()[a && a.id] || {}).multiplayer) || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
+const isMulti = (a) => !!(listingFact(a, 'multiplayer') || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
 // A game's tags (Widescreen, 60 FPS, Online…), as the site lists them. They stay in English.
 const tagsOf = (a) => (a && Array.isArray(a.tags) ? a.tags.filter((x) => typeof x === 'string' && x.trim()) : []);
 // Where the facts about the original game came from, for the line under them: LaunchBox's
@@ -176,8 +176,7 @@ function moreLike(a, max = 12) {
     .filter(([x], i, all) => { const k = x.title || x.game || x.id; return all.findIndex(([y]) => (y.title || y.game || y.id) === k) === i; })
     .slice(0, max).map(([x]) => x);
 }
-const bootNote = (a) => String(((a && a.boot) || builtinBoot()[a && a.id] || {}).player_note || '');
-invoke('boot_builtin').then((b) => { S.bootBuiltin = b || {}; }).catch(() => {});
+const bootNote = (a) => String(listingFact(a, 'player_note') || '');
 const LOADED = new Set();
 // A picture through the disk cache; one that has loaded before shows at once instead of fading in again.
 const pic = (u, cls = '', more = '') => { const s = media(u); if (!s) return ''; const c = [cls, LOADED.has(s) ? 'ld' : ''].filter(Boolean).join(' '); return `<img src="${esc(s)}" alt=""${c ? ` class="${c}"` : ''}${more ? ' ' + more : ''} decoding="${LOADED.has(s) ? 'sync' : 'async'}">`; };
@@ -284,17 +283,21 @@ const updateBuildDue = (id) => { const st = setupStatus(id); return !!st && !st.
 // After an update, one built again from what its setup step kept doesn't need the copy either.
 const copyNotNeeded = (id) => { const su = S.setup[id], st = setupStatus(id); return !!(su && su !== 'loading' && !su.copy && st && ((st.ready && st.reason === 'built') || (updateBuildDue(id) && st.detail === 'kept'))); };
 const copyGoneText = (id) => updateBuildDue(id) ? t('Your copy isn\'t needed: it\'s built again from what it kept last time.') : tf('Your copy isn\'t here anymore. {name} doesn\'t need it: it\'s already built.', { name: (byId(id) || S.library[id] || { name: id }).name });
-// Turnkey: the launcher sets it up for the player (Easy Setup, or a boot profile that puts their
-// files where the game reads them), with no setup steps on its first start.
-const TURNKEY_HOW = ['folder', 'flag', 'env', 'setup'];
+// The launcher hands the player's copy to the game: Easy Setup, as the core says (S.easy, from
+// game_support), and not skipped. Otherwise the game asks for it itself on its first start.
 // A game of a multi-game recomp is set up as its recomp is.
-// The launcher hands the player's copy to the game (Easy Setup, or a boot profile that puts it where
-// the game reads it). Otherwise the game asks for it itself on its first start.
 // (Never on Android: a game there is an app that keeps its own files, out of the launcher's reach.)
-const feedsCopy = (a) => S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
-const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && S.os !== 'android' && (S.easy.has(a.parent || a.id) || TURNKEY_HOW.includes(String((((a.boot) || builtinBoot()[a.parent || a.id] || {}).files || {}).how || '')));
-// Turnkey recomps first, each group in the order it had. Nothing is left out.
-const turnkeyFirst = (list) => [...list.filter(turnkey), ...list.filter((a) => !turnkey(a))];
+const feedsCopy = (a) => S.os !== 'android' && S.easy.has(a.parent || a.id);
+// Turnkey: the launcher sets it up for the player, with no setup steps on its first start.
+const turnkey = (a) => !!a && !a.soon && !needsSetup(a) && feedsCopy(a);
+// A game shown as an Easy Setup game (the tile badge and game page tag, the Easy Setup filter, the
+// Ready to Play and Drop in Your Copy rows, and the sorting that puts them first; desktop and Big
+// Picture): one the launcher sets up whose setup is the project's own file or our profile turned
+// on for it by hand (the core's `tag`), never an older profile of ours. Those still set up the same
+// way (turnkey); they just aren't shown as Easy Setup games.
+const easyTag = (a) => turnkey(a) && !!(supOf(a) || {}).tag;
+// Easy Setup recomps first, each group in the order it had. Nothing is left out.
+const turnkeyFirst = (list) => [...list.filter(easyTag), ...list.filter((a) => !easyTag(a))];
 // Games added to the Library without installing them yet (like a store's library): id → when.
 // Text Size: the whole window zoomed, like a browser's zoom, and kept for next time.
 const UI_SCALES = [0.9, 1, 1.1, 1.25, 1.5];
@@ -1209,7 +1212,7 @@ function poster(a, mine, inst, wide, w, rank) {
   // One label at the bottom: with a versions count there, Setup Required stays on the game's page
   // and its install button, and Easy Setup shrinks to its icon, so nothing overlaps on small posters.
   const easy = S.library[a.id] && needsSetup(a) && !a.soon && !setupDone(a.id) ? (vg ? '' : `<span class="badge easy setupreq">${WRENCH.replace(/18/g, '13')}${esc(t('Setup Required'))}</span>`)
-    : !S.library[a.id] && turnkey(a) ? (vg ? `<span class="badge easy ico" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${DISC_S}</span>` : `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>`) : '';
+    : !S.library[a.id] && easyTag(a) ? (vg ? `<span class="badge easy ico" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${DISC_S}</span>` : `<span class="badge easy">${DISC_S}${esc(t('Easy Setup'))}</span>`) : '';
   const vers = vg ? `<span class="badge vers" title="${esc(tn(vg.list.length, '1 version', '{n} versions'))}">${LAYERS}${fmtNum(vg.list.length)}</span>`
     : inst > 1 && !prog ? `<span class="badge tl" title="${esc(tn(inst, '1 installed', '{n} installed'))}">${LAYERS}${esc(tn(inst, '1 installed', '{n} installed'))}</span>` : '';
   // Only two feature flags on a card: Easy Setup and the versions count (icons when both). Great
@@ -1417,85 +1420,42 @@ function askSupportUrl(a, ask) {
   if (isLab(a.repo)) return `${repoHome(a.repo)}/-/issues/new?issue[title]=${encodeURIComponent(title)}&issue[description]=${encodeURIComponent(body)}`;
   return `${repoIssues(a.repo)}/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
-// What a recomplauncher.json covers, the way support_local counts it, for a file the catalog
-// carries as the project's own (a release the store checked, or a Forgejo project's repo file).
-function fileCovers(p) {
-  const list = (v) => Array.isArray(v) && v.length > 0;
-  const game = p && p.game && typeof p.game === 'object' ? p.game : null;
-  // The player's copy asked for through named inputs (no `game` block) is Easy Setup too: a
-  // required input of role game or disc that isn't a shared key, as the site counts it.
-  const inputs = Array.isArray(p && p.inputs) ? p.inputs : [];
-  const copyInput = inputs.some((i) => i && !i.optional && !i.shared && ['game', 'disc'].includes(i.role || 'game'));
-  // A `game` block needs a program to start, as in Profile::easy_setup.
-  const started = !!(p && p.start);
-  return {
-    easy_setup: (started && !!game) || copyInput,
-    settings: list(p && p.settings),
-    prepare: !!(p && p.prepare),
-    verified: !!game && (list(game.dumps) || list(game.check && game.check.ids)),
-    saves: list(p && p.saves),
-  };
-}
-// Where a game's setup comes from. 'own': the launcher has the project's own file (in the
-// installed release, the copy of a checked release the catalog carries, or a Forgejo repo the
-// launcher reads itself). 'unchecked': the store says the release has one, but the catalog
-// carries no copy, so the launcher hasn't read it and claims nothing from it until it's
-// installed (the copy can be missing because the file is broken, or for another reason). 'repo':
-// only its repo has one, which the launcher never reads for GitHub or GitLab. '' otherwise.
-function supportSource(a, local, sup) {
-  if (local || a.launcher_from === 'repo') return 'own';
+// Where a game's setup comes from, for the box's chip and its Ask. 'own': the project's own file
+// (the core's answer: the installed folder's, or the catalog's copy of the release's). 'unchecked':
+// the store says the release has one, but the catalog carries no copy, so the launcher hasn't read
+// it and claims nothing from it until it's installed (the copy can be missing because the file is
+// broken, or for another reason). 'repo': only its repo has one, which the launcher never reads.
+// 'ours': our profile, turned on by hand for this game, is what sets it up, whatever the store says
+// the release has. '' otherwise.
+function supportSource(a, core, sup) {
+  if (core && (core.from === 'folder' || core.from === 'release')) return 'own';
+  if (core && core.from === 'ours') return 'ours';
   const sdk = sup ? sup.sdk : '';
-  if (sdk === 'release') return a.launcher ? 'own' : 'unchecked';
+  if (sdk === 'release') return 'unchecked';
   if (sdk === 'repo') return 'repo';
   return '';
 }
-// Each feature's state: 'p' the project's own file, 'l' RecompLauncher, '' nobody yet, 'na' a
-// setup step the project's own file leaves out (not needed, so not shown). The setup features
-// come from one file at runtime (the project's, else ours, never a mix), so with the project's
-// own file they're the project's or nothing. Copy checks and save folders can come from us too.
-function supportStates(a, local, sup, source) {
+// Each feature's state, as the core says (game_support / support_local): 'p' the project's own
+// file, 'l' RecompLauncher (our profile, or a part it fills in), '' nobody yet, 'na' a setup step
+// the project's own file leaves out (not needed, so not shown). Copy checks and save folders the
+// catalog names itself are RecompLauncher's too.
+function supportStates(a, core, source) {
   const own = source === 'own';
-  // Only the file the launcher reads counts, never the catalog's labels alone: they were counted
-  // from the file as the store found it, even one the launcher can't read.
-  const file = local || (own ? fileCovers(a.launcher) : null);
-  // Before it's installed, Easy Setup is the project's only when Install offers it (the
-  // easy_setup command, from the same file), so the box and the button agree.
-  const easyOffered = !!local || !!(S.easyAll && S.easyAll.has(a.parent || a.id));
-  const theirs = (k) => own && !!file && !!file[k] && (k !== 'easy_setup' || easyOffered);
-  const boot = a.boot || builtinBoot()[a.id] || {};
-  const files = boot.files && typeof boot.files === 'object' ? boot.files : null;
-  // Offline, without the catalog's labels: what our boot profile does.
-  const guess = {
-    easy_setup: !!(files && TURNKEY_HOW.includes(files.how)) || S.easy.has(a.id),
-    settings: !!(boot.settings && (boot.settings.settings || []).length),
-    prepare: !!(boot.setup || boot.prepare),
-    verified: !!(files && files.sha256),
-  };
-  // With a release file the launcher hasn't read, the catalog's labels describe that file, while
-  // Install uses our boot profile: what it does is the guess.
-  const ours = (k) => (sup && source !== 'unchecked' ? sup[k] === 'launcher' : !!guess[k]);
-  const setup = (k) => {
-    if (theirs(k)) return 'p';
-    if (own) return k === 'prepare' ? 'na' : '';
-    return ours(k) ? 'l' : '';
-  };
+  const of = (k) => (core && (core[k] === 'p' || core[k] === 'l') ? core[k] : '');
   const named = (v) => Array.isArray(v) && v.length > 0;
   const copyIds = Array.isArray(a.copy_ids) ? a.copy_ids.length > 0 : !!a.copy_ids;
-  // Our profile's save folders count only when no file of the project's comes first.
-  const ourSaves = named(a.saves) || (!own && !!a.launcher && named(a.launcher.saves));
-  const pick = (k, oursToo) => (theirs(k) ? 'p' : oursToo ? 'l' : '');
+  const or = (k, oursToo) => of(k) || (oursToo ? 'l' : '');
   return {
-    easy_setup: setup('easy_setup'),
-    settings: setup('settings'),
-    prepare: setup('prepare'),
-    verified: pick('verified', copyIds || ours('verified')),
-    saves: pick('saves', ourSaves),
+    easy_setup: of('easy_setup'),
+    settings: of('settings'),
+    prepare: of('prepare') || (own ? 'na' : ''),
+    verified: or('verified', copyIds),
+    saves: or('saves', named(a.saves)),
   };
 }
 // Launcher Support, a box on Overview under Before You Play: what RecompLauncher can do for this
 // recomp, and whether the project's own recomplauncher.json or RecompLauncher makes each part work.
-// From the catalog's "support", the recomp's own file in its folder (asked for once, for an
-// installed game), or (offline) its boot profile.
+// Only the core's answer (supOf): the window never works it out from the files itself.
 const SUP_TIP = {
   p: N_('From the project: its own recomplauncher.json sets this up.'),
   l: N_('From RecompLauncher: the launcher does this for the game.'),
@@ -1529,11 +1489,20 @@ function supportAsk(a, source, rows) {
 }
 // "A, B and C" in the player's language.
 const listOf = (w) => { try { return new Intl.ListFormat(curLocale(), { type: 'conjunction' }).format(w); } catch (e) { return w.join(', '); } };
-// The installed release's own recomplauncher.json, read once per set of installed files. Each
+// An installed game's Launcher Support (support_local), read once per set of installed files. Each
 // answer keeps the key of the files it was read from, so an update, a version switch, a move to
 // another library, a local build rebuilt in place or a library synced from another PC all read
 // it again, whichever way the change arrived.
 S.supLocal = {};
+// A game's Launcher Support, the core's answer: the installed release's once the game page has read
+// it again (supLocalFor; no core call per tile), else the one game_support gave for every game.
+// Null: nothing sets it up.
+function supOf(a) {
+  const rid = a.parent || a.id;
+  const g = S.library[rid], known = S.supLocal[rid];
+  if (g && known && known.key === supLocalKey(g)) return known.v;
+  return (S.sup || {})[rid] || null;
+}
 const supLocalKey = (g) => `${g.path}@${g.tag}@${g.updated_at || 0}`;
 function supLocalFor(id) {
   const g = S.library[id];
@@ -1567,11 +1536,12 @@ function supportProblemCard(a, problem) {
 function supportCard(a) {
   if (!a || a.soon) return '';
   const id = a.id;
-  const local = supLocalFor(id);
-  if (local && local.problem) return supportProblemCard(a, String(local.problem));
+  supLocalFor(id);
+  const core = supOf(a);
+  if (core && core.problem) return supportProblemCard(a, String(core.problem));
   const sup = a.support && typeof a.support === 'object' ? a.support : null;
-  const source = supportSource(a, local, sup);
-  const st = supportStates(a, local, sup, source);
+  const source = supportSource(a, core, sup);
+  const st = supportStates(a, core, source);
   const hh = a.handheld && a.handheld.ok;
   const devices = hh ? (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') : '';
   // Backups need someone to say where the game saves. Nothing is guessed, so with neither the
@@ -1603,7 +1573,7 @@ function supportCard(a) {
   const row = (r) => `<div class="sup-row${r.s ? ' on st-' + r.s : ''}"><span class="sup-ib">${svg(r.icon, 'sup-i')}</span><span class="sup-k"><b>${esc(t(r.name))}</b><span>${esc(r.line)}</span></span><span class="sup-st" role="img" data-tip="${esc(tipOf(r))}" aria-label="${esc(tipOf(r))}">${markOf(r)}</span></div>`;
   // Where the setup comes from, and who made the game (with the tick when they're verified).
   const ourSetup = ['easy_setup', 'settings', 'prepare', 'verified'].some((k) => st[k] === 'l');
-  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : source === 'unchecked' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the release, read once it\'s installed')] : ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
+  const chip = source === 'own' ? ['own', svg(SUP_GIT, 'sup-ci'), t('From the project')] : source === 'repo' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the repo, not in a release yet')] : source === 'unchecked' ? ['repo', svg(SUP_GIT, 'sup-ci'), t('In the release, read once it\'s installed')] : source === 'ours' || ourSetup ? ['ours', '<img class="sup-ci" src="img/mark.svg" alt="">', t('From RecompLauncher')] : ['none', svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>', 'sup-ci'), t('No support yet')];
   const badge = full ? `<span class="tag sup-full" data-tip="${esc(t(SUP_FULL_TIP))}">${svg('<path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor" stroke="none"/>', 'sup-star')}${esc(t('Full Support'))}</span>` : `<span class="tag ${n >= 3 ? 'complete' : 'paused'}" data-raw>${esc(tf('{n} of {total}', { n, total: shown.length }))}</span>`;
   const askBox = ask ? `<div class="sup-ask"><p>${esc(ask.text)}</p><button type="button" class="btn main" data-act="url" data-url="${esc(askSupportUrl(a, ask))}">${esc(ask.kind === 'verify' ? t('Ask to Verify') : t('Ask the Developer'))}</button></div>` : '';
   return `<div class="card sup-card"><div class="card-h sup-h"><h3>${esc(t('Launcher Support'))}</h3>${badge}</div>
@@ -1697,10 +1667,10 @@ function readyRows(a) {
   if (pc.vulkan != null) rows.push({ k: t('Graphics (Vulkan)'), v: pc.vulkan, d: pc.vulkan ? t('Your graphics driver has it') : t('Update your graphics driver to get it'), fix: pc.vulkan ? '' : `<button type="button" class="btn sm" data-act="url" data-url="https://www.vulkan.org/tools#download-these-essential-development-tools">${esc(t('How'))}</button>` });
   if (S.os !== 'macos' && (a.origin === 'x360' || (a.requires && a.requires.avx2))) rows.push({ k: t('Processor (AVX2)'), v: !!pc.avx2, d: pc.avx2 ? t('Your processor has it') : a.origin === 'x360' ? t('Xbox 360 recomps need a processor from 2013 or later') : t('It needs a processor from 2013 or later'), fix: '' });
   // A recomp whose own setup builds it on this PC (from a clone of its repo).
-  const builds = !!((a.boot && a.boot.clone) || (builtinBoot()[id] || {}).clone);
+  const builds = !!(a.boot && a.boot.clone);
   // What a setup that builds or runs scripts says it needs ("needs": ["build_tools", "clang", "python"]
   // in its profile, or the same as "requires" flags).
-  const bootOf = a.boot || builtinBoot()[id] || {};
+  const bootOf = a.boot || {};
   const needs = new Set([...(Array.isArray(bootOf.needs) ? bootOf.needs : []), ...Object.keys(a.requires || {}).filter((k) => a.requires[k] === true)]);
   const builds2 = builds || needs.has('build_tools') || needs.has('clang');
   if (!builds && builds2 && pc.build_tools != null) rows.push({ k: t('C++ build tools'), v: pc.build_tools, d: pc.build_tools ? t('Installed') : t('Its setup builds the game on your PC with Visual Studio\'s free C++ build tools'), fix: pc.build_tools ? '' : `<button type="button" class="btn sm main" data-act="url" data-url="https://visualstudio.microsoft.com/visual-cpp-build-tools/">${esc(t('Get them'))}</button>` });
@@ -1884,10 +1854,10 @@ function pageHome() {
   S.slide = Math.min(S.slide || 0, Math.max(0, feats.length - 1));
   // The banner and the weekly chart stay per recomp (picked and ranked as one); the rows list its games.
   const games = withGames(pool);
-  const ready = oneEach(games.filter(turnkey).sort(byNew), true);
+  const ready = oneEach(games.filter(easyTag).sort(byNew), true);
   const played = jumpRecs().sort((x, y) => (y.last_played || 0) - (x.last_played || 0) || (y.installed_at || 0) - (x.installed_at || 0)).map((g) => libApp(g));
   const found = foundInFolders();
-  const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
+  const easy = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && easyTag(a) && !haveAny(a)));
   const fav = favs().map((id) => libApp(S.library[id]));
   // Settings → Appearance can turn the banner off, so Home starts with the player's own games.
   const showBanner = feats.length && !(S.settings.ui || {}).hide_hero;
@@ -2259,7 +2229,7 @@ function discoverList(ended = false, leftOut = false) {
   const f = S.find, q = S.q.trim();
   const games = byGame();
   const onThisPC = leftOut ? hiddenByProton : forOS;
-  let list = withGames(visible()).filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || turnkey(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
+  let list = withGames(visible()).filter((a) => (!f.genre || a.genre === f.genre) && (!f.origin || a.origin === f.origin) && (!f.tag || tagsOf(a).includes(f.tag)) && showOk(a, f.show) && onThisPC(a) && runsFits(a, runsPick()) && (!f.great || playsGreat(a)) && (!f.deckgreat || !onHandheld() || greatOnDeck(a)) && (!f.easy || easyTag(a)) && (!f.mp || isMulti(a)) && (ended ? isEnded(a) : keepEnded(a, f))
     && (!q || sMatch((games ? [a.game, (verGroup(a) || {}).name, a.parentName] : [a.name, a.game, a.parentName, a.author, originName(a.origin), GENRES[a.genre], t(GENRES[a.genre]), ...tagsOf(a)]).filter(Boolean).join(' '), q)));
   const soonLast = (x, y) => (x.soon ? 1 : 0) - (y.soon ? 1 : 0);
   if (f.sort === 'new') list.sort(byNew); else if (f.sort === 'updated') list.sort(byUpdated); else if (f.sort === 'az') list.sort((x, y) => x.name.localeCompare(y.name)); else if (f.sort === 'stars') list.sort((x, y) => (y.stars || 0) - (x.stars || 0)); else list.sort(byDlConsolesFirst);
@@ -2581,7 +2551,7 @@ function gameTitle(a, id) {
   const inst = S.library[id], su = S.setup[id];
   // Easy Setup first; the AI-assisted tag last, and only when the player turned it on (the details stay in Overview).
   const sp = statePill(a), quiet = sp.includes('tag quiet');
-  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : turnkey(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
+  const chips = [quiet ? '' : sp, inst && setUpByYou(id) ? setUpByYouPill(id) : easyTag(a) ? `<span class="tag cy">${DISC_S}${esc(t('Easy Setup'))}</span>` : '', greatOnDeck(a) ? `<span class="tag deck" title="${esc(t('Great on Deck: Steam Deck players say it plays great'))}">${DECK_ICON(14)}${esc(t('Great on Deck'))}</span>` : '', greatHandheld(a) ? `<span class="tag deck hh" title="${esc(tf('Handheld players say it runs well: {devices}', { devices: (Array.isArray(a.handheld.devices) ? a.handheld.devices : []).filter((d) => typeof d === 'string').join(', ') }))}">${HH_ICON}${esc(t('Great on Handhelds'))}</span>` : '', su && su.copy ? `<span class="tag">${esc(t('Your copy is set up'))}</span>` : '', inst && inst.local ? `<span class="tag cy">${esc(inst.tag === 'own' ? t('Added by You') : t('Local build'))}</span>` : '', lookChip(inst), quiet ? sp : '', isAI(a) && (S.settings.ui || {}).show_ai_tag ? `<span class="ai-tag">${esc(t('AI-assisted'))}</span>` : ''].join('');
   return `${partOfLine(a)}${based(a)}${devLine(a)}${verPill(a)}${chips ? `<div class="gp-chips">${chips}</div>` : ''}${tagsOf(a).length ? `<div class="gp-tags" aria-label="${esc(t('Tags'))}">${tagsOf(a).map((tg) => `<button type="button" class="tagpill" data-act="tag" data-tag="${esc(tg)}" title="${esc(tf('All recomps with {tag}', { tag: tg }))}">${esc(tg)}</button>`).join('')}</div>` : ''}`;
 }
 function pageGame(id) {
@@ -3510,7 +3480,7 @@ function copyFormats(id) {
   const folder = su.kind === 'folder' || su.kind === 'iso_or_folder';
   const own = extsFor(a.origin);
   if (own) return { type: 'file', exts: own, folder: false, console: originName(a.origin) };
-  const b = (a && a.boot) || builtinBoot()[id] || {};
+  const b = (a && a.boot) || {};
   const what = `${(b.files || {}).what || ''} ${su.needs || ''}`;
   if (/\bN64\b|\.z64|\.n64|\.v64|\bROM\b/i.test(what) && !/\bdisc\b|\.iso/i.test(what)) return { type: 'rom', exts: ['z64', 'n64', 'v64', 'zip', '7z'], folder: false };
   if (su.kind === 'folder') return { type: 'folder', exts: [], folder: true };
@@ -3556,7 +3526,7 @@ function copyPickOpts(id) {
   // A console with files of its own (cartridge ROMs, Switch games, Amiga disks): those.
   const own = extsFor(a.origin);
   if (own) return { title: t('Your copy of the game'), directory: false, multiple: false, filters: [{ name: tf('{console} files', { console: originName(a.origin) }), extensions: own }, { name: t('All files'), extensions: ['*'] }] };
-  const b = (a && a.boot) || builtinBoot()[id] || {};
+  const b = (a && a.boot) || {};
   const su = S.setup[id] && S.setup[id] !== 'loading' ? S.setup[id] : {};
   const what = `${(b.files || {}).what || ''} ${su.needs || ''}`;
   const n64 = /\bN64\b|\.z64|\.n64|\.v64|\bROM\b/i.test(what) && !/\bdisc\b|\.iso/i.test(what);
@@ -5265,7 +5235,7 @@ function devTab(a) {
   if (r === undefined) { devCheck(id); return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Checking…'))}</p></div></div>`; }
   if (r === 'loading') return `<div class="stack"><div class="card"><p class="muted" style="margin:0">${esc(t('Checking…'))}</p></div></div>`;
   const flow = FLOW_NAME[r.flow || ''] || FLOW_NAME[''];
-  const src = { appimage: t('The manifest inside the AppImage'), folder: t('Your recomplauncher.json'), catalog: t('The file on recomplauncher.com'), 'built-in': t('The file built into the launcher'), repo: t('The recomplauncher.json in its project'), none: t('No file yet') }[r.source] || '';
+  const src = { appimage: t('The manifest inside the AppImage'), folder: t('Your recomplauncher.json'), release: t('Your release\'s file, as recomplauncher.com read it'), ours: t('RecompLauncher\'s profile for this game'), none: t('No file yet') }[r.source] || '';
   const errs = r.items.filter((x) => x.level === 'err').length, warns = r.items.filter((x) => x.level === 'warn').length;
   return `<div class="stack">
     <div class="card dev-head"><div class="dev-sum"><span class="kick">${esc(t('Local build'))}</span><h3>${esc(src)}</h3>
@@ -8626,9 +8596,11 @@ async function keepOut(id) {
 }
 window.keepOut = keepOut;
 
-// Catalog games the launcher sets up itself (copy and settings).
+// Launcher Support for every catalog game (game_support), the core's one answer the window shows:
+// whose setup it is, what it sets up, and whether Install sets the copy up (S.easyAll).
 async function loadEasy(quiet) {
-  try { S.easyAll = new Set(await invoke('easy_setup')); } catch (e) { S.easyAll = new Set(); }
+  try { S.sup = (await invoke('game_support')) || {}; } catch (e) { S.sup = {}; }
+  S.easyAll = new Set(Object.keys(S.sup).filter((id) => S.sup[id] && S.sup[id].easy));
   applyEasySkip();
   if (!quiet) render(true);
 }
@@ -9364,6 +9336,7 @@ const TS_FIX = {
 };
 // What Troubleshoot can say (from troubleshoot in lib.rs), so they get translated.
 const TS_TEXT = [
+  N_('Set it up again: RecompLauncher\'s older setup for it couldn\'t be kept'),
   N_('It hasn\'t been built from your copy yet'),
   N_('Press Play and pick your copy. The launcher builds the game from it before it starts.'),
   N_('The game built from your copy isn\'t there anymore'),
@@ -9680,7 +9653,7 @@ function renameModal(id) {
 }
 function launchOptions(id) {
   const g = S.library[id];
-  const m = modal(`<h2>${esc(tf('Launch options for {name}', { name: g.name }))}</h2><p>${esc(t('Added after everything else when the game starts. Put a setting with spaces in quotes.'))}</p>
+  const m = modal(`<h2>${esc(tf('Launch options for {name}', { name: g.name }))}</h2><p>${esc(t('Added after everything else when the game starts. Put a setting with spaces in quotes.'))}</p><p>${esc(t('To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.'))}</p>
     <input class="field" id="lo" type="text" value="${esc(g.args || '')}" placeholder="--example" spellcheck="false" autocomplete="off" aria-label="${esc(t('Launch options'))}">
     <div class="acts"><button type="button" class="btn" data-x="no">${esc(t('Cancel'))}</button><button type="button" class="btn main" data-x="yes">${esc(t('Save'))}</button></div>`, async (x, close) => {
     if (x.dataset.x !== 'yes') return;

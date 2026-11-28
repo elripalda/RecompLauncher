@@ -34,11 +34,14 @@ game has separate work to do before Play, like importing assets or recompiling f
 dump. Verification works with either.
 
 Game pages have a Launcher Support box. Each feature in it is marked as coming from your own
-`recomplauncher.json`, from RecompLauncher, or not there yet. A file that is only in your repo
-doesn't reach players, except on a Forgejo or Gitea server (see
-[Where the file goes](#where-the-file-goes)). Only what the launcher can use counts: a file that
+`recomplauncher.json`, from RecompLauncher, or not there yet. Only the file in your release counts
+(see [Where the file goes](#where-the-file-goes)): one that is only in your repo doesn't reach
+players, on any host. Only what the launcher can use counts: a file that
 doesn't fit the format is skipped whole (the box says the launcher can't read it), Easy Setup
-needs `start` with `game` (or a required game input), and Verified Copies needs `game.dumps` or
+needs `start` and the player's copy: `game`, or a required input of role `game` or `disc` that
+isn't a shared key, never one without `start` (the cases are in
+[easy-setup-cases.json](easy-setup-cases.json), which the launcher and recomplauncher.com both
+test against), and Verified Copies needs `game.dumps` or
 `game.check.ids`, not only a `check.file`. When everything you can control comes from
 your own file, the box says Full Support. A free
 [developer account](https://recomplauncher.com/developers?signup=1) puts the verified tick next to
@@ -141,12 +144,25 @@ The launcher uses the first one it finds:
    type-2 AppImage. It belongs to that exact build and takes precedence over an adjacent file.
 2. **Your release folder.** Put `recomplauncher.json` at the top of your release zip, next to your
    executable. It also provides a fallback for AppImages without valid embedded metadata.
-3. **The catalog.** If you can't ship it, send it to us and we'll add it to your entry on
-   recomplauncher.com.
-4. **Your repo, on a Forgejo or Gitea server.** For a project hosted there, the launcher also reads
-   `recomplauncher.json` from the top of the repo's default branch
-   (`https://{server}/api/v1/repos/{owner}/{name}/raw/recomplauncher.json`) when neither of the
-   above has one. For example, `git.example.dev/studio/game` with the file next to its README.
+3. **The catalog's copy of your release's file.** recomplauncher.com reads the file in each of your
+   releases and carries it, so players see what your game does before they download it. It's
+   used for exactly that release: an older install that shipped without a file never gets a
+   newer release's.
+
+A file only in your repo (on GitHub, GitLab, Forgejo or anywhere else) is never read: ship it in
+your release. Only your release's file is credited to your project ("From the project" in Launcher
+Support).
+
+For a game whose project won't ship a file (it declined, or it no longer updates), the store can
+turn on a profile of its own, by hand, for that game. It's tied to one release, and when your
+release does have a file, ours only fills in a part yours leaves out entirely (a save folder, say),
+never anything you wrote. Launcher Support marks those parts as RecompLauncher's.
+
+The Easy Setup tag (and the Easy Setup filter and rows) shows on a game the launcher sets up from
+your own file, or from a profile the store turned on by hand for it. A game still set up from an
+older profile of the store's sets up the same way, without the tag. The launcher works all of this
+out in one place, the same before and after install, and both of its windows (desktop and Big
+Picture) only show its answer.
 
 ### AppImages
 
@@ -461,6 +477,8 @@ with role `update`. The launcher asks for it with the copy and puts it in your f
 - `args`: always passed. Players can add their own launch options after yours.
 - `env`: environment variables for your game, written as names and values. Paths fill in like
   everywhere else. Names are letters, digits and `_`; system ones like `PATH` can't be set.
+  Players can set their own variables in their launch options (`NAME=value %command%`); theirs
+  come after yours, so a player's value wins.
 
 ```json
 "start": {

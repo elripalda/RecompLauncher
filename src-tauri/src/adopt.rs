@@ -718,7 +718,7 @@ pub fn check_folder(dir: &Path, entry: &Value, names: &[String], os: &str) -> (P
         if !theirs.is_empty() && !repo.is_empty() && name_of(&theirs) != name_of(repo) {
             continue;
         }
-        if let Some(start) = crate::profile::find(root, repo, entry).and_then(|p| p.start) {
+        if let Some(start) = crate::profile::find(root, "", entry).and_then(|p| p.start) {
             // On a Mac the program can be an app (start.program names "Game.app").
             let present = |p: &String| root.join(p).is_file() || is_app(&root.join(p));
             if let Some(prog) = start.program.iter().map(|p| p.trim_start_matches("{install}/").to_string()).find(present) {

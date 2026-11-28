@@ -76,6 +76,13 @@ pub struct Profile {
     /// release's own setup still runs first, and its settings only change files that are there.
     #[serde(skip)]
     pub from_boot: bool,
+    /// Whose this profile is (see Origin), worked out by `find`, never read from a file.
+    #[serde(skip)]
+    pub origin: Origin,
+    /// The parts (top-level keys) our own profile filled in on top of the project's file: the
+    /// project's file wins, ours only adds what it lacks entirely. Empty when there's no mix.
+    #[serde(skip)]
+    pub ours_parts: Vec<String>,
     /// The player's slider values for settings on the command line (setting id -> value), from
     /// the Library: filled in by the launcher, never read from the file.
     #[serde(skip)]
@@ -809,19 +816,53 @@ pub struct Action {
 
 // ---------- finding a profile ----------
 
-/// Launcher-maintained profiles for official releases that ship without one.
-const BUILT_IN: &[&str] = &[
-    include_str!("../boot/dusklight.json"),
-    #[cfg(test)]
-    include_str!("../../docs/examples/fifawc14.json"),
-    #[cfg(test)]
-    include_str!("../../docs/examples/streetball.json"),
-];
+/// The docs' examples, for tests: as the catalog carries a release's own file.
+#[cfg(test)]
+const FIFA: &str = include_str!("../../docs/examples/fifawc14.json");
+#[cfg(test)]
+const STREETBALL: &str = include_str!("../../docs/examples/streetball.json");
+#[cfg(test)]
+fn as_release(text: &str) -> Value {
+    serde_json::json!({ "tag": "v1", "launcher_from": "release", "launcher": serde_json::from_str::<Value>(text).unwrap() })
+}
 
-/// The profile for a game: the AppImage's embedded file, the folder's own, the catalog's, a built-in
-/// one for its repo, or one made from the catalog's boot profile when that
-/// says where the player's copy goes.
-pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
+/// Whose a game's profile is. Only the project's own file is credited to the project (the Easy
+/// Setup tag, Launcher Support's "from the project"); ours is a profile the store turned on by hand
+/// for a game that needs it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Origin {
+    #[default]
+    None,
+    /// The installed release's own file (in its folder, or inside its AppImage).
+    Folder,
+    /// The catalog's copy of the file in the release players get (`launcher_from: "release"`).
+    Release,
+    /// Our profile, turned on for this game by hand (the catalog's `ours`), on its own.
+    Ours,
+    /// A catalog profile that doesn't say whose it is (a catalog from before `launcher_from`, or
+    /// `launcher_from: "store"`): ours, used as before, never credited.
+    Store,
+    /// Made from the catalog's old-style boot profile: ours, never credited.
+    Boot,
+}
+
+impl Origin {
+    /// The project's own file.
+    pub fn project(self) -> bool {
+        matches!(self, Origin::Folder | Origin::Release)
+    }
+}
+
+/// The profile for a game, for one release of it: `tag` is the installed release's tag, or ""
+/// before install (then it's the release the catalog would install, its `tag`).
+///
+/// The project's own file comes first: the installed folder's (or its AppImage's), else the
+/// catalog's copy of the file in the release players get, but only for that same release, never
+/// another version's. Our own profile (the catalog's `ours`) applies only to the release it's
+/// pinned to: on its own when the project has no file, or filling only the parts the project's
+/// file lacks entirely. Otherwise a catalog profile that says nothing about whose it is, or one
+/// made from the old-style boot profile, as before.
+pub fn find(game_dir: &Path, tag: &str, entry: &Value) -> Option<Profile> {
     // On Android a game is an app of its own: Android keeps its files out of every other app's
     // reach, so the launcher can't put the player's copy or any settings where the game reads
     // them. No game has a profile there (no Easy Setup, no Game Settings): Play opens the game,
@@ -829,9 +870,130 @@ pub fn find(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
     if cfg!(target_os = "android") {
         return None;
     }
-    let mut p = find_own(game_dir, repo, entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)))?;
+    let mut p = find_as_written(game_dir, tag, entry)?;
     p.lift_game();
     to_apprun(&mut p, game_dir);
+    Some(p)
+}
+
+/// `find` for an installed game. Once the catalog has moved on to a newer release, the copies this
+/// install kept of its own release's file (and of our profile pinned to it) stand in for the
+/// catalog's, so a newer release coming out takes nothing away from it: it's still that release's
+/// file, never another version's. And a game moved to Set Up by You (one_road.rs) never takes a
+/// profile of ours again: it starts with its program and its launch options only.
+pub fn find_for(g: &crate::library::Installed, entry: &Value) -> Option<Profile> {
+    let at = entry.get("tag").and_then(Value::as_str).unwrap_or("");
+    let kept;
+    let entry = if !g.tag.is_empty() && at != g.tag && (g.release_file.is_some() || g.ours_file.is_some()) {
+        let mut e = entry.clone();
+        e["tag"] = Value::String(g.tag.clone());
+        if let Some(f) = &g.release_file {
+            e["launcher"] = f.clone();
+            e["launcher_from"] = Value::String("release".into());
+        }
+        if let Some(o) = &g.ours_file {
+            e["ours"] = o.clone();
+        }
+        kept = e;
+        &kept
+    } else {
+        entry
+    };
+    let p = find(&g.path, &g.tag, entry)?;
+    if g.one_road == "moved" && matches!(p.origin, Origin::Store | Origin::Boot) {
+        return None;
+    }
+    Some(p)
+}
+
+/// What an installed game should keep from the catalog while it's at the game's own release: the
+/// release's file and our profile pinned to it. None: nothing new to keep.
+pub fn copies_to_keep(g: &crate::library::Installed, entry: &Value) -> Option<(Option<Value>, Option<Value>)> {
+    if g.tag.is_empty() || entry.get("tag").and_then(Value::as_str) != Some(g.tag.as_str()) {
+        return None;
+    }
+    let release = (entry.get("launcher_from").and_then(Value::as_str) == Some("release")).then(|| entry.get("launcher").cloned()).flatten();
+    let ours = entry.get("ours").filter(|o| o.get("tag").and_then(Value::as_str) == Some(g.tag.as_str())).cloned();
+    if release == g.release_file && ours == g.ours_file {
+        return None;
+    }
+    Some((release, ours))
+}
+
+/// `find`'s choice, as the files are written (before the older `game` field is read as an input).
+fn find_as_written(game_dir: &Path, tag: &str, entry: &Value) -> Option<Profile> {
+    let release = if tag.is_empty() { entry.get("tag").and_then(Value::as_str).unwrap_or("") } else { tag };
+    let ours = ours_for(entry, release);
+    match (project_file(game_dir, release, entry), ours) {
+        (Some((base, origin)), Some(ours)) => with_ours(base, origin, &ours),
+        (Some((base, origin)), None) => from_value(base, origin),
+        (None, Some(ours)) => from_value(ours, Origin::Ours),
+        (None, None) => store_profile(entry).or_else(|| crate::boot::raw(entry).and_then(|b| from_boot(&b)).map(|mut b| {
+            b.origin = Origin::Boot;
+            b
+        })),
+    }
+}
+
+/// The project's own file for `release`, as written: the installed folder's, else the catalog's
+/// copy of the file in the release players get, when that's the same release.
+fn project_file(game_dir: &Path, release: &str, entry: &Value) -> Option<(Value, Origin)> {
+    if let Some(owned) = release_profile(game_dir) {
+        return Some((owned.raw, Origin::Folder));
+    }
+    let from = entry.get("launcher_from").and_then(Value::as_str);
+    let same = !release.is_empty() && entry.get("tag").and_then(Value::as_str) == Some(release);
+    if from != Some("release") || !same {
+        return None;
+    }
+    entry.get("launcher").filter(|v| v.get("format").and_then(Value::as_u64) == Some(1)).map(|v| (v.clone(), Origin::Release))
+}
+
+/// Our profile for this game (the catalog's `ours`), when it's pinned to `release`.
+fn ours_for(entry: &Value, release: &str) -> Option<Value> {
+    let ours = entry.get("ours")?;
+    let pinned = ours.get("tag").and_then(Value::as_str).unwrap_or("");
+    if release.is_empty() || pinned != release {
+        return None;
+    }
+    ours.get("profile").filter(|v| v.get("format").and_then(Value::as_u64) == Some(1)).cloned()
+}
+
+/// A catalog profile that doesn't say it's the release's: a catalog from before `launcher_from`,
+/// or ours sent the older way (`launcher_from: "store"`). Used as before, never credited.
+fn store_profile(entry: &Value) -> Option<Profile> {
+    if entry.get("launcher_from").and_then(Value::as_str) == Some("release") {
+        return None;
+    }
+    let v = entry.get("launcher")?.clone();
+    from_value(v, Origin::Store)
+}
+
+/// The project's file with ours filling in what it lacks entirely, one top-level part at a time.
+fn with_ours(mut base: Value, origin: Origin, ours: &Value) -> Option<Profile> {
+    let mut filled = vec![];
+    if let (Some(b), Some(o)) = (base.as_object_mut(), ours.as_object()) {
+        for (k, v) in o {
+            // What it starts and the copy it takes decide what Easy Setup is: those stay the project's
+            // own (or missing), never ours on top of their file, so Easy Setup is never credited to
+            // them for our parts.
+            if !b.contains_key(k) && !matches!(k.as_str(), "format" | "$schema" | "repo" | "start" | "game" | "inputs") {
+                b.insert(k.clone(), v.clone());
+                filled.push(k.clone());
+            }
+        }
+    }
+    let mut p = from_value(base, origin)?;
+    p.ours_parts = filled;
+    Some(p)
+}
+
+fn from_value(v: Value, origin: Origin) -> Option<Profile> {
+    let mut p: Profile = serde_json::from_value(v).ok()?;
+    if p.format != 1 {
+        return None;
+    }
+    p.origin = origin;
     Some(p)
 }
 
@@ -1303,19 +1465,6 @@ fn json_path_at(text: &str, line: usize, column: usize) -> String {
     path
 }
 
-fn find_own(game_dir: &Path, repo: &str, entry: &Value) -> Option<Profile> {
-    let ok = |p: Profile| (p.format == 1).then_some(p);
-    if let Some(owned) = release_profile(game_dir) {
-        return Some(owned.profile);
-    }
-    if let Some(p) = entry.get("launcher").and_then(|v| serde_json::from_value::<Profile>(v.clone()).ok()).and_then(ok) {
-        return Some(p);
-    }
-    BUILT_IN
-        .iter()
-        .filter_map(|t| serde_json::from_str::<Profile>(t).ok())
-        .find(|p| !repo.is_empty() && p.repo.eq_ignore_ascii_case(repo))
-}
 
 // ---------- paths ----------
 
@@ -1331,13 +1480,17 @@ pub fn pad_now() -> &'static str {
     *PAD.read().unwrap()
 }
 
-/// A name a game's environment may take: letters, digits and _, not starting with a digit, and
-/// never one of the launcher's own or the ones Windows and Linux need to find programs.
-pub fn env_name_ok(k: &str) -> bool {
+/// What any environment variable's name looks like: letters, digits and _, not starting with a
+/// digit, at most 64 characters.
+pub fn env_name_shape(k: &str) -> bool {
     let mut c = k.chars();
-    matches!(c.next(), Some(x) if x.is_ascii_alphabetic() || x == '_')
-        && c.all(|x| x.is_ascii_alphanumeric() || x == '_')
-        && k.len() <= 64
+    matches!(c.next(), Some(x) if x.is_ascii_alphabetic() || x == '_') && c.all(|x| x.is_ascii_alphanumeric() || x == '_') && k.len() <= 64
+}
+
+/// A name a game's environment may take: the right shape, and never one of the launcher's own or
+/// the ones Windows and Linux need to find programs.
+pub fn env_name_ok(k: &str) -> bool {
+    env_name_shape(k)
         && !k.to_ascii_uppercase().starts_with("RECOMPLAUNCHER")
         && !matches!(k.to_ascii_uppercase().as_str(), "PATH" | "PATHEXT" | "SYSTEMROOT" | "WINDIR" | "COMSPEC" | "LD_PRELOAD" | "LD_LIBRARY_PATH" | "HOME" | "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP")
 }
@@ -1687,10 +1840,12 @@ impl Profile {
         picked().find(|i| i.role == "game").or_else(|| picked().next())
     }
 
-    /// Easy Setup, the same rule as the website's: it starts a program and takes the player's copy
-    /// of the game, or it asks for the game or its disc as a required input.
+    /// Easy Setup, the one rule (the website's rs_sdk_easy is the same, and both are tested against
+    /// docs/easy-setup-cases.json): it starts a program, and it takes the player's copy, as the older
+    /// `game` block or as a required input of role game or disc that isn't a shared key.
     pub fn easy_setup(&self) -> bool {
-        (self.start.is_some() && self.main_copy().is_some()) || self.inputs.iter().any(|i| !i.optional && (i.role == "game" || i.role == "disc"))
+        let copy_input = self.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
+        self.start.is_some() && (self.game.is_some() || copy_input)
     }
 
     pub fn config_file(&self, id: &str, install: &Path) -> Option<File> {
@@ -2949,10 +3104,28 @@ mod tests {
         assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "game": {} })));
         assert!(!p(serde_json::json!({ "game": {} })));
         assert!(!p(serde_json::json!({ "start": { "program": ["Game.exe"] } })));
-        assert!(p(serde_json::json!({ "inputs": [{ "id": "d", "label": "Disc", "role": "disc", "formats": [{ "type": "file" }] }] })));
-        assert!(p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
+        assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "d", "label": "Disc", "role": "disc", "formats": [{ "type": "file" }] }] })));
+        assert!(p(serde_json::json!({ "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
+        // Without a program to start, the launcher can't set it up from the copy.
+        assert!(!p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }] })));
         assert!(!p(serde_json::json!({ "inputs": [{ "id": "g", "label": "Game", "role": "game", "optional": true, "formats": [{ "type": "file" }] }] })));
         assert!(!p(serde_json::json!({ "inputs": [{ "id": "k", "label": "K", "role": "key", "shared": "switch.prod-keys" }] })));
+    }
+
+    /// The cases the website's rs_sdk_easy runs too, so the two can't drift apart.
+    #[test]
+    fn easy_setup_matches_the_shared_cases() {
+        let all: serde_json::Value = serde_json::from_str(include_str!("../../docs/easy-setup-cases.json")).unwrap();
+        let cases = all["cases"].as_array().unwrap();
+        assert!(cases.len() >= 10);
+        for c in cases {
+            let p: super::Profile = serde_json::from_value(c["profile"].clone()).unwrap();
+            assert_eq!(p.easy_setup(), c["easy"].as_bool().unwrap(), "{}", c["name"]);
+            // Read the way find reads it (the older game block as an input), it's the same answer.
+            let mut lifted = p.clone();
+            lifted.lift_game();
+            assert_eq!(lifted.easy_setup(), c["easy"].as_bool().unwrap(), "{} (lifted)", c["name"]);
+        }
     }
 
     #[test]
@@ -3323,7 +3496,7 @@ mod tests {
         std::fs::write(&metadata, b"\x00\x05\x16\x07AppleDouble").unwrap();
         // Windows-formatted drives can give the metadata the same run permission as the program.
         std::fs::set_permissions(&metadata, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["dusklight.exe","Dusklight.app/Contents/MacOS/Dusklight"]}}"#).unwrap();
         let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
         assert_eq!(got, exe);
         let _ = std::fs::remove_dir_all(&d);
@@ -3349,7 +3522,7 @@ mod tests {
         std::fs::write(&log, b"Dusklight started\n").unwrap();
         // exFAT and NTFS drives give every file the run permission.
         std::fs::set_permissions(&log, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let p: Profile = serde_json::from_str(include_str!("../boot/dusklight.json")).unwrap();
+        let p: Profile = serde_json::from_str(r#"{"format":1,"start":{"program":["dusklight.exe","Dusklight.app/Contents/MacOS/Dusklight"]}}"#).unwrap();
         let got = p.command_for(&d, None, &BTreeMap::new(), false).unwrap().0;
         assert_eq!(got, exe);
         let _ = std::fs::remove_dir_all(&d);
@@ -3549,6 +3722,119 @@ mod tests {
     }
 
     use super::*;
+
+    /// The project's own file in a folder, else the catalog's (no `launcher_from`: as before).
+    fn find_own(dir: &Path, _repo: &str, entry: &Value) -> Option<Profile> {
+        find_as_written(dir, "", entry)
+    }
+
+    fn release_entry() -> Value {
+        serde_json::json!({
+            "tag": "v2", "launcher_from": "release",
+            "launcher": { "format": 1, "start": { "program": ["game.exe"] }, "settings": [] },
+        })
+    }
+
+    #[test]
+    fn the_release_file_counts_for_its_own_release_only() {
+        let e = release_entry();
+        let p = find(Path::new(""), "", &e).unwrap();
+        assert_eq!(p.origin, Origin::Release);
+        assert!(p.origin.project());
+        // Installed: the same release, yes; an older one without a file of its own, never.
+        assert_eq!(find(Path::new(""), "v2", &e).unwrap().origin, Origin::Release);
+        assert!(find(Path::new(""), "v1", &e).is_none());
+    }
+
+    #[test]
+    fn a_catalog_profile_that_doesnt_say_whose_is_ours() {
+        let old = serde_json::json!({ "tag": "v2", "launcher": { "format": 1, "start": { "program": ["game.exe"] } } });
+        let p = find(Path::new(""), "v1", &old).unwrap();
+        assert_eq!(p.origin, Origin::Store);
+        assert!(!p.origin.project());
+        let store = serde_json::json!({ "tag": "v2", "launcher_from": "store", "launcher": { "format": 1, "start": { "program": ["game.exe"] } } });
+        assert_eq!(find(Path::new(""), "", &store).unwrap().origin, Origin::Store);
+    }
+
+    #[test]
+    fn our_profile_applies_only_to_the_release_it_is_pinned_to() {
+        let e = serde_json::json!({ "tag": "v2", "ours": { "tag": "v2", "profile": { "format": 1, "start": { "program": ["game.exe"] } } } });
+        assert_eq!(find(Path::new(""), "", &e).unwrap().origin, Origin::Ours);
+        assert_eq!(find(Path::new(""), "v2", &e).unwrap().origin, Origin::Ours);
+        assert!(find(Path::new(""), "v1", &e).is_none());
+        let moved = serde_json::json!({ "tag": "v3", "ours": e["ours"].clone() });
+        assert!(find(Path::new(""), "", &moved).is_none());
+    }
+
+    #[test]
+    fn our_profile_only_fills_what_the_projects_file_lacks() {
+        let mut e = release_entry();
+        e["ours"] = serde_json::json!({ "tag": "v2", "profile": { "format": 1, "start": { "program": ["ours.exe"] }, "settings": [{ "id": "x", "label": "X" }], "saves": ["{local}/Game"] } });
+        let p = find(Path::new(""), "", &e).unwrap();
+        assert_eq!(p.origin, Origin::Release);
+        assert_eq!(p.start.unwrap().program, ["game.exe"]);
+        assert!(p.settings.is_empty(), "the project's own (empty) settings stay theirs");
+        assert_eq!(p.saves, ["{local}/Game"]);
+        assert_eq!(p.ours_parts, ["saves"]);
+    }
+
+    #[test]
+    fn an_install_keeps_its_own_releases_file_when_a_newer_release_is_out() {
+        let v2 = release_entry();
+        let mut g = crate::library::Installed { id: "x".into(), tag: "v2".into(), ..Default::default() };
+        let (release, ours) = copies_to_keep(&g, &v2).unwrap();
+        g.release_file = release;
+        g.ours_file = ours;
+        assert!(copies_to_keep(&g, &v2).is_none(), "kept once, nothing new the second time");
+        // v3 is out: the catalog carries v3's file, and the v2 install still gets v2's own.
+        let v3 = serde_json::json!({ "tag": "v3", "launcher_from": "release", "launcher": { "format": 1, "start": { "program": ["new.exe"] } } });
+        let p = find_for(&g, &v3).unwrap();
+        assert_eq!(p.origin, Origin::Release);
+        assert_eq!(p.start.unwrap().program, ["game.exe"]);
+        assert!(copies_to_keep(&g, &v3).is_none(), "the catalog at another release keeps nothing");
+    }
+
+    #[test]
+    fn a_game_moved_to_set_up_by_you_never_takes_our_profile_again() {
+        let store = serde_json::json!({ "tag": "v1", "launcher_from": "store", "launcher": { "format": 1, "start": { "program": ["game.exe"], "args": ["--disc", "{game}"] } } });
+        let mut g = crate::library::Installed { id: "x".into(), tag: "v1".into(), ..Default::default() };
+        assert_eq!(find_for(&g, &store).unwrap().origin, Origin::Store);
+        // Its start is in its launch options now: Play adds nothing of ours, so nothing comes twice.
+        g.one_road = "moved".into();
+        assert!(find_for(&g, &store).is_none());
+        // The project's own file still counts.
+        assert_eq!(find_for(&g, &release_entry()).map(|p| p.origin), None, "another release's file isn't this install's");
+        g.tag = "v2".into();
+        assert_eq!(find_for(&g, &release_entry()).unwrap().origin, Origin::Release);
+    }
+
+    #[test]
+    fn our_profile_never_adds_what_decides_easy_setup_to_the_projects_file() {
+        let e = serde_json::json!({
+            "tag": "v2", "launcher_from": "release",
+            "launcher": { "format": 1, "settings": [] },
+            "ours": { "tag": "v2", "profile": { "format": 1, "start": { "program": ["ours.exe"] }, "game": { "kind": "iso", "label": "Disc" },
+                "inputs": [{ "id": "game", "label": "Game", "role": "game", "formats": [{ "type": "file" }] }], "saves": ["{local}/G"] } },
+        });
+        let p = find_as_written(Path::new(""), "", &e).unwrap();
+        assert!(p.start.is_none() && p.game.is_none() && p.inputs.is_empty());
+        assert!(!p.easy_setup(), "no Easy Setup credited to the project from our parts");
+        assert_eq!(p.ours_parts, ["saves"]);
+    }
+
+    #[test]
+    fn the_folders_own_file_beats_the_catalog_and_takes_ours_on_top() {
+        let d = tmp("own-folder");
+        std::fs::write(d.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["mine.exe"]}}"#).unwrap();
+        let mut e = release_entry();
+        e["ours"] = serde_json::json!({ "tag": "v1", "profile": { "format": 1, "saves": ["{local}/Game"] } });
+        // Installed v1 with its own file: the folder's, with ours pinned to v1 filling its saves.
+        let p = find(&d, "v1", &e).unwrap();
+        assert_eq!(p.origin, Origin::Folder);
+        assert_eq!(p.start.unwrap().program, ["mine.exe"]);
+        assert_eq!(p.ours_parts, ["saves"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn tmp(n: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("rl-prof-{n}-{}", std::process::id()));
@@ -4016,65 +4302,10 @@ mod tests {
 
     #[test]
     fn built_in_profiles_load() {
-        let f = find(Path::new("/nope"), "HossEz/fifa-world-cup-2014-recompiled", &Value::Null).unwrap();
+        let f = find(Path::new("/nope"), "", &as_release(FIFA)).unwrap();
         assert!(f.settings.iter().any(|s| s.id == "resolution"));
-        let s = find(Path::new("/nope"), "luckvj/streetball-revival", &Value::Null).unwrap();
+        let s = find(Path::new("/nope"), "", &as_release(STREETBALL)).unwrap();
         assert_eq!(s.main_copy().unwrap().check.iso9660, "SLUS_206.51");
-    }
-
-    #[test]
-    fn dusklight_official_package_uses_the_launcher_profile() {
-        let install = tmp("dusklight");
-        let program = if cfg!(windows) {
-            "dusklight.exe"
-        } else if cfg!(target_os = "macos") {
-            "Dusklight.app/Contents/MacOS/Dusklight"
-        } else {
-            "Dusklight-v2.0.3-linux-x86_64.AppImage"
-        };
-        let executable = install.join(program);
-        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
-        std::fs::write(&executable, b"").unwrap();
-        let disc = install.join("Twilight Princess.rvz");
-        std::fs::write(&disc, b"").unwrap();
-        let profile = find(&install, "twilitrealm/dusklight", &Value::Null).unwrap();
-        check_copy(&profile.main_copy().unwrap(), &disc).unwrap();
-        let picks = BTreeMap::new();
-        let (exe, args) = profile.command(&install, Some(&disc), &picks).unwrap();
-        assert_eq!(exe, executable);
-        assert_eq!(args, vec!["--dvd".to_string(), disc.to_string_lossy().into_owned()]);
-
-        let data = install.join("data");
-        std::fs::create_dir(&data).unwrap();
-        std::fs::write(data.join("config.json"), "{}").unwrap();
-        let cap = profile.settings.iter().position(|s| s.id == "fps_cap").unwrap();
-        assert!(!profile.current(&install, &picks)[cap].1);
-        profile.pick(&install, "fps", 1).unwrap();
-        assert!(profile.current(&install, &picks)[cap].1);
-        profile.pick(&install, "fps_cap", 2).unwrap();
-        assert_eq!(profile.config_file("main", &install).unwrap().get("video.maxFrameRate").as_deref(), Some("90"));
-
-        let user_root = "{appdata}";
-        assert!(profile.saves.contains(&format!("{user_root}/TwilitRealm/Dusk/states.json")));
-        let game = crate::library::Installed { path: install.clone(), ..Default::default() };
-        let portable: Vec<_> = profile.saves.into_iter().filter(|path| path.starts_with("{install}/")).collect();
-        let spots = crate::saves::spots(&portable, &[], &game);
-        let card = data.join("MemoryCardA.USA.raw");
-        let states = data.join("states.json");
-        std::fs::write(&card, b"card").unwrap();
-        std::fs::write(&states, b"[]").unwrap();
-        let app = install.join("launcher-data");
-        let backup = crate::saves::backup(&app, "dusklight", &spots, &game).unwrap().unwrap();
-        assert_eq!(backup.files, 2);
-        std::fs::remove_file(&card).unwrap();
-        std::fs::remove_file(&states).unwrap();
-        let archive = crate::saves::dir_of(&app, "dusklight", &game).join(backup.name);
-        assert_eq!(crate::saves::restore(&app, "dusklight", &archive, &spots, &game).unwrap(), 2);
-        assert_eq!(std::fs::read(card).unwrap(), b"card");
-        assert_eq!(std::fs::read(states).unwrap(), b"[]");
-        let _ = std::fs::remove_dir_all(&install);
-        // The copies sit beside the game, in its library's .backups folder.
-        let _ = std::fs::remove_dir_all(crate::backups_dir(&game));
     }
 
     #[test]
@@ -4299,7 +4530,7 @@ mod tests {
         let d = tmp("fifa");
         std::fs::write(d.join("portable.txt"), "").unwrap();
         std::fs::write(d.join("fifawc14.exe"), "").unwrap();
-        let p = find(&d, "HossEz/fifa-world-cup-2014-recompiled", &Value::Null).unwrap();
+        let p = find(&d, "", &as_release(FIFA)).unwrap();
         p.prepare(&d, Some(Path::new("C:\\Games\\FIFA 14.iso"))).unwrap();
         let t = std::fs::read_to_string(d.join("fifawc14.toml")).unwrap();
         assert!(t.contains("game_data_root = \"C:/Games/FIFA 14.iso\""), "{t}");
@@ -4326,7 +4557,7 @@ mod tests {
         let d = tmp("sb");
         std::fs::create_dir_all(d.join("bin")).unwrap();
         std::fs::write(d.join("bin").join(if cfg!(windows) { "street-game.exe" } else { "street-game" }), "").unwrap();
-        let mut p = find(&d, "luckvj/streetball-revival", &Value::Null).unwrap();
+        let mut p = find(&d, "", &as_release(STREETBALL)).unwrap();
         // As profile_of fills them in from what's picked.
         p.input_paths.insert("game".into(), PathBuf::from("/isos/nbas2.iso"));
         let mut picks = BTreeMap::new();
@@ -4648,9 +4879,9 @@ mod lift_tests {
 
     #[test]
     fn the_examples_lift_with_every_rule() {
-        for (n, text) in BUILT_IN.iter().enumerate() {
+        for (n, text) in [FIFA, STREETBALL].iter().enumerate() {
             let p: Profile = serde_json::from_str(text).unwrap();
-            lifts_the_same(&format!("built-in {n}"), &p);
+            lifts_the_same(&format!("example {n}"), &p);
         }
     }
 

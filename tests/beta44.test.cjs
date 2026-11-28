@@ -33,8 +33,9 @@ test('a project\'s own setup file arriving refreshes Easy Setup', () => {
   assert.match(app, /T\.event\.listen\('profiles-fresh', \(\) => loadCatalog\(false\)\.then\(\(\) => loadEasy\(true\)\)\.then\(\(\) => render\(true\)\)/);
 });
 
-test('the developer check names a setup file read from the project', () => {
-  assert.match(app, /repo: t\('The recomplauncher\.json in its project'\)/);
+test('the developer check names whose file the launcher uses: the release\'s copy, or our profile', () => {
+  assert.match(app, /release: t\('Your release\\'s file, as recomplauncher\.com read it'\), ours: t\('RecompLauncher\\'s profile for this game'\)/);
+  assert.doesNotMatch(app, /'built-in': t\(|repo: t\('The recomplauncher\.json in its project'\)/);
 });
 
 test('a recomp request takes the whole link, with https:// added when it was left out', () => {

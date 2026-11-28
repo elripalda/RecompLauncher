@@ -20,7 +20,7 @@ test('Skip Easy Setup: per game or for every game, and the page treats those gam
   assert.deepEqual([...S.easy], []);
   // Saving settings applies it straight away, and the catalog's list is the starting point.
   assert.match(fn(app, 'saveSettings'), /S\.settings = Object\.assign\(\{\}, S\.settings, patch\);\n  applyEasySkip\(\);/);
-  assert.match(app, /S\.easyAll = new Set\(await invoke\('easy_setup'\)\);[^\n]*\n  applyEasySkip\(\);/);
+  assert.match(app, /S\.easyAll = new Set\(Object\.keys\(S\.sup\)\.filter\(\(id\) => S\.sup\[id\] && S\.sup\[id\]\.easy\)\);\n  applyEasySkip\(\);/);
 });
 
 test('Skip Easy Setup is on the setup window, the Manage tab and in Settings, not in the menu', () => {

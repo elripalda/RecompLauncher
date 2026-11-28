@@ -25,7 +25,7 @@ function library(dpr = 1) {
     clearTimeout: id => timers.delete(id),
     invoke: async (_, args) => { saved.push(args.settings.ui.tile); }, fail: error => { throw error; },
     libList: () => [{ a, saved: true }], t: value => value,
-    status: () => '', isSaved: () => false, turnkey: () => false,
+    status: () => '', isSaved: () => false, turnkey: () => false, easyTag: () => false,
     verGroup: () => null, greatOnDeck: () => false, projectState: () => null,
     render: () => { html = vm.runInContext('libraryGrid()', c); draws.push(html); }
   });

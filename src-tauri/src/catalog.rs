@@ -347,7 +347,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
     crate::boot::from_catalog(&mut cat);
     let list = mine(dir);
     if list.is_empty() {
-        return with_repo_profiles(dir, with_known_project_status(dir, cat));
+        return with_known_project_status(dir, cat);
     }
     if !cat.is_object() {
         cat = serde_json::json!({ "apps": [] });
@@ -362,7 +362,7 @@ pub fn with_mine(dir: &Path, mut cat: Value) -> Value {
             apps.push(e);
         }
     }
-    with_repo_profiles(dir, with_known_project_status(dir, cat))
+    with_known_project_status(dir, cat)
 }
 
 /// owner/repo from a GitHub link (or "owner/repo" itself), or gitlab:group/project from a GitLab
@@ -1257,101 +1257,6 @@ pub async fn releases_within(http: &reqwest::Client, dir: &Path, repo: &str, sec
     Ok(with_gitlab(Some(http), dir, repo, f).await)
 }
 
-// ---------- a Forgejo project's own recomplauncher.json ----------
-
-/// A Forgejo project's recomplauncher.json, read from its repo (the catalog can't carry it for
-/// these): the same file a developer would put in their release, used the same way until one is.
-fn repo_profile_url(origin: &str, owner: &str, name: &str) -> String {
-    format!("{origin}/api/v1/repos/{owner}/{name}/raw/recomplauncher.json")
-}
-
-fn repo_profile_file(dir: &Path, repo: &str) -> PathBuf {
-    dir.join("cache/repo-profiles").join(format!("{}.json", repo.replace(':', "_").replace('/', "__")))
-}
-
-/// A file worth keeping: a format 1 profile. A project without one is kept as `{"none": true}`,
-/// so it isn't asked for again until the copy is old.
-fn profile_ok(v: &Value) -> bool {
-    v.get("format").and_then(Value::as_u64) == Some(1)
-}
-
-/// The repo's file as kept on disk, if it is one.
-pub fn repo_profile_on_disk(dir: &Path, repo: &str) -> Option<Value> {
-    load(&repo_profile_file(dir, repo)).filter(profile_ok)
-}
-
-/// Asked again only when the copy on disk is older than the release info's six hours, or missing
-/// (`force`: asked now, as for an install). True when what's kept changed.
-pub async fn repo_profile(http: &reqwest::Client, dir: &Path, repo: &str, force: bool) -> bool {
-    let Some((server, owner, name)) = forgejo_parts(repo).filter(|_| repo_ok(repo)) else { return false };
-    let file = repo_profile_file(dir, repo);
-    if !force && age_of(&file).is_some_and(|a| a < RELEASES_FRESH) {
-        return false;
-    }
-    let url = repo_profile_url(&format!("https://{server}"), owner, name);
-    let Some(got) = fetch_profile(http, &url).await else { return false };
-    if load(&file).as_ref() == Some(&got) {
-        touch(&file);
-        return false;
-    }
-    save(&file, &got);
-    true
-}
-
-/// The file at `url`: the profile, `{"none": true}` when the project has none (404), or None when
-/// the server couldn't be asked (the copy on disk stays). No token is sent.
-async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
-    let r = crate::net::send(http.get(url).timeout(crate::net::QUICK), url, false).await.ok()?;
-    if r.status() == reqwest::StatusCode::NOT_FOUND {
-        return Some(serde_json::json!({ "none": true }));
-    }
-    if !r.status().is_success() {
-        return None;
-    }
-    let bytes = r.bytes().await.ok()?;
-    repo_profile_reply(&bytes)
-}
-
-/// What a project's recomplauncher.json from its repo gives: the file, or "none" when it isn't one
-/// the launcher reads. A body that isn't JSON at all is a failed answer, asked again later.
-fn repo_profile_reply(bytes: &[u8]) -> Option<Value> {
-    let v = crate::profile::parse_json_bytes(bytes)?;
-    Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
-}
-
-/// Forgejo entries without the catalog's own "launcher" get the one from their repo, kept on disk,
-/// marked as the project's ("launcher_from": "repo").
-fn with_repo_profiles(dir: &Path, mut cat: Value) -> Value {
-    for a in cat.get_mut("apps").and_then(Value::as_array_mut).into_iter().flatten() {
-        if a.get("launcher").is_some() {
-            continue;
-        }
-        let Some(repo) = a.get("repo").and_then(Value::as_str).filter(|r| is_forgejo(r)).map(str::to_string) else { continue };
-        if let Some(p) = repo_profile_on_disk(dir, &repo) {
-            a["launcher"] = p;
-            a["launcher_from"] = Value::String("repo".into());
-        }
-    }
-    cat
-}
-
-/// The Forgejo projects in the list whose file isn't on disk yet or is old (`force`: all of them).
-pub fn repo_profiles_due(dir: &Path, cat: &Value, force: bool) -> Vec<String> {
-    let mut out: Vec<String> = vec![];
-    for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
-        let from_repo = a.get("launcher_from").and_then(Value::as_str) == Some("repo");
-        if a.get("launcher").is_some() && !from_repo {
-            continue;
-        }
-        let Some(repo) = a.get("repo").and_then(Value::as_str).filter(|r| is_forgejo(r) && repo_ok(r)) else { continue };
-        let fresh = age_of(&repo_profile_file(dir, repo)).is_some_and(|x| x < RELEASES_FRESH);
-        if (force || !fresh) && !out.iter().any(|r| r == repo) {
-            out.push(repo.to_string());
-        }
-    }
-    out
-}
-
 /// A recomp's releases as kept on disk (any age), without asking anyone.
 pub fn releases_on_disk(dir: &Path, repo: &str) -> Option<Fetched> {
     if !repo_ok(repo) {
@@ -1417,12 +1322,6 @@ pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn a_repo_profile_saved_with_a_byte_order_mark_is_read() {
-        let v = super::repo_profile_reply(b"\xef\xbb\xbf{\"format\":1}");
-        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
-    }
-
     #[test]
     fn a_backup_release_keeps_only_checked_files_for_this_pc() {
         let sha = "a".repeat(64);
@@ -1817,48 +1716,6 @@ mod tests {
         let (origin, seen) = answer_once("404 Not Found", r#"{"message":"not found"}"#);
         assert!(!rt.block_on(forgejo_version(&http, &format!("{origin}/api/v1/version"))));
         seen.join().unwrap();
-    }
-
-    #[test]
-    fn a_forgejo_projects_setup_file_is_read_from_its_repo() {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        let http = reqwest::Client::new();
-        let (origin, seen) = answer_once("200 OK", r#"{"format":1,"game":{"kind":"iso_or_folder","label":"Your copy"},"start":{"program":["Hopper.AppImage"]}}"#);
-        let url = repo_profile_url(&origin, "Studio", "Hopper");
-        let got = rt.block_on(fetch_profile(&http, &url)).unwrap();
-        let req = seen.join().unwrap();
-        assert!(req.starts_with("get /api/v1/repos/studio/hopper/raw/recomplauncher.json http/1.1"), "{req}");
-        assert!(!req.contains("authorization") && !req.contains("cookie"), "{req}");
-        assert_eq!(got["format"], 1);
-        // None in the project: kept as such, so it isn't asked again until the copy is old.
-        let (origin, seen) = answer_once("404 Not Found", r#"{"message":"not found"}"#);
-        let none = rt.block_on(fetch_profile(&http, &repo_profile_url(&origin, "Studio", "Hopper"))).unwrap();
-        seen.join().unwrap();
-        assert_eq!(none, serde_json::json!({"none": true}));
-        assert!(!profile_ok(&none));
-    }
-
-    #[test]
-    fn a_forgejo_entry_gets_its_projects_setup_file_from_disk() {
-        let dir = std::env::temp_dir().join(format!("rl-repo-profile-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let repo = "forgejo:git.example.dev/Studio/Hopper";
-        save(&repo_profile_file(&dir, repo), &serde_json::json!({"format": 1, "game": {"kind": "iso_or_folder"}}));
-        let cat = serde_json::json!({"apps": [
-            {"id": "hopper", "host": "forgejo", "repo": "git.example.dev/Studio/Hopper"},
-            {"id": "own", "host": "forgejo", "repo": "git.example.dev/Studio/Hopper", "launcher": {"format": 1}},
-            {"id": "gh", "repo": "owner/game"},
-        ]});
-        let cat = with_mine(&dir, cat);
-        assert_eq!(cat["apps"][0]["launcher"]["game"]["kind"], "iso_or_folder");
-        assert_eq!(cat["apps"][0]["launcher_from"], "repo");
-        // The catalog's own file stays the catalog's; a GitHub entry gets nothing.
-        assert!(cat["apps"][1].get("launcher_from").is_none());
-        assert!(cat["apps"][2].get("launcher").is_none());
-        // Just read: not due again (unless the player refreshes).
-        assert!(repo_profiles_due(&dir, &cat, false).is_empty());
-        assert_eq!(repo_profiles_due(&dir, &cat, true), vec![repo.to_string()]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

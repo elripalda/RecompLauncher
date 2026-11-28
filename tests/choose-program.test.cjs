@@ -111,7 +111,7 @@ test('no pill on a game Easy Setup can\'t do while Play starts the default progr
 });
 
 test('the pill sits under the game\'s name in place of Easy Setup, and no longer in On Disk', () => {
-  assert.match(fn(app, 'gameTitle'), /inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : turnkey\(a\) \? /);
+  assert.match(fn(app, 'gameTitle'), /inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : easyTag\(a\) \? /);
   assert.match(app, /gsBox\(GS_IC\.disk, t\('On Disk'\), size \? esc\(fmtB\(size\)\) : '—'\)/);
 });
 
@@ -123,7 +123,7 @@ test('a picked executable counts as Set Up by You even while Easy Setup is still
 
 test('Big Picture asks Set Up by You first, as the desktop does, then Easy Setup', () => {
   const tv = fs.readFileSync(path.join(__dirname, '../ui/tv.js'), 'utf8');
-  assert.match(tv, /: S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : S\.easy\.has\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : ''/);
+  assert.match(tv, /: S\.library\[id\] && setUpByYou\(id\) \? `<span class="tv-easy">\$\{esc\(t\('Set Up by You'\)\)\}<\/span>` : easyTag\(a\) \? `<span class="tv-easy">\$\{esc\(t\('Easy Setup'\)\)\}<\/span>` : ''/);
 });
 
 test('Use Default lets the pick go in the core', () => {
@@ -147,9 +147,9 @@ test('Before you play doesn\'t ask for the copy while the game builds', () => {
   assert.match(fn(app, 'readyRows'), /const building = status\(a\) === 'settingup' \|\| buildWaits\(id\);/);
 });
 
-// The launcher can only hand the copy to the game through Easy Setup or a boot profile's files.
+// The launcher hands the copy to the game only through Easy Setup, as the core says (S.easy).
 const line = (src, name) => src.match(new RegExp(`^const ${name} = [^\\n]*$`, 'm'))[0];
-const feeds = (S, builtin = {}) => new Function('S', 'builtinBoot', `${line(app, 'TURNKEY_HOW')} ${line(app, 'feedsCopy')} return feedsCopy;`)(S, () => builtin);
+const feeds = (S) => new Function('S', `${line(app, 'feedsCopy')} return feedsCopy;`)(S);
 
 test('a game that asks for its copy itself isn\'t asked for it on Before you play', () => {
   assert.equal(feeds({ easy: new Set() })({ id: 'g' }), false);
@@ -159,8 +159,8 @@ test('an Easy Setup game is asked for its copy on Before you play', () => {
   assert.equal(feeds({ easy: new Set(['g']) })({ id: 'g' }), true);
 });
 
-test('a game whose boot profile puts its copy in place is asked for it on Before you play', () => {
-  assert.equal(feeds({ easy: new Set() }, { g: { files: { how: 'flag' } } })({ id: 'g' }), true);
+test('the window doesn\'t guess from a boot profile: only the core\'s Easy Setup hands the copy over', () => {
+  assert.equal(feeds({ easy: new Set() })({ id: 'g', boot: { files: { how: 'flag' } } }), false);
 });
 
 // Skip Easy Setup is the one switch for who sets a game up.
