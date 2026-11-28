@@ -3057,6 +3057,8 @@ body.light{--star:#BF8700;--gh-badge:#1F2328;--gh-badge-ink:#fff;
 .star-cta:hover .sc-x,.star-cta .sc-x:focus-visible{opacity:1}
 .star-cta .sc-x:hover{color:var(--ink)}
 .side:is(.mini,.auto) .star-cta .sc-main{width:44px;padding:0 12px;margin-left:4px;overflow:hidden}
+/* The round button clips its hidden labels, so the glint runs just inside its edge instead. */
+.side:is(.mini,.auto) .star-cta .sc-main::before{inset:0}
 .side:is(.mini,.auto) .star-cta .sc-x{display:none}
 @property --sa{syntax:'<angle>';inherits:false;initial-value:0deg}
 @keyframes starOrbit{to{--sa:360deg}}
