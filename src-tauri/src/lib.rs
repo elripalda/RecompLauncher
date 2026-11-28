@@ -2016,36 +2016,85 @@ async fn copy_files(st: State<'_, App>, id: String, picked: Option<String>, drop
     .map_err(|e| Error::Msg(e.to_string()))
 }
 
-/// What an installed recomp's own recomplauncher.json (in its folder) covers, for the "Launcher
-/// support" list: each feature it sets up itself. Null when it has none.
+/// Launcher Support for an installed game, the same answer `game_support` gives for every game,
+/// read again from the installed files (see support_for). Null when nothing sets it up.
 #[tauri::command]
 fn support_local(st: State<'_, App>, id: String) -> Option<Value> {
-    let dir = st.lib.lock().unwrap().installed.get(&id).map(|g| g.path.clone())?;
-    support_in(&dir)
+    let g = st.lib.lock().unwrap().installed.get(&id).cloned()?;
+    let cat = cached_catalog(&st);
+    let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
+    support_for(Some(&g), &entry)
 }
 
-/// What the recomplauncher.json in a game's folder covers. Null when there is none. A file the
-/// launcher can't read sets nothing up (Play and Easy Setup skip it): `{"problem": …}` says why,
-/// for the box to show instead of the catalog's labels.
-fn support_in(dir: &Path) -> Option<Value> {
-    if let Some(owned) = profile::release_profile(dir) {
-        return Some(profile_covers(&owned.profile));
+/// Launcher Support for every catalog game, by id: the core's one answer, which the window only
+/// shows (desktop and Big Picture), never works out itself. An installed game is asked about the
+/// release it has; one that isn't, about the one it'd get. Games nothing sets up are left out.
+#[tauri::command(async)]
+fn game_support(st: State<'_, App>) -> HashMap<String, Value> {
+    let cat = cached_catalog(&st);
+    let installed: HashMap<String, Installed> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.clone())).collect();
+    cat.get("apps")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|x| {
+            let id = x.get("id")?.as_str()?;
+            Some((id.to_string(), support_for(installed.get(id), x)?))
+        }).collect())
+        .unwrap_or_default()
+}
+
+/// One game's Launcher Support, from the profile Install and Play use (profile::find). An
+/// installed release's own file the launcher can't read sets nothing up (Play and Easy Setup skip
+/// it): `{"problem": …}` says why, for the box to show instead.
+fn support_for(g: Option<&Installed>, entry: &Value) -> Option<Value> {
+    let p = match g {
+        Some(g) => profile::find_for(g, entry),
+        None => profile::find(Path::new(""), "", entry),
+    };
+    if let Some(g) = g {
+        if p.as_ref().map(|p| p.origin) != Some(profile::Origin::Folder) && profile::release_profile(&g.path).is_none() {
+            if let Some(problem) = profile::release_file_problem(&g.path) {
+                return Some(json!({ "problem": problem }));
+            }
+        }
     }
-    let problem = profile::release_file_problem(dir)?;
-    Some(json!({ "problem": problem }))
+    p.map(|p| support_answer(&p))
 }
 
-/// Each Launcher Support feature a recomplauncher.json sets up itself.
-fn profile_covers(p: &profile::Profile) -> Value {
-    let game = p.game.as_ref();
-    // The one rule (Profile::easy_setup), so the box agrees with Install and with the catalog.
-    let easy_setup = p.easy_setup();
+/// What a game's profile sets up, and whose each part is. `from`: "folder" or "release" (the
+/// project's own file, in the installed folder or the catalog's copy of the release's), "ours"
+/// (our profile, turned on for this game by hand), "store" (an older profile of ours the catalog
+/// still sends). `easy`: Install sets the player's copy up (the one rule, Profile::easy_setup).
+/// `tag`: shown as an Easy Setup game, which needs the project's own file or our profile turned
+/// on by hand, never an older one of ours. Each feature: "p" the project's file, "l" ours (our
+/// profile, or a part ours fills in that the project's file leaves out), "" nobody.
+fn support_answer(p: &profile::Profile) -> Value {
+    use profile::Origin;
+    let from = match p.origin {
+        Origin::Folder => "folder",
+        Origin::Release => "release",
+        Origin::Ours => "ours",
+        Origin::Store | Origin::Boot => "store",
+        Origin::None => "",
+    };
+    // Ours only fills top-level parts the project's file leaves out (profile::with_ours).
+    let who = |part: &str, has: bool| match (has, p.origin.project() && !p.ours_parts.iter().any(|k| k == part)) {
+        (false, _) => "",
+        (true, true) => "p",
+        (true, false) => "l",
+    };
+    // The copy's rules: lifted into the main input by profile::find.
+    let game = p.main_copy();
+    let easy = p.easy_setup();
     json!({
-        "easy_setup": easy_setup,
-        "settings": !p.settings.is_empty(),
-        "prepare": p.prepare.is_some(),
-        "verified": game.map(|g| !g.dumps.is_empty() || !g.check.ids.is_empty()).unwrap_or(false),
-        "saves": !p.saves.is_empty(),
+        "from": from,
+        "easy": easy,
+        "tag": easy && (p.origin.project() || p.origin == Origin::Ours),
+        "ours": p.ours_parts,
+        "easy_setup": who("start", easy),
+        "settings": who("settings", !p.settings.is_empty()),
+        "prepare": who("prepare", p.prepare.is_some()),
+        "verified": who("game", game.map(|g| !g.dumps.is_empty() || !g.check.ids.is_empty()).unwrap_or(false)),
+        "saves": who("saves", !p.saves.is_empty()),
     })
 }
 
@@ -5113,30 +5162,6 @@ pub(crate) fn player_sets_up(st: &App, id: &str) -> bool {
         Some(g) => g.player_sets_up(),
         None => easy_skipped(&l.settings.ui, id),
     }
-}
-
-/// Catalog games the launcher can set up itself (copy and settings): the "Easy setup" ones.
-/// (Skipping it is the page's to apply: the game still can be set up this way.)
-#[tauri::command(async)]
-fn easy_setup(st: State<'_, App>) -> Vec<String> {
-    let cat = cached_catalog(&st);
-    // An installed game is asked about the release it has; one that isn't, about the one it'd get.
-    let installed: HashMap<String, Installed> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.clone())).collect();
-    cat.get("apps")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| {
-                    let id = x.get("id")?.as_str()?;
-                    let p = match installed.get(id) {
-                        Some(g) => profile::find_for(g, x)?,
-                        None => profile::find(Path::new(""), "", x)?,
-                    };
-                    p.easy_setup().then(|| id.to_string())
-                })
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 /// The player's own launch options and automatic updates for a game.
@@ -11092,7 +11117,7 @@ pub fn run() {
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, pads_window_off, pad_right_stick, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
             mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
-            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
+            recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, game_support, set_game_options,
             set_prepare_opts,
             convert_plan,
             convert_copy,
@@ -11225,7 +11250,7 @@ mod tests {
             "start": { "program": ["game.exe"], "args": ["--game", "{input:jar}"] }
         }))
         .unwrap();
-        assert_eq!(super::profile_covers(&p)["easy_setup"], true);
+        assert_eq!(super::support_answer(&p)["easy"], true);
     }
 
     #[test]
@@ -11236,16 +11261,16 @@ mod tests {
             "start": { "program": ["game.exe"] }
         }))
         .unwrap();
-        assert_eq!(super::profile_covers(&p)["easy_setup"], false);
+        assert_eq!(super::support_answer(&p)["easy"], false);
     }
 
     #[test]
     fn launcher_support_does_not_count_a_game_block_without_a_program_as_easy_setup() {
         let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({ "format": 1, "game": { "kind": "folder" } })).unwrap();
-        assert_eq!(super::profile_covers(&p)["easy_setup"], false);
+        assert_eq!(super::support_answer(&p)["easy"], false);
     }
 
-    // A game folder holding this recomplauncher.json, for support_in.
+    // A game folder holding this recomplauncher.json, for support_for.
     fn folder_with_file(name: &str, file: serde_json::Value) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("rl-support-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -11270,7 +11295,7 @@ mod tests {
     #[test]
     fn launcher_support_gives_only_the_problem_for_a_file_the_launcher_cant_read() {
         let dir = folder_with_file("unreadable", unreadable_like_mtf());
-        let found = super::support_in(&dir);
+        let found = super::support_for(Some(&installed_at(&dir)), &serde_json::Value::Null);
         let _ = std::fs::remove_dir_all(dir);
         assert_eq!(found, Some(serde_json::json!({ "problem": "\"config[0].file\" should be a list." })));
     }
@@ -11279,7 +11304,7 @@ mod tests {
     fn launcher_support_gives_nothing_for_a_folder_without_a_file() {
         let dir = std::env::temp_dir().join(format!("rl-support-none-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let found = super::support_in(&dir);
+        let found = super::support_for(Some(&installed_at(&dir)), &serde_json::Value::Null);
         let _ = std::fs::remove_dir_all(dir);
         assert_eq!(found, None);
     }
@@ -11290,9 +11315,59 @@ mod tests {
         file["config"][0]["file"] = serde_json::json!([{ "path": "{install}/mtf.ini" }]);
         file["game"]["dumps"] = serde_json::json!([{ "name": "USA", "crc32": "1234abcd" }]);
         let dir = folder_with_file("complete", file);
-        let all = serde_json::json!({ "easy_setup": true, "settings": true, "prepare": true, "verified": true, "saves": true });
-        assert_eq!(super::support_in(&dir), Some(all));
+        let found = super::support_for(Some(&installed_at(&dir)), &serde_json::Value::Null).unwrap();
         let _ = std::fs::remove_dir_all(dir);
+        assert_eq!((found["from"].as_str(), found["easy"].as_bool(), found["tag"].as_bool()), (Some("folder"), Some(true), Some(true)));
+        for k in ["easy_setup", "settings", "prepare", "verified", "saves"] {
+            assert_eq!(found[k], "p", "{k}");
+        }
+    }
+
+    // An installed game in `dir`, at release v1 (the catalog entries below are at v1 too).
+    fn installed_at(dir: &std::path::Path) -> crate::library::Installed {
+        crate::library::Installed { id: "game".into(), path: dir.to_path_buf(), tag: "v1".into(), ..Default::default() }
+    }
+
+    // A catalog entry at release v1 with our profile turned on for it, pinned to v1.
+    fn with_ours(mut entry: serde_json::Value, ours: serde_json::Value) -> serde_json::Value {
+        entry["tag"] = "v1".into();
+        entry["ours"] = serde_json::json!({ "profile": ours, "tag": "v1" });
+        entry
+    }
+
+    const START: &str = r#"{ "program": ["game.exe"] }"#;
+
+    #[test]
+    fn launcher_support_credits_our_profile_turned_on_by_hand_with_the_easy_setup_tag() {
+        let ours = serde_json::json!({ "format": 1, "game": { "kind": "folder" }, "start": serde_json::from_str::<serde_json::Value>(START).unwrap(), "saves": ["{install}/save"] });
+        let found = super::support_for(None, &with_ours(serde_json::json!({ "id": "game" }), ours)).unwrap();
+        assert_eq!((found["from"].as_str(), found["easy"].as_bool(), found["tag"].as_bool()), (Some("ours"), Some(true), Some(true)));
+        assert_eq!((found["easy_setup"].as_str(), found["saves"].as_str(), found["settings"].as_str()), (Some("l"), Some("l"), Some("")));
+    }
+
+    #[test]
+    fn launcher_support_never_tags_an_older_profile_of_ours() {
+        // A catalog from before launcher_from: our profile, set up as before, never shown as Easy Setup.
+        let launcher = serde_json::json!({ "format": 1, "game": { "kind": "folder" }, "start": serde_json::from_str::<serde_json::Value>(START).unwrap() });
+        let found = super::support_for(None, &serde_json::json!({ "id": "game", "tag": "v1", "launcher": launcher })).unwrap();
+        assert_eq!((found["from"].as_str(), found["easy"].as_bool(), found["tag"].as_bool(), found["easy_setup"].as_str()), (Some("store"), Some(true), Some(false), Some("l")));
+    }
+
+    #[test]
+    fn launcher_support_says_which_parts_our_profile_fills_in_for_the_projects_file() {
+        let theirs = serde_json::json!({ "format": 1, "game": { "kind": "folder" }, "start": serde_json::from_str::<serde_json::Value>(START).unwrap() });
+        let dir = folder_with_file("ours-fills", theirs);
+        let ours = serde_json::json!({ "format": 1, "start": { "program": ["other.exe"] }, "saves": ["{install}/save"] });
+        let found = super::support_for(Some(&installed_at(&dir)), &with_ours(serde_json::json!({ "id": "game" }), ours)).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!((found["from"].as_str(), found["tag"].as_bool()), (Some("folder"), Some(true)));
+        assert_eq!((found["easy_setup"].as_str(), found["saves"].as_str()), (Some("p"), Some("l")));
+        assert_eq!(found["ours"], serde_json::json!(["saves"]));
+    }
+
+    #[test]
+    fn launcher_support_gives_nothing_for_a_plain_game() {
+        assert_eq!(super::support_for(None, &serde_json::json!({ "id": "game", "tag": "v1" })), None);
     }
 
     #[test]

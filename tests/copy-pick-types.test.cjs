@@ -15,7 +15,7 @@ function pickerFor({ setup = null, entry = {} } = {}) {
     t: (s) => s,
     // A console with files of its own: used only when the project's file names no types.
     extsFor: (origin) => (origin === 'NES' ? ['nes'] : null),
-    originName: (o) => o, tf: (s) => s, builtinBoot: () => ({}), ROM_EXTS: { n64: [], disc: [] },
+    originName: (o) => o, tf: (s) => s, ROM_EXTS: { n64: [], disc: [] },
   });
   vm.runInContext(fn('inputCopyExts') + fn('copyPickOpts'), c);
   return c.copyPickOpts('g');

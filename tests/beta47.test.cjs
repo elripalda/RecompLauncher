@@ -81,7 +81,7 @@ test('how are you enjoying it waits for real play, and is asked only once', () =
 test('a poster with a versions count keeps one label at the bottom', () => {
   const src = fn('poster');
   assert.match(src, /needsSetup\(a\) && !a\.soon && !setupDone\(a\.id\) \? \(vg \? '' :/);
-  assert.match(src, /turnkey\(a\) \? \(vg \? `<span class="badge easy ico"/);
+  assert.match(src, /easyTag\(a\) \? \(vg \? `<span class="badge easy ico"/);
 });
 
 test('the Trending row stands in for Popular right now, which comes back without a chart', () => {

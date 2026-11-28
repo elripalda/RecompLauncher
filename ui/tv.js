@@ -418,7 +418,7 @@
     const rk = rank ? `<span class="tv-rank">#${fmtNum(rank)}</span>` : '';
     // Only Easy Setup and the versions count on a card (icons when both); Great on Deck and the
     // project's state are on the game's page.
-    const easy = !j && !S.library[a.id] && turnkey(a) ? `<span class="tv-easyb${vers ? ' ico' : ''}" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${svg('disc', 16)}${vers ? '' : esc(t('Easy Setup'))}</span>` : '';
+    const easy = !j && !S.library[a.id] && easyTag(a) ? `<span class="tv-easyb${vers ? ' ico' : ''}" title="${esc(t('Easy Setup'))}" aria-label="${esc(t('Easy Setup'))}">${svg('disc', 16)}${vers ? '' : esc(t('Easy Setup'))}</span>` : '';
     return `<div class="tv-cell">${a.cover ? `<span class="aura" style="background-image:url('${cssUrl(media(thumbOf(a.cover, 400)))}')"></span>` : ''}<button type="button" class="tv-poster${coverLabelPush(a)}" data-f data-key="${key}" data-hero="${esc(a.id)}" data-go-game="${esc(a.id)}" aria-label="${esc(a.name)}">
       <span class="ph">${esc(a.name)}</span>${a.cover ? `<img src="${esc(media(thumbOf(a.cover, 400)))}" alt="" loading="lazy" decoding="async">` : ''}${coverLabel(a)}${rk}${badge}${easy}${TV.view !== 'library' && !j && verGroup(a) ? `<span class="tv-vers">${svg('layers', 18)}${fmtNum(verGroup(a).list.length)}</span>` : ''}${j ? `<span class="tv-pbar"><i data-prog-bar="${esc(a.id)}" style="width:${pct(j)}%"></i></span>` : ''}</button>
       <span class="tv-name">${esc(a.name)}${(devOf(a) || {}).verified ? TICK(18) : ''}</span>${sub ? `<span class="tv-sub">${esc(sub)}</span>` : ''}</div>`;
@@ -631,11 +631,11 @@
         return (S.settings.rom_dirs || []).length || S.os === 'android' ? '' : tvFoundBox();
       },
       ready: () => {
-        const ready = oneEach(games.filter(turnkey).sort(byNew), true);
+        const ready = oneEach(games.filter(easyTag).sort(byNew), true);
         return ready.length >= 4 ? row('ready', t('Ready to Play'), ready.slice(0, 14).map((a) => poster(a, 'r:' + a.id)).join('')) : '';
       },
       easy: () => {
-        const disc = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && !haveAny(a)));
+        const disc = oneEach(games.filter((a) => S.easy.has(a.parent || a.id) && easyTag(a) && !haveAny(a)));
         return disc.length >= 2 ? row('disc', t('Drop in Your Copy'), disc.slice(0, HOME_ROW).map((a) => poster(a, 'e:' + a.id, t('Easy Setup'))).join('')) : '';
       },
       news: () => {
@@ -1346,7 +1346,7 @@
     const q = (TV.dq || '').trim(), org = TV.dorigin || '', srt = TV.dsort || 'popular';
     const order = srt === 'new' ? byNew : srt === 'updated' ? byUpdated : srt === 'az' ? (x, y) => x.name.localeCompare(y.name) : srt === 'stars' ? (x, y) => (y.stars || 0) - (x.stars || 0) : byDlConsolesFirst;
     // `ended`: the ended projects those filters would show (what "Hide ended" takes out of the list).
-    const chain = (ended) => apps.filter((a) => (g === 'easy' ? turnkey(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
+    const chain = (ended) => apps.filter((a) => (g === 'easy' ? easyTag(a) : g === 'mp' ? isMulti(a) : g === 'hh' ? window.greatHandheld(a) : !g || a.genre === g))
       .filter((a) => !org || a.origin === org)
       .filter((a) => !TV.dtag || tagsOf(a).includes(TV.dtag))
       .filter((a) => showOk(a, TV.dshow) && (!TV.dgreat || playsGreat(a)) && (!TV.ddeck || !onHandheld() || greatOnDeck(a)) && runsFits(a, runsNow()))
@@ -1360,14 +1360,14 @@
     // "Hide ended" doesn't lose them: they wait in a closed box under the list, greyed out.
     const endedList = TV.dended ? oneEach(byOrder(chain(true)), srt === 'new') : [];
     const endedBox = endedList.length ? `<section class="tv-ended${TV.dendedOpen ? ' open' : ''}${TV.endedAnim ? ' fresh' : ''}"><button type="button" class="tv-chip tool tv-ended-head" data-f data-key="g:@ended" data-tvact="dended" aria-expanded="${!!TV.dendedOpen}">${esc(t('Ended Projects'))}<b class="tv-chip-n">${endedList.length}</b></button>${TV.dendedOpen ? `<div class="tv-ended-body">${grid(endedList, 'E')}</div>` : ''}</section>` : '';
-    // Discover's own order (no sort picked): turnkey recomps first.
+    // Discover's own order (no sort picked): Easy Setup recomps first.
     // On a handheld, the games handheld players say run well come first.
     const hhFirst = (l) => (S.handheld ? [...l].sort((x, y) => (window.greatHandheld(y) ? 1 : 0) - (window.greatHandheld(x) ? 1 : 0)) : l);
     const list = hhFirst(TV.dsort ? found : turnkeyFirst(found));
     const nf = (org ? 1 : 0) + (srt !== 'popular' ? 1 : 0) + (TV.dtag ? 1 : 0) + (TV.dshow ? 1 : 0) + (TV.dgreat ? 1 : 0) + (TV.dended ? 1 : 0) + (runsNow() ? 1 : 0) + (TV.ddeck && onHandheld() ? 1 : 0);
     const tagChip = TV.dtag ? `<button type="button" class="tv-chip tool act" data-f data-key="g:@tag" data-tvact="dtagclear">${esc(t('Tag'))}: ${esc(TV.dtag)} ${svg('stop', 18)}</button>` : '';
     const tools = tagChip + `<button type="button" class="tv-chip tool${q ? ' act' : ''}" data-f data-key="g:@search" data-tvact="dsearch">${svg('search', 20)}${esc(q ? `“${TV.dq.trim()}”` : t('Search'))}</button><button type="button" class="tv-chip tool${nf ? ' act' : ''}" data-f data-key="g:@filter" data-tvact="dfilter">${svg('filter', 20)}${esc(t('Sort & Filter'))}${nf ? `<b class="tv-chip-n">${nf}</b>` : ''}</button>`;
-    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(turnkey) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], apps.some(window.greatHandheld) ? [['hh', N_('Great on Handhelds')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'hh' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="3.5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16.5" cy="11" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>' : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
+    const chips = `<div class="tv-rowview chips"><div class="tv-row tv-chips" data-row="genres"><span class="tv-chip-pill" aria-hidden="true"></span>${tools}${[['', N_('All')]].concat(apps.some(easyTag) ? [['easy', N_('Easy Setup')]] : [], apps.some(isMulti) ? [['mp', N_('Multiplayer')]] : [], apps.some(window.greatHandheld) ? [['hh', N_('Great on Handhelds')]] : [], genres.map((x) => [x, GENRES[x]])).map(([x, n]) => `<button type="button" class="tv-chip${g === x ? ' on' : ''}" data-f data-key="g:${x}" data-genre="${x}">${x === 'easy' ? DISC_S.replace(/14/g, '20') : x === 'hh' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="3.5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16.5" cy="11" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>' : x === 'mp' ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15.5 14.2c2.7-.3 4.8 1.2 5.5 4.3"/></svg>' : catIcon(x)}${esc(t(n))}</button>`).join('')}</div></div>`;
     return `${backdrop(null)}${bar()}
       ${region(`${pageHead(q ? tf('Results for “{q}”', { q: TV.dq.trim() }) : TV.dtag ? tf('All recomps with {tag}', { tag: TV.dtag }) : org ? originName(org) : g === 'easy' ? t('Easy Setup') : g === 'hh' ? t('Great on Handhelds') : g === 'mp' ? t('Multiplayer') : g ? t(GENRES[g]) : t('Catalog'), count === 1 ? tf('1 recomp for {os}. You bring your own copy of each game.', { n: 1, os: OS_NAME[S.os] }) : tf('{n} recomps for {os}. You bring your own copy of each game.', { n: count, os: OS_NAME[S.os] }))}${chips}
         <div class="tv-gridwrap${TV.swap ? ' swap' : ''}">${list.length ? grid(list, 'D') : `<p class="tv-empty">${esc(q || org || TV.dtag ? t('Nothing matches. Try another search or clear the filters.') : t('Nothing here yet.'))}</p>`}</div>${endedBox}`)}
@@ -1788,7 +1788,7 @@
           ${titleOf(a)}
           ${(() => { const to = replacedBy(a.id); return to ? `<p class="tv-partof"><span>${esc(tf('This listing was replaced by {name}', { name: to.name }))}</span><button type="button" class="tv-tag" data-f data-key="g-moveto" data-tvact="moveto" data-id="${esc(a.id)}" data-to="${esc(to.id)}">${esc(t('Move to It'))}</button></p>` : ''; })()}
           ${a.parent ? `<p class="tv-partof"><button type="button" class="tv-tag" data-f data-key="g-parent" data-go-game="${esc(a.parent)}">${esc(tf('Part of {name}', { name: a.parentName || (byId(a.parent) || {}).name || '' }))}${gamesOf(a.parent, byId(a.parent)).length ? ` · ${esc(tn(gamesOf(a.parent, byId(a.parent)).length, '1 game', '{n} games'))}` : ''}</button>${a.menuPick ? `<span>${esc(t('Pick the game in its menu when it starts.'))}</span>` : ''}</p>` : ''}
-          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.library[id] && setUpByYou(id) ? `<span class="tv-easy">${esc(t('Set Up by You'))}</span>` : S.easy.has(id) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
+          ${a.game && !a.parent ? `<p class="tv-based">${DISC_S.replace(/14/g, '24')}<span>${htmlIn(t('Based on {game}'), { game: `<b>${esc(a.game)}</b>` })}</span>${needsSetup(a) && !setupDone(id) ? `<span class="tv-easy sreq">${svg('wrench', 20)}${esc(t('Setup Required'))}</span>` : S.library[id] && setUpByYou(id) ? `<span class="tv-easy">${esc(t('Set Up by You'))}</span>` : easyTag(a) ? `<span class="tv-easy">${esc(t('Easy Setup'))}</span>` : ''}</p>` : ''}
           ${byLine}
           ${play?.last_played ? `<p class="tv-meta">${esc(tf('{time} played · last played {when}', { time: playedFor(play), when: ago(play.last_played) }))}</p>` : ''}
           ${sbLine}
