@@ -121,7 +121,10 @@ const isAI = (a) => !!(a && a.ai);
 // reports, only when the player allows them.
 function profileSaid(id, step, ok, err) { invoke('profile_report', { id, step, ok, error: err ? String(err && err.message ? err.message : err) : null }).catch(() => {}); }
 window.profileSaid = profileSaid;
-const isServer = (a) => !!(((a && a.boot) || {}).server);
+// A fact about the game the store keeps on its listing (player_note, multiplayer, server). Catalogs
+// from before they moved there carry them in its old-style boot profile.
+const listingFact = (a, k) => (a && a[k] != null ? a[k] : ((a && a.boot) || {})[k]);
+const isServer = (a) => !!listingFact(a, 'server');
 // A line on what the player's copy should look like, by the console it's from (How to Set Up).
 function setupGuide(a) {
   const b = (a && a.boot) || {};
@@ -136,7 +139,7 @@ function setupGuide(a) {
   return '';
 }
 // More than one player (split-screen, co-op, online), from its README or its labels in the store.
-const isMulti = (a) => !!((((a && a.boot) || {}).multiplayer) || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
+const isMulti = (a) => !!(listingFact(a, 'multiplayer') || (a && Array.isArray(a.tags) && a.tags.some((x) => /multiplayer|co-op|split.?screen|online|netplay/i.test(String(x)))));
 // A game's tags (Widescreen, 60 FPS, Online…), as the site lists them. They stay in English.
 const tagsOf = (a) => (a && Array.isArray(a.tags) ? a.tags.filter((x) => typeof x === 'string' && x.trim()) : []);
 // Where the facts about the original game came from, for the line under them: LaunchBox's
@@ -173,7 +176,7 @@ function moreLike(a, max = 12) {
     .filter(([x], i, all) => { const k = x.title || x.game || x.id; return all.findIndex(([y]) => (y.title || y.game || y.id) === k) === i; })
     .slice(0, max).map(([x]) => x);
 }
-const bootNote = (a) => String(((a && a.boot) || {}).player_note || '');
+const bootNote = (a) => String(listingFact(a, 'player_note') || '');
 const LOADED = new Set();
 // A picture through the disk cache; one that has loaded before shows at once instead of fading in again.
 const pic = (u, cls = '', more = '') => { const s = media(u); if (!s) return ''; const c = [cls, LOADED.has(s) ? 'ld' : ''].filter(Boolean).join(' '); return `<img src="${esc(s)}" alt=""${c ? ` class="${c}"` : ''}${more ? ' ' + more : ''} decoding="${LOADED.has(s) ? 'sync' : 'async'}">`; };
