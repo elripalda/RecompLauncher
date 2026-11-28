@@ -54,6 +54,12 @@ On the game's **Manage** tab, under **Launch options**. Text you type there is a
 
 To set environment variables too, write them before `%command%`, the way Steam does: `PROTON_LOG=1 MY_GAME_DATA="D:\My Games\data" %command% --fullscreen`. Everything before `%command%` has to be `NAME=value`; everything after it is passed to the game. Names starting with `RECOMPLAUNCHER` are the launcher's own and can't be set. Desktop shortcuts can't carry variables, so a game with variables in its launch options starts through the launcher.
 
+## Why does a game I set up with Easy Setup now say Set Up by You?
+
+Easy Setup now comes from each game's own project: the setup file its developer ships in the release (and, for the few games that really need one, a profile of RecompLauncher's made for that release). Many games used to be set up with a profile RecompLauncher wrote itself. When that profile stops being used, the launcher moves what it did into your own settings once: the program it starts, its launch options and its save folder. The game plays the same, and it's yours to change on its **Manage** tab.
+
+A few games can't be moved exactly (a recomp with several games, or a start the launcher can't write as launch options). Those say **Set it up again** in **Troubleshoot**, with the reason: pick its program and set it up the way its project explains.
+
 ## A game crashes or looks wrong. Who do I tell?
 
 If it's the game itself, its developer. Every game page links to the developer's GitHub. If it's the launcher (installing, updating, saves, settings), tell me through **Settings > Beta** or [open an issue](https://github.com/elripalda/RecompLauncher/issues/new/choose).

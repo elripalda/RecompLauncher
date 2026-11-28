@@ -150,13 +150,19 @@ The launcher uses the first one it finds:
    newer release's.
 
 A file only in your repo (on GitHub, GitLab, Forgejo or anywhere else) is never read: ship it in
-your release. Only your release's file is credited to your project (the Easy Setup tag, "From the
-project" in Launcher Support).
+your release. Only your release's file is credited to your project ("From the project" in Launcher
+Support).
 
 For a game whose project won't ship a file (it declined, or it no longer updates), the store can
 turn on a profile of its own, by hand, for that game. It's tied to one release, and when your
 release does have a file, ours only fills in a part yours leaves out entirely (a save folder, say),
-never anything you wrote.
+never anything you wrote. Launcher Support marks those parts as RecompLauncher's.
+
+The Easy Setup tag (and the Easy Setup filter and rows) shows on a game the launcher sets up from
+your own file, or from a profile the store turned on by hand for it. A game still set up from an
+older profile of the store's sets up the same way, without the tag. The launcher works all of this
+out in one place, the same before and after install, and both of its windows (desktop and Big
+Picture) only show its answer.
 
 ### AppImages
 
