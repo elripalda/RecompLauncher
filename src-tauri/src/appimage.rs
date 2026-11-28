@@ -748,6 +748,7 @@ pub(crate) mod tests {
         assert!(installed_image(&dir.0).is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_script_named_like_an_appimage_isnt_one() {
         let dir = TempDir::new();
@@ -788,6 +789,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_installed_image_is_the_real_one_beside_a_script() {
         let dir = TempDir::new();
