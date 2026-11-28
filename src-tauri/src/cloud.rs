@@ -163,6 +163,7 @@ fn still_signed_in_as(dir: &Path, a: &Account, id: &str) -> bool {
 fn forget(app: &AppHandle) {
     let st = app.state::<App>();
     store(&st.dir, None);
+    forget_peeks();
     let _ = app.emit("account", json!({"signedIn": false}));
 }
 
@@ -551,6 +552,7 @@ pub async fn account_poll(app: AppHandle) -> Res<Value> {
         }
         let st = app.state::<App>();
         store(&st.dir, Some(&Account { token, user: user.clone(), ..Default::default() }));
+        forget_peeks();
         *LINK.lock().unwrap() = None;
         let _ = app.emit("account", json!({"signedIn": true, "user": user}));
         // Anything that was waiting to go up.
@@ -1616,11 +1618,12 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
     let mut offline = false;
     let mut next = Value::Null;
     if g.cloud == Some(true) && signed_in(&st.dir) {
+        let who = account_uid(&st.dir);
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
                 next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
                 // The badge above Play reads the same list, so it says the same thing.
-                keep_peek(&id, &state.synced_hash, &l);
+                keep_peek(&id, &state.synced_hash, &who, &l);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
@@ -1698,26 +1701,39 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
 
 /// A game's cloud list as last asked by its page, and the save this PC had synced then. Kept a few
 /// minutes, so opening a game's page again doesn't ask the website again; a sync since (another
-/// synced save) asks anew, since the list it kept may be the one it just changed.
+/// synced save) asks anew, since the list it kept may be the one it just changed. Each list is the
+/// account's it was asked for (account_uid), and only that account gets it back.
 struct Peek {
     at: std::time::Instant,
     synced: String,
+    account: String,
     list: Vec<CloudCopy>,
 }
 static PEEKED: Mutex<Option<std::collections::HashMap<String, Peek>>> = Mutex::new(None);
 const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
 
-fn peeked(id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+fn peeked(id: &str, synced: &str, account: &str) -> Option<Vec<CloudCopy>> {
     let kept = PEEKED.lock().unwrap();
     let p = kept.as_ref()?.get(id)?;
-    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
+    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced && p.account == account;
     fresh.then(|| p.list.clone())
 }
 
-fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
-    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), list: list.to_vec() };
+/// `account` is who was signed in when the list was asked for: a reply that comes after a switch
+/// stays that account's.
+fn keep_peek(id: &str, synced: &str, account: &str, list: &[CloudCopy]) {
+    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), account: account.to_string(), list: list.to_vec() };
     PEEKED.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), peek);
 }
+
+/// On sign-in and sign-out: no list kept for one account is left for the next.
+fn forget_peeks() {
+    *PEEKED.lock().unwrap() = None;
+}
+
+/// Held by the tests that keep or forget lists, since they all share PEEKED.
+#[cfg(test)]
+static PEEK_TESTS: Mutex<()> = Mutex::new(());
 
 /// For the badge above Play: a newer save from another PC that Play brings in by itself, or null.
 /// saves_status never asks the website, so on its own it would call that save "Up to date". This
@@ -1731,12 +1747,17 @@ pub async fn saves_peek(app: AppHandle, id: String) -> Res<Value> {
         return Ok(Value::Null);
     }
     let state = saves::state(&st.dir, &id);
-    let list = match peeked(&id, &state.synced_hash) {
+    let who = account_uid(&st.dir);
+    let list = match peeked(&id, &state.synced_hash, &who) {
         Some(list) => list,
         None => {
             // Offline or any other trouble: the badge keeps what this PC knows.
             let Ok((list, _)) = cloud_list(&app, &id).await else { return Ok(Value::Null) };
-            keep_peek(&id, &state.synced_hash, &list);
+            keep_peek(&id, &state.synced_hash, &who, &list);
+            // Signed in as someone else meanwhile: that list isn't theirs.
+            if account_uid(&st.dir) != who {
+                return Ok(Value::Null);
+            }
             list
         }
     };
@@ -2253,6 +2274,68 @@ mod account_tests {
         }
     }
 
+    /// What the badge above Play gets for this game, for whoever is signed in now (nothing synced).
+    fn badge_list(dir: &Path, id: &str) -> Option<Vec<CloudCopy>> {
+        peeked(id, "", &account_uid(dir))
+    }
+
+    fn other_pcs_save() -> Vec<CloudCopy> {
+        vec![CloudCopy { v: "2".into(), hash: "from-other-pc".into(), ..Default::default() }]
+    }
+
+    #[test]
+    fn a_list_kept_for_one_account_is_not_the_next_accounts() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        keep_peek("peek-switch", "", &account_uid(&dir.0), &other_pcs_save());
+        // Someone else signs in on this PC; neither has synced this game here. The list is still
+        // kept (sign-in clears it too), but the account doesn't match.
+        sign_in_for_tests(&dir.0, "b");
+        assert!(badge_list(&dir.0, "peek-switch").is_none());
+    }
+
+    #[test]
+    fn a_reply_asked_for_before_a_switch_stays_the_old_accounts() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        let asked_as = account_uid(&dir.0);
+        sign_in_for_tests(&dir.0, "b");
+        forget_peeks();
+        // The website's answer to a's question only comes now.
+        keep_peek("peek-late", "", &asked_as, &other_pcs_save());
+        assert!(badge_list(&dir.0, "peek-late").is_none());
+        sign_in_for_tests(&dir.0, "a");
+        assert_eq!(badge_list(&dir.0, "peek-late").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn the_same_account_uses_its_kept_list_for_a_few_minutes() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        keep_peek("peek-kept", "", &account_uid(&dir.0), &other_pcs_save());
+        assert_eq!(badge_list(&dir.0, "peek-kept").map(|l| l.len()), Some(1));
+        // Older than PEEK_REST, it's asked again. (A PC up for less than that has no such Instant.)
+        if let Some(old) = std::time::Instant::now().checked_sub(PEEK_REST) {
+            PEEKED.lock().unwrap().as_mut().unwrap().get_mut("peek-kept").unwrap().at = old;
+            assert!(badge_list(&dir.0, "peek-kept").is_none());
+        }
+    }
+
+    #[test]
+    fn signing_out_forgets_the_kept_lists() {
+        let _one = PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = AccountDir::new();
+        sign_in_for_tests(&dir.0, "a");
+        keep_peek("peek-out", "", &account_uid(&dir.0), &other_pcs_save());
+        sign_out_for_tests(&dir.0);
+        forget_peeks();
+        sign_in_for_tests(&dir.0, "a");
+        assert!(badge_list(&dir.0, "peek-out").is_none());
+    }
+
     #[test]
     fn reading_a_plain_token_does_not_rewrite_the_account() {
         let dir = AccountDir::new();
@@ -2617,14 +2700,16 @@ mod sync_tests {
 
     #[test]
     fn a_game_page_opened_again_uses_the_list_it_just_asked_for() {
-        super::keep_peek("peek-same", "synced", &[cloud("2", "from-other-pc")]);
-        assert_eq!(super::peeked("peek-same", "synced").map(|l| l.len()), Some(1));
+        let _one = super::PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        super::keep_peek("peek-same", "synced", "a", &[cloud("2", "from-other-pc")]);
+        assert_eq!(super::peeked("peek-same", "synced", "a").map(|l| l.len()), Some(1));
     }
 
     #[test]
     fn a_sync_since_the_last_look_asks_the_cloud_again() {
-        super::keep_peek("peek-synced", "before", &[cloud("2", "from-other-pc")]);
-        assert!(super::peeked("peek-synced", "after").is_none());
+        let _one = super::PEEK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        super::keep_peek("peek-synced", "before", "a", &[cloud("2", "from-other-pc")]);
+        assert!(super::peeked("peek-synced", "after", "a").is_none());
     }
 
     #[test]
