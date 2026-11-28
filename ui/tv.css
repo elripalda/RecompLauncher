@@ -28,7 +28,19 @@ body.tv-on #app{visibility:hidden}
 .tv-tab.on{color:var(--tvbg);background:var(--tvink,#F4F8FC);font-weight:700}
 .tv-tab.soon:not(.on):not(.f){opacity:.5}
 .tv-status{justify-self:end;display:flex;align-items:center;gap:22px;color:var(--tvsoft,#dbe5ee)}
-.tv-clock{font-size:22px;font-weight:600}
+.tv-clock{font-size:22px;font-weight:600;white-space:nowrap}
+.tv-tab{white-space:nowrap}
+/* A narrower stage (a phone or small tablet sideways): the mark without the name, tighter tabs, the
+   bar's ends sized to what they hold so the sections get the room. Android shows just the mark too. */
+.tv-stage.narrow .tv-bar{left:56px;right:56px;grid-template-columns:auto 1fr auto;gap:18px}
+.tv-stage.narrow .tv-nav{justify-self:center}
+.tv-stage.narrow .tv-tab{padding:0 18px}
+.tv-stage.narrow .tv-wm,html.droid .tv-wm{display:none}
+/* Phones and tablets: the page's top and bottom edges are cut straight instead of faded. The fade is
+   a mask over the whole moving page, redrawn on every frame of a drag, and a phone's graphics chip
+   (or an emulator's) feels it. The focused game's glow is blurred less, as on Linux. */
+html.droid .tv-region{-webkit-mask-image:none;mask-image:none}
+html.droid .tv-cell .aura{filter:blur(18px) saturate(1.5)}
 .tv-padico{display:grid;place-items:center;color:var(--tvmuted,#a7b3c4)}
 .tv-back{height:58px;padding:0 26px 0 12px;border-radius:999px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:21px;background:rgba(var(--tvrgb),.55);border:1px solid rgba(var(--tvinkrgb,244,248,252),.16);justify-self:start;backdrop-filter:blur(16px)}
 
@@ -64,7 +76,9 @@ body.tv-on #app{visibility:hidden}
 .tv-kick{font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#34F2E8}
 .tv-h1{margin:0;font:800 semi-expanded 84px/1.02 Archivo,sans-serif;letter-spacing:-.03em;white-space:nowrap;overflow:hidden}
 .tv-meta{margin:0;font-size:24px;color:var(--tvsoft,#c9d3e0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tv-acts{display:flex;align-items:center;gap:16px;margin-top:10px}
+/* An installed game can have eight buttons, more than its column holds beside the Ready to Play
+   panel: they go on to a second line rather than run on under the panel, out of sight. */
+.tv-acts{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:10px}
 .tv-btn{height:74px;padding:0 30px 0 22px;border-radius:22px;display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:23px;color:var(--tvink,#F4F8FC);background:rgba(var(--tvrgb),.6);border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.18);white-space:nowrap;flex:none;backdrop-filter:blur(14px)}
 .tv-btn small{font-size:18px;font-weight:600;opacity:.7;margin-left:4px}
 .tv-btn.main{color:var(--tvbg);background:linear-gradient(180deg,#34F2E8,#377BB6);border:0;padding-right:38px;font-size:25px;font-weight:800}
@@ -101,8 +115,11 @@ body.tv-on #app{visibility:hidden}
 
 /* long names glide across when focused */
 .tv-stage .long{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent)}
-.tv-stage .f .long .glide,.tv-cell:has(.f) .long .glide,.tv-hero .long .glide{transform:translateX(var(--shift,0))}
-.tv-stage .f .long,.tv-cell:has(.f) .long{-webkit-mask-image:none;mask-image:none}
+.tv-stage .f .long .glide,.tv-hero .long .glide{transform:translateX(var(--shift,0))}
+.tv-stage .f .long{-webkit-mask-image:none;mask-image:none}
+/* On their own lines: a web engine that doesn't know :has() skips only these, not the two above. */
+.tv-cell:has(.f) .long .glide{transform:translateX(var(--shift,0))}
+.tv-cell:has(.f) .long{-webkit-mask-image:none;mask-image:none}
 
 /* grid pages */
 .tv-head{margin:0 0 22px}
@@ -402,8 +419,8 @@ body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,14,17;--tvcard:#111114
 .tv-btn .tv-beta-s,.tv-btn .tv-new{margin-left:8px;padding:2px 8px;border-radius:99px;font:800 13px Figtree,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--cyan,#34F2E8);background:rgba(52,242,232,.14)}
 
 /* Light theme in Big Picture mode too. */
-body.light #tv{background:#F3F5F8}
-body.light .tv-stage{--tvdim:#5B6678;--tvsoft:#2E3A4D;--tvbg:#F3F5F8;--tvrgb:243,245,248;--tvrgb2:226,231,238;--tvcard:#FFFFFF;--tvink:#0E1626;--tvmuted:#4A5568;--tvinkrgb:14,22,38}
+body.light #tv{background:#ECEEF2}
+body.light .tv-stage{--tvdim:#5B6678;--tvsoft:#2E3A4D;--tvbg:#ECEEF2;--tvrgb:236,238,242;--tvrgb2:227,230,235;--tvcard:#F7F8FA;--tvink:#0E1626;--tvmuted:#4A5568;--tvinkrgb:14,22,38}
 
 /* Library View: Cover Flow. One row of game cases: the one you're on faces you, the rest stand
    turned to either side and step back. Each case has a spine, a sheen across its cover and a soft
@@ -447,15 +464,15 @@ div.tv-about{display:grid;max-width:none;overflow:visible;-webkit-line-clamp:non
 .tv-qrs span{font-size:17px;color:var(--tvdim,#8f9cb0)}
 
 /* Light theme: the panels on a game's page and the setup lists go light too. */
-body.light .tv-panel, body.light .tv-checks{background:rgba(255,255,255,.86);box-shadow:0 20px 50px rgba(14,22,38,.12)}
-body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#FFFFFF,#F3F5F8)}
-body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px #0B9E97,0 18px 44px rgba(14,22,38,.18),0 0 34px rgba(11,158,151,.3)!important}
-body.light .tv-stage .tv-poster.f{box-shadow:0 0 0 4px #0B9E97,0 24px 50px rgba(14,22,38,.2)!important}
+body.light .tv-panel, body.light .tv-checks{background:rgba(247,248,250,.88);box-shadow:0 20px 50px rgba(14,22,38,.12)}
+body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#F7F8FA,#ECEEF2)}
+body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px #077570,0 18px 44px rgba(14,22,38,.18),0 0 34px rgba(7,117,112,.3)!important}
+body.light .tv-stage .tv-poster.f{box-shadow:0 0 0 4px #077570,0 24px 50px rgba(14,22,38,.2)!important}
 body.light .tv-fcase:not(.f){filter:brightness(.92) saturate(.9);opacity:.92}
 /* The page's entrance animation moves things with transforms; the cases keep their own places
    and fade in instead. */
 .tv-stage[class*=tvx-] .tv-flow-row>*{animation:tv-fade .42s ease backwards!important}
-body.light .tv-kick, body.light .tv-stage .kick{color:#0B9E97}
+body.light .tv-kick, body.light .tv-stage .kick{color:#077570}
 /* Covers with a little depth: a thin light edge, a sheen across the top, and a soft shadow. */
 .tv-poster{box-shadow:0 18px 34px -16px rgba(0,0,0,.65),0 0 0 1px rgba(var(--tvinkrgb,244,248,252),.08)}
 .tv-poster::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
@@ -469,7 +486,7 @@ body.light .tv-poster{box-shadow:0 16px 30px -16px rgba(14,22,38,.35),0 0 0 1px 
 @property --acc{syntax:'<color>';inherits:true;initial-value:#34F2E8}
 @property --accd{syntax:'<color>';inherits:true;initial-value:#0B1220}
 #tv{--acc:#34F2E8;--accd:#0B1220;--accink:#08101C;transition:--acc .8s ease,--accd .8s ease}
-body.light #tv{--acc:#0B9E97;--accd:#E6EBF1;--accink:#FFFFFF}
+body.light #tv{--acc:#077570;--accd:#E6EBF1;--accink:#F7F8FA}
 body.oled #tv{background:#000;--accd:#000}
 body.oled .tv-stage{--tvbg:#000;--tvrgb:0,0,0;--tvrgb2:14,16,20;--tvcard:#0d1016}
 
@@ -504,7 +521,7 @@ body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--acc),0 18px 44px rgba
 .tv-badge,.tv-pbar i{background:var(--acc);color:var(--accink)}
 .tv-sheet-in{background:var(--noise),linear-gradient(180deg,color-mix(in srgb,var(--accd) 60%,#0e1729),#0b1220)}
 body.oled .tv-sheet-in{background:#05070a}
-body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#FFFFFF,#F3F5F8)}
+body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#F7F8FA,#ECEEF2)}
 
 /* A game's logo in place of its name. */
 .tv-logo{display:block;height:min(220px,calc(var(--H,1080px) * .2));width:auto;max-width:min(960px,100%);object-fit:contain;object-position:left bottom;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55));margin:2px 0 4px}
@@ -563,7 +580,7 @@ body.lighter .tv-down,body.lighter .tv-dk .tv-mv{animation:none}
 .tv-fcase .refl::after{content:"";position:absolute;inset:0;background:rgba(150,180,255,.25)}
 .tv-fcase .tv-badge{z-index:4}
 body.light .tv-fcase .plate{background:#e6eff7;border-color:#7fb3d8}
-body.light .tv-fcase.f .plate{border-color:#0B9E97;box-shadow:0 0 34px 4px rgba(11,158,151,.35)}
+body.light .tv-fcase.f .plate{border-color:#077570;box-shadow:0 0 34px 4px rgba(7,117,112,.35)}
 body.light .tv-fcase .shade{background:#dde3ea}
 .tv-flow-floor{display:none}
 .tv-flow-cap{top:calc((var(--H,1080px) - 216px - 474px - 170px) / 2 + 474px + 92px);bottom:auto}
@@ -629,7 +646,7 @@ body.lighter #tv{transition:none}
    of the game you're on glow at the edges of Home and the Library. */
 .tv-ambient{position:fixed;inset:0;z-index:0;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%,#12203a 0%,#0B1220 55%,#070b14 100%);pointer-events:none}
 body.oled .tv-ambient{background:#000}
-body.light .tv-ambient{background:radial-gradient(120% 90% at 50% 0%,#ffffff 0%,#eef2f7 55%,#e2e8f0 100%)}
+body.light .tv-ambient{background:radial-gradient(120% 90% at 50% 0%,#F7F8FA 0%,#eef2f7 55%,#e2e8f0 100%)}
 .tv-ambient i{position:absolute;display:block}
 .tv-ambient.m-aurora .a1{left:-20%;top:-30%;width:80%;height:90%;background:radial-gradient(closest-side,rgba(55,123,182,.38),transparent);animation:tv-au1 28s ease-in-out infinite alternate}
 .tv-ambient.m-aurora .a2{right:-25%;top:-10%;width:85%;height:95%;background:radial-gradient(closest-side,rgba(52,242,232,.16),transparent);animation:tv-au2 34s ease-in-out infinite alternate}
@@ -647,7 +664,7 @@ body.light .tv-ambient.m-grid .sky{background:linear-gradient(180deg,#f7f9fc,#e7
 .tv-ambient.m-drift .d2{background-image:radial-gradient(circle,rgba(160,190,255,.4) 0 2.5px,transparent 4px);background-size:230px 230px;background-position:60px 90px;animation:tv-drift 110s linear infinite}
 .tv-ambient.m-drift .d3{inset:0;background:radial-gradient(70% 60% at 70% 20%,rgba(55,123,182,.3),transparent 70%),radial-gradient(60% 50% at 15% 90%,rgba(52,242,232,.12),transparent 70%)}
 @keyframes tv-drift{to{transform:translate(25%,-25%)}}
-body.light .tv-ambient.m-drift .d1{background-image:radial-gradient(circle,rgba(11,158,151,.5) 0 1.5px,transparent 2.5px)}
+body.light .tv-ambient.m-drift .d1{background-image:radial-gradient(circle,rgba(7,117,112,.5) 0 1.5px,transparent 2.5px)}
 body.light .tv-ambient.m-drift .d2{background-image:radial-gradient(circle,rgba(55,123,182,.35) 0 2.5px,transparent 4px)}
 body.lighter .tv-ambient i{animation:none!important}
 /* Drawn on the processor (see app.css), the backdrop that moves behind every page cost a whole
@@ -663,6 +680,8 @@ body.cpu-draw .tv-down{animation:none}
 /* Going into Big Picture mode and out of it: a fade to dark over the launcher while the window
    changes size. */
 #tv.tv-cover{animation:tv-fade .24s ease both}
+/* On Android the phone layout is under it, and the dark goes over that while the screen turns. */
+.droid #tv.tv-cover{z-index:110}
 #tv.tv-cover.out{animation:tv-cover-out .22s ease both}
 #tv.tv-cover.out>*{opacity:0;transition:opacity .2s}
 @keyframes tv-cover-out{from{background:#070b14}to{background:#070b14}}
@@ -803,7 +822,7 @@ body.still .tv-ended.fresh .tv-ended-body,body.still .tv-ended.fresh .tv-ended-b
 .tv-acts.tv-tags{gap:10px;margin-top:22px}
 .tv-tag{height:38px;padding:0 18px;border-radius:999px;border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);background:rgba(var(--tvrgb),.55);color:var(--tvsoft,#c9d3e0);font:600 17px Figtree,system-ui,sans-serif;letter-spacing:.01em;box-shadow:none}
 .tv-stage .tv-tag.f{background:var(--tvink,#F4F8FC);color:var(--tvbg);border-color:transparent;transform:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 60%,transparent)!important}
-body.light .tv-tag{background:rgba(255,255,255,.7);color:#334155}
+body.light .tv-tag{background:rgba(247,248,250,.72);color:#334155}
 
 /* Achievements: the alpha page, the tester page and the game page block. */
 .tv-ach{--gold:#f2c14e;position:relative;max-width:1500px}
@@ -912,6 +931,12 @@ body.light .tv-ach-banner.gold,body.light .tv-ach-row .ty.win{color:#8a6400}body
 
 /* Big Picture setup: why an update file was turned down */
 .tv-setup .tt p.err{color:#ffc2c2}
+/* A failed setup step's buttons and its last lines, as on the desktop: read from the couch, so
+   larger. A pad can't scroll the box, so when long lines wrap past its height the newest stay in
+   view (it's filled from the bottom) and the oldest are cut. */
+.tv-setup .tt .tv-logb{display:flex;gap:16px;justify-content:center}
+.tv-setup .tt .tv-logb .tv-btn{height:58px;padding:0 24px;font-size:20px;border-radius:18px}
+.tv-setup .tt pre.tv-tail{margin:0;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.07);color:var(--tvsoft,#c9d3e0);font:17px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;width:1100px;max-width:100%;max-height:15em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
 .tv-setup .tt p.req{color:#ffd9a0}
 
 /* file browser: both lists fit the screen and scroll inside it, with room for the focus ring */
@@ -964,8 +989,14 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-deckb{position:absolute;right:12px;bottom:12px;z-index:2;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:15px;font-weight:700;color:#fff;background:#1a9fff}
 .tv-deckb.up{bottom:56px}.tv-dk .tv-deckb{right:8px;bottom:8px;font-size:13px;padding:3px 9px}
 .tv-badge.soon{display:inline-flex;align-items:center;gap:5px}
+/* On the light theme badges write in paper, which can't be read on Soon's yellow. */
+body.light .tv-badge.soon{color:#1a1400}
 .tv-g-chips span.tv-st.deck{color:#7cc8ff;background:rgba(26,159,255,.16);border-color:rgba(26,159,255,.5)}
-.tv-btn.notify-on{background:transparent;border:2px solid rgba(52,242,232,.6);color:#34F2E8}
+/* A saved Coming Soon game: outlined, filled heart, a soft glow (Save until then). */
+.tv-btn.save-on{background:rgba(52,242,232,.08);border:2px solid rgba(52,242,232,.6);color:#34F2E8;box-shadow:0 0 28px -8px rgba(52,242,232,.55)}
+.tv-soon-note{margin:0;font-size:19px;color:rgba(var(--tvinkrgb,244,248,252),.7)}
+.tv-btn .want{font-weight:600;font-variant-numeric:tabular-nums;opacity:.72}
+.tv-btn .want::before{content:'·';margin:0 12px}
 .tv-home1>.tv-notes{position:absolute;top:6px;right:0;width:500px;z-index:2}
 .tv-tnote{display:flex;flex-direction:column;gap:6px;padding:10px 10px 14px 20px;border-radius:18px;background:rgba(var(--tvrgb),.78);border:1px solid rgba(var(--tvinkrgb,244,248,252),.14);border-left:5px solid #34F2E8;box-shadow:0 12px 34px rgba(0,0,0,.28)}
 .tv-tnote.gold{border-left-color:#f5c518}.tv-tnote.violet{border-left-color:#a98bff}
@@ -975,6 +1006,22 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-tnote .tn-acts{display:flex;margin-top:6px}
 .tv-tnote .tv-btn.sm{min-height:0;height:46px;padding:0 20px;font-size:17px}
 .tv-tnote .tv-tnote-x{width:46px;padding:0;justify-content:center}
+/* Home's info boxes and banners, from the website's list (admin: Launcher > Home page), as wide as a row. */
+.tv-hbox{margin:18px 0 30px}
+.tv-hbox-in{display:flex;align-items:center;gap:26px;padding:24px 28px;border-radius:24px;background:linear-gradient(90deg,rgba(52,242,232,.12),rgba(52,242,232,.03)),rgba(var(--tvrgb),.6);border:1.5px solid rgba(52,242,232,.26);backdrop-filter:blur(14px)}
+.tv-hbox .ic{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;flex:none;background:rgba(52,242,232,.14);color:#34F2E8}
+.tv-hbox .ic svg{width:36px;height:36px}
+.tv-hbox .k{flex:1;min-width:0}
+.tv-hbox b{display:block;font:700 semi-expanded 27px Archivo,sans-serif;letter-spacing:-.01em}
+.tv-hbox p{margin:6px 0 0;font-size:21px;line-height:1.4;color:var(--tvsoft,#c9d3e0);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tv-hbox .tv-acts{margin-top:0;flex:none}
+.tv-hbox .tv-btn.sm{height:60px;padding:0 28px;font-size:21px}
+.tv-hbox .tv-hbox-x{width:60px;padding:0;justify-content:center}
+.tv-hban{margin:18px 0 30px}
+.tv-spb{position:relative;display:block;width:100%;padding:0;border:1.5px solid rgba(var(--tvinkrgb,244,248,252),.14);border-radius:24px;overflow:hidden;background:var(--tvcard)}
+.tv-spb img{display:block;width:100%;height:auto;max-height:260px;object-fit:cover}
+.tv-spb .sp-tag{position:absolute;right:14px;bottom:14px;font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(244,248,252,.9);background:rgba(11,18,32,.74);padding:6px 10px;border-radius:8px}
+.tv-spb.f{transform:scale(1.015)}
 /* Easy Setup's steps (setup-steps.js) in Big Picture: the desktop's layout at TV size. One height
    for every step, so the footer and its buttons stay where they are; the list scrolls inside. */
 .tv-setup[data-stage="steps"]{gap:0;padding:60px 120px;align-items:stretch;justify-content:center}
@@ -1001,6 +1048,7 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .ni-tv.ss .ss-box .k b{font-size:28px}
 .ni-tv.ss .ss-box .k span{font-size:21px}
 .ni-tv.ss .fmt{font-size:17px;padding:6px 9px;border-radius:7px}
+.ni-tv.ss .ss-box .ss-hint{font-size:19px}
 .ni-tv.ss .ss-src{height:34px;font-size:18px;padding:0 13px;border-radius:9px}
 .ni-tv.ss .btn{font-size:20px;height:56px;padding:0 22px;border-radius:12px}
 .ni-tv.ss .ss-box .acts{gap:10px}
@@ -1059,3 +1107,31 @@ body.linux .tv-boot .aurora i{filter:none;mix-blend-mode:normal}
 .tv-svp-set{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#3ee08f}
 .tv-svp-set svg{flex:none;width:20px;height:20px}
 .tv-svp-set.ours{color:#34F2E8}
+/* The named folder while the player's own is used instead: greyed, as on the desktop. */
+.tv-item.tv-svp-unused .k{opacity:.6}
+
+/* ===== Older web engines ===================================================================
+   An Android phone, TV box or emulator can have a web engine from before 2023, which can't mix
+   colours (color-mix). A rule that tries isn't just skipped there: it draws nothing, so menus were
+   see-through, the Play button had no shape, the focused button had no ring and a game's backdrop
+   had no shade under the words. Those engines get the same pieces in the launcher's own colours
+   (not tinted by the game in view). Engines that can mix colours never read this. */
+@supports not (color:color-mix(in srgb,red,blue)){
+  .tv-full.home::after,.tv-full.game::after,.tv-full.flowbg::after{background:var(--noise),linear-gradient(90deg,rgba(var(--tvrgb),.93) 0%,rgba(var(--tvrgb),.7) 38%,rgba(var(--tvrgb),.14) 74%),linear-gradient(180deg,rgba(var(--tvrgb),.7) 0%,transparent 22%,transparent 40%,rgba(var(--tvrgb),.88) 70%,var(--tvbg) 100%)}
+  .tv-full.flowbg::after{background:var(--noise),linear-gradient(180deg,rgba(var(--tvrgb),.72) 0%,rgba(var(--tvrgb),.4) 40%,rgba(var(--tvrgb),.92) 78%,var(--tvbg) 100%)}
+  .tv-full.amb::after{background:var(--noise),radial-gradient(60% 65% at 85% 20%,rgba(52,242,232,.2),transparent 72%),radial-gradient(55% 60% at 10% 95%,rgba(52,242,232,.14),transparent 72%),linear-gradient(180deg,transparent 62%,rgba(var(--tvrgb),.5))}
+  .tv-flow::before{background:radial-gradient(closest-side,rgba(52,242,232,.24),rgba(52,242,232,.09) 55%,transparent)}
+  .tv-hints{background:rgba(var(--tvrgb),.92)}
+  .tv-btn.main{background:var(--acc);color:var(--accink)}
+  .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--tvink,#F4F8FC),0 18px 44px rgba(0,0,0,.5),0 0 34px rgba(52,242,232,.42)!important}
+  body.light .tv-stage [data-f].f{box-shadow:0 0 0 4px var(--acc),0 18px 44px rgba(14,22,38,.18),0 0 34px rgba(7,117,112,.3)!important}
+  .tv-stage .tv-tag.f{box-shadow:0 0 0 3px var(--acc)!important}
+  .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#0e1729,#0b1220)}
+  body.oled .tv-sheet-in{background:#05070a}
+  body.light .tv-sheet-in{background:var(--noise),linear-gradient(180deg,#F7F8FA,#ECEEF2)}
+  .tv-fcase.f .plate{box-shadow:0 0 30px 4px rgba(52,242,232,.5)}
+  .tv-chip.act{box-shadow:inset 0 0 0 2px var(--acc)}
+  .tv-sheet.kb .tv-item.key.done{background:rgba(52,242,232,.18)}
+  .tv-kb-field{border:2px solid var(--acc)}
+  .tv-ach-toast{border:1px solid rgba(242,193,78,.4)}
+}

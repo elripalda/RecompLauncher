@@ -4,6 +4,16 @@
 
 When a game crashes, the launcher shows a crash screen with the game's log. Use its button to send the log. It goes straight to me, and to the developer if it's their game's problem.
 
+For anything else, **Settings → Report a Problem** sends a note with the launcher's log, and the game's if you pick one.
+
+To attach the logs yourself (on Discord, GitHub or anywhere else you ask for help), use **Settings → About → Troubleshoot → Export Logs**. It saves `RecompLauncher-logs-<date>.zip` on your desktop and shows it in its folder. Inside:
+
+- `launcher-trail.log`: what the launcher did, newest at the end.
+- `launcher-and-pc.txt`: your launcher version, your PC's parts, your installed games and recent downloads.
+- `games/<game>/`: for each installed game, how the launcher last started it, what it printed, its ReShade log and the newest log it wrote itself.
+
+Logs can show folder paths, which may include your user name. Look through the zip before you post it somewhere public.
+
 If you need the files yourself, they're in the launcher's data folder:
 
 | System | Data folder |
@@ -12,6 +22,7 @@ If you need the files yourself, they're in the launcher's data folder:
 | Linux | `~/.local/share/com.recomplauncher.app` |
 | Mac | `~/Library/Application Support/com.recomplauncher.app` |
 
+- `launcher-trail.log` is the launcher's own log.
 - `game-output\` has what each game printed while it ran, one file per game.
 - `looks\<game>\ReShade.log` is there if you use Looks (screen effects) on Windows.
 - Many games also write their own log inside their install folder. Use **Open Its Folder** on the game's page.
@@ -40,9 +51,16 @@ The Windows launcher is code-signed, and every download comes from the developer
 - Make sure you downloaded it from [Releases](https://github.com/elripalda/RecompLauncher/releases) or recomplauncher.com.
 - Tell me on Discord which antivirus it was and what it said. A screenshot helps. I report false positives to the antivirus company.
 
+## The launcher won't open on Windows
+
+If it shows a box instead of its window, the box says why:
+
+- **"RecompLauncher couldn't open its window, because Microsoft Edge WebView2 isn't installed on this PC."** Install the WebView2 Runtime from Microsoft (search for "WebView2 Runtime"), then open RecompLauncher again.
+- **"RecompLauncher couldn't start."** Report it on [GitHub](https://github.com/elripalda/RecompLauncher/issues) and attach `launcher-trail.log` from `%APPDATA%\com.recomplauncher.app`.
+
 ## A game won't start
 
-1. Check the game's page. If it says **Setup Required**, follow the Set Up steps first.
+1. Check the game's page. If it says **Setup Required**, do the steps under **How to Set Up** first.
 2. Make sure your copy of the game is the version the recomp asks for. The game's page says what it needs under **Before You Play**.
 3. Update your graphics driver.
 4. Try **Reinstall** from the game's page. Your saves stay.

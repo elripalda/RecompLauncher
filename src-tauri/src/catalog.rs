@@ -69,7 +69,7 @@ fn age_of(p: &Path) -> Option<u64> {
     Some(SystemTime::now().duration_since(m).unwrap_or_default().as_secs())
 }
 
-fn save(p: &Path, v: &Value) {
+pub(crate) fn save(p: &Path, v: &Value) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -79,7 +79,7 @@ fn save(p: &Path, v: &Value) {
     }
 }
 
-fn load(p: &Path) -> Option<Value> {
+pub(crate) fn load(p: &Path) -> Option<Value> {
     serde_json::from_slice(&std::fs::read(p).ok()?).ok()
 }
 
@@ -106,8 +106,12 @@ fn touch(file: &Path) {
 
 /// Asks the site for a JSON file. With `file` (the copy on disk), only if it changed: None means
 /// it didn't (304), and the copy on disk is still right.
-async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool, file: Option<&Path>) -> Result<Option<(Value, reqwest::header::HeaderMap)>, Error> {
+/// `token`: the player's sign-in, for a list only some accounts may see.
+async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: bool, file: Option<&Path>, token: Option<&str>) -> Result<Option<(Value, reqwest::header::HeaderMap)>, Error> {
     let mut rb = http.get(url).timeout(wait);
+    if let Some(t) = token {
+        rb = rb.bearer_auth(t).header("X-RL-Token", t);
+    }
     if let Some(f) = file.filter(|f| f.is_file()) {
         let (etag, modified) = load_tag(f);
         if let Some(e) = etag {
@@ -117,9 +121,14 @@ async fn get_json(http: &reqwest::Client, url: &str, wait: Duration, player: boo
             rb = rb.header(reqwest::header::IF_MODIFIED_SINCE, m);
         }
     }
-    let r = crate::net::send(rb, url, player).await?;
+    let normal: &[u16] = if url.contains(ANDROID_LIST) { &[403] } else { &[] };
+    let r = crate::net::send_allowing(rb, url, player, normal).await?;
     if r.status() == reqwest::StatusCode::NOT_MODIFIED && file.map(|f| f.is_file()).unwrap_or(false) {
         return Ok(None);
+    }
+    // The Android list while Android is hidden on the website: only testers get it.
+    if r.status() == reqwest::StatusCode::FORBIDDEN && url.contains(ANDROID_LIST) {
+        return Err(Error::Msg(if token.is_some() { NOT_TESTER } else { SIGN_IN_TESTER }.into()));
     }
     if !r.status().is_success() {
         return Err(Error::Net(format!("{} answered {}", host_of(url), r.status().as_u16())));
@@ -158,13 +167,19 @@ fn on_disk(file: &Path, check: fn(&Value) -> bool) -> Option<Fetched> {
 /// The copy on disk when it's younger than `fresh` seconds; otherwise the site is asked, and the
 /// copy on disk (any age) is used when it can't be reached. A site that's resting isn't asked.
 async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wait: Duration, player: bool, check: fn(&Value) -> bool) -> Result<Fetched, Error> {
+    cached_as(http, url, file, fresh, wait, player, check, None).await
+}
+
+/// `cached`, signed in as the player (`token`).
+#[allow(clippy::too_many_arguments)]
+async fn cached_as(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wait: Duration, player: bool, check: fn(&Value) -> bool, token: Option<&str>) -> Result<Fetched, Error> {
     let have = on_disk(&file, check);
     if let Some(h) = &have {
         if h.age < fresh || crate::net::resting(url, player) {
             return Ok(Fetched { archived: h.archived, data: h.data.clone(), offline: h.age >= fresh, age: h.age });
         }
     }
-    match get_json(http, url, wait, player, have.as_ref().map(|_| file.as_path())).await {
+    match get_json(http, url, wait, player, have.as_ref().map(|_| file.as_path()), token).await {
         // Unchanged since the copy on disk: a 304 of a few bytes instead of the whole file.
         Ok(None) => {
             touch(&file);
@@ -174,6 +189,7 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
             }
         }
         Ok(Some((v, headers))) if check(&v) => {
+            let v = if url.contains(ANDROID_LIST) { android_view(v) } else { v };
             save(&file, &v);
             save_tag_from(&file, &headers);
             Ok(Fetched { archived: None, data: v, offline: false, age: 0 })
@@ -189,8 +205,71 @@ async fn cached(http: &reqwest::Client, url: &str, file: PathBuf, fresh: u64, wa
     }
 }
 
+// The list on disk keeps the same name on Android: a launcher only ever reads one of the two.
 fn list_file(dir: &Path) -> PathBuf {
     dir.join("cache/pc-catalog.json")
+}
+
+/// The website's Android list: the same shape as `pc-catalog.json`, with each game's Android
+/// download (`assets.android`, `android_tag` and the rest; see the site's docs/backend/18-android.md).
+const ANDROID_LIST: &str = "/api/pc.php?a=android";
+const SIGN_IN_TESTER: &str = "Android games are only open to testers for now. Sign in with your tester account.";
+const NOT_TESTER: &str = "Android games are only open to testers for now, and this account isn't one.";
+
+/// Where the list comes from: Android reads its own.
+fn list_url() -> String {
+    if cfg!(target_os = "android") {
+        format!("{}{ANDROID_LIST}", base())
+    } else {
+        format!("{}/pc-catalog.json", base())
+    }
+}
+
+/// The Android list as the launcher reads it: each game's release and version are its Android
+/// app's (`android_tag`, `android_version`), which can differ from its PC release. Installed games
+/// are then up to date or not by the same rules as on PC.
+fn android_view(mut v: Value) -> Value {
+    for key in ["apps", "apps_min"] {
+        let Some(list) = v.get_mut(key).and_then(Value::as_array_mut) else { continue };
+        for e in list.iter_mut().filter_map(Value::as_object_mut) {
+            for (from, to) in [("android_tag", "tag"), ("android_version", "version")] {
+                if let Some(x) = e.get(from).and_then(Value::as_str).filter(|x| !x.is_empty()).map(String::from) {
+                    e.insert(to.into(), Value::String(x));
+                }
+            }
+        }
+    }
+    v
+}
+
+/// The game's APK in its release: the file the list's pattern names.
+pub fn android_asset<'a>(list: &'a [Asset], pattern: &str) -> Option<&'a Asset> {
+    let apk = |a: &&Asset| a.name.to_ascii_lowercase().ends_with(".apk");
+    list.iter().filter(apk).find(|a| crate::assets::wild(pattern, &a.name))
+}
+
+/// Why a downloaded APK isn't the one the list checked (`read`: what Android says is in it), or
+/// None when it is: the same package name, and the same signing certificate (SHA-256, lower-case
+/// hex). What the list doesn't say isn't checked.
+pub fn apk_mismatch(read: &Value, pkg: &str, sig: &str) -> Option<String> {
+    let got_pkg = read.get("pkg").and_then(Value::as_str).unwrap_or("");
+    if !pkg.is_empty() && got_pkg != pkg {
+        return Some(format!("the file is {got_pkg}, the list says {pkg}"));
+    }
+    let sigs: Vec<String> = read.get("sigs").and_then(Value::as_str).unwrap_or("").split(',').map(|x| x.trim().to_ascii_lowercase()).filter(|x| !x.is_empty()).collect();
+    if !sig.is_empty() && !sigs.iter().any(|x| x == &sig.to_ascii_lowercase()) {
+        return Some(format!("signed by {}, the list says {sig}", sigs.join(",")));
+    }
+    None
+}
+
+/// The sign-in sent with the list: only Android's needs it (testers only while Android is hidden).
+fn list_token(dir: &Path) -> Option<String> {
+    if cfg!(target_os = "android") {
+        crate::cloud::token(dir)
+    } else {
+        None
+    }
 }
 
 fn list_ok(v: &Value) -> bool {
@@ -207,7 +286,7 @@ pub async fn catalog(http: &reqwest::Client, dir: &Path, force: bool) -> Result<
     }
     LIST_ASKED.store(true, Ordering::Relaxed);
     let fresh = if force { 0 } else { LIST_FRESH };
-    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), list_file(dir), fresh, crate::net::LONGER, force, list_ok).await?;
+    let mut f = cached_as(http, &list_url(), list_file(dir), fresh, crate::net::LONGER, force, list_ok, list_token(dir).as_deref()).await?;
     f.data = with_mine(dir, f.data);
     Ok(f)
 }
@@ -221,10 +300,15 @@ pub fn catalog_now(dir: &Path) -> Option<(Fetched, bool)> {
     Some((Fetched { data: with_mine(dir, f.data), ..f }, stale))
 }
 
+/// The list on disk, as it is (nothing asked, nothing marked).
+pub fn list_on_disk(dir: &Path) -> Option<Value> {
+    on_disk(&list_file(dir), list_ok).map(|f| f.data)
+}
+
 /// The list asked for again in the background (not the player's doing).
 pub async fn catalog_refresh(http: &reqwest::Client, dir: &Path) -> Result<Fetched, Error> {
     LIST_ASKED.store(true, Ordering::Relaxed);
-    let mut f = cached(http, &format!("{}/pc-catalog.json", base()), list_file(dir), 0, crate::net::LONGER, false, list_ok).await?;
+    let mut f = cached_as(http, &list_url(), list_file(dir), 0, crate::net::LONGER, false, list_ok, list_token(dir).as_deref()).await?;
     f.data = with_mine(dir, f.data);
     Ok(f)
 }
@@ -622,6 +706,32 @@ pub async fn reports(http: &reqwest::Client, dir: &Path, id: &str, force: bool) 
     }
     let fresh = if force { 0 } else { COUNTS_FRESH };
     cached(http, &format!("{}/api/pc.php?a=feedback&id={id}", base()), dir.join("cache/reports").join(format!("{id}.json")), fresh, crate::net::QUICK, true, |v| v.get("counts").map(Value::is_object).unwrap_or(false)).await
+}
+
+/// How many people want a recomp: everyone who saved it (Add to Library, signed in) or is waiting for
+/// its Notify Me email, each account once. The website's own number for the Save button on its page,
+/// shown on the launcher's game page beside Notify Me and Add to Library. Kept 10 minutes: the site
+/// keeps it 2 (5 at Cloudflare), and a count this size doesn't need to be newer.
+pub async fn interest(http: &reqwest::Client, dir: &Path, id: &str) -> Result<Fetched, Error> {
+    if id.is_empty() || id.len() > 120 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(Error::Msg("That isn't a recomp.".into()));
+    }
+    let url = format!("{}/api/pc.php?a=interest&id={id}", base());
+    cached(http, &url, dir.join("cache/interest").join(format!("{id}.json")), INTEREST_FRESH, crate::net::QUICK, true, interest_ok).await
+}
+
+/// How long one recomp's count of who wants it is kept before it's asked for again (seconds).
+pub const INTEREST_FRESH: u64 = 600;
+
+/// An answer that carries the count, a whole number. Anything else isn't kept, so a bad answer never
+/// replaces a good one on disk. (A website from before the count answers 400, Unknown request.)
+fn interest_ok(v: &Value) -> bool {
+    v.get("n").map(Value::is_u64).unwrap_or(false)
+}
+
+/// The count in an answer `interest_ok` took (0 for anything else).
+pub fn interest_n(v: &Value) -> u64 {
+    v.get("n").and_then(Value::as_u64).unwrap_or(0)
 }
 
 /// How a release's files were checked before the store offered them (ClamAV on the website's server,
@@ -1198,7 +1308,14 @@ async fn fetch_profile(http: &reqwest::Client, url: &str) -> Option<Value> {
     if !r.status().is_success() {
         return None;
     }
-    let v: Value = r.json().await.ok()?;
+    let bytes = r.bytes().await.ok()?;
+    repo_profile_reply(&bytes)
+}
+
+/// What a project's recomplauncher.json from its repo gives: the file, or "none" when it isn't one
+/// the launcher reads. A body that isn't JSON at all is a failed answer, asked again later.
+fn repo_profile_reply(bytes: &[u8]) -> Option<Value> {
+    let v = crate::profile::parse_json_bytes(bytes)?;
     Some(if profile_ok(&v) { v } else { serde_json::json!({ "none": true }) })
 }
 
@@ -1261,7 +1378,8 @@ pub fn latest(rels: &[Release]) -> Option<&Release> {
 /// pre-release, the newest of all. Never one older than what they have (a beta of the next
 /// version is newer than the last stable one).
 pub fn latest_for<'a>(rels: &'a [Release], installed: &str) -> Option<&'a Release> {
-    let cur = rels.iter().find(|r| r.tag_name == installed);
+    // An imported game's tag can lack the release's "v": it's still the release it's on.
+    let cur = rels.iter().find(|r| crate::same_tag(&r.tag_name, installed));
     let pick = if cur.map(|r| r.prerelease).unwrap_or(false) { rels.iter().find(|r| !r.draft) } else { latest(rels) }?;
     if let (Some(c), Some(new), Some(old)) = (cur, pick.published_at.as_deref(), cur.and_then(|r| r.published_at.as_deref())) {
         if new < old {
@@ -1300,6 +1418,12 @@ pub fn art_url<'a>(entry: &'a Value, kind: &str, game_only: bool) -> &'a str {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_repo_profile_saved_with_a_byte_order_mark_is_read() {
+        let v = super::repo_profile_reply(b"\xef\xbb\xbf{\"format\":1}");
+        assert_eq!(v, Some(serde_json::json!({ "format": 1 })));
+    }
+
+    #[test]
     fn a_backup_release_keeps_only_checked_files_for_this_pc() {
         let sha = "a".repeat(64);
         let v = serde_json::json!({ "version": "v1.2", "files": [
@@ -1331,6 +1455,22 @@ mod tests {
         assert_eq!(super::trend_fresh(None, "2026-11-14"), 0);
         assert!(super::trend_ok(&chart));
         assert!(!super::trend_ok(&serde_json::json!({ "ok": false, "entries": [] })));
+    }
+
+    #[test]
+    fn interest_answer_is_a_whole_number() {
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 3412 })));
+        assert!(super::interest_ok(&serde_json::json!({ "ok": true, "n": 0 })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": false, "error": "Unknown request." })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": "12" })));
+        assert!(!super::interest_ok(&serde_json::json!({ "ok": true, "n": -3 })));
+    }
+
+    #[test]
+    fn interest_count_is_zero_without_one() {
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true, "n": 3412 })), 3412);
+        assert_eq!(super::interest_n(&serde_json::json!({ "ok": true })), 0);
+        assert_eq!(super::interest_n(&serde_json::Value::Null), 0);
     }
 
     #[test]
@@ -1804,6 +1944,68 @@ mod tests {
     }
 
     #[test]
+    fn android_list_for_testers_only() {
+        use std::io::{Read, Write};
+        // A site that keeps the Android list from anyone without a tester's sign-in.
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let site = format!("http://{}", l.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for c in l.incoming().flatten().take(3) {
+                let mut c = c;
+                let mut buf = [0u8; 4096];
+                let n = c.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+                let resp = if req.contains("x-rl-token: tester") {
+                    let body = r#"{"apps":[{"id":"a","assets":{"android":"a.apk"}}],"platform":"android"}"#;
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+                } else {
+                    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                };
+                let _ = c.write_all(resp.as_bytes());
+            }
+        });
+        let dir = std::env::temp_dir().join(format!("rl-android-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let http = reqwest::Client::new();
+        let url = format!("{site}{ANDROID_LIST}");
+        let ask = |token: Option<&str>| rt.block_on(cached_as(&http, &url, dir.join("list.json"), 0, Duration::from_secs(5), true, list_ok, token));
+        let msg = |r: Result<Fetched, Error>| match r { Err(Error::Msg(m)) => m, other => panic!("expected a message, got {:?}", other.map(|f| f.data)) };
+        assert_eq!(msg(ask(None)), SIGN_IN_TESTER);
+        assert_eq!(msg(ask(Some("someone"))), NOT_TESTER);
+        let ok = ask(Some("tester")).unwrap();
+        assert_eq!(ok.data["apps"][0]["assets"]["android"], "a.apk");
+        // The PC launcher reads the PC list, with no sign-in sent.
+        assert!(list_url().ends_with("/pc-catalog.json"));
+        assert!(list_token(&dir).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn android_games_read_as_their_android_app() {
+        // Each game's release and version are its APK's.
+        let v = android_view(serde_json::json!({ "apps": [
+            { "id": "a", "tag": "v2.0", "version": "2.0", "android_tag": "v1.9-android", "android_version": "1.9" },
+            { "id": "b", "tag": "v1", "version": "1" } ],
+            "apps_min": [{ "id": "c", "tag": "", "android_tag": "c1" }] }));
+        assert_eq!((v["apps"][0]["tag"].as_str(), v["apps"][0]["version"].as_str()), (Some("v1.9-android"), Some("1.9")));
+        assert_eq!((v["apps"][1]["tag"].as_str(), v["apps"][1]["version"].as_str()), (Some("v1"), Some("1")));
+        assert_eq!(v["apps_min"][0]["tag"], "c1");
+        // The APK the pattern names, never another file.
+        let a = |n: &str| Asset { name: n.into(), size: 1, digest: None, browser_download_url: format!("https://x/{n}"), url: None };
+        let files = [a("Game-1.9-windows.zip"), a("Game-1.9-arm64.apk"), a("Game-1.9-x86.apk")];
+        assert_eq!(android_asset(&files, "Game-*-arm64.apk").map(|x| x.name.as_str()), Some("Game-1.9-arm64.apk"));
+        assert!(android_asset(&files, "Game-*-windows.zip").is_none());
+        // The downloaded app against the list: package and signing certificate.
+        let read = serde_json::json!({ "pkg": "com.dev.game", "sigs": "AB12,cd34" });
+        assert_eq!(apk_mismatch(&read, "com.dev.game", "ab12"), None);
+        assert_eq!(apk_mismatch(&read, "com.dev.game", "CD34"), None);
+        assert_eq!(apk_mismatch(&read, "", ""), None);
+        assert!(apk_mismatch(&read, "com.other", "ab12").is_some());
+        assert!(apk_mismatch(&read, "com.dev.game", "ffff").is_some());
+    }
+
+    #[test]
     fn deck_scores_and_team_notes() {
         let scores = serde_json::json!({ "ok": true, "pc": {
             "a": { "score": 90, "n": 10, "sys": { "windows": { "score": 92, "n": 8 }, "deck": { "score": 85, "n": 3 } } },
@@ -1830,19 +2032,6 @@ mod tests {
         assert_eq!(latest(&[r("v2", true, false)]).unwrap().tag_name, "v2");
         assert!(latest(&[r("v2", false, true)]).is_none());
     }
-}
-
-/// A recomp that needs things on the PC before it plays (Python, build tools, a long first build),
-/// going by the copy of the list on disk: true until the player has said it's set up.
-pub fn needs_setup_first(dir: &Path, id: &str, ui: &Value) -> bool {
-    let done = ui.get("setup_ok").and_then(|o| o.get(id)).and_then(Value::as_bool).unwrap_or(false);
-    if done {
-        return false;
-    }
-    load(&list_file(dir))
-        .and_then(|c| c.get("apps").and_then(Value::as_array).and_then(|a| a.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).cloned()))
-        .and_then(|a| a.get("setup_required").and_then(Value::as_bool))
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

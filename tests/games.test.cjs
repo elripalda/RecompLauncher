@@ -223,7 +223,7 @@ test('updates and removal go to the one install; playing, setup and achievements
   vm.runInContext('addGameApps(ids); expandLib()', c);
   const ask = (cmd, id) => vm.runInContext(`gameArgs(${JSON.stringify(cmd)}, { id: ${JSON.stringify(id)} }).id`, c);
   for (const cmd of ['install', 'uninstall', 'check_updates', 'open_folder', 'set_game_options', 'stop', 'mods_state']) assert.equal(ask(cmd, 'cogbox--gow1'), 'cogbox', cmd);
-  for (const cmd of ['play', 'game_info', 'game_setup', 'setup_inputs_run', 'desktop_shortcut', 'add_to_steam', 'ach_game']) assert.equal(ask(cmd, 'cogbox--gow1'), 'cogbox--gow1', cmd);
+  for (const cmd of ['play', 'game_info', 'game_setup', 'setup_copy', 'setup_inputs_run', 'setup_cancel', 'desktop_shortcut', 'add_to_steam', 'ach_game']) assert.equal(ask(cmd, 'cogbox--gow1'), 'cogbox--gow1', cmd);
   // Saves: the game's own when it declares them, else the recomp's shared ones.
   assert.equal(ask('saves_info', 'cogbox--gow2'), 'cogbox--gow2');
   assert.equal(ask('saves_info', 'cogbox--gow1'), 'cogbox');

@@ -210,9 +210,12 @@ pub struct Played {
     pub last_played: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<[u64; 2]>,
-    /// Setup for this game's own inputs is done (their fingerprint, as `inputs_ready` is).
+    /// The release this game's own Easy Setup last worked on, as `Installed::set_up` is.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub inputs_ready: String,
+    pub set_up: String,
+    /// This game's own build was cut short, as `Installed::build_cut` is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub build_cut: bool,
 }
 
 impl Played {

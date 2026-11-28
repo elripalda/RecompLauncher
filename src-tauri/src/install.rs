@@ -314,6 +314,21 @@ pub async fn download(
     download_with_api(http, asset, dir, id, cancel, report, api).await
 }
 
+/// A download that couldn't connect, as the player sees it: named for the server that really
+/// failed (a project's link is often sent on to another server for the file), and written to the
+/// trail with its cause, so a report says which server and why without asking the player.
+async fn connect_failure(name: &str, src: &str, e: reqwest::Error) -> Error {
+    if !e.is_connect() && !e.is_timeout() {
+        return e.into();
+    }
+    let hop = crate::net::failed_hop(src).await.filter(|h| h.is_connect() || h.is_timeout());
+    let e = hop.unwrap_or(e);
+    let host = e.url().and_then(|u| u.host_str()).unwrap_or("its server").to_string();
+    let what = if crate::net::tls_failed(&e) { "no secure connection to" } else { "couldn't connect to" };
+    crate::trail::note(format!("{name}: {what} {host} ({})", crate::net::cause(&e)));
+    e.into()
+}
+
 async fn download_with_api(
     http: &reqwest::Client,
     asset: &Asset,
@@ -366,6 +381,8 @@ async fn download_with_api(
     let mut src = asset.browser_download_url.clone();
     let mut by_api = false;
     let mut api_tried = false;
+    // When the site says the file was uploaded: a kept download carries that date, not today's.
+    let mut uploaded: Option<std::time::SystemTime> = None;
     // The same alternate route helps when the edge drops a connection or never answers. It is
     // tried once per download, after repeated failures, with the byte offset and hash preserved.
     let mut try_api = |tries: u32, src: &mut String, by_api: &mut bool| {
@@ -411,7 +428,7 @@ async fn download_with_api(
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue;
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(connect_failure(&asset.name, &src, e).await),
         };
         if !r.status().is_success() {
             // GitHub's busy moments (502, 503, 504, or "slow down"): wait a little longer each time and
@@ -461,6 +478,8 @@ async fn download_with_api(
             out = None;
         }
         total = r.content_length().map(|n| n + done).unwrap_or(asset.size);
+        let last_modified = r.headers().get(reqwest::header::LAST_MODIFIED).and_then(|v| v.to_str().ok());
+        uploaded = last_modified.and_then(uploaded_at);
         if out.is_none() {
             out = Some(if resumed { tokio::fs::OpenOptions::new().append(true).open(&part).await? } else { tokio::fs::File::create(&part).await? });
         }
@@ -536,7 +555,18 @@ async fn download_with_api(
         }
     }
     tokio::fs::rename(&part, &file).await?;
+    if let Some(when) = uploaded {
+        // Only the file's date: a drive that can't set it still has the right file.
+        let _ = std::fs::File::options().write(true).open(&file).and_then(|f| f.set_modified(when));
+    }
     Ok(Downloaded { file, sha256: got, verified: want.is_some() })
+}
+
+/// A Last-Modified answer ("Wed, 27 Aug 2025 00:55:54 GMT") as a time. GitHub's is the upload date.
+fn uploaded_at(header: &str) -> Option<std::time::SystemTime> {
+    let when = chrono::DateTime::parse_from_rfc2822(header).ok()?;
+    let secs = u64::try_from(when.timestamp()).ok()?;
+    Some(std::time::UNIX_EPOCH + Duration::from_secs(secs))
 }
 
 /// A path inside an archive, made safe to join onto the folder: no absolute paths, no `..`.
@@ -810,7 +840,7 @@ pub fn updated_exe(id: &str, target: &Path, exe: Option<PathBuf>, files: &[PathB
         return (exe, None);
     }
     let is_appimage = old.to_string_lossy().to_lowercase().ends_with(".appimage");
-    let new_appimage = files.iter().find(|f| f.to_string_lossy().to_lowercase().ends_with(".appimage"));
+    let new_appimage = files.iter().find(|f| !mac_metadata(f) && f.to_string_lossy().to_lowercase().ends_with(".appimage"));
     if let (true, Some(n)) = (is_appimage, new_appimage) {
         if *n != old {
             return (Some(n.clone()), Some(old));
@@ -1136,7 +1166,7 @@ fn appimages_in(dir: &Path) -> Vec<PathBuf> {
                 continue;
             }
             let named = path.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage"));
-            if ty.is_file() && named {
+            if ty.is_file() && named && !mac_metadata(&path) {
                 out.push(path);
             }
         }
@@ -1309,12 +1339,12 @@ const QUICK_WORDS: [&str; 3] = ["play", "quick", "direct"];
 
 /// The version of find_exe's rules. Raise it when they pick better, and installs picked by older
 /// rules get looked at again on their next Play (own_setup::pending).
-pub const EXE_RULES: u8 = 21;
+pub const EXE_RULES: u8 = 22;
 
 /// Words in the name of a program that comes with a game but is one of its tools: a translator,
 /// shader builder, compiler, patcher or dedicated server (xcx_xlate, ultrs-shaders, xbe_recomp,
-/// build_deps.sh, ttt2-server).
-const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
+/// build_deps.sh, ttt2-server). A release's files are told apart by them too (assets::tool_build).
+pub(crate) const TOOL_WORDS: [&str; 29] = ["config", "configure", "settings", "setting", "options", "xlate", "translate", "translator", "shader", "shaders", "compiler", "compile", "deps", "patcher", "patch", "extractor", "extract", "converter", "convert", "dumper", "packer", "unpacker", "server", "dedicated", "benchmark", "configurator", "devtool", "bktr", "keygen"];
 /// Programs that build or unpack things, by their whole name: a release that builds the game on
 /// the player's PC brings these along (bin/ninja.exe), and none of them is ever the game.
 const BUILD_TOOLS: [&str; 66] = [
@@ -1400,10 +1430,35 @@ fn want_has_stem(low: &str, names: &[&str]) -> bool {
     names.iter().any(|n| tokens(n).iter().any(|t| t.len() > 3 && low == *t))
 }
 
-/// find_exe, but never a tool: when every program in it is one, there's no telling (None), and the
-/// player is asked.
+/// find_exe, but never a tool, and never only a guess: when every program in it is a tool, or the
+/// best one is picked for its size alone and another program could be the game, there's no telling
+/// (None), and the player is asked.
 pub fn find_game_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
-    find_exe(dir, os, names).filter(|e| !looks_like_tool(e, names))
+    let list = match programs(dir, os, names) {
+        Programs::Given(p) => return p.filter(|e| !looks_like_tool(e, names)),
+        Programs::Weighed(list) => list,
+    };
+    let top = best(&list).filter(|c| !c.tool)?;
+    if only_a_guess(&list, top) {
+        return None;
+    }
+    Some(top.rel.clone())
+}
+
+/// Whether the program find_game_exe would start is only a guess, so it says None for it.
+pub fn unclear_game_exe(dir: &Path, os: &str, names: &[&str]) -> bool {
+    let Programs::Weighed(list) = programs(dir, os, names) else { return false };
+    best(&list).filter(|c| !c.tool).is_some_and(|top| only_a_guess(&list, top))
+}
+
+/// Nothing about the best program says it's the game: not its name, and it isn't a launch script.
+/// It won on size and place alone, so with another program left that isn't a tool, it could as well
+/// be a helper the game starts (a renderer, an entry runner) as the game.
+fn only_a_guess(list: &[Candidate], top: &Candidate) -> bool {
+    if top.named || top.script {
+        return false;
+    }
+    list.iter().any(|c| !c.tool && c.rel != top.rel)
 }
 
 /// Normalize a manual program selection to the executable stored in the library.
@@ -1467,7 +1522,7 @@ pub fn find_setup(dir: &Path, os: &str, game: Option<&Path>) -> Option<PathBuf> 
                 }
                 continue;
             }
-            if !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
+            if mac_metadata(&p) || !(is_program(&p, os) || (os == "windows" && is_script(&p))) {
                 continue;
             }
             let t = tokens(p.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
@@ -1502,7 +1557,16 @@ pub fn looks_like_setup(p: &Path) -> bool {
     t.iter().any(|x| SETUP_WORDS.contains(&x.as_str()))
 }
 
+/// A Mac's metadata file ("._Game.exe"), which a Mac writes beside each file on a drive formatted
+/// for Windows, or into an archive it packs. It's never a program, whatever its name ends in.
+pub fn mac_metadata(p: &Path) -> bool {
+    p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))
+}
+
 pub fn is_program(p: &Path, os: &str) -> bool {
+    if mac_metadata(p) {
+        return false;
+    }
     let n = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     if os == "windows" {
         return n.ends_with(".exe");
@@ -1554,21 +1618,62 @@ pub fn never_the_game(rel: &Path, names: &[&str]) -> bool {
 /// The program to start, relative to `dir`: the one whose name looks most like the game's, near the
 /// top of the folder, and big (the game is usually the biggest program in its folder).
 pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
+    let list = match programs(dir, os, names) {
+        Programs::Given(p) => return p,
+        Programs::Weighed(list) => list,
+    };
+    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
+    // is asked rather than a tool started.
+    best(&list).filter(|c| !c.tool).map(|c| c.rel.clone())
+}
+
+/// A program find_exe weighed, relative to the game's folder.
+struct Candidate {
+    rel: PathBuf,
+    score: i64,
+    /// Its name has a word of the game's names in it.
+    named: bool,
+    /// A script the release starts the game with.
+    script: bool,
+    tool: bool,
+}
+
+/// What a folder says about the program that starts it.
+enum Programs {
+    /// The folder names it itself (a Mac app's Info.plist, an unpacked AppImage's AppRun), or
+    /// says nothing in it can start.
+    Given(Option<PathBuf>),
+    /// Every program that could be the game, in the order they were found.
+    Weighed(Vec<Candidate>),
+}
+
+/// The highest score, the first found of equals.
+fn best(list: &[Candidate]) -> Option<&Candidate> {
+    let mut top: Option<&Candidate> = None;
+    for c in list {
+        if top.map(|t| c.score > t.score).unwrap_or(true) {
+            top = Some(c);
+        }
+    }
+    top
+}
+
+fn programs(dir: &Path, os: &str, names: &[&str]) -> Programs {
     // A Mac app that is the game's folder itself: the program its Info.plist names, never a helper
     // inside it, and nothing when that program is missing or not for this Mac.
     if os == "macos" && crate::macos::is_bundle(dir) {
-        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now())?;
-        return exe.strip_prefix(dir).ok().map(Path::to_path_buf);
+        let exe = crate::macos::bundle_executable(dir, crate::assets::arch_now());
+        return Programs::Given(exe.and_then(|e| e.strip_prefix(dir).ok().map(Path::to_path_buf)));
     }
     // An AppImage unpacked at install: its AppRun starts it, as the AppImage did. One of a release's
     // several AppImages unpacked into a folder named after it, when it's the only one.
     if os == "linux" && dir.join("AppRun").is_file() {
-        return Some(PathBuf::from("AppRun"));
+        return Programs::Given(Some(PathBuf::from("AppRun")));
     }
     if os == "linux" {
         let one_down: Vec<PathBuf> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| Path::new(&e.file_name()).join("AppRun")).filter(|r| dir.join(r).is_file()).collect();
         if let [only] = one_down.as_slice() {
-            return Some(only.clone());
+            return Programs::Given(Some(only.clone()));
         }
     }
     let mut want: Vec<String> = names.iter().flat_map(|n| tokens(n)).filter(|t| t.len() > 2 && t != "recomp" && t != "the").collect();
@@ -1590,7 +1695,7 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
     }
     want.sort();
     want.dedup();
-    let mut best: Option<(i64, PathBuf)> = None;
+    let mut list: Vec<Candidate> = vec![];
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
@@ -1673,18 +1778,16 @@ pub fn find_exe(dir: &Path, os: &str, names: &[&str]) -> Option<PathBuf> {
             if t.iter().any(|x| x == "recompiled" || x == "recomp") {
                 s += 10;
             }
+            let Ok(rel) = p.strip_prefix(dir).map(Path::to_path_buf) else { continue };
             // One of its tools: behind every program that isn't.
-            if p.strip_prefix(dir).map(|r| looks_like_tool(r, names)).unwrap_or(false) {
+            let tool = looks_like_tool(&rel, names);
+            if tool {
                 s -= 1000;
             }
-            if best.as_ref().map(|(b, _)| s > *b).unwrap_or(true) {
-                best = Some((s, p));
-            }
+            list.push(Candidate { rel, score: s, named: named > 0, script, tool });
         }
     }
-    // Only tools left (a compiler, BusyBox's programs): none of them is the game, so the player
-    // is asked rather than a tool started.
-    best.and_then(|(_, p)| p.strip_prefix(dir).ok().map(Path::to_path_buf)).filter(|r| !looks_like_tool(r, names))
+    Programs::Weighed(list)
 }
 
 #[cfg(test)]
@@ -1879,6 +1982,18 @@ mod tests {
     }
 
     #[test]
+    fn an_update_never_takes_a_macs_metadata_file_for_its_appimage() {
+        let target = tmp("update-appledouble-appimage");
+        fs::write(target.join("Game-v1.AppImage"), b"old release").unwrap();
+        fs::write(target.join("Game-v2.AppImage"), b"new release").unwrap();
+
+        let (got, _) = updated_exe("game", &target, Some("Game-v1.AppImage".into()), &paths(&["._Game-v2.AppImage", "Game-v2.AppImage"]), true);
+
+        assert_eq!(got, Some("Game-v2.AppImage".into()));
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
     fn updating_follows_a_managed_program_into_its_new_folder() {
         let target = tmp("update-managed-exe");
         fs::create_dir_all(target.join("bin")).unwrap();
@@ -2003,6 +2118,31 @@ mod tests {
     fn put(p: &Path, bytes: usize) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, vec![7u8; bytes]).unwrap();
+    }
+
+    /// What a Mac writes beside a file on a drive or in an archive: "._" and the file's name.
+    fn mac_metadata_beside(p: &Path) {
+        let name = format!("._{}", p.file_name().unwrap().to_string_lossy());
+        fs::write(p.with_file_name(name), b"\x00\x05\x16\x07AppleDouble").unwrap();
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_the_setup() {
+        let d = tmp("appledouble-setup");
+        put(&d.join("Game.exe"), 2_000_000);
+        put(&d.join("Game-setup.exe"), 1_000_000);
+        mac_metadata_beside(&d.join("Game-setup.exe"));
+        assert_eq!(find_setup(&d, "windows", Some(Path::new("Game.exe"))), Some(PathBuf::from("Game-setup.exe")));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_linux_program() {
+        assert!(!is_program(Path::new("/games/x/._game.x86_64"), "linux"));
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_a_windows_program() {
+        assert!(!is_program(Path::new("/games/x/._Game.exe"), "windows"));
     }
 
     #[test]
@@ -2361,6 +2501,48 @@ mod tests {
         let got = download_split(&http, &url, "big.bin", &dir, "t", Arc::new(AtomicBool::new(false)), &|_| {}).await.unwrap().unwrap();
         eprintln!("split download: {:.1} s, sha256 {}", t.elapsed().as_secs_f64(), got.sha256);
         assert_eq!(got.sha256, std::env::var("RL_SPLIT_SHA").unwrap());
+    }
+
+    #[test]
+    fn two_programs_that_dont_name_the_game_are_left_to_the_player() {
+        let d = tmp("unclear-two");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        assert!(find_game_exe(&d, "windows", &["Night Harbor"]).is_none());
+    }
+
+    #[test]
+    fn a_program_named_for_the_game_is_still_picked_beside_others() {
+        let d = tmp("unclear-named");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        put(&d.join("NightHarbor.exe"), 2_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("NightHarbor.exe")));
+    }
+
+    #[test]
+    fn a_lone_program_that_doesnt_name_the_game_is_still_picked() {
+        let d = tmp("unclear-lone");
+        put(&d.join("bin/Engine.exe"), 30_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("bin/Engine.exe")));
+    }
+
+    #[test]
+    fn a_program_beside_only_tools_is_still_picked() {
+        let d = tmp("unclear-tools");
+        put(&d.join("bin/Engine.exe"), 30_000_000);
+        put(&d.join("tools/Packer.exe"), 40_000_000);
+        assert_eq!(find_game_exe(&d, "windows", &["Night Harbor"]), Some(PathBuf::from("bin/Engine.exe")));
+    }
+
+    #[test]
+    fn a_guessed_program_is_reported_as_unclear() {
+        let d = tmp("unclear-report");
+        put(&d.join("runtime/EntryRunner.exe"), 4_000_000);
+        put(&d.join("host/FrameHost.exe"), 30_000_000);
+        assert!(unclear_game_exe(&d, "windows", &["Night Harbor"]));
+        put(&d.join("NightHarbor.exe"), 2_000_000);
+        assert!(!unclear_game_exe(&d, "windows", &["Night Harbor"]));
     }
 
     #[test]
@@ -2861,12 +3043,11 @@ mod mac_discovery_tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn mac_manual_setup_starts_the_selected_bundle() {
+    fn mac_picked_program_starts_the_selected_bundle() {
         let d = temp("manual-setup");
         let app = bundle(&d, "Engine");
         let g = crate::library::Installed { path: d.clone(), ..Default::default() };
-        let manual = crate::library::ManualSetup { exe: Some(PathBuf::from("My Game.app")), how: "none".into(), ..Default::default() };
-        let (exe, args) = crate::manual_plan(&g, &manual).unwrap().unwrap();
+        let (exe, args) = crate::own_plan(&g, Some(Path::new("My Game.app"))).unwrap().unwrap();
         assert_eq!(exe, app.join("Contents/MacOS/Engine"));
         assert!(args.is_empty());
     }
@@ -3158,5 +3339,22 @@ mod connection_fallback_tests {
         let request = server.join().unwrap()[0].to_ascii_lowercase();
         assert!(request.contains("\r\naccept: application/octet-stream\r\n"));
         assert!(request.contains("\r\nrange: bytes=2-\r\n"));
+    }
+
+    #[tokio::test]
+    async fn a_download_keeps_the_date_its_site_gives() {
+        let dir = TempDir::new();
+        let dated = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nLast-Modified: Wed, 27 Aug 2025 00:55:54 GMT\r\nConnection: close\r\n\r\nabcdef";
+        let (url, server) = download_site(vec![dated]);
+        let result = download_with_api(&reqwest::Client::new(), &asset(url), &dir.0, "date-test", Arc::new(AtomicBool::new(false)), &|_| {}, None).await;
+        let got = result.unwrap_or_else(|e| panic!("the download should finish: {e}"));
+        let modified = fs::metadata(&got.file).unwrap().modified().unwrap();
+        assert_eq!(modified, std::time::UNIX_EPOCH + Duration::from_secs(1_756_256_154));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_date_that_isnt_one_is_left_alone() {
+        assert_eq!(uploaded_at("yesterday"), None);
     }
 }

@@ -1,14 +1,17 @@
 {
   "format": 1,
   "repo": "luckvj/streetball-revival",
-  "game": {
-    "kind": "iso",
-    "label": "Your disc image (.iso) of the USA PlayStation 2 release, serial SLUS-20651.",
-    "check": { "iso9660": "SLUS_206.51" }
-  },
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your disc image (.iso) of the USA PlayStation 2 release, serial SLUS-20651.",
+      "formats": [{ "type": "file" }],
+      "check": { "iso9660": "SLUS_206.51" }
+    }
+  ],
   "start": {
     "program": ["bin/street-game.exe", "street-game.exe", "bin/street-game", "street-game"],
-    "args": ["--iso", "{game}"]
+    "args": ["--iso", "{input:game}"]
   },
   "config": [
     {

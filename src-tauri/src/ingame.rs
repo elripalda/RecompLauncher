@@ -2,6 +2,9 @@
 //! read in pads.rs. On the keyboard, F12 takes a screenshot and Ctrl+F12 opens the quick menu, held
 //! only while a game is running.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use crate::{App, Error};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -197,6 +200,17 @@ pub fn toggle_overlay(app: &AppHandle) {
 /// F12 and Ctrl+F12, only while a game runs, so they never get in the way otherwise.
 /// `menu`: Ctrl+F12 opens the quick menu too (the player can turn the quick menu off).
 pub fn set_hotkeys(app: &AppHandle, on: bool, menu: bool) {
+    // A phone has no keyboard shortcuts across apps.
+    #[cfg(mobile)]
+    {
+        let _ = (app, on, menu);
+    }
+    #[cfg(desktop)]
+    set_hotkeys_desktop(app, on, menu);
+}
+
+#[cfg(desktop)]
+fn set_hotkeys_desktop(app: &AppHandle, on: bool, menu: bool) {
     use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();

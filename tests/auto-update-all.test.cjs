@@ -83,12 +83,20 @@ test('a game turned off in its Manage tab waits, even with the Settings switch o
 });
 
 // The Updates card of a game's Manage tab, for a game with neither its own switch nor Pause on.
-function manageUpdates(settings) {
+function manageUpdates(settings, setup) {
   const c = switchContext(settings, { g: { repo: 'dev/hydro', tag: 'v1', auto_update: false } });
   Object.assign(c, { isLab: () => false, isSF: () => false, fmtB: String, heldIds: () => new Set() });
+  Object.assign(c.S, { easy: new Set(setup ? ['g'] : []), setup: setup ? { g: setup } : {} });
   vm.runInContext(fn(app, 'manageUpdateRows'), c);
   return c.manageUpdateRows('g', c.S.library.g).join('');
 }
+
+test('a game whose new release builds again has its own Build Again After Updates switch', () => {
+  assert.match(manageUpdates({}, { rebuilds: true }), /aria-checked="false" aria-label="Build Again After Updates" data-act="rebuild-up"/);
+  // One without a setup step plays a new release as it comes: no switch.
+  assert.doesNotMatch(manageUpdates({}, { rebuilds: false }), /rebuild-up/);
+  assert.doesNotMatch(manageUpdates({}), /rebuild-up/);
+});
 
 test('with the Settings switch on, the Manage tab shows the game\'s switch on and says why', () => {
   const html = manageUpdates({ auto_update_all: true });
@@ -164,4 +172,33 @@ test('Big Picture\'s Turn off automatic updates reads in Title Case in English',
   c.window = c;
   vm.runInContext(src, c);
   assert.equal(c.titleCase('Turn off automatic updates'), 'Turn Off Automatic Updates');
+});
+
+// The update check, with a library of games that all update by themselves. What it started.
+function updateCheckContext(uninstalling) {
+  const c = settingsContext({ auto_update_all: true });
+  c.S.library = { a: { id: 'a' }, b: { id: 'b' } };
+  c.S.running = new Set(); c.S.jobs = {}; c.S.uninstalling = new Set(uninstalling);
+  c.S.view = 'downloads'; c.updateCheckRevision = 0;
+  c.invoke = async () => ({ a: 'v2', b: 'v2' });
+  c.parentId = (id) => id; c.holdUpdates = () => {}; c.badVersion = () => false; c.byId = () => ({});
+  c.renderSide = () => {}; c.render = () => {}; c.toast = () => {};
+  c.updatingLine = () => ''; c.readyLine = () => '';
+  c.started = [];
+  c.startInstall = async (id) => { c.started.push(id); };
+  c.buildsAfterUpdate = () => false;
+  vm.runInContext(fn(app, 'checkUpdates') + '\n' + fn(app, 'stillChecked') + '\n' + fn(app, 'updateGame'), c);
+  return c;
+}
+
+test('the update check leaves a game that\'s being uninstalled alone', async () => {
+  const c = updateCheckContext(['b']);
+  await c.checkUpdates();
+  assert.deepEqual(plain(c.started), ['a']);
+});
+
+test('an update waiting its turn doesn\'t start for a game that\'s being uninstalled', async () => {
+  const c = updateCheckContext(['a']);
+  await c.updateGame('a');
+  assert.deepEqual(plain(c.started), []);
 });

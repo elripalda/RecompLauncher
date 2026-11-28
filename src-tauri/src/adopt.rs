@@ -229,7 +229,7 @@ fn loose_images(home: &Path, data_home: &Path, skip: &[PathBuf]) -> Vec<PathBuf>
 #[cfg(any(target_os = "linux", test))]
 fn image_repo(image: &Path) -> String {
     let bytes = crate::appimage::manifest(image).unwrap_or_default();
-    let profile: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let profile = crate::profile::parse_json_bytes(&bytes).unwrap_or(Value::Null);
     profile.get("repo").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
@@ -328,7 +328,7 @@ pub fn library_roots() -> Vec<PathBuf> {
 /// its settings is lost and the games in it look missing).
 fn lib_json(file: &Path) -> Option<Value> {
     let b = std::fs::read(file).ok()?;
-    serde_json::from_slice(b.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&b)).ok()
+    crate::profile::parse_json_bytes(&b)
 }
 
 pub fn is_library(dir: &Path) -> bool {
@@ -606,7 +606,7 @@ pub async fn migrate_pick(st: State<'_, App>, path: String) -> Res<Vec<Found>> {
 fn read_repo(dir: &Path) -> String {
     crate::profile::release_profile(dir).map(|p| p.profile.repo)
         .or_else(|| std::fs::read(dir.join("recomplauncher.json")).ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|b| crate::profile::parse_json_bytes(&b))
             .and_then(|v| v.get("repo").and_then(Value::as_str).map(String::from)))
         .unwrap_or_default()
 }
@@ -822,7 +822,7 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
                 id: it.id.clone(),
                 name: s("name"),
                 repo: s("repo"),
-                tag: it.tag.trim().to_string(),
+                tag: adopted_tag(&st.dir, &s("repo"), it.tag.trim()),
                 version: s("version"),
                 path: it.path.clone(),
                 exe,
@@ -864,6 +864,14 @@ pub async fn adopt_add(st: State<'_, App>, items: Vec<Adopt>) -> Res<Vec<Install
         }
     }
     Ok(added)
+}
+
+/// The tag a game from another launcher is saved with: as its release spells it (v1.0.0 for 1.0.0)
+/// when its releases are on disk already. Otherwise as it came, and the update check fixes it the
+/// first time it reads them.
+fn adopted_tag(dir: &Path, repo: &str, tag: &str) -> String {
+    let rels: Vec<crate::Release> = catalog::releases_on_disk(dir, repo).and_then(|f| serde_json::from_value(f.data).ok()).unwrap_or_default();
+    crate::exact_tag(&rels, tag).unwrap_or_else(|| tag.to_string())
 }
 
 /// The games just added that are AppImages, unpacked (see plain::bring_in). One that doesn't
@@ -954,7 +962,10 @@ fn associated_game(g: &Installed, id: &str, entry: Option<&Value>) -> Installed 
     next.verified = false;
     next.pinned = false;
     next.auto_update = false;
-    next.exe_rules = install::EXE_RULES;
+    // A program the player picked (Game Executable) stays theirs, as it does through an update.
+    if next.exe_rules != u8::MAX {
+        next.exe_rules = install::EXE_RULES;
+    }
     // These describe files supplied by the previous project's release. Treat the files as
     // the player's own until an explicit installation supplies a new manifest.
     next.files.clear();
@@ -995,7 +1006,7 @@ pub(crate) fn change_project(st: &App, old: &str, project: &str, cat: &Value) ->
         return Err(Error::Msg("That project is already in your Library. Its installation won't be replaced.".into()));
     }
     if [old, new.as_str()].iter().any(|id| st.running.lock().unwrap().contains_key(*id)
-        || st.jobs.lock().unwrap().contains_key(*id) || st.moving.lock().unwrap().contains(*id)
+        || st.jobs.lock().unwrap().contains_key(*id) || crate::files_busy(&st, id).is_some()
         || crate::STARTING.lock().unwrap().iter().any(|starting| starting == *id)
         || crate::setup_busy(id) || crate::mods_busy(id)) {
         return Err(Error::Msg("Stop the game and wait for its downloads, setup and file operations before changing its project.".into()));

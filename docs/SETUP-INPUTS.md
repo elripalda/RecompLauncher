@@ -10,9 +10,26 @@ shows there with a tag saying so. The disc artwork and two-column layout are kep
 windows the artwork sits above. Preparation starts only from Set Up, once every required input is
 selected. Desktop and Big Picture draw the same steps (`ui/setup-steps.js`).
 
-Existing `game`, `game.update`, `start`, and `prepare` profiles remain supported. Named inputs
-may accompany a legacy `game` declaration, or replace it entirely. When replacing it, use
-`{input:id}` instead of `{game}`. Names refer to input IDs, not shared-resource names.
+Named inputs are the one way to ask for files. **The top-level `game` field is deprecated** (still
+read until RecompLauncher 1.0, as the input `game`); **the input named `game` is the new way.** The
+player's copy is shown as the big box, and everything else is a row under it. Pass each one with
+`{input:id}`. Names refer to input IDs, not shared-resource names.
+
+Which input for which file:
+
+1. **A game that is one file (or one folder):** one input, `"id": "game"`, `"role": "game"` (the
+   default), passed as `{input:game}`.
+2. **A game on several discs:** every disc has `"role": "disc"`, ids `disc1` to `discN`, labels
+   `Disc 1` to `Disc N`, and no input has role `game`. The launcher makes Disc 1 the copy box by
+   itself. Give every disc a `check`. Not every disc as role `game`: only the first would be the
+   copy box, and the Discs step, the "Insert your discs" heading and the "N of N discs selected"
+   count all go by role `disc`.
+3. **DLC:** `"role": "dlc"`, `"optional": true`, one input per package (`dlc1`, `dlc2`, ...).
+4. **An update:** `"role": "update"`, usually with `into` and `name`.
+5. **Keys:** a `shared` input (`switch.prod-keys` ...), never a file of the game's own the player picks.
+6. **A folder input only when the copy is a folder** (an extracted PS3 game, a Switch game's
+   `exefs` and `romfs`); never a folder of discs or DLC. One file per input, one argument per
+   file, the flag and the file together (`--disc2={input:disc2}`).
 
 ## Scope constraint for maintainers and coding agents
 
@@ -31,8 +48,8 @@ shared type the launcher downloads itself, from NVIDIA's own GitHub. No other NV
 exist and match their accepted format, and refuses assigning the same path to two named slots.
 It does not identify a renamed disc, prove that Disc 2 is really Disc 2, verify regions/revisions,
 or mark a multidisc set as a verified dump. Labels come from the manifest and the player's choices.
-The project's prepare program must perform its own content validation. Existing single-copy
-CRC32 checking remains unchanged.
+The project's prepare program must perform its own content validation. An input with `dumps` is
+read whole and compared by CRC32 (see below); nothing else is.
 
 ## Conditional keys: never inferred from NSP/XCI
 
@@ -82,6 +99,12 @@ See [the complete example](examples/multidisc-inputs.json). Declare one input fo
 extensions without a leading dot; an empty list accepts any regular file. A `folder` format accepts
 a selected existing folder and cannot declare extensions or an installation destination.
 
+**One file per input, one argument per file.** Each disc image and each DLC package is an input of
+its own and reaches the game through an argument of its own: `--disc1={input:disc1}`,
+`--disc2={input:disc2}`, `--dlc1={input:dlc1}`. Never ask for a folder of discs or DLC and pass the
+folder. A `folder` format is only for a copy that is a folder: an extracted PS3 game, or a Switch
+game's `exefs` and `romfs`.
+
 You can pass every selected path to `prepare.args`, `start.args`, `start.env`, or a game's
 `games[].args` using `{input:id}`.
 Paths remain separate command arguments (no shell string concatenation). For optional or
@@ -92,6 +115,47 @@ the dangling flag could consume another argument. Required inputs can use separa
 arguments. Unknown placeholder IDs are configuration errors. When one game of several is played,
 the other games' inputs aren't unknown: their arguments are left out, so only that game's
 `"--rom={input:rom-blue}"` reaches the command line.
+
+## Checking, placing and unpacking a file
+
+An input can say how to tell it's the right game, and where the launcher puts it. These are the
+options `game` had, so anything `game` did, an input does too:
+
+```json
+{
+  "format": 1,
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your PS2 disc image (.iso) of the USA release",
+      "formats": [{"type": "file"}, {"type": "folder"}],
+      "check": {"iso9660": "SLUS_206.51"},
+      "dumps": [{"name": "USA", "crc32": "0011aabb", "size": 4700372992}],
+      "into": "game",
+      "contains": ["SYSTEM.CNF"],
+      "extract": "iso9660"
+    },
+    {
+      "id": "update", "label": "Your title update (TU 1.03)", "role": "update",
+      "formats": [{"type": "file"}], "into": "game/Content", "name": "tu00000003.bin"
+    }
+  ],
+  "start": {"program": ["game.exe"], "args": ["--game_data_root={input:game}"]}
+}
+```
+
+- `check` (`file`, `iso9660`, `xdvdfs`, `nup_build_id`, `ids`): checked when the player picks it;
+  another game's copy is refused with a plain reason. Never again on Play.
+- `dumps`: known good dumps (CRC32). Only an input with these is read whole on setup, for the
+  verified badge; any other is checked by its shape and `check` only.
+- `into` and `name`: placed in that folder of your release before each start (links, or a copy on
+  another drive). `contains` lists what the folder must hold; files the player already put there
+  count as picked. Use `destination` instead for a file the launcher copies in and keeps.
+- `extract`: a disc image unpacked on setup into `into` (or `game-files`): `xdvdfs` (Xbox, Xbox
+  360) or `iso9660` (PS2, PSP).
+- With role `update`, `sha256` (the one known file) or `name` checks the file when it's picked.
+
+A field the launcher doesn't know is ignored, so an input written for a newer launcher still reads.
 
 ## File placement
 
@@ -139,18 +203,22 @@ recomp asks for it once; the player provides nothing:
 
 ## Persistence, replacement and privacy
 
-Named game inputs live in the installed entry's `setup_inputs`. The setup fingerprint is made
-only from the player's files (each one's path, size and modified time, and the game and update
-copies) and `prepare.version`, **not disc contents** and not the installed version. Picking another
-file, or a new `prepare.version`, runs setup again.
+The files the player picked live in the installed entry's `setup_inputs`, by input id. What
+Easy Setup keeps once a setup has worked is those picks and the release it finished on. Picks made
+on the setup screen wait there until a setup with them works: closing it without one leaves the
+game as it was. Files are checked when they're picked, never again on Play.
 
-An update keeps the setup. The player's files and the fingerprint carry over, and the next Play
-checks them again, so a game set up before plays straight away. When your new release needs the
-setup step to run again (its output changed), bump `prepare.version`. When the step's output lives
-in the game's folder, list it in `prepare.done`; if an update takes it away, Play asks for setup
-again instead of starting without it. The selected source files must still be where the player
-left them, or they're asked for again. Keep source files available after setup if a project reads
-them at runtime.
+A game with a setup step (or a disc the launcher unpacks) is set up while the release it finished
+on is the one installed. A new release (or going back to an older one) runs the setup again before
+it plays; reinstalling the same one doesn't. Picking another file runs it again too. A game without
+a setup step is set up once its required files are picked: Play puts them where the game reads them
+each time. When the step's output lives in the game's folder, list it in `prepare.done`; if an
+update takes it away, Play asks for setup again instead of starting without it. A built game
+needs only the files its `start` reads (or that are placed in its folder); the rest may be moved
+or deleted. Keep source files available after setup if a project reads them at runtime.
+
+New shared keys are used by each game at its next setup: picking them never sets another game up
+again.
 
 Imported keys live under the launcher's private `shared-keys/<shared-type>/` directory. These are
 not account credentials and do not use the RecompLauncher account token slot. Replacing keys is
@@ -174,7 +242,7 @@ not a supported integration manifest.
 
 - Maximum 32 inputs, unique IDs, nonempty labels and one declaration per shared type.
 - Shared type/role and accepted formats validated by backend and documented in the JSON schema.
-- Existing single-copy flows retained. New multidisc flow makes no verified-dump claim.
+- A multidisc set makes no verified-dump claim; each disc with `dumps` is checked on its own.
 - Test required slots, optional slots, conditional keys, reuse/replacement/removal, retry/cancel,
   paths with spaces, safe destination placement, update persistence and backup exclusions.
 - Keep desktop and Big Picture requirements identical. Adding BIOS/firmware support or content

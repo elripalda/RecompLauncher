@@ -403,10 +403,6 @@ fn apply(a: &Account, arts: &Arts) -> Result<(), Error> {
 /// Ready to play from Steam: fully set up, by the same answer Play and the game's page give.
 /// Otherwise Steam would open the launcher to set it up, not the game, so it isn't added yet.
 fn ready(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[games::Game])>) -> bool {
-    let ui = st.lib.lock().unwrap().settings.ui.clone();
-    if crate::catalog::needs_setup_first(&st.dir, recomp, &ui) {
-        return false;
-    }
     if g.exe.is_none() || !g.installer_setup.is_empty() {
         return false;
     }
@@ -414,10 +410,6 @@ fn ready(st: &App, recomp: &str, g: &Installed, game: Option<(&games::Game, &[ga
     // without using up the once-only ones, which are Play's to answer).
     if crate::own_setup::pending(st, recomp, g).is_some() {
         return false;
-    }
-    // Set Up By Hand: the player says how it starts and gets its files.
-    if g.hand().is_some() {
-        return true;
     }
     // A setup step that changed, a build that's gone, an update or files still to pick: not set
     // up. A game built from a copy that's gone since plays without it: set up.
