@@ -8758,10 +8758,13 @@ async function fixFound(id) {
 }
 
 // What a program's exit code means, when it's one of the usual Windows ones.
-function codeMeaning(code) {
+function codeMeaning(code, secs) {
   const c = Number(code);
   if (!Number.isFinite(c) || c === 0) return '';
   const u = c < 0 ? c + 4294967296 : c;
+  // A processor missing an instruction fails as the game starts. Later, the code is the game
+  // stopping itself on purpose (Azahar after losing its Vulkan device, say), so it says nothing.
+  if (u === 0xC000001D && secs >= 10) return '';
   const M = {
     0xC0000005: N_('it read or wrote memory it shouldn\'t (access violation)'),
     0xC0000409: N_('it stopped itself after a serious error'),
@@ -8867,7 +8870,7 @@ async function crashModal(p) {
   // something the player can fix, so no crash window.
   const tail = String((log && log[1]) || '').split('\n').slice(-8).join('\n');
   if (p.secs > 20 && /destruct ResourceManager|shutting down|shutdown complete|clean exit|exiting\.\.\./i.test(tail)) return;
-  const meaning = codeMeaning(p.code);
+  const meaning = codeMeaning(p.code, p.secs);
   const codeShown = meaning ? `${p.code}: ${meaning}` : String(p.code);
   const details = `${g.name} ${g.tag || ''} closed with code ${codeShown} after ${p.secs} s on ${OS_NAME[S.os]} (RecompLauncher ${S.version}).` + (log ? `\n\n${log[0]}:\n${log[1]}` : '');
   // The game said it couldn't open one of its own files (the player's copy isn't where it looks).
@@ -8891,8 +8894,9 @@ async function crashModal(p) {
   let su = S.setup[p.id] && S.setup[p.id] !== 'loading' ? S.setup[p.id] : null;
   if (gl && !su) { try { su = await invoke('game_setup', { id: p.id }); } catch (e) { /* none */ } }
   const glSetting = gl && su && (su.settings || []).find((o) => /renderer|graphics api|output|backend/i.test(o.label) && o.choices.length > 1);
-  // The graphics driver stopped answering while it drew (a driver reset): DXGI device removed/hung.
-  const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST/i.test(said);
+  // The graphics driver stopped answering while it drew (a driver reset): DXGI device removed/hung,
+  // or Vulkan's device lost, by its own name, the C++ wrapper's (ErrorDeviceLost) or in a Vulkan line.
+  const gpuReset = !gpu && /887A0005|887A0006|DXGI_ERROR_DEVICE_(?:REMOVED|HUNG|RESET)|device (?:was )?removed|VK_ERROR_DEVICE_LOST|ErrorDeviceLost|\b(?:vk|vulkan)\b[^\n]{0,60}\bdevice lost\b/i.test(said);
   // .NET it needs isn't on this PC (the .NET host says which, with a link).
   const net = /(?:To install missing framework, download|Download the \.NET runtime):\s*(https:\/\/\S+)/i.exec(said);
   const dotnet = !!net || [-2147450730, -2147450749].includes(Number(p.code)) || /You must install(?: or update)? \.NET|Failed to resolve hostfxr|hostfxr\.dll \[not found\]|\.NET location: Not found|app-launch-failed/i.test(said);
