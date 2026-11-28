@@ -2262,6 +2262,19 @@ mod tests {
     }
 
     #[test]
+    fn a_rom_in_a_7z_unpacks_like_one_in_a_zip() {
+        let d = tmp("rom7z");
+        let src = d.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("Game (USA).sfc"), b"ROM").unwrap();
+        let packed = d.join("Game (USA).7z");
+        sevenz_rust::compress_to_path(&src, &packed).unwrap();
+        let target = d.join("Game (USA)");
+        unpack(&packed, &target, &d.join("st")).unwrap();
+        assert_eq!(fs::read(target.join("Game (USA).sfc")).unwrap(), b"ROM");
+    }
+
+    #[test]
     fn tar_gz_unpacks() {
         let d = tmp("tgz");
         let tpath = d.join("Game-Linux.tar.gz");

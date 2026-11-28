@@ -77,3 +77,12 @@ test('without declared types the console\'s own files are used as before', () =>
   const opts = pickerFor({ entry: { origin: 'NES' } });
   assert.deepEqual(Array.from(opts.filters[0].extensions), ['nes']);
 });
+
+test('a console whose ROMs can come in a zip takes them in a 7z too', () => {
+  const table = app.match(/^const SYSTEM_EXTS = \[[^]*?^\];/m)[0];
+  const c = vm.createContext({});
+  vm.runInContext(`${table}; this.lists = SYSTEM_EXTS.map(([, exts]) => exts);`, c);
+  const zipped = c.lists.filter((exts) => exts.includes('zip'));
+  assert.ok(zipped.length > 1);
+  for (const exts of zipped) assert.ok(exts.includes('7z'), exts.join(','));
+});
