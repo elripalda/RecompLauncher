@@ -1331,13 +1331,17 @@ pub fn pad_now() -> &'static str {
     *PAD.read().unwrap()
 }
 
-/// A name a game's environment may take: letters, digits and _, not starting with a digit, and
-/// never one of the launcher's own or the ones Windows and Linux need to find programs.
-pub fn env_name_ok(k: &str) -> bool {
+/// What any environment variable's name looks like: letters, digits and _, not starting with a
+/// digit, at most 64 characters.
+pub fn env_name_shape(k: &str) -> bool {
     let mut c = k.chars();
-    matches!(c.next(), Some(x) if x.is_ascii_alphabetic() || x == '_')
-        && c.all(|x| x.is_ascii_alphanumeric() || x == '_')
-        && k.len() <= 64
+    matches!(c.next(), Some(x) if x.is_ascii_alphabetic() || x == '_') && c.all(|x| x.is_ascii_alphanumeric() || x == '_') && k.len() <= 64
+}
+
+/// A name a game's environment may take: the right shape, and never one of the launcher's own or
+/// the ones Windows and Linux need to find programs.
+pub fn env_name_ok(k: &str) -> bool {
+    env_name_shape(k)
         && !k.to_ascii_uppercase().starts_with("RECOMPLAUNCHER")
         && !matches!(k.to_ascii_uppercase().as_str(), "PATH" | "PATHEXT" | "SYSTEMROOT" | "WINDIR" | "COMSPEC" | "LD_PRELOAD" | "LD_LIBRARY_PATH" | "HOME" | "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP")
 }
