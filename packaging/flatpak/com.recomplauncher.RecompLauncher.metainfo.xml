@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.90.0-beta.70" date="2026-11-28">
+      <description>
+        <p>Xbox Live Arcade games are found in your game folders, launch options can set variables, setup shows the time left with Run in Background, the launcher gets through networks that block it by name, Steam overlay works from Steam shortcuts on Windows, and fixes for AppImages and crash logs.</p>
+      </description>
+    </release>
     <release version="0.90.0-beta.69" date="2026-11-25">
       <description>
         <p>Home follows the order set on the website with info boxes in your language, new consoles, one Save button for Coming Soon games, a Set Up by You pill and an Easy Setup switch for new games, safer cloud saves, clearer setup failures, and many fixes.</p>
