@@ -3656,5 +3656,6 @@
  "Won't Run": "Не запускается",
  "Your RecompStore Account": "Ваш аккаунт RecompStore",
  "Go Back to This Version": "Вернуться к этой версии",
- "Android Games": "Игры для Android"
+ "Android Games": "Игры для Android",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Чтобы задать игре ещё и переменные, напишите их перед %command%, как в Steam: NAME=value %command% --option."
 }

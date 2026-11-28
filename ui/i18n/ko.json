@@ -3656,5 +3656,6 @@
  "Won't Run": "실행 안 됨",
  "Your RecompStore Account": "내 RecompStore 계정",
  "Go Back to This Version": "이 버전으로 되돌리기",
- "Android Games": "Android 게임"
+ "Android Games": "Android 게임",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "게임에 변수도 설정하려면 Steam처럼 %command% 앞에 쓰세요: NAME=value %command% --option."
 }

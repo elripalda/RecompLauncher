@@ -3656,5 +3656,6 @@
  "Won't Run": "無法執行",
  "Your RecompStore Account": "你的 RecompStore 帳戶",
  "Go Back to This Version": "回到這個版本",
- "Android Games": "Android 遊戲"
+ "Android Games": "Android 遊戲",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "如需同時為遊戲設定變數，請像 Steam 一樣寫在 %command% 前面：NAME=value %command% --option。"
 }

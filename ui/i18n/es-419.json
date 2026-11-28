@@ -3646,5 +3646,6 @@
  "Your RecompStore Account": "Tu cuenta de RecompStore",
  "Go Back to This Version": "Volver a esta versión",
  "Players": "jugadores",
- "Android Games": "Juegos de Android"
+ "Android Games": "Juegos de Android",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Para definir también variables para el juego, escríbelas antes de %command%, como en Steam: NAME=value %command% --option."
 }

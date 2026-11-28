@@ -3656,5 +3656,6 @@
  "Won't Run": "起動しない",
  "Your RecompStore Account": "RecompStore アカウント",
  "Go Back to This Version": "このバージョンに戻す",
- "Android Games": "Android ゲーム"
+ "Android Games": "Android ゲーム",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "ゲームに環境変数も設定するには、Steam と同じように %command% の前に書きます: NAME=value %command% --option。"
 }
