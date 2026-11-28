@@ -10725,7 +10725,7 @@ function starModal() {
     if (x.dataset.x !== 'yes') return;
     starOpen();
     close();
-    toast(t('Thank you for the star!'));
+    toast(t('Thanks! Press Star at the top right.'));
   }, t('Star RecompLauncher on GitHub'));
 }
 function starBanner() {

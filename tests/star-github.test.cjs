@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const read = (f) => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8');
 const app = read('app.js'), html = read('index.html');
 
@@ -58,6 +59,32 @@ test('Settings > About always has the banner, and it opens the same window', () 
   assert.match(api.starBanner(), /data-act="star"/);
   assert.match(app, /\+ starBanner\(\)/);
   assert.match(app, /case 'star': return starModal\(\);/);
+});
+
+test('Big Picture has Star on GitHub in Settings > About, reachable with the pad', () => {
+  const tv = read('tv.js');
+  const about = tv.slice(tv.indexOf("${head(t('About'))}"), tv.indexOf('data-key="s:support"'));
+  assert.match(about, /<button type="button" class="tv-item tv-star" data-f data-key="s:star" data-tvact="star">/);
+  assert.match(tv, /case 'star': return starSheet\(\);/);
+});
+
+test('Big Picture\'s Star on GitHub sheet goes through the same starOpen', () => {
+  const tv = read('tv.js');
+  let shown = null, opened = 0;
+  const ctx = vm.createContext({
+    t: (s) => s, esc: (s) => s, GH_SVG: () => '', STAR_SVG: () => '', toast() {},
+    sheet: (title, items, cls, head) => { shown = { items, head }; },
+    starOpen: () => { opened++; },
+  });
+  vm.runInContext(tv.match(/^ {2}function starSheet\(\) \{[^]*?^ {2}\}/m)[0].replace('function starSheet', 'globalThis.starSheet = function'), ctx);
+  ctx.starSheet();
+  assert.match(shown.head, /Sign in to GitHub, then press Star at the top right\./);
+  assert.match(shown.head, /Or star it later from your PC\./);
+  assert.equal(shown.items[0].label, 'Star on GitHub');
+  shown.items[0].run();
+  assert.equal(opened, 1);
+  shown.items[1].run();
+  assert.equal(opened, 1);
 });
 
 test('the sidebar button sits above the line over the account', () => {
