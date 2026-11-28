@@ -61,7 +61,7 @@ fn pick_setup(dir: &Path) -> Option<PathBuf> {
                 let p = e.path();
                 if p.is_dir() {
                     next.push(p);
-                } else if p.extension().map(|x| x.eq_ignore_ascii_case("exe") || x.eq_ignore_ascii_case("msi")).unwrap_or(false) {
+                } else if !install::mac_metadata(&p) && p.extension().map(|x| x.eq_ignore_ascii_case("exe") || x.eq_ignore_ascii_case("msi")).unwrap_or(false) {
                     found.push((p.clone(), e.metadata().map(|m| m.len()).unwrap_or(0)));
                 }
             }
@@ -256,7 +256,7 @@ fn programs(root: &Path, names: &[&str], guess: Option<&Path>) -> Vec<String> {
                 let p = e.path();
                 if p.is_dir() {
                     next.push(p);
-                } else if p.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false) {
+                } else if !install::mac_metadata(&p) && p.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false) {
                     let rel = p.strip_prefix(root).map(Path::to_path_buf).unwrap_or_default();
                     let n = rel.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
                     if n.starts_with("unins") {
@@ -469,6 +469,28 @@ mod tests {
         std::fs::create_dir_all(&e).unwrap();
         std::fs::write(e.join("crashpad_handler.exe"), b"x").unwrap();
         assert_eq!(programs(&e, &["NX2navi"], None), vec!["crashpad_handler.exe".to_string()]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_program_list_leaves_out_a_macs_metadata_files() {
+        let d = std::env::temp_dir().join(format!("rl-inst-appledouble-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Game.exe"), vec![0u8; 2_000_000]).unwrap();
+        std::fs::write(d.join("._Game.exe"), b"\x00\x05\x16\x07AppleDouble").unwrap();
+        assert_eq!(programs(&d, &["Game"], None), vec!["Game.exe".to_string()]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_macs_metadata_file_is_never_the_downloaded_setup() {
+        let d = std::env::temp_dir().join(format!("rl-inst-appledouble-setup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Game-setup.exe"), vec![0u8; 1_000]).unwrap();
+        std::fs::write(d.join("._Game-setup.exe"), vec![0u8; 4_000]).unwrap();
+        assert_eq!(pick_setup(&d), Some(d.join("Game-setup.exe")));
         let _ = std::fs::remove_dir_all(&d);
     }
 

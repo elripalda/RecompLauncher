@@ -42,5 +42,6 @@ test('a setup finished in the background says so only when its window is closed'
   const app = read('app.js');
   const src = fn(app, 'onSetupFinished');
   assert.match(src, /if \(!watching\) toast\(tf\('\{name\} is ready to play!'/);
-  assert.match(src, /su\.update && !su\.update_copy && !su\.update_optional/);
+  // (The update is one of its files now, picked with the rest: nothing is left to ask after.)
+  assert.doesNotMatch(src, /su\.update\b/);
 });

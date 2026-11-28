@@ -12,6 +12,10 @@
   <a href="https://github.com/elripalda/RecompLauncher/releases"><img src="https://img.shields.io/github/v/release/elripalda/RecompLauncher?include_prereleases&style=flat&color=34f2e8&label=Latest" alt="Latest version"></a>
 </p>
 
+<p align="center">
+  <b>English</b> · <a href="README.vi.md">Tiếng Việt</a>
+</p>
+
 ---
 
 RecompLauncher finds, installs, updates and plays PC recomps: native PC versions of console
@@ -22,7 +26,8 @@ the launcher sets it up.
 
 - **Catalog:** every recomp on recomplauncher.com, with screenshots, what it needs and how it
   runs for other players.
-- **Coming Soon:** the recomps on the way, with Notify Me for an email when each comes out, and
+- **Coming Soon:** the recomps on the way. Save one and the launcher tells you when it comes out
+  (by email too when you're signed in), and
   Request a Recomp to ask for a project on GitHub or GitLab.
 - **Install and update in one click,** straight from the developer's own GitHub release. Every
   download is checked against GitHub's checksum.
@@ -69,11 +74,17 @@ and run it. While the beta is new, Windows may say "Windows protected your PC". 
 **More info**, then **Run anyway**. Each release lists its file's SHA-256 so you can check you
 have the real one.
 
-In **Settings > General > When you close the window**, **Run in background** controls whether
+In **Settings > General > When you close the window**, **Close to tray** controls whether
 closing the window keeps RecompLauncher in the system tray. Turn it off to exit the launcher
 and its background work when you close the window. **Quit RecompLauncher** always exits.
 The setting is also available in Big Picture mode. It is off by default for new installations;
 existing saved choices are kept. Games already running keep playing.
+
+**Settings > General > Starting up > Start with your PC** starts RecompLauncher when you sign
+in, waiting in the system tray. The entry goes in your system's own startup list (Startup apps
+on Windows, Autostart on KDE Plasma and GNOME, Login Items on a Mac), so you can turn it off
+there too. The Flatpak asks your desktop through its Background portal. On a Mac (macOS 13 or
+newer) the window opens at login instead. It is off by default and also in Big Picture mode.
 
 ## No game files
 
@@ -92,7 +103,8 @@ If a game crashes, send the log from the crash screen. Every one helps.
 
 Add a `recomplauncher.json` to your release and players get one-click setup, your settings inside
 the launcher, and Big Picture mode support. The guide is in [docs/DEVELOPERS.md](docs/DEVELOPERS.md),
-with examples in [docs/examples](docs/examples).
+with examples in [docs/examples](docs/examples). [docs/ADD-SUPPORT.md](docs/ADD-SUPPORT.md) is the
+checklist for adding support to a recomp.
 
 ## Source code
 

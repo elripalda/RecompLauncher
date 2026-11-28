@@ -1,6 +1,6 @@
 [package]
 name = "recomplauncher"
-version = "0.90.0-beta.66"
+version = "0.90.0-beta.69"
 description = "RecompLauncher: recompiled and decompiled PC games"
 authors = ["Ripalda"]
 license = "GPL-3.0-or-later"
@@ -49,19 +49,23 @@ backhand = { version = "0.21", default-features = false, features = ["gzip", "xz
 dwarfs = { version = "0.2", default-features = false, features = ["zstd"] }
 dirs = "5"
 thiserror = "1"
-tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-global-shortcut = "2"
 fs2 = "0.4"
 crc32fast = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-arboard = { version = "3", default-features = false, features = ["image-data"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-discord-rich-presence = "1"
 regex-lite = "0.1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 plist = "1"
 tauri-plugin-deep-link = "2"
+
+# Desktop only: Android and iOS have no tray, global shortcuts, second copies, Discord client or
+# desktop clipboard, and read controllers through the window (navigator.getGamepads).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+discord-rich-presence = "1"
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 # Controllers. SDL 3 is built from source and linked in, with only its joystick and HIDAPI parts:
 # no SDL library to ship, and nothing needed on the player's system.
 sdl3-sys = { version = "=0.7.2", default-features = false, features = ["build-from-source-static", "no-default-subsystems", "sdl-joystick", "sdl-hidapi", "sdl-unix-console-build"] }
@@ -77,10 +81,17 @@ sdl3-sys = { version = "=0.7.2", default-features = false, features = ["no-sdl-l
 xcap = { version = "0.9", features = ["image", "wgc"] }
 webview2-com = "0.39"
 windows-core = "0.62"
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_Security", "Win32_Security_Credentials", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "=2.0.2"
+# The Flatpak asks the Background portal to start it at sign-in (autostart.rs). Already in the
+# build for the single-instance and notification plugins.
+zbus = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Login Items for Settings → Start with your PC (autostart.rs).
+objc2-service-management = { version = "0.3.2", default-features = false, features = ["std", "objc2", "objc2-foundation", "SMAppService"] }
 
 [profile.release]
 codegen-units = 1

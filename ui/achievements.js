@@ -350,21 +350,38 @@ Your account's Terms and Privacy still apply.`;
     try { const r = await invoke('ach_board', { game: game || null, by }); if (Array.isArray(r.board) && !same(r.board, A.boards[key])) { A.boards[key] = r.board; redraw(); } } catch (e) { /* offline */ }
   }
 
-  // A points badge on the sidebar's Achievements, for testers.
+  // The sidebar's Achievements has no number on it (players found the points count noisy).
   function achSide() {
-    const nav = document.querySelector('.side .nav[data-go="achievements"]');
-    if (nav) {
-      let b = nav.querySelector('.ach-side-n');
-      const pts = A.allowed && A.profile ? Number(A.profile.points) || 0 : 0;
-      if (pts && !b) { b = document.createElement('span'); b.className = 'ach-side-n'; nav.appendChild(b); }
-      if (b) { if (pts) { b.textContent = fmtN(pts); b.title = tf('{n} Ranked points', { n: fmtN(pts) }); } else b.remove(); }
-    }
+    const old = document.querySelector('.side .nav[data-go="achievements"] .ach-side-n');
+    if (old) old.remove();
     // Opening the page asks the website again, so an approval switches it over by itself.
     const on = S.view === 'achievements';
     if (on && !A.onPage) loadStatus(true);
     A.onPage = on;
   }
   window.achSide = achSide;
+  // (Beta 67) The game page's stats strip: this game's achievements for its Achievements box, or null
+  // when the account doesn't have them (or they haven't come yet: asked for once, in the background).
+  // -> { of, got, pct, points }
+  const stripAsk = new Set();
+  window.achStrip = (id) => {
+    if (!A.allowed) return null;
+    const d = A.games[id];
+    if (!d) {
+      if (!stripAsk.has(id)) {
+        stripAsk.add(id);
+        invoke('ach_game', { id, fresh: false }).then((r) => { if (!A.games[id]) A.games[id] = r; if (S.view === 'game' && S.arg === id) refreshGame(); }).catch(() => {});
+      }
+      return null;
+    }
+    if (d.allowed === false) return null;
+    const list = d.list && Array.isArray(d.list.achievements) ? d.list.achievements : [];
+    const main = list.filter((x) => !isBonus(x));
+    const ids = new Set((d.unlocked || []).map(Number));
+    const of = list.length ? main.length : Number(d.count) || 0;
+    const got = list.length ? main.filter((x) => ids.has(Number(x.id))).length : Math.min(ids.size, of);
+    return { of, got, pct: of ? Math.round((got / of) * 100) : 0, points: Number(d.total) || 0 };
+  };
 
   const user = () => (S.account && S.account.signedIn && S.account.user) || null;
   const cat = (id) => byId(id) || null;

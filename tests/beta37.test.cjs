@@ -176,7 +176,7 @@ test('one small shared grain tile covers the big gradients and blurred art', () 
   assert.ok(png.length < 64 * 1024, 'stays small');
   const css = read('app.css'), tvcss = read('tv.css'), ov = read('overlay.css');
   assert.match(css, /--noise:url\(img\/noise\.png\)/);
-  for (const sel of ['.gp-amb::after', '.slide::after', '.upd-start', '.dl-hero', '.mc', '.beta-hero']) assert.ok(css.includes(`${sel}{`) && new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(css), sel);
+  for (const sel of ['.gp-amb::after', '.slide::after', '.upd-start', '.mc', '.beta-hero']) assert.ok(css.includes(`${sel}{`) && new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(css), sel);
   for (const sel of ['.tv-full::after', '.tv-glow', '.tv-boot']) assert.ok(new RegExp(`(^|\\n)${sel.replace(/[.*:]/g, '\\$&')}\\{[^}]*var\\(--noise\\)`).test(tvcss), sel);
   assert.match(tvcss, /\.tv-ambient::after/);
   assert.match(ov, /\.stage\{[^}]*url\(img\/noise\.png\)/);

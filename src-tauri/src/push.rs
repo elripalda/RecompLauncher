@@ -94,6 +94,14 @@ fn quiet_for(_: &Push) -> Duration {
     Duration::from_secs(6 * 3600)
 }
 
+/// The project a pushed game's releases are asked of: the one the catalog lists now, as the update
+/// check reads them (listed_repo), not the one it was installed from. A project that moved puts its
+/// new releases in the new one.
+fn repo_for(st: &App, g: &crate::library::Installed) -> String {
+    let cat = crate::cached_catalog(st);
+    crate::listed_repo(g, crate::catalog::app(&cat, &g.id))
+}
+
 async fn act(app: AppHandle, p: Push) {
     tokio::time::sleep(spread()).await;
     match p {
@@ -113,7 +121,7 @@ async fn act(app: AppHandle, p: Push) {
             let g = st.lib.lock().unwrap().installed.get(&id).cloned();
             let Some(g) = g.filter(|g| !g.repo.is_empty() && !g.local) else { return };
             // Its releases looked at again now, past the usual six-hour copy.
-            if crate::catalog::releases_refresh(&st.http, &st.dir, &g.repo).await.map(|f| f.offline).unwrap_or(true) {
+            if crate::catalog::releases_refresh(&st.http, &st.dir, &repo_for(&st, &g)).await.map(|f| f.offline).unwrap_or(true) {
                 return;
             }
             let _ = app.emit("push", json!({"type": "game", "id": id}));
@@ -188,6 +196,32 @@ pub fn start(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    /// A game installed from `old/proj`, and the catalog on disk listing it as `listed` (none: no repo).
+    fn moved_game(name: &str, listed: Option<&str>) -> (crate::App, crate::library::Installed) {
+        let d = std::env::temp_dir().join(format!("rl-push-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("cache")).unwrap();
+        let entry = match listed {
+            Some(r) => serde_json::json!({ "id": "g", "repo": r }),
+            None => serde_json::json!({ "id": "g" }),
+        };
+        std::fs::write(d.join("cache/pc-catalog.json"), serde_json::json!({ "apps": [entry] }).to_string()).unwrap();
+        let g = crate::library::Installed { id: "g".into(), repo: "old/proj".into(), ..Default::default() };
+        (crate::tests::app_in(&d, crate::library::Library::default()), g)
+    }
+
+    #[test]
+    fn a_pushed_game_is_asked_of_the_project_the_catalog_lists_now() {
+        let (st, g) = moved_game("moved", Some("new/proj"));
+        assert_eq!(repo_for(&st, &g), "new/proj");
+    }
+
+    #[test]
+    fn a_pushed_game_the_catalog_lists_no_project_for_keeps_its_own() {
+        let (st, g) = moved_game("unlisted", None);
+        assert_eq!(repo_for(&st, &g), "old/proj");
+    }
+
     use super::*;
 
     #[test]

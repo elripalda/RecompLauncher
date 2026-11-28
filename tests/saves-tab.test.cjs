@@ -33,7 +33,14 @@ function tab(S) {
     ${line(account, 'const FROM = ')}
     ${line(account, 'const SET_ICON = ')}
     ${line(account, 'const spotSet = ')}
+    ${line(account, 'const FROM_CHANGED = ')}
+    ${block(account, 'const NAMED_UNUSED = ')}
+    ${line(account, 'const USE_NAMED = ')}
+    ${line(account, 'const overrideOn = ')}
+    ${line(account, 'const spotFrom = ')}
     ${line(account, 'const CURRENT_ICON = ')}
+    ${line(account, 'const NEXT_ICON = ')}
+    ${line(account, 'const SYNCS_ON_PLAY = ')}
     ${line(account, 'const BIN_ICON = ')}
     ${line(account, 'const HISTORY_SHOWN = ')}
     const MARK_ICONS = { pc: '', cloud: '', other: '' };
@@ -46,6 +53,7 @@ function tab(S) {
     ${block(account, 'function historyCard(')}
     ${block(account, 'function whereCard(')}
     ${block(account, 'function spotRow(')}
+    ${block(account, 'function namedRow(')}
     return { saveHistory, historyShown, historyToggle, historyCard, whereCard };`)(S);
 }
 const fresh = () => ({ savesMore: new Set() });
@@ -147,6 +155,65 @@ test('a folder the player picked can be changed, or more added', () => {
   assert.match(html, /data-act="saves-place-add"/);
 });
 
+// ---------- the player's folder in place of the named one (Easy Setup skipped) ----------
+const offered = { on: false, by: 'developer', path: '/games/g/save' };
+const changed = { on: true, by: 'developer', path: '/games/g/save' };
+const mine = { ...myFolder, path: '/elsewhere/save' };
+
+test('with Easy Setup skipped, a folder its developer set can be changed', () => {
+  const html = tab(fresh()).whereCard('g', { spots: [devFolder], override: offered });
+  assert.match(html, /data-act="saves-place"/);
+});
+
+test('with Easy Setup skipped, a folder its developer set is still not one of several', () => {
+  assert.doesNotMatch(tab(fresh()).whereCard('g', { spots: [devFolder], override: offered }), /data-act="saves-place-add"/);
+});
+
+test('a changed folder says the player changed it', () => {
+  assert.match(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /You changed this folder/);
+});
+
+test('a changed folder can be changed again', () => {
+  assert.match(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /data-act="saves-place"/);
+});
+
+test('a changed folder offers no more folders', () => {
+  assert.doesNotMatch(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /data-act="saves-place-add"/);
+});
+
+test('while changed, the developer\'s folder stays on the list, greyed, without the shield', () => {
+  const html = tab(fresh()).whereCard('g', { spots: [mine], override: changed });
+  assert.match(html, /class="set-row svp-unused"><div class="k"><b class="path">\/games\/g\/save/);
+  assert.doesNotMatch(html, /svp-set/);
+});
+
+test('while changed, the developer\'s folder can be used again', () => {
+  assert.match(tab(fresh()).whereCard('g', { spots: [mine], override: changed }), /data-act="saves-place-named"/);
+});
+
+test('a folder RecompLauncher set and the player replaced says RecompLauncher names it', () => {
+  const html = tab(fresh()).whereCard('g', { spots: [mine], override: { ...changed, by: 'catalog' } });
+  assert.match(html, /RecompLauncher names this folder/);
+});
+
+test('picking a folder goes in place of the named one only when that is offered', () => {
+  assert.match(line(account, 'const placeCommand = '), /s && s\.override \? 'saves_set_override' : 'saves_set_place'/);
+});
+
+test('the desktop and Big Picture go back to the named folder the same way', () => {
+  assert.match(block(account, "case 'saves-place-named':"), /invoke\('saves_set_override', \{ id, path: null \}\)/);
+  assert.match(block(tv, "case 'gs-named':"), /invoke\('saves_set_override', \{ id, path: null \}\)/);
+});
+
+test('Big Picture offers Open and Change on a folder the player may change', () => {
+  assert.match(block(tv, 'function savesSpotItem('), /sv\.override \? 'gs-spot' : 'gs-open'/);
+  assert.match(block(tv, "case 'gs-spot':"), /pickSavesFolder\(id\)/);
+});
+
+test('Big Picture lists the named folder while the player\'s own is used', () => {
+  assert.match(tv, /\$\{overrideOn\(sv\) \? savesNamedItem\(id, sv\.override\) : ''\}/);
+});
+
 // ---------- no dead ends ----------
 // Every real situation a game's saves can be in, and what gets the player out of it: the act of
 // the status card's button, or 'by itself' when the launcher sorts it out without them (the next
@@ -231,4 +298,84 @@ test('any cloud save but the newest can be deleted', () => {
 test('a save only on this PC has nothing to delete from the cloud', () => {
   const rows = tab(fresh()).saveHistory({ local: [local(100, 'a')], cloud: [] });
   assert.equal(rows[0].deletable, false);
+});
+
+// ---------- a newer save from another PC ----------
+// Play puts it in place by itself, so the status and its row say so instead of offering Restore.
+const incoming = new Function(`
+  const N_ = (x) => x, t = (x) => x, tf = (x, o) => x.replace(/\\{(\\w+)\\}/g, (m, k) => o[k]);
+  const sinceText = () => '25 min ago';
+  ${block(account, 'function incomingSave(')}
+  ${block(account, 'function incomingBadge(')}
+  return { incomingSave, incomingBadge };`)();
+const incomingSave = incoming.incomingSave;
+const deck = cloud(200, 'new', 'v2', 'Steam Deck');
+const fromDeck = { local: [local(100, 'old')], cloud: [deck, cloud(100, 'old', 'v1')], current: 'old', incoming: deck, here: 'Desk PC', busy: false };
+
+test('the save Play brings in says it syncs when you press Play, not Restore', () => {
+  const html = tab(fresh()).historyCard('g', fromDeck, {}, false);
+  const newest = html.slice(0, html.indexOf('at 100'));
+  assert.match(newest, /Syncs when you press Play/);
+  assert.doesNotMatch(newest, /data-act="saves-restore"/);
+});
+
+test('the status above Play names the PC the newer save came from', () => {
+  const b = incoming.incomingBadge(deck);
+  assert.equal(b.label, 'Newer save from Steam Deck');
+  assert.equal(b.note, 'syncs when you press Play');
+});
+
+test('the badge above Play and the Saves tab read the same newer save', () => {
+  assert.match(block(account, 'function saveBadgeFor('), /incomingSave\(S\.saveNext\[sid\]/);
+  assert.match(block(account, 'function saveStatusCard('), /incomingSave\(S\.saveNext\[sid\]/);
+  assert.match(block(account, 'async function loadSaves('), /S\.saveNext\[saveIdOf\(id\)\] = S\.saves\[id\]\.incoming/);
+});
+
+test('opening a game page asks the cloud only when this PC thinks it is up to date', () => {
+  assert.match(block(account, 'async function loadSaveStatus('), /st\.state === 'up-to-date' \|\| st\.state === 'none'\)\) peekSave\(sid\)/);
+});
+
+test('older saves keep their Restore', () => {
+  const s = { ...fromDeck, local: [local(100, 'old'), local(50, 'older')] };
+  const html = tab(fresh()).historyCard('g', s, {}, false);
+  assert.match(html.slice(html.indexOf('at 50')), /data-act="saves-restore"/);
+});
+
+test('the save in the game now is never the one coming in', () => {
+  const rows = tab(fresh()).saveHistory({ ...fromDeck, current: 'new' });
+  assert.deepEqual(rows.map((r) => r.incoming), [false, false]);
+});
+
+test('the status says a newer save is coming when this PC thinks it is up to date', () => {
+  assert.equal(incomingSave(deck, { state: 'up-to-date' }, undefined, false).device, 'Steam Deck');
+});
+
+test('a new PC with no saves yet is told the cloud save syncs on Play', () => {
+  assert.equal(incomingSave(deck, { state: 'none' }, undefined, false).v, 'v2');
+});
+
+test('a conflict still asks to choose a save', () => {
+  assert.equal(incomingSave(deck, { state: 'conflict' }, undefined, false), null);
+});
+
+test('while the save comes down, the status says that instead', () => {
+  assert.equal(incomingSave(deck, { state: 'up-to-date' }, 'down', false), null);
+});
+
+test('while the game runs, the status says that instead', () => {
+  assert.equal(incomingSave(deck, { state: 'up-to-date' }, undefined, true), null);
+});
+
+test('a game nobody said the save folder of still says so', () => {
+  assert.equal(incomingSave(deck, { state: 'up-to-date', known: false }, undefined, false), null);
+});
+
+test('the newer save can be synced now with Sync Now, on the desktop and in Big Picture', () => {
+  assert.match(line(account, 'const INCOMING_STEP = '), /act: 'saves-sync', label: N_\('Sync Now'\)/);
+  assert.match(line(tv, 'const TV_STEP = '), /'saves-sync': 'gs-sync'/);
+  assert.match(tv, /const step = next \? INCOMING_STEP : saveNextStep\(/);
+});
+
+test('Big Picture gives the save coming in no Restore either', () => {
+  assert.match(tv, /const act = r\.current \|\| r\.incoming \? '' :/);
 });

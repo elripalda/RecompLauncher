@@ -11,10 +11,10 @@
 use crate::{ingame, App};
 use serde::Serialize;
 use sdl3_sys::everything as sdl;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
@@ -134,6 +134,43 @@ impl Axes {
             out.push((true, name(dir)));
         }
         out
+    }
+}
+
+/// Buttons already held when the launcher's window gets focus back, such as the A that quit a
+/// game: they press nothing in the launcher until they're let go. By name, like every press past
+/// SDL's thread, so the same button on two pads (one through Steam Input) counts once.
+#[derive(Default)]
+struct HeldOver {
+    focused: bool,
+    down: HashSet<&'static str>,
+    stale: HashSet<&'static str>,
+}
+
+impl HeldOver {
+    /// The window's focus now. Gaining it makes everything held stale.
+    fn focus(&mut self, focused: bool) {
+        if focused && !self.focused {
+            self.stale = self.down.clone();
+        }
+        self.focused = focused;
+    }
+
+    /// A press or a release came in. A release makes the button fresh again.
+    fn saw(&mut self, ev: &Ev) {
+        match *ev {
+            Ev::Down(n, _) => {
+                self.down.insert(n);
+            }
+            Ev::Up(n) => {
+                self.down.remove(n);
+                self.stale.remove(n);
+            }
+        }
+    }
+
+    fn stale(&self, name: &str) -> bool {
+        self.stale.contains(name)
     }
 }
 
@@ -259,6 +296,8 @@ impl Reader {
                     if let Some(o) = open.remove(&unsafe { ev.gdevice.which }) {
                         // SAFETY: opened above, closed once.
                         unsafe { sdl::SDL_CloseGamepad(o.pad) };
+                        // A controller that's gone isn't tilting anything.
+                        RIGHT_STICK.iter().for_each(|v| v.store(0, Ordering::Relaxed));
                         list(open);
                     }
                 }
@@ -275,6 +314,7 @@ impl Reader {
                 sdl::SDL_EVENT_GAMEPAD_AXIS_MOTION => {
                     let a = unsafe { ev.gaxis };
                     let Some(o) = open.get_mut(&a.which) else { continue };
+                    keep_right_stick(sdl::SDL_GamepadAxis(a.axis as i32), a.value);
                     for (down, n) in o.axes.moved(sdl::SDL_GamepadAxis(a.axis as i32), a.value) {
                         let _ = tx.send(if down { Ev::Down(n, o.kind) } else { Ev::Up(n) });
                     }
@@ -292,6 +332,7 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
             RUNNING.store(false, Ordering::Relaxed);
             return;
         }
+        READY.store(true, Ordering::Relaxed);
         let mut reader = Reader::default();
         while !STOP.load(Ordering::Relaxed) {
             reader.poll(&tx);
@@ -302,6 +343,7 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
             let playing = PLAYING.load(Ordering::Relaxed);
             std::thread::sleep(std::time::Duration::from_millis(if idle() { 60 } else if playing && !FOCUSED.load(Ordering::Relaxed) { 25 } else { 10 }));
         }
+        READY.store(false, Ordering::Relaxed);
         reader.close();
         // SAFETY: the last SDL call, on SDL's thread.
         unsafe { sdl::SDL_Quit() };
@@ -315,6 +357,44 @@ fn read_sdl(tx: Sender<Ev>, mappings: PathBuf) {
 
 /// SDL's thread is running (or starting).
 static RUNNING: AtomicBool = AtomicBool::new(false);
+/// SDL started and is reading controllers.
+static READY: AtomicBool = AtomicBool::new(false);
+/// The right stick's last position (SDL's -32768..32767, Y positive downwards), for Big Picture's
+/// box tilt: on Windows the window can't ask for its own controllers without upsetting them
+/// (see `window_stays_off`).
+static RIGHT_STICK: [AtomicI16; 2] = [AtomicI16::new(0), AtomicI16::new(0)];
+
+fn keep_right_stick(axis: sdl::SDL_GamepadAxis, value: i16) {
+    use sdl::SDL_GamepadAxis as A;
+    let i = match axis {
+        A::RIGHTX => 0,
+        A::RIGHTY => 1,
+        _ => return,
+    };
+    RIGHT_STICK[i].store(value, Ordering::Relaxed);
+}
+
+/// The right stick, -1..1 each way, Y positive downwards (as the browser's gamepads have it).
+pub fn right_stick() -> [f32; 2] {
+    RIGHT_STICK.each_ref().map(|v| (v.load(Ordering::Relaxed) as f32 / 32767.0).clamp(-1.0, 1.0))
+}
+
+/// Whether the window must leave controllers to the launcher, waiting a moment if SDL is still
+/// starting. On Windows, while SDL reads them, the window must not ask for gamepads
+/// (navigator.getGamepads): that starts WebView2's own controller reading, raw input beside
+/// SDL's XInput, and that pair switches off a controller reconnecting through the Xbox Wireless
+/// Adapter (issue #496). Elsewhere the window's reading does no harm and stays as the fallback
+/// for a controller SDL doesn't open.
+pub fn window_stays_off() -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    let t = std::time::Instant::now();
+    while RUNNING.load(Ordering::Relaxed) && !READY.load(Ordering::Relaxed) && t.elapsed() < std::time::Duration::from_secs(3) {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    READY.load(Ordering::Relaxed)
+}
 /// The launcher is closing: SDL's thread closes the controllers and stops.
 static STOP: AtomicBool = AtomicBool::new(false);
 
@@ -346,12 +426,15 @@ pub fn start(app: AppHandle) {
         let mut last_name = "";
         // A direction held down repeats, like a keyboard: after 0.4 s, then every 0.12 s.
         let mut held: Option<(&'static str, &'static str, Instant, Instant)> = None;
+        let mut held_over = HeldOver::default();
         loop {
-            let ev = match rx.recv_timeout(Duration::from_millis(30)) {
+            let got = rx.recv_timeout(Duration::from_millis(30));
+            held_over.focus(FOCUSED.load(Ordering::Relaxed));
+            let ev = match got {
                 Ok(ev) => ev,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                     if let Some((t, k)) = menu_since {
-                        if t.elapsed() > Duration::from_millis(900) {
+                        if t.elapsed() > Duration::from_millis(900) && !waits_for_release(&app, &held_over, "menu") {
                             menu_since = None;
                             send(&app, "menu-hold", k);
                         }
@@ -365,7 +448,8 @@ pub fn start(app: AppHandle) {
                         }
                     }
                     if let Some((n, k, since, last)) = held {
-                        if since.elapsed() > Duration::from_millis(400) && last.elapsed() > Duration::from_millis(120) {
+                        let due = since.elapsed() > Duration::from_millis(400) && last.elapsed() > Duration::from_millis(120);
+                        if due && !waits_for_release(&app, &held_over, n) {
                             held = Some((n, k, since, Instant::now()));
                             send(&app, n, k);
                         }
@@ -374,6 +458,11 @@ pub fn start(app: AppHandle) {
                 }
                 Err(_) => return,
             };
+            held_over.saw(&ev);
+            let stale = matches!(ev, Ev::Down(n, _) if waits_for_release(&app, &held_over, n));
+            if stale {
+                continue;
+            }
             let (name, kind) = match ev {
                 Ev::Up("view") => {
                     view_held = false;
@@ -427,6 +516,12 @@ pub fn start(app: AppHandle) {
             send(&app, name, kind);
         }
     });
+}
+
+/// A button held since before the launcher's window got focus presses nothing there. The quick
+/// menu isn't that window: it takes every press as it always has.
+fn waits_for_release(app: &AppHandle, held_over: &HeldOver, name: &str) -> bool {
+    held_over.stale(name) && !app.state::<App>().overlay_open.load(Ordering::Relaxed)
 }
 
 /// The quick menu gets the controller while it's up, focused or not (Windows may not let it take
@@ -598,6 +693,11 @@ mod tests {
         r.poll(&tx);
         let got: Vec<Ev> = rx.try_iter().collect();
         assert_eq!(got, vec![Ev::Down("a", "xbox"), Ev::Down("view", "xbox"), Ev::Up("a"), Ev::Down("right", "xbox")]);
+        // The right stick is kept for Big Picture's tilt, not sent as presses.
+        axis(x, A::RIGHTY, -32768);
+        r.poll(&tx);
+        assert_eq!(right_stick(), [0.0, -1.0]);
+        assert!(rx.try_iter().next().is_none());
 
         // A Switch Pro Controller: its A is on the right.
         let (nid, n) = attach(0x057E, 0x2009);
@@ -617,6 +717,7 @@ mod tests {
         }
         r.poll(&tx);
         assert_eq!(connected().iter().map(|p| p.kind).collect::<Vec<_>>(), vec!["nintendo"]);
+        assert_eq!(right_stick(), [0.0, 0.0]);
         // Closing the launcher closes the rest.
         r.close();
         assert!(connected().is_empty(), "{:?}", connected());
@@ -625,6 +726,29 @@ mod tests {
             assert!(sdl::SDL_DetachVirtualJoystick(nid));
             sdl::SDL_Quit();
         }
+    }
+
+    /// Only Windows has the Xbox Wireless Adapter trouble (#496): elsewhere the window keeps
+    /// its own controller reading as the fallback.
+    #[test]
+    #[cfg(not(windows))]
+    fn the_window_reads_controllers_outside_windows() {
+        assert!(!window_stays_off());
+    }
+
+    #[test]
+    fn a_held_across_focus_waits_for_its_release() {
+        let mut h = HeldOver::default();
+        // The A that quit the game, still down as the launcher comes back.
+        h.saw(&Ev::Down("a", "xbox"));
+        h.focus(true);
+        assert!(h.stale("a"));
+        h.saw(&Ev::Down("a", "xbox"));
+        assert!(h.stale("a"));
+        h.saw(&Ev::Up("a"));
+        // Pressed again: a real press.
+        h.saw(&Ev::Down("a", "xbox"));
+        assert!(!h.stale("a"));
     }
 
     #[test]

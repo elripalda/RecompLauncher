@@ -31,6 +31,12 @@ node --test tests/*.test.cjs   # the UI tests
 - Tests should be simple and explicit, one thing per test.
 - Headings, buttons and labels in the launcher use Title Case.
 
+## Fixes for one recomp go in that recomp
+
+The launcher is fixed for the launcher's own problems, not for the quirks of one recomp it runs. If a recomp has the wrong folder layout in its release, a broken AppImage entry point, an odd file name or anything else that only that recomp does, fix it in the recomp's own project (or ask its developer to), not here. The recomp rises to the standard; the launcher doesn't add special code for a single recomp. [docs/DEVELOPERS.md](docs/DEVELOPERS.md) is the standard, and [docs/ADD-SUPPORT.md](docs/ADD-SUPPORT.md) is how to bring a recomp up to it. Pull requests that add a fix for one recomp won't be merged.
+
+If many recomps hit the same problem and the guide doesn't cover it, open an issue first, so the standard can be changed for everyone.
+
 ## Changing what developers can write
 
 If your change adds or changes something a developer can put in `recomplauncher.json`, update [docs/recomplauncher.schema.json](docs/recomplauncher.schema.json) and the matching guide ([docs/DEVELOPERS.md](docs/DEVELOPERS.md) or [docs/SETUP-INPUTS.md](docs/SETUP-INPUTS.md)) in the same pull request, with a small example. `cargo test` fails when the schema and the code don't match.

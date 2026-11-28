@@ -63,17 +63,28 @@ test('the Library passes the installed release to its tiles only with the settin
   assert.match(grid, /ver: showVer\(\) \? x\.g\.tag \|\| '' : null/);
 });
 
-test('a game page before install shows the latest version with its scan, then the stars', () => {
-  const body = fn('gameBody');
-  assert.match(body, /\[t\('Version'\), a\.version \|\| '—'\], \[starsLabel\(a\.repo\)/);
+test('a game page before install shows the latest version with its scan right after it', () => {
+  const strip = fn('gameStrip');
+  assert.match(strip, /ver = esc\(a\.version \|\| '—'\) \+ \(tag \? scanPill\(\{ id, tag \}\) : ''\)/);
 });
 
 test('a game page before install looks up the scan by the release tag, not the version', () => {
-  const body = fn('gameBody');
-  assert.match(body, /const verTag = inst \? \(inst\.local \? '' : inst\.tag\) : a\.tag \|\| a\.version;/);
+  const strip = fn('gameStrip');
+  assert.match(strip, /const tag = a\.tag \|\| a\.version;/);
+});
+
+test('with an update ready, the strip shows where it goes and the update\'s own check', () => {
+  const strip = fn('gameStrip');
+  assert.match(strip, /scanPill\(\{ id, tag: up, update: true \}\)/);
 });
 
 test('a Library game that is only saved shows its latest version', () => {
   const grid = fn('libraryGrid');
   assert.match(grid, /x\.saved \? tile\(x\.a, \{ wide, w, ver: showVer\(\) \? x\.a\.version \|\| '' : null/);
+});
+
+test('the Downloads page keeps its number boxes styled after the game page moved to its own strip', () => {
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'ui', 'app.css'), 'utf8');
+  assert.match(css, /\.stats\{display:grid;/);
+  assert.match(css, /\.stats>div\{[^}]*border:1px solid var\(--line\)/);
 });

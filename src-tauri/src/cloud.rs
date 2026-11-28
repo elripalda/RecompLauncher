@@ -114,6 +114,51 @@ pub fn signed_in(dir: &Path) -> bool {
     load(dir).is_some()
 }
 
+/// The id used for an account signed in without one (account_uid).
+const NO_UID: &str = "signed-in-without-id";
+
+/// The signed-in account's id, empty when nobody is. For the save notes (saves::state), which
+/// are read often: it reads account.json only, never the sealed token.
+pub(crate) fn account_uid(dir: &Path) -> String {
+    let _guard = ACCOUNT_FILE.lock().unwrap();
+    let Some(a) = std::fs::read(file(dir)).ok().and_then(|b| serde_json::from_slice::<Account>(&b).ok()) else {
+        return String::new();
+    };
+    if a.token.is_empty() && a.sealed.is_empty() {
+        return String::new();
+    }
+    // Signed in, but the website gave no id: still somebody, so what this account syncs sticks.
+    // Its notes start fresh once an id comes, which is the safe first-sync path.
+    if a.user.uid.is_empty() {
+        return NO_UID.into();
+    }
+    a.user.uid
+}
+
+/// Tests sign in by writing account.json as it is kept off Windows (a plain token). Only
+/// `account_uid` reads it there, so no test reaches Windows' Credential Manager.
+#[cfg(test)]
+pub(crate) fn sign_in_for_tests(dir: &Path, uid: &str) {
+    let a = Account { token: format!("test-token-{uid}"), user: User { uid: uid.into(), ..Default::default() }, ..Default::default() };
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(file(dir), serde_json::to_vec(&a).unwrap()).unwrap();
+}
+
+#[cfg(test)]
+pub(crate) fn sign_out_for_tests(dir: &Path) {
+    let _ = std::fs::remove_file(file(dir));
+}
+
+/// Whether the account a cloud request went out under is still the one signed in. A save that
+/// went up to (or came down from) one account must not be noted as synced for the next.
+fn still_signed_in_as(dir: &Path, a: &Account, id: &str) -> bool {
+    let same = account_uid(dir) == a.user.uid;
+    if !same {
+        crate::trail::note(format!("Cloud saves: {id}'s sync finished after the account changed, so it isn't noted as synced"));
+    }
+    same
+}
+
 /// The website said this PC's token is no good any more (signed out from the website).
 fn forget(app: &AppHandle) {
     let st = app.state::<App>();
@@ -355,6 +400,90 @@ pub async fn playtime_pull(app: AppHandle) -> Res<Value> {
     Ok(play_call(req, &url).await.unwrap_or(Value::Null))
 }
 
+/// Resets a game's play time on this PC (`Library::reset_play`), then on the account: the
+/// website keeps the larger of what it has and what's sent, so sending less isn't enough. It
+/// drops this PC's rows for the game, and the push after it sends what's left (a recomp whose
+/// one game was reset). Other PCs keep their own time. -> {account}: true when the website
+/// cleared it, false when it couldn't (offline, an older site), null when signed out.
+#[tauri::command]
+pub async fn playtime_reset(app: AppHandle, id: String) -> Res<Value> {
+    let st = app.state::<App>();
+    if st.running.lock().unwrap().contains_key(&id) {
+        return Err(Error::Msg("Close the game first.".into()));
+    }
+    let ids = st.lib.lock().unwrap().reset_play(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    st.save();
+    let Some(a) = load(&st.dir) else { return Ok(json!({ "account": null })) };
+    let url = format!("{}?a=play-clear", api());
+    let body = json!({ "pc": play_id(&st.dir), "games": ids });
+    let req = st.http.post(&url).json(&body).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    let cleared = play_call(req, &url).await.is_some();
+    if cleared {
+        playtime_push(app.clone(), Some(ids)).await?;
+    }
+    Ok(json!({ "account": cleared }))
+}
+
+/// Sponsor spots for this account in the app ({s: [{id, slot, img, alt, house}]}). Quiet like play time:
+/// signed out, offline or an older website all just give nothing.
+#[tauri::command]
+pub async fn spons_mine(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let Some(a) = load(&st.dir) else { return Ok(Value::Null) };
+    let url = format!("{}?a=spons", api());
+    let req = st.http.get(&url).bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    Ok(play_call(req, &url).await.unwrap_or(Value::Null))
+}
+
+/// Home's order from the website (admin: Launcher > Home page): which rows go where, the info boxes
+/// and banners between them. Signed in, it also has the blocks for App Testers. The last good
+/// answer is kept on disk so Home stays the same offline; null when there has never been one,
+/// and Home keeps its built-in order.
+#[tauri::command]
+pub async fn home_layout(app: AppHandle) -> Res<Value> {
+    let st = app.state::<App>();
+    let file = st.dir.join("cache/home.json");
+    let acct = load(&st.dir);
+    let me = if acct.is_some() { "&me=1" } else { "" };
+    let url = format!("{}/api/home.php?page=app{me}", crate::catalog::base());
+    let mut req = st.http.get(&url).timeout(crate::net::QUICK);
+    if let Some(a) = &acct {
+        req = req.bearer_auth(&a.token).header("X-RL-Token", a.token.as_str());
+    }
+    if let Some(v) = home_fetch(req, &url).await {
+        crate::catalog::save(&file, &v);
+        return Ok(v);
+    }
+    Ok(crate::catalog::load(&file).filter(home_ok).unwrap_or(Value::Null))
+}
+
+async fn home_fetch(req: reqwest::RequestBuilder, url: &str) -> Option<Value> {
+    let r = crate::net::send(req, url, false).await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Value = r.json().await.ok()?;
+    home_ok(&v).then_some(v)
+}
+
+/// A Home list this launcher can read: version 1 with its items. A newer version is left alone, so
+/// a later change to the format can't break Home here.
+fn home_ok(v: &Value) -> bool {
+    v.get("v").and_then(Value::as_u64) == Some(1) && v.get("items").map(Value::is_array).unwrap_or(false)
+}
+
+/// A sponsor spot was on screen: one view, sent and forgotten.
+#[tauri::command]
+pub async fn spons_seen(app: AppHandle, id: u64) -> Res<()> {
+    let st = app.state::<App>();
+    let http = st.http.clone();
+    let url = format!("{}/api/spons.php?seen={id}", crate::catalog::base());
+    tauri::async_runtime::spawn(async move {
+        let _ = crate::net::send(http.post(&url).timeout(crate::net::QUICK), &url, false).await;
+    });
+    Ok(())
+}
+
 // ---------- signing in ----------
 
 /// The sign-in that's waiting for the player to approve it on the website.
@@ -417,6 +546,9 @@ pub async fn account_poll(app: AppHandle) -> Res<Value> {
         if token.is_empty() {
             return Err(Error::Msg("The website didn't answer properly. Try again in a moment.".into()));
         }
+        if user.uid.is_empty() {
+            crate::trail::note("Account: signed in, but the website gave no account id");
+        }
         let st = app.state::<App>();
         store(&st.dir, Some(&Account { token, user: user.clone(), ..Default::default() }));
         *LINK.lock().unwrap() = None;
@@ -453,7 +585,12 @@ pub async fn account_state(app: AppHandle, fresh: bool) -> Res<Value> {
     };
     match r {
         Ok(v) => {
-            let user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
+            let mut user: User = serde_json::from_value(v.get("account").cloned().unwrap_or(Value::Null)).unwrap_or(a.user.clone());
+            // The id ties the save notes to this account (saves::state): an answer without one
+            // must not make them look like another account's.
+            if user.uid.is_empty() {
+                user.uid = a.user.uid.clone();
+            }
             store(&st.dir, Some(&Account { token: a.token, user: user.clone(), ..Default::default() }));
             Ok(json!({"signedIn": true, "user": user, "used": v.pointer("/saves/used"), "quota": v.pointer("/saves/quota")}))
         }
@@ -472,10 +609,15 @@ pub async fn account_signout(app: AppHandle) -> Res<()> {
 
 // ---------- a game's saves ----------
 
+/// The game as its saves see it. `cloud` is always set here: a game never switched on its own
+/// takes what the player picked for every game, so the checks below only read `cloud`.
 fn game(st: &App, id: &str) -> Res<Installed> {
     let g = st.lib.lock().unwrap().installed.get(id).cloned();
     // One game of several with saves of its own: its copies are its own, on the recomp's install.
-    g.or_else(|| own_saves(st, id).map(|p| p.g)).ok_or_else(|| Error::Msg("It isn't installed.".into()))
+    let g = g.or_else(|| own_saves(st, id).map(|p| p.g));
+    let mut g = g.ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.cloud = Some(g.cloud_on(&st.lib.lock().unwrap().settings.ui));
+    Ok(g)
 }
 
 /// One game of a recomp that carries several, when it declares its own saves.
@@ -485,18 +627,73 @@ fn own_saves(st: &App, id: &str) -> Option<crate::GamePick> {
 
 /// Where this game's saves are, best first.
 pub fn spots_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
+    // Android: only the places the Android build keeps its saves in shared storage. The PC build's
+    // (its profile, a recomp's games, the player's picks) are other files, in folders a phone
+    // doesn't have.
+    if cfg!(target_os = "android") {
+        let cat = crate::cached_catalog(st);
+        let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
+        return saves::spots(&[], &catalog_saves(&entry, true), g);
+    }
     if let Some(p) = own_saves(st, id) {
-        // Only the game's own: the recomp's other places are the other games'.
+        // Only the game's own: the recomp's other places are the other games'. Its override too:
+        // that's the recomp's, and one folder can't stand in for every game's.
         let mut g = g.clone();
         g.save_place = Default::default();
         g.more_save_places.clear();
         return named_spots(p.game.saves, vec![], &g);
     }
+    let named = named_of(st, id, g);
+    // Asked only with an override set: most games have none, and it takes the library's lock.
+    let Some(over) = g.save_override.as_deref() else { return named };
+    saves::with_override(named, Some(over), crate::player_sets_up(st, id))
+}
+
+/// Where its developer, the catalog or the player's own picks say it saves, without the override.
+fn named_of(st: &App, id: &str, g: &Installed) -> Vec<Spot> {
     let cat = crate::cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
     let profile_saves = crate::profile::find(&g.path, &g.repo, &entry).map(|p| p.saves).unwrap_or_default();
-    let from_cat: Vec<String> = entry.get("saves").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    named_spots(profile_saves, from_cat, g)
+    named_spots(profile_saves, catalog_saves(&entry, false), g)
+}
+
+/// The save places the catalog names for a game. On Android, its Android build's: folders in the
+/// phone's shared storage (`android_saves`, docs/BUILDING.md), as the game's own folder there is out
+/// of the launcher's reach.
+fn catalog_saves(entry: &Value, android: bool) -> Vec<String> {
+    let list = |k: &str| -> Vec<String> { entry.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() };
+    if android {
+        return list("android_saves").into_iter().filter(|t| saves::storage_place_ok(t)).collect();
+    }
+    list("saves")
+}
+
+/// The game's name in cloud saves. A phone's copies go under `<id>.android`, apart from a PC's: the
+/// Android build of a game keeps other files in other places, and a PC restoring them (or a phone
+/// restoring a PC's) would put them where they don't belong.
+fn cloud_id(id: &str) -> String {
+    cloud_id_for(id, cfg!(target_os = "android"))
+}
+
+fn cloud_id_for(id: &str, android: bool) -> String {
+    if android {
+        format!("{id}.android")
+    } else {
+        id.to_string()
+    }
+}
+
+/// Android without All files access: the game's save folders can't be read, so nothing is copied,
+/// restored or compared (an unreadable folder must never look like one with no save in it). A fixed
+/// text, so the window can translate it.
+pub const FILES_ACCESS: &str = "Allow All files access for RecompLauncher so it can reach this game's saves.";
+
+/// Checked before anything reads or writes a game's save folders.
+fn can_reach(spots: &[Spot]) -> Res<()> {
+    if cfg!(target_os = "android") && !spots.is_empty() && saves::storage().is_none() {
+        return Err(Error::Msg(FILES_ACCESS.into()));
+    }
+    Ok(())
 }
 
 /// The save folders a profile names are the developer's only when the profile came with the
@@ -562,7 +759,7 @@ pub struct CloudCopy {
 }
 
 async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
-    let v = get(app, &[("a", "saves"), ("game", id)]).await?;
+    let v = get(app, &[("a", "saves"), ("game", &cloud_id(id))]).await?;
     let list: Vec<CloudCopy> = serde_json::from_value(v.get("versions").cloned().unwrap_or(json!([]))).unwrap_or_default();
     let mut list = list;
     list.sort_by(|a, b| b.made.cmp(&a.made));
@@ -573,6 +770,38 @@ async fn cloud_list(app: &AppHandle, id: &str) -> Res<(Vec<CloudCopy>, Value)> {
 }
 
 const SYNC_CONFLICT: &str = "Both save copies changed. Choose one in Saves → Sync Now.";
+
+/// Before Play, the cloud's newer save couldn't be put in place (a save folder that's read-only
+/// on this PC, say). Why goes on the line under it.
+const NOT_RESTORED: &str = "Your cloud save couldn't be put in place.";
+
+/// The cloud save downloaded, but it couldn't be kept in the folder of the game's save copies.
+const CLOUD_NOT_KEPT: &str = "The cloud save couldn't be kept on this PC.";
+
+/// The file name of a program running from the game's folder that this launcher didn't start: the
+/// game opened straight from its .exe, or a mod tool kept beside it. A save put in place under the
+/// game could replace what it just saved. Named, because it isn't always the game. Not while the
+/// launcher's own setup step runs: its tools run from the game's folder too. Not seen on macOS, or
+/// under Wine where the program is Wine's own; the saves are checked again just before anything
+/// replaces them (`saves::restore_if_unchanged`) for those.
+async fn open_outside(id: &str, g: &Installed) -> Res<Option<String>> {
+    if crate::setup_busy(id) {
+        return Ok(None);
+    }
+    let dir = g.path.clone();
+    blocking(move || crate::program_running_in(&dir)).await
+}
+
+/// Sync Now and restores, when a program runs from the game's folder. Fixed texts so the window
+/// can translate them; the program's name goes on the line under it, as it is.
+const PROGRAM_OPEN: &str = "A program from this game's folder is still running. Close it, then try again.";
+
+/// Before Play, said in the prompt that offers to play with this PC's save instead.
+const PROGRAM_OPEN_PLAY: &str = "A program from this game's folder is already running. Close it to get your cloud save.";
+
+fn still_open(program: &str) -> Error {
+    Error::Msg(format!("{PROGRAM_OPEN}\n{program}"))
+}
 
 /// Before Play, when a save place was too big to look through. A fixed text without the game's
 /// name, so the window can translate it: the player just pressed Play on that game.
@@ -656,11 +885,19 @@ async fn upload(app: &AppHandle, id: &str, name: &str) -> Res<()> {
 
 async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
     let st = app.state::<App>();
+    // One account from the note to the request: a switch meanwhile must not send this note's
+    // copy with the next account's token.
+    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let mut state = saves::state(&st.dir, id);
+    // Signed in to another account just now: this note isn't that account's to send (the log
+    // says so). The copy stays on this PC and goes up with the new account's own sync.
+    if !still_signed_in_as(&st.dir, &a, id) {
+        return Ok(());
+    }
     let copy = saves::manifest(&copies_dir(&st, id).join(name))
         .ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
     let (list, _) = cloud_list(app, id).await?;
-    let Some(top) = list.first() else { return upload_copy(app, id, name, 0).await };
+    let Some(top) = list.first() else { return upload_copy(app, id, name, 0, &a).await };
     if top.hash == copy.hash {
         state.mark_synced(&copy.hash, top.made, &top.device);
         if state.pending.as_deref() == Some(name) {
@@ -674,10 +911,10 @@ async fn upload_one(app: &AppHandle, id: &str, name: &str) -> Res<()> {
         saves::set_state(&st.dir, id, &state);
         return Err(Error::Msg(SYNC_CONFLICT.into()));
     }
-    upload_copy(app, id, name, top.made.saturating_add(1)).await
+    upload_copy(app, id, name, top.made.saturating_add(1), &a).await
 }
 
-async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Res<()> {
+async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64, a: &Account) -> Res<()> {
     let st = app.state::<App>();
     let path = copies_dir(&st, id).join(name);
     let man = saves::manifest(&path).ok_or_else(|| Error::Msg("That copy is gone.".into()))?;
@@ -708,7 +945,6 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
         crate::trail::note(format!("Cloud saves: {id}'s copy is {} MB, too big to send", body.len() / (1024 * 1024)));
         return Err(Error::Msg(why.into()));
     }
-    let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let made_at = man.made.max(earliest);
     let (made, played) = (made_at.to_string(), man.played.to_string());
     let size = body.len() as u64;
@@ -716,7 +952,7 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
     let req = st
         .http
         .put(&url)
-        .query(&[("a", "save-put"), ("game", id), ("hash", &man.hash), ("made", &made), ("played", &played), ("device", &man.device)])
+        .query(&[("a", "save-put"), ("game", &cloud_id(id)), ("hash", &man.hash), ("made", &made), ("played", &played), ("device", &man.device)])
         .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
         .header("Content-Type", "application/zip")
         .body(body)
@@ -748,6 +984,9 @@ async fn upload_copy(app: &AppHandle, id: &str, name: &str, earliest: u64) -> Re
         return Err(e);
     }
     copy_went_up(id, name);
+    if !still_signed_in_as(&st.dir, &a, id) {
+        return Ok(());
+    }
     let mut s = saves::state(&st.dir, id);
     s.mark_synced(&man.hash, made_at, &man.device);
     // The copy waiting is this one or an older one: what's in the cloud now is newer, so it
@@ -773,14 +1012,17 @@ async fn pending_copy(dir: &Path, id: &str, library: &Mutex<crate::library::Libr
     let enabled = {
         let l = library.lock().unwrap();
         let g = l.installed.get(id).or_else(|| crate::games::split(id).and_then(|(r, _)| l.installed.get(r)));
-        g.map(|g| g.cloud == Some(true)).unwrap_or(false)
+        g.map(|g| g.cloud_on(&l.settings.ui)).unwrap_or(false)
     };
     let pending = if enabled { saves::state(dir, id).pending } else { None };
     (guard, pending)
 }
 
 fn pending_ids(st: &App) -> Vec<String> {
-    let installed: Vec<Installed> = st.lib.lock().unwrap().installed.values().filter(|g| g.cloud == Some(true)).cloned().collect();
+    let installed: Vec<Installed> = {
+        let l = st.lib.lock().unwrap();
+        l.installed.values().filter(|g| g.cloud_on(&l.settings.ui)).cloned().collect()
+    };
     let mut ids = Vec::new();
     for g in installed {
         ids.push(g.id.clone());
@@ -869,15 +1111,16 @@ fn retry_pending_later(app: &AppHandle) {
 pub async fn after_session(app: &AppHandle, id: &str) -> Res<Option<saves::Copy>> {
     let _busy = busy().await?;
     let st = app.state::<App>();
+    folder_free(&st, id)?;
     let g = game(&st, id)?;
     let spots = spots_of(&st, id, &g);
+    // Without access the session stays open, and is finished once access is given.
+    can_reach(&spots)?;
     let (dir, id2, g2) = (st.dir.clone(), id.to_string(), g.clone());
     // The copy ends the session's wait (saves::backup); one that fails to go up is kept as pending.
     let copy = blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
     if g.cloud == Some(true) && signed_in(&st.dir) {
-        let s = saves::state(&st.dir, id);
-        let latest = saves::list(&st.dir, id, &g).into_iter().next();
-        if let Some(l) = latest.filter(|l| l.hash != s.synced_hash) {
+        if let Some(l) = newest_unsent(&st.dir, id, &g) {
             if let Err(e) = upload(app, id, &l.name).await {
                 let too_big = e.to_string().starts_with("This save is too big");
                 if !too_big {
@@ -941,7 +1184,8 @@ pub(crate) fn after_play_step(app: &AppHandle, id: &str) -> Working {
 pub(crate) async fn finish_open_sessions(app: &AppHandle) {
     let st = app.state::<App>();
     for id in open_sessions(&st.dir.join("saves")) {
-        if st.running.lock().unwrap().contains_key(&id) || game(&st, &id).is_err() {
+        // A game being uninstalled: its session stays open until the folder is gone or kept.
+        if st.running.lock().unwrap().contains_key(&id) || crate::uninstalling(&st, &id) || game(&st, &id).is_err() {
             continue;
         }
         let _step = after_play_step(app, &id);
@@ -966,7 +1210,10 @@ fn open_sessions(saves_dir: &Path) -> Vec<String> {
 }
 
 /// Gets a cloud copy and puts it in place (what's there now is kept as a local copy first).
-async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
+/// `checked`: the checksum of the saves the caller looked at before deciding. Then the copy goes
+/// in only over those saves, not over ones made while it downloaded. None: the player picked
+/// this cloud save themselves, over whatever is there.
+async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy, checked: Option<&str>) -> Res<usize> {
     let st = app.state::<App>();
     let a = load(&st.dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
     let _working = working(app, id, "down");
@@ -974,7 +1221,7 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
     let req = st
         .http
         .get(&url)
-        .query(&[("a", "save-get"), ("game", id), ("v", &c.v)])
+        .query(&[("a", "save-get"), ("game", &cloud_id(id)), ("v", &c.v)])
         .bearer_auth(&a.token).header("X-RL-Token", a.token.as_str())
         .timeout(std::time::Duration::from_secs(300));
     let r = crate::net::send(req, &save_url("save-get"), true).await?;
@@ -983,21 +1230,53 @@ async fn take_cloud(app: &AppHandle, id: &str, c: &CloudCopy) -> Res<usize> {
         return Err(Error::Msg("That cloud save couldn't be downloaded.".into()));
     }
     let bytes = r.bytes().await.map_err(net)?;
-    let d = copies_dir(&st, id);
-    tokio::fs::create_dir_all(&d).await?;
-    let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
-    tokio::fs::write(&tmp, &bytes).await?;
     let g = game(&st, id)?;
+    // Checked after the download too: a big save takes a while, and the game can be opened
+    // from its folder meanwhile.
+    if let Some(program) = open_outside(id, &g).await? {
+        return Err(still_open(&program));
+    }
+    let d = copies_dir(&st, id);
+    let not_kept = |path: &Path, e: std::io::Error| Error::Msg(format!("{CLOUD_NOT_KEPT}\n{}: {e}", path.display()));
+    tokio::fs::create_dir_all(&d).await.map_err(|e| not_kept(&d, e))?;
+    let tmp = d.join(format!("cloud-{}.download", c.v.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()));
+    tokio::fs::write(&tmp, &bytes).await.map_err(|e| not_kept(&tmp, e))?;
     let spots = spots_of(&st, id, &g);
+    can_reach(&spots)?;
     let (dir, id2, t2) = (st.dir.clone(), id.to_string(), tmp.clone());
-    let n = blocking(move || saves::restore(&dir, &id2, &t2, &spots, &g)).await;
+    let checked = checked.map(String::from);
+    let n = blocking(move || match checked {
+        Some(h) => saves::restore_if_unchanged(&dir, &id2, &t2, &spots, &g, &h),
+        None => saves::restore(&dir, &id2, &t2, &spots, &g),
+    }).await;
     let _ = tokio::fs::remove_file(&tmp).await;
     let n = n??;
     let mut s = saves::state(&st.dir, id);
+    // The save is in place either way; only the new account's notes must not claim it as synced.
+    if !still_signed_in_as(&st.dir, &a, id) {
+        s.last_hash = c.hash.clone();
+        saves::set_state(&st.dir, id, &s);
+        return Ok(n);
+    }
     s.mark_synced(&c.hash, c.made, &c.device);
     s.last_hash = c.hash.clone();
     saves::set_state(&st.dir, id, &s);
     Ok(n)
+}
+
+/// The cloud save that Play puts in place by itself: another PC saved after this one, and nothing
+/// changed here since they last agreed. The Saves tab marks it, so a player doesn't take its
+/// Restore button for a step they have to do on every PC. Judged from the last copy made here
+/// (the one the tab calls "In the game now"), by the same rule Play uses on the live files.
+fn incoming<'a>(s: &saves::State, list: &'a [CloudCopy]) -> Option<&'a CloudCopy> {
+    // Anything but settled (both changed and Play asks, a copy waiting to go up, a session not
+    // copied yet, a save folder too big to read) and Play won't just bring it in.
+    let settled = matches!(s.sync_state(true, true), "up-to-date" | "none");
+    if !settled {
+        return None;
+    }
+    let top = list.first()?;
+    should_restore(&s.last_hash, &s.synced_hash, &top.hash, false).then_some(top)
 }
 
 /// Whether the cloud copy can be put in place without replacing locally changed saves.
@@ -1012,7 +1291,17 @@ fn should_restore(local: &str, synced: &str, cloud: &str, empty: bool) -> bool {
     empty || (cloud_changed && !local_changed)
 }
 
+/// Saves are never read from or written into a folder that's being deleted: the copy would be
+/// half there, and a cloud save put back would land in a folder about to go.
+fn folder_free(st: &App, id: &str) -> Res<()> {
+    if crate::uninstalling(st, id) {
+        return Err(Error::Msg(crate::UNINSTALLING.into()));
+    }
+    Ok(())
+}
+
 fn reserve_sync(st: &App, id: &str) -> Res<crate::Starting> {
+    folder_free(st, id)?;
     let install = crate::recomp_of(st, id);
     let mut starting = crate::STARTING.lock().unwrap();
     if starting.contains(&install) || st.running.lock().unwrap().contains_key(&install)
@@ -1033,7 +1322,8 @@ async fn upload_current(app: &AppHandle, id: &str, g: Installed, spots: Vec<Spot
             .ok_or_else(|| Error::Msg("The saves changed. Try syncing again.".into()))
     }).await??;
     // A player can choose a save that was backed up before the current cloud copy.
-    let r = upload_copy(app, id, &copy.name, after.saturating_add(1)).await;
+    let a = load(&app.state::<App>().dir).ok_or_else(|| Error::Msg("Sign in first.".into()))?;
+    let r = upload_copy(app, id, &copy.name, after.saturating_add(1), &a).await;
     if let Err(e) = &r {
         note_failure(&app.state::<App>().dir, id, e);
     }
@@ -1086,6 +1376,14 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     let spots = spots_of(&st, &id, &g);
+    // Android before All files access: the game plays with what's on the phone, and the player is
+    // told why nothing came down. Nothing about the sync changes.
+    if let Err(e) = can_reach(&spots) {
+        if manual {
+            return Err(e);
+        }
+        return Ok(json!({"action": "no-access"}));
+    }
     // Not knowing where it saves isn't the same as having no saves: a cloud copy put in place now
     // could land beside the real ones, or over them. Nothing syncs until the player picks a folder.
     if spots.is_empty() {
@@ -1133,7 +1431,24 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
         return Ok(json!({"action": "play"}));
     }
     if should_restore(&local, &s.synced_hash, &top.hash, entries.is_empty()) {
-        let n = take_cloud(&app, &id, top).await?;
+        // Before Play it doesn't stop the game: the program may be a mod tool, not the game. The
+        // player is asked whether to play with this PC's save, as when a restore fails.
+        if let Some(program) = open_outside(&id, &g).await? {
+            if manual {
+                return Err(still_open(&program));
+            }
+            crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place: {program} runs from its folder"));
+            let why = format!("{PROGRAM_OPEN_PLAY}\n{program}");
+            return Ok(json!({"action": "not-restored", "why": why, "cloud": top}));
+        }
+        let taken = take_cloud(&app, &id, top, Some(&local)).await;
+        // Sync Now says why. Before Play the player is asked whether to play with this PC's save
+        // instead (saves_play_without_cloud); nothing about the sync changes until they say so.
+        if let (Err(e), false) = (&taken, manual) {
+            crate::trail::note(format!("Cloud saves: {id}'s cloud save wasn't put in place: {}", e.to_string().replace('\n', " ")));
+            return Ok(json!({"action": "not-restored", "why": e.to_string(), "cloud": top}));
+        }
+        let n = taken?;
         return Ok(json!({"action": "restored", "files": n, "cloud": top}));
     }
     if top.hash == s.synced_hash {
@@ -1154,6 +1469,35 @@ async fn check_saves(app: AppHandle, id: String, manual: bool) -> Res<Value> {
     Ok(json!({"action": "conflict", "local": {"when": when, "device": saves::device_name(), "played": g.played_secs, "hash": local}, "cloud": top}))
 }
 
+/// The player's answer when the cloud's save couldn't be put in place before Play: play with this
+/// PC's save. The reason stays on the game's page, and the save this session makes never goes up
+/// over the cloud's (see `hold_for_pick`).
+#[tauri::command]
+pub fn saves_play_without_cloud(app: AppHandle, id: String, v: String, hash: String, why: String) {
+    let st = app.state::<App>();
+    let mut s = saves::state(&st.dir, &id);
+    let held = hold_for_pick(&mut s, &v, &hash, &why);
+    saves::set_state(&st.dir, &id, &s);
+    let how = if held { "held until the player picks a save" } else { "the sync as it was" };
+    crate::trail::note(format!("Cloud saves: {id} plays with this PC's save ({how})"));
+}
+
+/// Playing with this PC's save while the cloud's newer one stays where it is. Only when this PC
+/// last agreed with exactly that cloud save (reinstalled, its saves gone) would the save this
+/// session makes go up over it: then the sync is forgotten and the cloud copy marked as a
+/// conflict, so the upload stops and the player picks one. Otherwise the upload already stops
+/// as a conflict (the cloud changed since this PC's last sync), and nothing changes. True when
+/// it held the sync.
+fn hold_for_pick(s: &mut saves::State, cloud_v: &str, cloud_hash: &str, why: &str) -> bool {
+    s.problem = Some(saves::Problem { kind: "error".into(), text: why.to_string(), at: crate::library::now() });
+    if cloud_hash.is_empty() || s.synced_hash != cloud_hash {
+        return false;
+    }
+    s.synced_hash.clear();
+    s.conflict = Some(cloud_v.to_string());
+    true
+}
+
 /// A shortcut or tray launch has no conflict prompt, so let the player resolve it in the launcher.
 pub async fn sync_quiet(app: &AppHandle, id: &str) -> Res<()> {
     let st = app.state::<App>();
@@ -1161,6 +1505,11 @@ pub async fn sync_quiet(app: &AppHandle, id: &str) -> Res<()> {
     let result = saves_check(app.clone(), save_id, None).await?;
     if result["action"] == "conflict" {
         return Err(Error::Msg(SYNC_CONFLICT.into()));
+    }
+    // No window to ask in: it stops, and the toast says why, as before.
+    if result["action"] == "not-restored" {
+        let why = result["why"].as_str().unwrap_or_default();
+        return Err(Error::Msg(format!("{NOT_RESTORED}\n{why}")));
     }
     Ok(())
 }
@@ -1181,17 +1530,34 @@ pub async fn saves_pick(app: AppHandle, id: String, keep: String, local_hash: St
         let (list, _) = cloud_list(&app, &id).await?;
         let top = list.first().filter(|c| c.v == cloud_version).ok_or_else(changed)?;
         let spots = spots_of(&st, &id, &g);
+        can_reach(&spots)?;
         let (g2, spots2) = (g.clone(), spots.clone());
         let (entries, infos, hash, _) = blocking(move || saves::current(&spots2, &g2)).await?;
         if hash != local_hash || entries.len() != infos.len() {
             return Err(changed());
         }
         match keep.as_str() {
-            "cloud" => take_cloud(&app, &id, top).await.map(|_| ()),
+            "cloud" => take_cloud(&app, &id, top, Some(&hash)).await.map(|_| ()),
             "local" => upload_current(&app, &id, g, spots, hash, top.made).await,
             _ => Err(Error::Msg("Choose this PC or the cloud.".into())),
         }
     }).await
+}
+
+/// Cloud saves picked for every game (Settings, Account, or the question after signing in): every
+/// game follows that again, whatever was switched for one game in its Manage tab before.
+#[tauri::command]
+pub fn saves_cloud_follow_all(app: AppHandle) -> Res<()> {
+    let st = app.state::<App>();
+    let mut l = st.lib.lock().unwrap();
+    follow_every_game(&mut l);
+    l.save(&st.dir).map_err(|e| Error::Msg(e.to_string()))
+}
+
+fn follow_every_game(l: &mut crate::library::Library) {
+    for g in l.installed.values_mut() {
+        g.cloud = None;
+    }
 }
 
 /// Turns cloud saves on or off for a game. On: what's on this PC goes up now (unless the cloud
@@ -1242,14 +1608,19 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
             SpotInfo { exists: shown.exists(), path: p.to_string_lossy().to_string(), template: s.template, from: s.from }
         })
         .collect();
+    let swap = override_info(&st, &id, &g);
     let local = saves::list(&st.dir, &id, &g);
     let state = saves::state(&st.dir, &id);
     let mut cloud = Value::Null;
     let mut space = Value::Null;
     let mut offline = false;
+    let mut next = Value::Null;
     if g.cloud == Some(true) && signed_in(&st.dir) {
         match cloud_list(&app, &id).await {
             Ok((l, sp)) => {
+                next = incoming(&state, &l).map(|c| json!(c)).unwrap_or(Value::Null);
+                // The badge above Play reads the same list, so it says the same thing.
+                keep_peek(&id, &state.synced_hash, &l);
                 cloud = serde_json::to_value(l).unwrap_or(Value::Null);
                 space = sp;
             }
@@ -1265,10 +1636,27 @@ pub async fn saves_info(app: AppHandle, id: String) -> Res<Value> {
         // The save in the game's folder now (the last copy made or put back), and this PC's name:
         // the tab marks the copy that's current and the ones another PC made.
         "current": state.last_hash, "here": saves::device_name(),
+        // The cloud save that another PC made and Play brings in by itself, or null.
+        "incoming": next,
         // Seconds until a copy that didn't get through is tried again, and whether the account's
         // cloud saves are full (no uploads until there's room).
         "retryIn": state.pending.as_deref().and_then(|p| copy_wait_left(&id, p)), "full": full_now(),
+        "override": swap,
     }))
+}
+
+/// Whether the Saves tab offers Change on the folder its developer or RecompLauncher named, and
+/// that folder (still shown while the player's own is used). Null when it doesn't.
+fn override_info(st: &App, id: &str, g: &Installed) -> Value {
+    if own_saves(st, id).is_some() {
+        return Value::Null;
+    }
+    let named = named_of(st, id, g);
+    if !saves::can_override(&named, crate::player_sets_up(st, id)) {
+        return Value::Null;
+    }
+    let path = saves::resolve_for(&named[0].template, g);
+    json!({ "on": g.save_override.is_some(), "by": named[0].from, "path": path.to_string_lossy() })
 }
 
 /// Where players see whether the site is having trouble on our side.
@@ -1308,6 +1696,53 @@ fn sync_status(app: &AppHandle, id: &str) -> Res<Value> {
     }))
 }
 
+/// A game's cloud list as last asked by its page, and the save this PC had synced then. Kept a few
+/// minutes, so opening a game's page again doesn't ask the website again; a sync since (another
+/// synced save) asks anew, since the list it kept may be the one it just changed.
+struct Peek {
+    at: std::time::Instant,
+    synced: String,
+    list: Vec<CloudCopy>,
+}
+static PEEKED: Mutex<Option<std::collections::HashMap<String, Peek>>> = Mutex::new(None);
+const PEEK_REST: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn peeked(id: &str, synced: &str) -> Option<Vec<CloudCopy>> {
+    let kept = PEEKED.lock().unwrap();
+    let p = kept.as_ref()?.get(id)?;
+    let fresh = p.at.elapsed() < PEEK_REST && p.synced == synced;
+    fresh.then(|| p.list.clone())
+}
+
+fn keep_peek(id: &str, synced: &str, list: &[CloudCopy]) {
+    let peek = Peek { at: std::time::Instant::now(), synced: synced.to_string(), list: list.to_vec() };
+    PEEKED.lock().unwrap().get_or_insert_with(Default::default).insert(id.to_string(), peek);
+}
+
+/// For the badge above Play: a newer save from another PC that Play brings in by itself, or null.
+/// saves_status never asks the website, so on its own it would call that save "Up to date". This
+/// asks about this one game when its page opens, at most every few minutes.
+#[tauri::command]
+pub async fn saves_peek(app: AppHandle, id: String) -> Res<Value> {
+    let st = app.state::<App>();
+    let g = game(&st, &id)?;
+    let spots = spots_of(&st, &id, &g);
+    if g.cloud != Some(true) || !signed_in(&st.dir) || spots.is_empty() || can_reach(&spots).is_err() {
+        return Ok(Value::Null);
+    }
+    let state = saves::state(&st.dir, &id);
+    let list = match peeked(&id, &state.synced_hash) {
+        Some(list) => list,
+        None => {
+            // Offline or any other trouble: the badge keeps what this PC knows.
+            let Ok((list, _)) = cloud_list(&app, &id).await else { return Ok(Value::Null) };
+            keep_peek(&id, &state.synced_hash, &list);
+            list
+        }
+    };
+    Ok(incoming(&state, &list).map(|c| json!(c)).unwrap_or(Value::Null))
+}
+
 fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<Option<saves::Copy>> {
     let s = saves::state(dir, id);
     let latest = saves::list(dir, id, g).into_iter().next();
@@ -1316,7 +1751,21 @@ fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<O
     if running && latest.as_ref().map(|l| l.hash != s.last_hash).unwrap_or(false) {
         return Err(Error::Msg("Close the game first to back up and upload its restored save.".into()));
     }
-    Ok(latest.filter(|l| l.hash != s.synced_hash))
+    Ok(newest_unsent(dir, id, g))
+}
+
+/// The newest copy, if it's the current save and the cloud doesn't have it. After a restore the
+/// newest archive can be the save the player replaced: sending it would make it the cloud's newest.
+fn newest_unsent(dir: &Path, id: &str, g: &Installed) -> Option<saves::Copy> {
+    let s = saves::state(dir, id);
+    let latest = saves::list(dir, id, g).into_iter().next()?;
+    if latest.hash == s.synced_hash {
+        return None;
+    }
+    if !s.last_hash.is_empty() && latest.hash != s.last_hash {
+        return None;
+    }
+    Some(latest)
 }
 
 /// Upload Now, from a game's Saves tab: the current save copied (when the game isn't running)
@@ -1325,6 +1774,7 @@ fn upload_candidate(dir: &Path, id: &str, g: &Installed, running: bool) -> Res<O
 #[tauri::command]
 pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
     let st = app.state::<App>();
+    folder_free(&st, &id)?;
     let g = game(&st, &id)?;
     if g.cloud != Some(true) || !signed_in(&st.dir) {
         return Err(Error::Msg("Turn on cloud saves for this game first.".into()));
@@ -1336,6 +1786,7 @@ pub async fn saves_upload_now(app: AppHandle, id: String) -> Res<Value> {
             // A fresh copy of what's there now (a running game's saves wait until it closes).
             if !running {
                 let spots = spots_of(&st, &id, &g);
+                can_reach(&spots)?;
                 let (dir, id2, g2) = (st.dir.clone(), id.clone(), g.clone());
                 blocking(move || saves::backup(&dir, &id2, &spots, &g2)).await??;
             }
@@ -1401,7 +1852,10 @@ pub async fn saves_overview(app: AppHandle) -> Res<Value> {
 
 fn overview(app: &AppHandle) -> Value {
     let st = app.state::<App>();
-    let games: Vec<(String, Installed)> = st.lib.lock().unwrap().installed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let games: Vec<(String, Installed)> = {
+        let l = st.lib.lock().unwrap();
+        l.installed.iter().map(|(k, v)| (k.clone(), Installed { cloud: Some(v.cloud_on(&l.settings.ui)), ..v.clone() })).collect()
+    };
     // Copies made beside the games while the player's folder was away go to it now that it's back.
     let installed: Vec<Installed> = games.iter().map(|(_, g)| g.clone()).collect();
     saves::gather(&st.dir, &installed);
@@ -1437,9 +1891,11 @@ pub async fn saves_backup(app: AppHandle, id: String) -> Res<Option<saves::Copy>
     }
     // Asked for by hand: "nothing changed" would hide that nothing is looked at.
     let g = game(&st, &id)?;
-    if spots_of(&st, &id, &g).is_empty() {
+    let spots = spots_of(&st, &id, &g);
+    if spots.is_empty() {
         return Err(Error::Msg(SAVES_UNKNOWN.into()));
     }
+    can_reach(&spots)?;
     after_session(&app, &id).await
 }
 
@@ -1461,7 +1917,7 @@ pub async fn saves_share(app: AppHandle, id: String, selection: Option<Value>) -
             (target, peers)
         };
         let available = |id: &str| !crate::setup_busy(id)
-            && !st.jobs.lock().unwrap().contains_key(id) && !st.moving.lock().unwrap().contains(id)
+            && !st.jobs.lock().unwrap().contains_key(id) && crate::files_busy(&st, id).is_none()
             && !st.running.lock().unwrap().contains_key(id) && !st.pids.lock().unwrap().contains_key(id);
         let offer = || {
             if !available(&id) || crate::STARTING.lock().unwrap().contains(&id) {
@@ -1516,18 +1972,23 @@ pub async fn saves_restore(app: AppHandle, id: String, name: Option<String>, v: 
     if st.running.lock().unwrap().contains_key(&id) {
         return Err(Error::Msg("Close the game first.".into()));
     }
+    folder_free(&st, &id)?;
     let _busy = BUSY.lock().await;
     if let Some(v) = v {
         let (list, _) = cloud_list(&app, &id).await?;
         let c = list.into_iter().find(|c| c.v == v).ok_or_else(|| Error::Msg("That cloud save is gone.".into()))?;
-        return take_cloud(&app, &id, &c).await;
+        return take_cloud(&app, &id, &c, None).await;
     }
     let name = name.unwrap_or_default();
     if name.contains('/') || name.contains('\\') || !name.ends_with(".zip") {
         return Err(Error::Msg("That isn't one of its save copies.".into()));
     }
     let g = game(&st, &id)?;
+    if let Some(program) = open_outside(&id, &g).await? {
+        return Err(still_open(&program));
+    }
     let spots = spots_of(&st, &id, &g);
+    can_reach(&spots)?;
     let (dir, id2) = (st.dir.clone(), id.clone());
     let file = saves::dir_of(&st.dir, &id, &g).join(&name);
     blocking(move || saves::restore(&dir, &id2, &file, &spots, &g)).await?
@@ -1542,7 +2003,7 @@ pub async fn saves_cloud_delete(app: AppHandle, id: String, v: String) -> Res<()
     if !deletable(&list, &v) {
         return Err(Error::Msg("The newest cloud save stays: the next PC you play on brings it in.".into()));
     }
-    let r = post(&app, "save-delete", json!({"game": id, "v": v}), true).await?;
+    let r = post(&app, "save-delete", json!({"game": cloud_id(&id), "v": v}), true).await?;
     if let (Some(used), Some(quota)) = (r.get("used").and_then(Value::as_u64), r.get("quota").and_then(Value::as_u64)) {
         room_now(used, quota);
     }
@@ -1575,6 +2036,43 @@ pub fn saves_set_place(st: State<'_, App>, id: String, path: Option<String>) -> 
     let _ = l.save(&st.dir);
     Ok(g)
 }
+
+/// The player's folder in place of the one its developer or RecompLauncher named (a
+/// recomplauncher.json that still names an old folder), or None to use the named one again. Only
+/// for a game set up without Easy Setup, whose saves are in one named folder (saves::can_override).
+#[tauri::command(async)]
+pub fn saves_set_override(st: State<'_, App>, id: String, path: Option<String>) -> Res<Installed> {
+    let g = game(&st, &id)?;
+    let path = path.filter(|p| !p.trim().is_empty());
+    let template = match path {
+        Some(p) => Some(override_template(&st, &id, &g, &PathBuf::from(p))?),
+        None => None,
+    };
+    let mut l = st.lib.lock().unwrap();
+    let g = l.installed.get_mut(&id).ok_or_else(|| Error::Msg("It isn't installed.".into()))?;
+    g.save_override = template;
+    let g = g.clone();
+    let _ = l.save(&st.dir);
+    Ok(g)
+}
+
+/// `dir` as the game's override, or why it can't be (saves::override_refused).
+fn override_template(st: &App, id: &str, g: &Installed, dir: &Path) -> Res<String> {
+    let named = named_of(st, id, g);
+    if own_saves(st, id).is_some() || !saves::can_override(&named, crate::player_sets_up(st, id)) {
+        return Err(Error::Msg(OVERRIDE_NOT_HERE.into()));
+    }
+    if !dir.is_dir() {
+        return Err(Error::Msg("That folder couldn't be found.".into()));
+    }
+    if let Some(why) = saves::override_refused(dir, &g.path, dirs::home_dir().as_deref()) {
+        return Err(Error::Msg(why.into()));
+    }
+    Ok(saves::templatize_for(dir, g))
+}
+
+/// A fixed text, so the window can translate it.
+pub(crate) const OVERRIDE_NOT_HERE: &str = "Its save folder can only be changed when Easy Setup is skipped for it.";
 
 /// One more folder where the game saves (a launcher with several games in it, each saving in its
 /// own folder): the ones it has now stay, and backups and cloud saves cover all of them.
@@ -1827,7 +2325,7 @@ mod child_retry_tests {
             Self(App {
                 dir, http: reqwest::Client::new(), lib: Mutex::new(lib), jobs: Mutex::default(),
                 running: Mutex::default(), pids: Mutex::default(), started: Mutex::default(),
-                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(),
+                download_slot: Arc::new(tokio::sync::Semaphore::new(1)), moving: Mutex::default(), uninstalling: Mutex::default(),
                 overlay_open: AtomicBool::new(false), looked: Mutex::default(), headless: AtomicBool::new(false),
             })
         }
@@ -1846,10 +2344,37 @@ mod child_retry_tests {
         ])
     }
 
+    #[test]
+    fn a_sync_is_refused_while_the_game_is_being_uninstalled() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        st.uninstalling.lock().unwrap().insert("series".into());
+        let Err(Error::Msg(why)) = reserve_sync(st, "series") else { panic!("the sync went ahead") };
+        assert_eq!(why, crate::UNINSTALLING);
+    }
+
+    #[test]
+    fn one_game_of_several_is_not_synced_while_its_recomp_is_being_uninstalled() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        st.uninstalling.lock().unwrap().insert("series".into());
+        assert!(folder_free(st, "series--first").is_err());
+    }
+
+    #[test]
+    fn a_game_nobody_uninstalls_keeps_its_saves_in_reach() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        st.uninstalling.lock().unwrap().insert("other".into());
+        assert!(folder_free(st, "series").is_ok());
+        assert!(folder_free(st, "series--first").is_ok());
+    }
+
     #[tokio::test]
     async fn retries_find_each_games_queued_save_under_its_full_id() {
         let fixture = Fixture::new(games());
         let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
         saves::set_state(&st.dir, "series", &saves::State { pending: Some("100.zip".into()), ..Default::default() });
         saves::set_state(&st.dir, "series--first", &saves::State { pending: Some("101.zip".into()), ..Default::default() });
         saves::set_state(&st.dir, "series--second", &saves::State { pending: Some("102.zip".into()), ..Default::default() });
@@ -1896,10 +2421,56 @@ mod child_retry_tests {
         assert_eq!(game(&fixture.0, "series--first").unwrap().cloud, Some(false));
     }
 
+    #[test]
+    fn a_game_never_switched_is_off_until_every_game_is_picked() {
+        let fixture = Fixture::new(json!([]));
+        fixture.0.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = None;
+        assert!(pending_ids(&fixture.0).is_empty());
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(false));
+    }
+
+    #[test]
+    fn a_game_never_switched_follows_every_game() {
+        let fixture = Fixture::new(json!([]));
+        {
+            let mut l = fixture.0.lib.lock().unwrap();
+            l.installed.get_mut("series").unwrap().cloud = None;
+            l.settings.ui = json!({ "cloud_all": true });
+        }
+        assert_eq!(pending_ids(&fixture.0), ["series"]);
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(true));
+    }
+
+    #[test]
+    fn picking_for_every_game_drops_a_games_own_switch() {
+        let fixture = Fixture::new(json!([]));
+        {
+            let mut l = fixture.0.lib.lock().unwrap();
+            l.installed.get_mut("series").unwrap().cloud = Some(false);
+            l.settings.ui = json!({ "cloud_all": true });
+            follow_every_game(&mut l);
+        }
+        assert_eq!(fixture.0.lib.lock().unwrap().installed["series"].cloud, None);
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(true));
+    }
+
+    #[test]
+    fn a_game_switched_off_stays_off_with_every_game() {
+        let fixture = Fixture::new(json!([]));
+        {
+            let mut l = fixture.0.lib.lock().unwrap();
+            l.installed.get_mut("series").unwrap().cloud = Some(false);
+            l.settings.ui = json!({ "cloud_all": true });
+        }
+        assert!(pending_ids(&fixture.0).is_empty());
+        assert_eq!(game(&fixture.0, "series").unwrap().cloud, Some(false));
+    }
+
     #[tokio::test]
     async fn a_waiting_child_retry_inherits_its_installs_cloud_setting() {
         let fixture = Fixture::new(games());
         let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
         assert_eq!(game(st, "series--first").unwrap().cloud, Some(true));
         saves::set_state(&st.dir, "series--first", &saves::State { pending: Some("101.zip".into()), ..Default::default() });
         let busy = BUSY.lock().await;
@@ -1915,6 +2486,43 @@ mod child_retry_tests {
         st.lib.lock().unwrap().installed.get_mut("series").unwrap().cloud = Some(true);
         let (_busy, pending) = pending_copy(&st.dir, "series--first", &st.lib).await;
         assert_eq!(pending.as_deref(), Some("101.zip"));
+    }
+
+    #[tokio::test]
+    async fn a_copy_queued_under_one_account_is_not_sent_for_the_next() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
+        saves::set_state(&st.dir, "series", &saves::State { pending: Some("100.zip".into()), ..Default::default() });
+        sign_in_for_tests(&st.dir, "B");
+        let (_busy, copy) = pending_copy(&st.dir, "series", &st.lib).await;
+        assert_eq!(copy, None);
+    }
+
+    #[test]
+    fn a_sync_that_finishes_after_an_account_switch_is_not_noted_for_the_new_one() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        let a = Account { token: "a-token".into(), user: User { uid: "A".into(), ..Default::default() }, ..Default::default() };
+        sign_in_for_tests(&st.dir, "A");
+        assert!(still_signed_in_as(&st.dir, &a, "series"));
+        sign_in_for_tests(&st.dir, "B");
+        assert!(!still_signed_in_as(&st.dir, &a, "series"));
+    }
+
+    #[test]
+    fn another_accounts_sync_point_does_not_bring_in_this_accounts_cloud_save() {
+        let fixture = Fixture::new(games());
+        let st = &fixture.0;
+        sign_in_for_tests(&st.dir, "A");
+        let mut s = saves::State { last_hash: "unchanged".into(), ..Default::default() };
+        s.mark_synced("unchanged", 100, "Desk-PC");
+        saves::set_state(&st.dir, "series", &s);
+        sign_in_for_tests(&st.dir, "B");
+        let s = saves::state(&st.dir, "series");
+        let b_cloud = [CloudCopy { v: "b1".into(), hash: "b-save".into(), ..Default::default() }];
+        assert!(incoming(&s, &b_cloud).is_none());
+        assert!(!should_restore(&s.last_hash, &s.synced_hash, "b-save", false));
     }
 }
 
@@ -1948,7 +2556,81 @@ mod play_id_tests {
 
 #[cfg(test)]
 mod sync_tests {
-    use super::{first_time_paused, should_restore};
+    use super::{first_time_paused, hold_for_pick, incoming, should_restore, CloudCopy};
+    use crate::saves::State;
+
+    fn cloud(v: &str, hash: &str) -> CloudCopy {
+        CloudCopy { v: v.into(), hash: hash.into(), ..Default::default() }
+    }
+
+    fn agreed_on(hash: &str) -> State {
+        State { last_hash: hash.into(), synced_hash: hash.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_newer_save_from_another_pc_comes_in_on_play() {
+        let list = [cloud("2", "from-other-pc"), cloud("1", "old")];
+        assert_eq!(incoming(&agreed_on("old"), &list).map(|c| c.v.as_str()), Some("2"));
+    }
+
+    #[test]
+    fn a_new_pc_with_no_saves_yet_gets_the_cloud_save_on_play() {
+        let list = [cloud("1", "from-other-pc")];
+        assert_eq!(incoming(&State::default(), &list).map(|c| c.v.as_str()), Some("1"));
+    }
+
+    #[test]
+    fn the_save_in_the_game_now_is_not_incoming() {
+        assert!(incoming(&agreed_on("same"), &[cloud("1", "same")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_when_this_pc_changed_its_save_too() {
+        let s = State { last_hash: "played-here".into(), synced_hash: "old".into(), ..Default::default() };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_a_conflict_waits_for_a_pick() {
+        let s = State { conflict: Some("2".into()), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_before_the_last_session_is_copied() {
+        let s = State { after_play: true, ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_a_copy_waits_to_go_up() {
+        let s = State { pending: Some("copy.zip".into()), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_while_its_save_folder_is_too_big_to_read() {
+        let problem = crate::saves::Problem { kind: "too-big-folder".into(), text: String::new(), at: 0 };
+        let s = State { problem: Some(problem), ..agreed_on("old") };
+        assert!(incoming(&s, &[cloud("2", "from-other-pc")]).is_none());
+    }
+
+    #[test]
+    fn a_game_page_opened_again_uses_the_list_it_just_asked_for() {
+        super::keep_peek("peek-same", "synced", &[cloud("2", "from-other-pc")]);
+        assert_eq!(super::peeked("peek-same", "synced").map(|l| l.len()), Some(1));
+    }
+
+    #[test]
+    fn a_sync_since_the_last_look_asks_the_cloud_again() {
+        super::keep_peek("peek-synced", "before", &[cloud("2", "from-other-pc")]);
+        assert!(super::peeked("peek-synced", "after").is_none());
+    }
+
+    #[test]
+    fn nothing_is_incoming_from_an_empty_cloud() {
+        assert!(incoming(&agreed_on("old"), &[]).is_none());
+    }
 
     #[test]
     fn paused_sync_is_said_once_per_game() {
@@ -1961,6 +2643,41 @@ mod sync_tests {
     fn missing_local_saves_restore_even_when_the_cloud_has_not_changed() {
         // The game was reset/reinstalled, but the launcher still remembers its last sync.
         assert!(should_restore("", "last-save", "last-save", true));
+    }
+
+    const WHY: &str = "The save couldn't be written to its folder.";
+
+    #[test]
+    fn playing_without_the_cloud_save_this_pc_last_synced_never_uploads_over_it() {
+        // Reinstalled on a PC that synced the cloud's save before, whose save folder is read-only now.
+        let mut s = agreed_on("progress");
+        assert!(hold_for_pick(&mut s, "v7", "progress", WHY));
+        // The upload after the session goes up only when the cloud's save is the one last synced.
+        assert_ne!(s.synced_hash, "progress");
+    }
+
+    #[test]
+    fn playing_without_the_cloud_save_this_pc_last_synced_asks_the_player_to_pick() {
+        let mut s = agreed_on("progress");
+        hold_for_pick(&mut s, "v7", "progress", WHY);
+        assert_eq!(s.conflict.as_deref(), Some("v7"));
+        assert_eq!(s.sync_state(true, true), "conflict");
+    }
+
+    #[test]
+    fn playing_without_a_cloud_save_from_another_pc_leaves_the_sync_as_it_was() {
+        // The cloud changed since this PC's last sync: the upload already stops as a conflict.
+        let mut s = agreed_on("progress");
+        assert!(!hold_for_pick(&mut s, "v8", "from-other-pc", WHY));
+        assert_eq!(s.synced_hash, "progress");
+        assert!(s.conflict.is_none());
+    }
+
+    #[test]
+    fn playing_without_the_cloud_save_keeps_why_for_the_games_page() {
+        let mut s = agreed_on("progress");
+        hold_for_pick(&mut s, "v8", "from-other-pc", WHY);
+        assert_eq!(s.problem.map(|p| p.text).as_deref(), Some(WHY));
     }
 
     #[test]
@@ -2021,6 +2738,7 @@ mod sync_tests {
         let mut library = crate::library::Library::default();
         library.installed.insert("g".into(), Installed { cloud: Some(true), ..Default::default() });
         let library = Mutex::new(library);
+        sign_in_for_tests(&dir, "A");
         saves::set_state(&dir, "g", &saves::State { pending: Some("123.zip".into()), ..Default::default() });
         let busy = BUSY.lock().await;
         let retry = pending_copy(&dir, "g", &library);
@@ -2058,6 +2776,30 @@ mod sync_tests {
         // Closing the game makes a current backup; Upload Now can then send the chosen save.
         saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
         assert_eq!(upload_candidate(&app, "g", &game, false).unwrap().unwrap().hash, chosen.hash);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_emptied_save_folder_cannot_send_the_pre_restore_archive() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("rl-save-upload-emptied-{}", std::process::id()));
+        let app = dir.join("app");
+        let inst = dir.join("game");
+        std::fs::create_dir_all(inst.join("save")).unwrap();
+        let path = inst.join("save/slot.sav");
+        let game = Installed { id: "g".into(), path: inst, ..Default::default() };
+        let spots = vec![Spot { template: "{install}/save".into(), from: "developer" }];
+        std::fs::write(&path, "chosen save").unwrap();
+        let chosen = saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        std::fs::write(&path, "superseded save").unwrap();
+        saves::backup(&app, "g", &spots, &game).unwrap().unwrap();
+        saves::restore(&app, "g", &saves::dir_of(&app, "g", &game).join(&chosen.name), &spots, &game).unwrap();
+        let mut state = saves::state(&app, "g");
+        state.synced_hash = chosen.hash.clone();
+        saves::set_state(&app, "g", &state);
+        std::fs::remove_file(&path).unwrap();
+        assert!(saves::backup(&app, "g", &spots, &game).unwrap().is_none());
+        assert!(upload_candidate(&app, "g", &game, false).unwrap().is_none());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
@@ -2167,6 +2909,7 @@ mod status_tests {
     #[test]
     fn a_failed_upload_is_remembered() {
         let d = tmp("failed");
+        sign_in_for_tests(&d, "A");
         note_failure(&d, "g", &Error::Net("Can't reach recomplauncher.com right now.".into()));
         let p = saves::state(&d, "g").problem.unwrap();
         assert_eq!(p.kind, "offline");
@@ -2185,6 +2928,7 @@ mod status_tests {
     #[test]
     fn a_readable_folder_again_clears_the_folder_problem() {
         let d = tmp("folder");
+        sign_in_for_tests(&d, "A");
         note_folder_too_big(&d, "g", Some(SYNC_PAUSED.into()));
         assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "too-big-folder");
         note_folder_too_big(&d, "g", None);
@@ -2195,6 +2939,7 @@ mod status_tests {
     #[test]
     fn a_readable_folder_keeps_other_problems() {
         let d = tmp("folder-other");
+        sign_in_for_tests(&d, "A");
         note_failure(&d, "g", &Error::Msg(FULL_TEXT.into()));
         note_folder_too_big(&d, "g", None);
         assert_eq!(saves::state(&d, "g").problem.unwrap().kind, "full");
@@ -2206,5 +2951,49 @@ mod status_tests {
         let local = vec![saves::Copy { name: "200.zip".into(), when: 200, size: 1, files: 1, hash: "b".into(), device: String::new(), played: 0 }];
         let s = saves::State { synced_hash: "a".into(), ..Default::default() };
         assert_eq!(waiting_copies(&local, &s), 0);
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::home_ok;
+    use serde_json::json;
+
+    #[test]
+    fn home_list_version_one_is_read() {
+        assert!(home_ok(&json!({"v": 1, "items": []})));
+    }
+
+    #[test]
+    fn home_list_of_a_newer_version_is_left_alone() {
+        assert!(!home_ok(&json!({"v": 2, "items": []})));
+    }
+
+    #[test]
+    fn home_list_without_items_is_left_alone() {
+        assert!(!home_ok(&json!({"v": 1, "error": "Try again in a moment."})));
+    }
+}
+
+#[cfg(test)]
+mod android_tests {
+    use super::*;
+
+    #[test]
+    fn a_pc_reads_the_save_places_it_always_did() {
+        let e = json!({"saves": ["{local}/X"], "android_saves": ["{storage}/x"]});
+        assert_eq!(catalog_saves(&e, false), vec!["{local}/X".to_string()]);
+    }
+
+    #[test]
+    fn a_phone_reads_its_android_save_places_only_inside_shared_storage() {
+        let e = json!({"saves": ["{local}/X"], "android_saves": ["{storage}/x", "{storage}/../y", "{storage}/Android/data/z"]});
+        assert_eq!(catalog_saves(&e, true), vec!["{storage}/x".to_string()]);
+    }
+
+    #[test]
+    fn a_phone_keeps_its_cloud_copies_apart_from_a_pcs() {
+        assert_eq!(cloud_id_for("srb2kart", false), "srb2kart");
+        assert_eq!(cloud_id_for("srb2kart", true), "srb2kart.android");
     }
 }

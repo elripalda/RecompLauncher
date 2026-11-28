@@ -31,8 +31,8 @@ function gamePage() {
     gameBody: () => '',
     statePill: () => '',
     tagsOf: () => [],
-    ...Object.fromEntries(['reviveSoon', 'moveTabPill', 'paintLooks', 'fitTitles', 'layoutShelves', 'render'].map((k) => [k, () => {}])),
-    ...Object.fromEntries(['turnkey', 'greatOnDeck', 'greatHandheld', 'isAI'].map((k) => [k, () => false])),
+    ...Object.fromEntries(['reviveSoon', 'moveTabPill', 'paintLooks', 'fitTitles', 'layoutShelves', 'render', 'loadSetup'].map((k) => [k, () => {}])),
+    ...Object.fromEntries(['turnkey', 'setUpByYou', 'greatOnDeck', 'greatHandheld', 'isAI'].map((k) => [k, () => false])),
     ...Object.fromEntries(['partOfLine', 'based', 'devLine', 'verPill'].map((k) => [k, () => ''])),
   });
   for (const name of ['refreshGame', 'gameTitle', 'lookChip']) vm.runInContext(fn(name), c);

@@ -1,5 +1,8 @@
 //! Monitor selection and window placement for the launcher and Big Picture mode.
 
+#[cfg(mobile)]
+#[allow(unused_imports)]
+use crate::mobile::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
@@ -30,6 +33,11 @@ struct WindowState {
 }
 
 static BIG_PICTURE_WINDOW: Mutex<Option<WindowState>> = Mutex::new(None);
+
+/// The main window is in Big Picture mode now.
+pub fn in_big_picture() -> bool {
+    BIG_PICTURE_WINDOW.lock().unwrap().is_some()
+}
 
 /// Returns the monitors Tauri currently reports as connected.
 pub fn enumerate_monitors(app: &AppHandle) -> Vec<MonitorInfo> {

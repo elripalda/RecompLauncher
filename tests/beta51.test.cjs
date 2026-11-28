@@ -17,7 +17,7 @@ test('cards show only Easy Setup and the versions count', () => {
   assert.doesNotMatch(tvPoster, /deckb|stb|greatOnDeck|STATE_NAME/);
   assert.match(tvPoster, /turnkey\(a\) \? `<span class="tv-easyb\$\{vers \? ' ico' : ''\}"/);
   // The game page keeps the project's state and Great on Deck.
-  assert.match(app, /const chips = \[quiet \? '' : sp, turnkey\(a\)/);
+  assert.match(app, /const chips = \[quiet \? '' : sp, inst && setUpByYou\(id\) \? setUpByYouPill\(id\) : turnkey\(a\)/);
   assert.match(tv, /\$\{deckChip\}\$\{stChip\}/);
 });
 
@@ -45,28 +45,19 @@ test('the score follows the release out now once 3 of its players said, like an 
   // The site's scores give the counts flat.
   assert.equal(c.scoreOf(all, { version: 'version 2', runs: 3, issues: 1, broken: 0 }).cur, true);
   assert.equal(c.verNorm('v0.1.1'), c.verNorm('0.1.1'));
-  assert.match(fn(app, 'runsCard'), /tf\('All versions: \{pct\}%'/);
-  assert.match(fn(app, 'runsCard'), /data-act="rep-only"/);
+  assert.match(fn(app, 'scoreSub'), /tf\('All versions: \{pct\}%'/);
+  assert.match(fn(app, 'reviewsModal'), /data-x="only"/);
 });
 
 test('reports need an account: signed out, the sign-in prompt instead of a question or an error', () => {
   const ask = fn(more, 'askRun');
   assert.match(ask, /if \(!signedIn\(\)\) return asked_for \? signInToReport\(\) : undefined;/);
-  assert.match(ask, /const s = needSignIn\(ex\);\n\s*if \(s != null\) \{ close\(\); return signInToReport\(s\); \}/);
-  assert.match(ask, /Your name isn\\'t shown with your report\./);
+  assert.match(fn(more, 'reviewDialog'), /const sn = needSignIn\(ex\);\n\s*if \(sn != null\) \{ delete s\.dataset\.busy; close\(\); return signInToReport\(\); \}/);
+  assert.match(ask, /Your name isn\\'t shown with your review\./);
   const c = vm.createContext({});
   vm.runInContext(more.match(/^const needSignIn = .*$/m)[0] + '\nglobalThis.needSignIn = needSignIn;', c);
   assert.equal(c.needSignIn(new Error('NEED_SIGNIN|Sign in first.')), 'Sign in first.');
   assert.equal(c.needSignIn(new Error('Something else')), null);
-});
-
-test('the build on this PC is offered under the game\'s box', () => {
-  const { stepsContext } = require('./steps-context.cjs');
-  const c = stepsContext();
-  const su = (x) => Object.assign({ needs: 'x', kind: '', inputs: [{ id: 'base', label: 'Base', role: 'game', file: true, active: true, path: null }], prepare_options: [] }, x);
-  // Set Up uses the build already in the game's folder, unless Build It Again.
-  const built = c.stepsView('h', su({ prebuilt: '/home/p/Games/Hopper' }), {}, { name: 'H' });
-  assert.match(built, /still here, so setup skips the build\. <button type="button" data-ss="rebuild">Build It Again<\/button>/);
 });
 
 test('files from before get no Use Them Again line', () => {
@@ -76,7 +67,7 @@ test('files from before get no Use Them Again line', () => {
   assert.doesNotMatch(c.stepsView('h', su({ inputs_ready: false }), {}, { name: 'H' }), /Set up before with|data-ss="relink"/);
 });
 
-test('players can be asked where each game goes, Easy Install too', () => {
+test('players can be asked where each game goes, Easy Setup games too', () => {
   assert.match(fn(app, 'startInstall'), /\|\| \(S\.settings\.ui \|\| \{\}\)\.ask_where\)\) \{/);
   assert.match(app, /sw\('ask_where', ui\.ask_where, t\('Ask Where to Install'\), 'ui-toggle'\)/);
   assert.match(fn(app, 'locationModal'), /data-ask-where/);

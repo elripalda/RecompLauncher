@@ -1,5 +1,12 @@
 # Works with RecompLauncher
 
+Adding support to a recomp? [ADD-SUPPORT.md](ADD-SUPPORT.md) has the steps, the rules and the
+report to finish with.
+
+This guide is the standard. When your release doesn't fit it (its folder layout, an AppImage entry
+point, file names), the fix goes in your recomp, not in the launcher: RecompLauncher doesn't add
+special code for one recomp. If the guide is missing something many recomps need, open an issue.
+
 For multiple discs, DLC slots and explicitly conditional shared keys, see
 [Named Easy Setup inputs](SETUP-INPUTS.md). That extension is limited to game inputs and three
 shared key types. BIOS/firmware management and multidisc hashing are explicitly deferred.
@@ -17,7 +24,7 @@ runs is completely set up without a `prepare` step.
 
 | Part | What players get | What you add |
 | --- | --- | --- |
-| Launch | Drop in a disc, it's checked and set up, Play starts the game directly | `game` and `start` |
+| Launch | Drop in a disc, it's checked and set up, Play starts the game directly | `inputs` and `start` |
 | Settings | Your video and gameplay settings on the game's page and in Big Picture mode | `config` and `settings` |
 | Preparation | Your own setup step that runs once before Play | `prepare` |
 | Verification | A "verified" badge when the player's copy matches a known dump | `dumps` |
@@ -26,9 +33,16 @@ The rule: use `start` to pass inputs the game reads when it starts. Add `prepare
 game has separate work to do before Play, like importing assets or recompiling from the player's
 dump. Verification works with either.
 
-Game pages show who maintains a game's setup: its developer, RecompLauncher or the community.
-Where the file comes from doesn't decide it. If you ship and maintain your own
-`recomplauncher.json`, tell us and your game shows as maintained by its developer.
+Game pages have a Launcher Support box. Each feature in it is marked as coming from your own
+`recomplauncher.json`, from RecompLauncher, or not there yet. A file that is only in your repo
+doesn't reach players, except on a Forgejo or Gitea server (see
+[Where the file goes](#where-the-file-goes)). Only what the launcher can use counts: a file that
+doesn't fit the format is skipped whole (the box says the launcher can't read it), Easy Setup
+needs `start` with `game` (or a required game input), and Verified Copies needs `game.dumps` or
+`game.check.ids`, not only a `check.file`. When everything you can control comes from
+your own file, the box says Full Support. A free
+[developer account](https://recomplauncher.com/developers?signup=1) puts the verified tick next to
+your name there.
 
 Launch takes about ten minutes. Before any of them, your releases need to install cleanly, which
 most already do: see [Releases that install cleanly](#releases-that-install-cleanly).
@@ -49,12 +63,18 @@ through us, and every release you publish reaches players the next time the laun
   (for example `MyRecomp-v1.2.0-Linux-x64.tar.xz`). Build it once, portably, so it runs on older
   systems too: in a GitHub Actions `ubuntu:22.04` container, or the Steam Runtime's `sniper` SDK.
   Then pack that one folder both ways. Either way the game plays from a plain folder (see
-  [AppImages](#appimages)), and players who want a single file to keep get the AppImage.
+  [AppImages](#appimages)), and players who want a single file to keep get the AppImage. So both
+  have to run from wherever they're unpacked: see
+  [Your AppImage has to run unpacked](#your-appimage-has-to-run-unpacked).
 - **One folder on top is fine.** A zip with everything inside `MyRecomp-v1.2.0/` is unwrapped, so
   your program lands in the game's folder either way.
 - **Keep extras out of the way.** Files with `debug`, `symbols`, `pdb` or `source` in the name, and
   `.sha256`, `.sig` and `.asc` files, are never taken for the game. So a source archive you upload
   yourself says `source` in its name: `MyRecomp-v1.2.0-source.tar.gz`.
+- **Name your tools for what they do.** Without [`start.program`](#start), and with no program in
+  the release named like your game, players are asked once which program starts it. A tool or
+  server you release beside the game says so in its file name (`MyRecomp-v1.2.0-server-Linux-x64.zip`,
+  `MyRecomp-v1.2.0-shader-translator-Windows-x64.zip`), so it's never taken for the game's build.
 - **Checked on the way in.** GitHub keeps a SHA-256 of every file you upload, and the launcher
   checks the download against it before installing. You don't have to do anything.
 - **Updates keep what the game made.** An update unpacks over the game's folder, so saves,
@@ -93,7 +113,8 @@ goes along; what it writes anywhere else is left behind. So:
   out, so a shader cache never fills a player's save copies.
 - **Temp is temp.** Your setup step gets a temp folder of its own (see [`prepare`](#prepare-your-own-setup-step)),
   emptied after every run. Nothing you need later goes there.
-- **Name both programs.** `start.program` and `prepare.program` say which file runs. Don't copy
+- **Name the program in both.** `start.program` and `prepare.program` say which file runs. Make it
+  the one program you ship, with a flag for the setup step (see [Ship one program](#releases)). Don't copy
   yourself somewhere else and run from there (bootstrapping): the launcher updates the copy in the
   game's folder, so the other one goes stale.
 - **Don't depend on `$APPIMAGE`.** On Linux the launcher always unpacks your AppImage and runs it
@@ -105,7 +126,7 @@ goes along; what it writes anywhere else is left behind. So:
 
 ```json
 "start": { "program": ["MyRecomp.exe"], "args": ["--data", "{data}"] },
-"prepare": { "program": ["MyRecomp.exe"], "args": ["--prepare", "--game", "{game}", "--data", "{data}"], "done": ["{data}/build/game.pak"] },
+"prepare": { "program": ["MyRecomp.exe"], "args": ["--prepare", "--game", "{input:game}", "--data", "{data}"], "done": ["{data}/build/game.pak"] },
 "saves": ["{data}/saves"]
 ```
 
@@ -138,16 +159,47 @@ not from the internal filesystem.
 AppImage is unpacked at install with the launcher's own reader (no FUSE, and nothing of the image
 runs), the AppImage file is deleted, and the game starts from its `AppRun`. SquashFS AppImages and
 DwarFS ones (what pkgforge's Anylinux tooling and Tauri's portable AppImage write) both work. This is the
-same in the AppImage, .deb and Flatpak builds of the launcher (the sandbox's other differences are
-in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
+same in the AppImage, .deb, Arch, Nix and Flatpak builds of the launcher (the sandbox's other
+differences are in [Your recomp in the RecompLauncher Flatpak](FLATPAK.md)).
+
+**Why a plain folder.** An AppImage normally runs by mounting itself, and that gets in the way of
+a game a launcher looks after:
+
+- **It needs FUSE, and the Flatpak can't mount at all.** An AppImage mounts its files through
+  FUSE, which not every system has set up (older runtimes want FUSE 2, which many current
+  distributions no longer install). Inside the RecompLauncher Flatpak's sandbox nothing can be
+  mounted. An unpacked folder needs neither.
+- **A mount is read-only and moves.** Every start mounts the image at a new `/tmp/.mount_*` path,
+  and nothing can be written there. A game or setup step that writes next to itself (a settings
+  file, a cache, a downloaded SDK) stops with "Read-only file system", and a path saved during one
+  run points nowhere the next time. An unpacked folder stays put and can be written to, like your
+  tarball's.
+- **Updates, saves and mods need files they can reach.** The launcher updates a game file by file
+  and all at once (an update that's cut off leaves the game exactly as it was), keeps a game's
+  `{data}`, settings and saves with it, backs saves up and syncs them, and installs mods into the
+  game's folder. All of that works on a folder, not on a sealed image.
+- **Nothing to mount, nothing left behind.** Play starts the game straight away, with no mount
+  first, and a crash never leaves a mount hanging.
+
+So your AppImage is, for the launcher, a way to ship the same folder as your tarball. It has to run
+from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-run-unpacked).
 
 - The AppImage's contents (`AppRun`, `usr/`, the `.desktop` file, an embedded
   `recomplauncher.json`) become the game's folder.
-- The game starts from `AppRun`, with `APPDIR` set to the game's folder and `ARGV0` to `AppRun`,
-  as the AppImage runtime would set them. **`APPIMAGE` is not set**, since there's no AppImage file.
-  Find your files from `APPDIR` or your own program's path (`/proc/self/exe`), never from
-  `APPIMAGE` or a mount point, and don't update yourself through `APPIMAGE`: updates come from
-  your releases through the launcher.
+- The game starts from `AppRun`, with `APPDIR` set to the game's folder, `OWD` to the folder it
+  starts in and `ARGV0` to `AppRun`, as the AppImage runtime would set them. **`APPIMAGE` is not
+  set**, since there's no AppImage file. Find your files from `APPDIR` or your own program's path
+  (`/proc/self/exe`), never from `APPIMAGE` or a mount point, and don't update yourself through
+  `APPIMAGE`: updates come from your releases through the launcher.
+- A `start.program` or `prepare.program` that names a program inside the AppImage instead (`mkw`,
+  `usr/bin/game`) starts without your `AppRun`. It gets `APPDIR` and `OWD` the same way, and the
+  library folders your AppImage brings (`lib`, `lib64`, `usr/lib`, `usr/lib64` and
+  `usr/lib/<arch>-linux-gnu`, those that exist) go first on `LD_LIBRARY_PATH`, as most `AppRun`s
+  do. Anything else your `AppRun` sets up, it doesn't get: set it in `start.env`, or link your
+  program with an rpath of `$ORIGIN/lib`. Naming the AppImage is safer: name a program inside it
+  only when that program runs on its own, and developer tools warn when you do.
+- Links inside your AppImage are kept when they stay inside it. A link to an absolute path or out
+  of the AppImage (`../../`) is left out, and the launcher's log names it.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
   release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.
@@ -162,7 +214,7 @@ Use the AppImage's filename in `start.program`, for example:
 ```json
 "start": {
   "program": ["MyGame-x86_64.AppImage"],
-  "args": ["{game}"]
+  "args": ["{input:game}"]
 }
 ```
 
@@ -179,12 +231,44 @@ compression are supported, and DwarFS with Zstandard (its usual compression). Mi
 adjacent manifest and then the catalog. Replacing the image is reflected on the next read;
 there is no extracted copy to become stale.
 
-Developer tools identify the embedded source and check the profile actually in use.
+Developer tools identify the embedded source and check the profile actually in use. When
+`start.program` or `prepare.program` names a program inside your unpacked AppImage instead of the
+AppImage, they say so in yellow: it starts without your `AppRun`.
 
 The same file uploaded twice, once without the version for `releases/latest/download` links
 (`Game-1.2.0-x86_64.AppImage` and `Game-x86_64.AppImage`), is one build: the launcher installs
 the one that names its version and doesn't ask the player to choose. GitHub's SHA-256 of each file
 says they're the same.
+
+#### Your AppImage has to run unpacked
+
+Pack the same folder as your tarball, and make sure it runs from wherever it's unpacked. If your
+tarball does, the AppImage made from the same folder does too.
+
+Try it the way the launcher runs it, from a terminal in some other folder:
+
+```sh
+./MyGame-x86_64.AppImage --appimage-extract    # unpacks into squashfs-root/
+cd /tmp
+env -u APPIMAGE ~/squashfs-root/AppRun         # the path where it unpacked
+```
+
+Start any program your `recomplauncher.json` names inside the AppImage the same way
+(`env -u APPIMAGE ~/squashfs-root/usr/bin/game`), and run your setup step too if you have one.
+
+- **Find your files from where you are.** Use `APPDIR` or `/proc/self/exe`, never `APPIMAGE`
+  (it isn't set) or a `/tmp/.mount_*` path (there's no mount).
+- **Bring your libraries, and find them however you're started.** Start through your `AppRun`
+  (name the AppImage in `start.program`), or link your program with an rpath of `$ORIGIN/lib`
+  (`-Wl,-rpath,'$ORIGIN/lib'`) so it finds what you ship without `LD_LIBRARY_PATH`. If your
+  `AppRun` does set `LD_LIBRARY_PATH`, it reaches every program it runs, the system's `cp` and
+  `mkdir` too: leave system libraries such as `libpcre2` out of what you bundle.
+- **Your folder can be written to.** Unpacked, it's a plain folder in the player's library. Don't
+  copy your program somewhere else to run it, or assume your own folder is read-only: a game
+  that moves itself to `~/.local/share` keeps its build, settings and saves outside the launcher's
+  folder, and starts differently depending on how it's started. Write where
+  [Where your game writes](#where-your-game-writes) says.
+- **Keep links relative and inside the AppImage.** Ones that point out of it are left out.
 
 ### Mac apps
 
@@ -195,7 +279,7 @@ like a framework's `Versions/Current`, are kept. Name the app in `start.program`
 
 ```json
 "start": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"] },
-"prepare": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"], "args": ["--prepare", "--game", "{game}"] }
+"prepare": { "program": ["MyGame.app", "MyGame-x86_64.AppImage"], "args": ["--prepare", "--game", "{input:game}"] }
 ```
 
 The first entry that exists on the player's system runs, so one file covers a Mac and Linux.
@@ -223,14 +307,17 @@ editor will complete fields and flag mistakes as you type. The schema is also in
   "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
   "format": 1,
   "repo": "you/your-recomp",
-  "game": {
-    "kind": "iso",
-    "label": "Your disc image (.iso) of the USA release, serial SLUS-20651.",
-    "check": { "iso9660": "SLUS_206.51" }
-  },
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your disc image (.iso) of the USA release, serial SLUS-20651.",
+      "formats": [{ "type": "file" }],
+      "check": { "iso9660": "SLUS_206.51" }
+    }
+  ],
   "start": {
     "program": ["bin/game.exe", "game.exe"],
-    "args": ["--iso", "{game}"]
+    "args": ["--iso", "{input:game}"]
   }
 }
 ```
@@ -240,15 +327,51 @@ What the player sees:
 1. They install your recomp. If the launcher already found their copy in one of their game
    folders, it offers that one. Otherwise they drop the disc image on the setup screen, or pick
    it or its folder.
-2. The setup screen reads the disc, checks it's your game, reads the whole image to make sure
-   it's complete, and writes your settings.
+2. The setup screen checks it's your game and writes your settings. A copy with known good dumps
+   (`dumps`) is read whole too, for the verified badge.
 3. "Ready to play", with Play and Settings. Play starts `start.program` straight away.
 
-### `game`: the player's copy
+That's one of two roads, and the only one that reads this file's setup. A player can also turn
+Easy Setup off for your game (Skip Easy Setup). Then Play runs your release's program, or the one
+they picked under Manage → Game Executable, with their launch options, and nothing else: no copy,
+no `prepare`, no `start.args`. Your own launcher window, if you have one, does the rest:
 
-- `kind`: `"iso"`, `"folder"` or `"iso_or_folder"`.
+```json
+"start": { "program": ["bin/game.exe"], "args": ["--iso", "{input:game}"] }
+```
+
+with Easy Setup on runs `bin/game.exe --iso <their disc>`; skipped, it runs `bin/game.exe` alone.
+
+### `inputs`: the player's copy
+
+Every file the launcher asks the player for is a named input. **The top-level `game` field is
+deprecated** (still read until RecompLauncher 1.0, as the input `game`); **the input named `game`
+is the new way.** The same word, two things: write the copy as an entry in `inputs`, never as
+`"game": { ... }`. The player's copy is the big box on the setup screen; the rest are rows under
+it. [SETUP-INPUTS.md](SETUP-INPUTS.md) has all of them.
+
+Which input for which file:
+
+1. **A game that is one file (or one folder):** one input, `"id": "game"`, `"role": "game"` (the
+   default role), passed as `{input:game}`.
+2. **A game on several discs:** every disc has `"role": "disc"`, ids `disc1` to `discN`, labels
+   `Disc 1` to `Disc N`, and no input has role `game`. The launcher makes Disc 1 the copy box by
+   itself. Give every disc a `check`. Don't give every disc role `game`: only the first would be
+   the copy box, and the Discs step, the "Insert your discs" heading and the "N of N discs
+   selected" count all go by role `disc`.
+3. **DLC:** `"role": "dlc"`, `"optional": true`, one input per package (`dlc1`, `dlc2`, ...).
+4. **An update:** `"role": "update"`, usually with `into` and `name` (where the game reads it).
+5. **Keys:** a `shared` input (`switch.prod-keys`, `switch.title-keys`, `wiiu.common-key`), never
+   a file of the game's own the player picks.
+6. **A folder input only when the copy is a folder:** an extracted PS3 game, or a Switch game's
+   `exefs` and `romfs`. Never a folder of discs or DLC (see "One file per input" below).
+
+- `id`: its name, used as `{input:<id>}` wherever paths fill in: `game` when the game is one
+  file, `disc1`..`discN`, `dlc1`.., `update`.
 - `label`: what to ask for. Name the region or serial if only one works.
-- `check`: how to tell it's the right game. Use whichever fits:
+- `formats`: `[{ "type": "file" }]`, `[{ "type": "folder" }]`, or both for either. A file format can
+  list `extensions` (without the dot).
+- `check`: how to tell it's the right game, checked when the player picks it. Use whichever fits:
   - `file`: a file that should be in the folder, like `"default.xex"`.
   - `xdvdfs`: a file on an Xbox 360 disc image.
   - `iso9660`: a file in the top folder of a PlayStation 2 (or any ISO 9660) disc image. Raw CD
@@ -259,43 +382,77 @@ What the player sees:
     of the package's newest title, from the table rows leading to it and the first 96 bytes of that
     file only, never the whole package, and a folder with `exefs/main` is read the same way. The
     file is recognised by its contents, not its extension. This is a content check only: it needs
-    and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Use
-    it with `kind: "iso_or_folder"`.
+    and adds no keys, and nothing is copied. A wrong build is refused with the build it found. Give
+    it both formats, file and folder.
+  - `ids`: the IDs your game reads, as on the copy: a GameCube or Wii disc's (`"GZ2E01"`, or
+    `"GZ2"` for every region), an N64 cartridge's game code, a PlayStation or PS2 disc's serial,
+    an extracted PS3, PS4 or PS5 game's title ID from its `param.sfo` (`"CUSA00242"`), or an Xbox
+    360 game's title ID (`"4D5307FA"`), read from the `default.xex` in a disc image or an extracted
+    folder, and from a DLC or Games on Demand package. Another game's copy is refused with the ID it
+    has. For an Xbox 360 game, use this rather than `file: "default.xex"`: every Xbox 360 disc has
+    that file, so only the ID tells the games apart. For a PS4 game, list every region's title ID next
+    to `file: "eboot.bin"`: every PS4 game has an `eboot.bin`, and a game's own title often has an
+    edition or subtitle your catalog name doesn't, so the ID is how the launcher finds the
+    player's folder. The developer check warns when a check by `eboot.bin` or `param.sfo` lists
+    no `ids`.
 
 The same check is how the launcher finds copies in the player's folders, so a disc image named
-`backup-07.iso` is still found.
+`backup-07.iso` is still found. A copy is checked when the player picks it, never again on Play.
+
+**One file per input, one argument per file.** Each disc image, DLC package or update is an input
+of its own, and your game gets each one through an argument of its own, the flag and the file
+together: `--disc1={input:disc1}`, `--disc2={input:disc2}`, `--dlc1={input:dlc1}`. Don't ask for a
+folder of discs or DLC and pass that folder. A folder input is only for a copy that is a folder: an
+extracted PS3 game, or a Switch game's `exefs` and `romfs`. With the flag and the file in one
+argument, an optional file the player didn't pick leaves its whole argument out.
+
+```json
+"inputs": [
+  { "id": "disc1", "label": "Disc 1", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }], "check": { "ids": ["SLUS-21501"] } },
+  { "id": "disc2", "label": "Disc 2", "role": "disc", "formats": [{ "type": "file", "extensions": ["iso"] }], "check": { "ids": ["SLUS-21502"] } },
+  { "id": "dlc1", "label": "The Lost Levels DLC (.pkg)", "role": "dlc", "optional": true, "formats": [{ "type": "file" }] }
+],
+"start": { "program": ["game.exe"], "args": ["--disc1={input:disc1}", "--disc2={input:disc2}", "--dlc1={input:dlc1}"] }
+```
 
 **CD games kept as several files.** The launcher finds a `.cue` (with its `.bin` tracks), a `.gdi`
-or an `.m3u` as one copy. If your game reads that sheet, name it in `label`, and `{game}` is the
-sheet. Otherwise `{game}` is the disc's first data track, the `.bin`, so a game that reads single
+or an `.m3u` as one copy. If your game reads that sheet, name it in `label`, and `{input:game}` is the
+sheet. Otherwise `{input:game}` is the disc's first data track, the `.bin`, so a game that reads single
 disc images still gets one:
 
 ```json
-"game": {
-  "kind": "iso",
+{
+  "id": "game",
   "label": "Your dump of the USA release (SLUS-00797): pick the .cue file, with its .bin tracks beside it.",
+  "formats": [{ "type": "file" }],
   "check": { "iso9660": "SLUS_007.97" }
 }
 ```
 
-Leave `game` out if your recomp finds the game itself.
+Leave the inputs out if your recomp finds the game itself.
+
+A manifest from before may write the copy as `game` (with `kind`, `label`, `check`, `dumps` and
+`update`). It still reads, as the input `game` (and `update`), but it's no longer part of the SDK,
+and RecompLauncher 1.0 stops reading it: move it before then. The Developer tab shows your file
+with it moved into `inputs`, ready to copy.
 
 **A second pick: the game's update.** When the game needs something beside the player's copy,
-picked on its own (a title update, or a PS4 update folder kept apart from the game), add `update`
-to `game`. The launcher asks for it after the copy and puts it in your folder:
+picked on its own (a title update, or a PS4 update folder kept apart from the game), add an input
+with role `update`. The launcher asks for it with the copy and puts it in your folder:
 
 ```json
-"game": {
-  "kind": "folder",
-  "label": "Your game folder (CUSA00341).",
-  "check": { "file": "eboot.bin" },
-  "update": { "into": "update", "label": "Your 1.02 update folder.", "accepts": "folder", "optional": true }
-}
+"inputs": [
+  { "id": "game", "label": "Your game folder (CUSA00341).", "formats": [{ "type": "folder" }],
+    "check": { "file": "eboot.bin", "ids": ["CUSA00341"] } },
+  { "id": "update", "label": "Your 1.02 update folder.", "role": "update", "optional": true,
+    "formats": [{ "type": "folder" }], "into": "update" }
+]
 ```
 
 - `into`: the folder inside your release it goes in.
-- `label`: what to ask for.
-- `accepts`: `"file"` (the default), `"folder"` or `"file or folder"`.
+- `name`: the name it must have there (it's put in under this name, and a file with another name
+  is refused).
+- `sha256`: the one known file, checked when it's picked.
 - `optional`: the game plays without it, so the player can skip it.
 
 ### `start`
@@ -308,7 +465,7 @@ to `game`. The launcher asks for it after the copy and puts it in your folder:
 ```json
 "start": {
   "program": ["MyRecomp.exe"],
-  "args": ["--iso", "{game}"],
+  "args": ["--iso", "{input:game}"],
   "env": { "MYRECOMP_DATA": "{documents}/My Recomp" }
 }
 ```
@@ -337,7 +494,7 @@ These fill in anywhere a path, an argument or a value is written:
 | --- | --- |
 | `{install}` | Your game's folder |
 | `{data}` | `{install}/recompdata`: everything your game writes (see [Where your game writes](#where-your-game-writes)) |
-| `{game}` | The player's copy (the .iso or the folder; for a .cue, its .bin unless `label` names .cue) |
+| `{input:<id>}` | A file the player picked, by its input's id. For the copy (`{input:game}`): the .iso or the folder; for a .cue, its .bin unless `label` names .cue |
 | `{documents}` | Documents |
 | `{local}` | AppData\Local, or ~/.local/share |
 | `{config}` | AppData\Roaming, or ~/.config |
@@ -664,9 +821,8 @@ disc or building a cache, give the launcher a way to run it without a window:
 ```json
 "prepare": {
   "program": ["yourgame.exe"],
-  "args": ["--prepare", "--game", "{game}"],
-  "label": "Menu art and fonts from your disc",
-  "timeout": 300
+  "args": ["--prepare", "--game", "{input:game}"],
+  "label": "Menu art and fonts from your disc"
 }
 ```
 
@@ -677,7 +833,20 @@ settings are written. It runs again whenever the player changes their copy.
   comes from its arguments and environment.
 - Print lines like `progress 0.4 Unpacking menu art` as you go. The number is from 0 to 1 and the
   text after it shows under the step.
-- Exit with 0 when it worked. Anything else shows as a failed setup, with your exit code.
+- There's no time limit: a full build on a Steam Deck can take hours. A step that prints nothing at
+  all for an hour is taken as stuck and stopped, so print a line now and then on long work.
+- Exit with 0 when it worked. Anything else shows as a failed setup: the player sees "Its setup
+  step stopped with code N.", the last 10 lines your step printed (stdout and stderr, `progress`
+  lines and colour codes left out) and two buttons: Copy puts those lines with the game, its
+  version and the player's OS on the clipboard, for them to paste to you, and Open Full Log opens
+  everything it printed on that run. Players read the short log first, so print the reason last,
+  in words a player can act on, rather than ending on the tail of a long hint:
+
+  ```sh
+  echo "Missing: the Vulkan SDK and the .NET 10 SDK."
+  echo "Install them, then press Set Up again: https://example.com/dkb-recomp#linux"
+  exit 1
+  ```
 - Write what you make to `{data}` (pass it in `args`, or read `RECOMPLAUNCHER_DATA`), and have your
   own launcher use the same place when it's given that path, so both stay in step.
 - It gets `RECOMPLAUNCHER=1`, `RECOMPLAUNCHER_VERSION` and `RECOMPLAUNCHER_DATA`, like the game.
@@ -685,8 +854,8 @@ settings are written. It runs again whenever the player changes their copy.
 
   ```json
   "prepare": {
-    "program": ["MyRecompBuilder.exe"],
-    "args": ["--prepare", "--game", "{game}"],
+    "program": ["MyRecomp.exe"],
+    "args": ["--prepare", "--game", "{input:game}"],
     "env": { "MYRECOMP_CACHE": "{data}/cache" }
   }
   ```
@@ -695,6 +864,10 @@ settings are written. It runs again whenever the player changes their copy.
   only scratch files there. The game itself, when Play starts it, gets the system's own temp folder.
 - The step starts only with at least 1 GB free on the game's drive; otherwise the player is asked
   to free some up first.
+- On Linux and the Steam Deck, a Windows program (`.exe`, `.bat`) runs through the same Proton the
+  game plays with, so a Windows-only release can be set up there too. The paths it gets for the
+  player's files (`{input:game}`, `{input:...}`, `RECOMPLAUNCHER_DATA`, the temp folder) are Windows paths
+  (`Z:\home\...`).
 - On Windows, if what you print says a path was too long (a `PathTooLongException`, "The filename
   or extension is too long"), the player is told to use a library folder with a shorter path or to
   turn on Windows' long paths setting. The launcher never changes that setting.
@@ -703,51 +876,55 @@ settings are written. It runs again whenever the player changes their copy.
 - **Built from the player's copy?** Keep everything the game needs in your folder, so it plays
   without the copy, and list what the build leaves in `done`. To build again later without the
   copy, see `keeps_copy` below.
-- `"version"` (optional): change it only when players who already set up must run the step again,
-  like when your output format changes. Nothing else in this file makes them set up again. The
-  game's page keeps its Play button, with "Needs a new build after the update" under it, and the
-  next Play opens a small Finish the Update window: Build Now builds it again (from what the step
-  kept, with `keeps_copy`, or from the player's copy), asks about any option the update added, and
-  starts the game when it's done. A game set up from named `inputs` opens Easy Setup for it, with a
-  note that the game is built again. A build the player pointed the launcher at
-  themselves ("Use a Build You Already Have") isn't asked. An update of your game doesn't change
-  `version` by itself: when the step builds the game itself (its recompiled program), so every
-  release needs a new build, put your release version in `version` each time you package one
-  (`"version": "0.4.2"`). Without it, players keep playing the build of the release they set up.
-- To build into the player's install folder instead of their home folder, pass it to your builder
-  (`"args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"]`) and start
-  from the same place (`"start": {"args": ["--play", "{install}/YourGame"]}`, and `folders.game`).
+- **Every new release builds again.** When a player installs a new release of your game (or goes
+  back to an older one), the step runs again before it plays: you have nothing to bump. The game's
+  page keeps its Play button, with "Needs a new build after the update" under it, and the next Play
+  opens a small Finish the Update window: Build Now builds it again (from what the step kept, with
+  `keeps_copy`, or from the player's files), asks about any option the update added, and starts the
+  game when it's done. Players can turn on Build Again After Updates in the game's Manage tab to
+  have it built in the background right after the update downloads. Reinstalling the same release
+  doesn't build again.
+- **Every new release runs your setup step again**, so make it check before it builds. Keep a build
+  version of your own (your recompiler's version, or a number you bump when what the build makes
+  changes). If the game in your folder has the same build version, built from the same copy and
+  options, print `progress 1 Already built` and exit with 0. Write that version only once the build
+  has finished, and remove it before you start writing, so a build that was cut short never looks
+  finished.
+- **Don't tag a release for changes players don't get**, like docs, the README or CI. Each release
+  is a download for every player and a new run of your setup step.
+- To build into the player's install folder instead of their home folder, pass it to your setup step
+  (`"args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"]`) and have the
+  same program start the game from there (`"start": {"program": ["YourGame.exe"], "args": ["--play", "{install}/YourGame"]}`,
+  and `folders.game`).
   When that folder is gone, Play builds the game again, as it does for a folder under `{home}`.
 - `"done"` (optional): the files the step leaves when it has finished, like
-  `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game counts as set up, even
-  when your own launcher built it, and plays without asking for the copy (unless `start` uses
-  `{game}`). If one goes missing, the player is asked to set up again. It's also what a finished
-  build has: when a player points the launcher at a build of their own, the files of `done` in
-  your build folder must be in theirs, so list one your
-  build always leaves, like `["{install}/YourGame/game.pak"]`. Without `done`, any folder with files
-  in it is taken.
+  `["{home}/Games/YourGame/prepared.bin"]`. When they're all there, the game plays without asking
+  for the copy (unless `start` uses `{input:game}`), and a game brought into the launcher with
+  its build counts as set up. If one goes missing, the player is asked to set up again. List one your build always
+  leaves, like `["{install}/YourGame/game.pak"]`.
 - `"keeps_copy": true` (optional): your step keeps what it needs from the copy in your build folder
   (the first `folders.game`) and can run again from there without it, like an update that rebuilds
   from what the first build unpacked. Then a player who deleted their copy to save space isn't
-  asked for it again: when `version` changes, or a file of `done` is missing, Play builds the game
-  again from what you kept, and Easy Setup runs the step the same way when no copy is picked. The
-  launcher leaves out every argument (and `prepare.env` value) with `{game}` in it, so write the copy as one argument
-  (`--game={game}`, not `"--game", "{game}"`); option args (`--fetch-ngx-sdk`) are still added. List
+  asked for it again: when a new release is installed, or a file of `done` is missing, Play builds
+  the game again from what you kept, and Easy Setup runs the step the same way when no copy is picked. The
+  launcher leaves out every argument (and `prepare.env` value) with `{input:game}` in it, so write the copy as one argument
+  (`--game={input:game}`, not `"--game", "{input:game}"`); option args (`--fetch-ngx-sdk`) are still added. List
   `done` too, so the launcher can tell when the build is finished. When your build folder is gone,
   or the run fails, the player is asked for their copy and the game is built from that.
 
   ```json
+  "start": { "program": ["YourGame.exe"], "args": ["--play", "{install}/YourGame"] },
   "prepare": {
-    "program": ["YourGameBuilder.exe"],
-    "args": ["--cli", "--prepare", "--game={game}", "--out", "{install}/YourGame"],
-    "done": ["{install}/YourGame/yourgame.exe"],
+    "program": ["YourGame.exe"],
+    "args": ["--cli", "--prepare", "--game={input:game}", "--out", "{install}/YourGame"],
+    "done": ["{install}/YourGame/game.pak"],
     "keeps_copy": true
   },
   "folders": { "game": [{ "path": "{install}/YourGame" }] }
   ```
 
 **A second file from the player.** When your step needs more than the copy, like an official patch
-or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{game}`. The
+or an update, ask for it as a named input and pass it with `{input:<id>}`, next to `{input:game}`. The
 setup screen asks for both. Don't download it in the step: players bring their own files.
 
 ```json
@@ -755,7 +932,7 @@ setup screen asks for both. Don't download it in the step: players bring their o
   { "id": "patch", "label": "The official 2.0 patch (patch20.zip)", "role": "update",
     "formats": [{ "type": "file", "extensions": ["zip"] }] }
 ],
-"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game", "{game}", "--patch", "{input:patch}"] }
+"prepare": { "program": ["yourgame.exe"], "args": ["--prepare", "--game", "{input:game}", "--patch", "{input:patch}"] }
 ```
 
 [SETUP-INPUTS.md](SETUP-INPUTS.md) has the rest: several discs, optional DLC, and `{input:<id>}` in
@@ -770,8 +947,8 @@ when it's on its `args` are added after the step's own:
 
 ```json
 "prepare": {
-  "program": ["LongshotBuilder.exe"],
-  "args": ["--cli", "--prepare", "--game", "{game}"],
+  "program": ["Longshot.exe"],
+  "args": ["--cli", "--prepare", "--game", "{input:game}"],
   "options": [
     {
       "id": "dlss",
@@ -795,9 +972,8 @@ when it's on its `args` are added after the step's own:
 - `"required": true` is for something the build can't run without. The setup screen's buttons
   stay off, with a line saying why, until it's ticked, and the launcher refuses to start the step
   without it. Only the PCs it's shown on count: an option `os` or `gpu` hides is never required
-  there. With a `license` it still starts off: only the player accepts it. Launchers older than
-  0.90.0-beta.64 don't know `required` and show a plain tick, so keep your builder's own check
-  (exit with a code and say why) until your `min` is that version:
+  there. With a `license` it still starts off: only the player accepts it. Keep your setup step's
+  own check too (exit with a code and say why), for a player who runs it by hand:
 
   ```json
   "options": [
@@ -812,10 +988,11 @@ when it's on its `args` are added after the step's own:
     }
   ]
   ```
-- Your builder gets these args added to its own, with the step's usual environment. Where to put
+- Your setup step gets these args added to its own, with the step's usual environment. Where to put
   the SDK and its runtime files: [Vendor SDKs the build needs](#vendor-sdks-the-build-needs).
-- Print `progress` lines for the download too. If it fails, exit with a code other than 0: the
-  player sees "Its setup step stopped with code N", so put the reason in your own log.
+- Print `progress` lines for the download too. If it fails, exit with a code other than 0 and
+  print the reason last: the player sees "Its setup step stopped with code N." and the last 10
+  lines your step printed.
 - An option you add in a later release reaches players who already set the game up: Set Up
   Again, beside Play, gets a New mark, and the next time they press Play they're asked once to turn
   it on (the setup runs again with the copy they set up with) or play as it is. Their answer is
@@ -824,30 +1001,33 @@ when it's on its `args` are added after the step's own:
 #### Vendor SDKs the build needs
 
 Some features can't be built without a vendor's SDK, like NVIDIA's DLSS (NGX). You can't ship it,
-and the launcher can't add it from outside. Have your builder fetch it on the player's PC, after
+and the launcher can't add it from outside. Have your setup step fetch it on the player's PC, after
 the player agrees to the vendor's license:
 
-1. Give the builder a flag that downloads the SDK from the vendor, and a second flag that says
+1. Give your program a flag that downloads the SDK from the vendor, and a second flag that says
    the license was accepted. Without the second, it downloads nothing and stops.
 2. Add a `prepare.options` tick, as above, with both flags in `args`, a `license`, and `gpu`
    (`nvidia` for DLSS). Ticking it is the player accepting the license.
 3. Download the SDK to the step's temp folder (`TEMP`, `TMP`, `TMPDIR`), which is emptied after
    every run, or to `{data}/cache` to reuse it on the next one. The step gets
    `RECOMPLAUNCHER_DATA` and whatever you set in `prepare.env`, and nothing else of yours: a
-   variable from your own setup can't be required. Check it by running the builder exactly as the
+   variable from your own setup can't be required. Check it by running the step exactly as the
    launcher does, with the arguments above and that environment.
 4. Put the vendor's runtime files where the game looks for them, never in your release. For
    DLSS, that is `nvngx_dlss.dll`, and `nvngx_dlssg.dll` for frame generation, in an `ngx` folder
    in the game's folder.
 5. With the tick off, the build must be the one you ship today.
 6. Print `progress` lines while it downloads. If it fails, exit with a code other than 0 and
-   write the reason in your own log: the player sees "Its setup step stopped with code N".
+   print the reason last: the player sees "Its setup step stopped with code N." and the last
+   10 lines your step printed.
 
-### `game.dumps`: known good copies
+### `dumps`: known good copies
 
 ```json
-"game": {
-  "kind": "iso",
+{
+  "id": "game",
+  "label": "Your Xbox 360 disc image (.iso).",
+  "formats": [{ "type": "file" }],
   "check": { "xdvdfs": "default.xex" },
   "dumps": [
     { "name": "USA", "size": 7838695424, "crc32": "1a2b3c4d" },
@@ -856,9 +1036,9 @@ the player agrees to the vendor's license:
 }
 ```
 
-The launcher reads every byte of the player's copy anyway, to make sure it's complete. With
-`dumps` it also compares the CRC32 and shows "Matches the verified USA disc". Take the values
-from Redump. A copy that doesn't match still works; the player just doesn't get the badge.
+Only a file with `dumps` is read whole on setup: the launcher compares its CRC32 and shows
+"Matches the verified USA disc". Any other file is checked by its `check` only, so a 20 GB
+package isn't read just to set it up. Take the values from Redump. A copy that doesn't match still works; the player just doesn't get the badge.
 
 ## Controllers and Big Picture mode
 
@@ -900,49 +1080,10 @@ Things that make a recomp feel finished in the launcher. None are required; each
   needs the USA one" saves you a bug report.
 - **Support `portable.txt`.** If a `portable.txt` next to your program makes your recomp keep
   everything in its own folder, mod installs from the launcher follow it.
-- **Check the copy, then trust it.** With `game` and `dumps`, the launcher has already checked the
+- **Check the copy, then trust it.** With `check` (and `dumps`), the launcher has already checked the
   player's copy before your program starts, so your own check can be quick.
 - **Ship a `recomplauncher.json` in every release**, and keep it in step with your settings when
   you add or rename keys. The Developer tab (below) shows the problems before players do.
-
-## Launcher features
-
-A profile can list the launcher features it uses in `"requires"`, and the oldest launcher it works
-with in `"min"` (like `"0.90.0-beta.27"`). A launcher that doesn't have one of them leaves out the
-parts that need it (no Easy Setup, no settings tab for it), and the game still installs and plays the
-normal way. It never fails on a profile it doesn't fully understand.
-
-RecompLauncher 0.90 Beta 27 supports:
-
-| Feature | What it is |
-| --- | --- |
-| `start` | The program to start |
-| `start.linux` | A separate program on Linux |
-| `start.macos` | A separate program on a Mac |
-| `setup` | A program in the release that runs once before the first play |
-| `console` | The program asks questions in its text window |
-| `clone` | The game's setup works from a clone of its repo |
-| `makes` | Files or folders its setup makes, to tell when it finished |
-| `player_note` | Something the player does by hand, shown on the game's page |
-| `installer` | The release is an installer, then the game starts from what it installed |
-| `needs` | What the PC needs for its setup: `build_tools`, `clang`, `python` (3.10 or newer), checked on the game's page |
-| `exit_codes` | What a game's exit codes mean (`{"70": "…"}`, or `"ok"` for a normal quit), shown in the crash window |
-| `files.folder` | Easy Setup: the player's copy goes into a folder |
-| `files.flag` | Easy Setup: the copy is passed on the command line |
-| `files.env` | Easy Setup: the copy reaches the game through an environment variable |
-| `files.setup` | Easy Setup: the copy is handed to the game's own setup |
-| `files.accepts` | Which kinds of copy it takes (a disc image, a folder, a file) |
-| `files.contains` | Files the copy must have, to check it's the right game |
-| `files.sha256` | Known dumps, checked by their SHA-256 |
-| `files.update` | A title update the game needs beside the disc |
-| `settings.toml` | Game settings in a TOML file |
-| `settings.ini` | Game settings in an INI file |
-| `settings.json` | Game settings in a JSON file |
-| `settings.args` | Game settings on the command line |
-| `settings.choices` | Settings with a list of choices |
-| `settings.slider` | Settings as a slider |
-| `settings.bindings` | Key and button bindings |
-| `settings.groups` | Settings in named groups |
 
 ## Betas
 
@@ -994,7 +1135,8 @@ CHD is the format most disc-based backups come in, and the one players ask for m
 ### Releases
 
 - **Tag every release with a version** (`v1.2.0`) and attach the builds to the GitHub release, not just to the README or Actions.
-- **Name every file for what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.tar.gz` and `-linux-x86_64.AppImage`, `-macos-arm64.zip`. [Releases that install cleanly](#releases-that-install-cleanly) has the rest: the words a launcher picks a file by, one portable Linux build packed both ways, `source` in a source archive's name, and staying out of Program Files.
+- **Ship one program, and keep it the one players start.** Don't ship a builder that makes the game's program. If the game has to be built on the player's PC, the program you ship (`MyRecomp.exe`) builds it and then runs it, and the player never sees the built binary. Don't name it "builder", "compiler" or the like, and never change what the player starts after the build: `start.program`, their shortcut and their Steam entry stay on the program you shipped. [LostOdysseyRecomp](https://github.com/freefrank/LostOdysseyRecomp/blob/main/recomplauncher.json) works this way: `LostOdysseyRecomp.exe --prepare-content` is its setup step, and the same `LostOdysseyRecomp.exe` is the game.
+- **Name every file for what it is**, the same way every time: `yourgame-1.2.0-windows-x64.zip`, `-linux-x86_64.tar.gz` and `-linux-x86_64.AppImage`, `-macos-arm64.zip`. [Releases that install cleanly](#releases-that-install-cleanly) has the rest: the words a launcher picks a file by, one portable Linux build packed both ways that runs from wherever it's unpacked ([Your AppImage has to run unpacked](#your-appimage-has-to-run-unpacked)), `source` in a source archive's name, and staying out of Program Files.
 - **Build for Linux and Mac too** when you can. A lot of players are on Steam Deck.
 - **Say what changed** in the release notes, even in one line.
 

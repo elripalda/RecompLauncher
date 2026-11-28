@@ -76,6 +76,26 @@ pub fn spots(dev: &[String], catalog: &[String], g: &Installed) -> Vec<Spot> {
     mine.into_iter().map(|template| Spot { template, from: "player" }).collect()
 }
 
+/// The player may put their own folder in place of the one the developer or RecompLauncher named
+/// (a recomplauncher.json that names an old folder) only for a game they set up themselves: Easy
+/// Setup is hands-off. Only over one named folder: restore matches a copy's folders by position,
+/// so one folder standing in for several would put files in the wrong place.
+pub fn can_override(named: &[Spot], sets_up: bool) -> bool {
+    let [one] = named else { return false };
+    sets_up && matches!(one.from, "developer" | "catalog")
+}
+
+/// The game's save places with the player's override (`over`) in place of the named folder, when
+/// `can_override` allows it. A "player" place: it's the player's folder, and restore and sharing
+/// treat it as one.
+pub fn with_override(named: Vec<Spot>, over: Option<&str>, sets_up: bool) -> Vec<Spot> {
+    let Some(over) = over.map(str::trim).filter(|t| !t.is_empty()) else { return named };
+    if !can_override(&named, sets_up) {
+        return named;
+    }
+    vec![Spot { template: over.to_string(), from: "player" }]
+}
+
 /// The player's save folders with `dir` added to `now` (the ones it has): refused when it's one of
 /// them already, or inside one or around one (its files would be in two places).
 pub fn add_place(now: &[String], dir: &Path, g: &Installed) -> Result<Vec<String>, String> {
@@ -95,9 +115,40 @@ pub fn add_place(now: &[String], dir: &Path, g: &Installed) -> Result<Vec<String
     Ok(out)
 }
 
+/// Android: the phone's shared storage (the folder a file manager opens at, `/storage/emulated/0`),
+/// known once the player has allowed All files access. None on a PC, and on a phone without it.
+static STORAGE: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+pub fn set_storage(p: Option<PathBuf>) {
+    *STORAGE.write().unwrap_or_else(|e| e.into_inner()) = p.filter(|p| p.is_absolute());
+}
+
+pub fn storage() -> Option<PathBuf> {
+    STORAGE.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// A save place an Android build can have: in shared storage, nowhere above it, and not in
+/// `Android/data` or `obb`, which Android keeps from other apps. The website checks the same.
+pub fn storage_place_ok(t: &str) -> bool {
+    let Some(rest) = t.strip_prefix("{storage}/") else { return false };
+    let parts: Vec<&str> = rest.split('/').collect();
+    let hidden = parts.len() >= 2 && parts[0].eq_ignore_ascii_case("android") && (parts[1].eq_ignore_ascii_case("data") || parts[1].eq_ignore_ascii_case("obb"));
+    !rest.is_empty() && !hidden && !rest.contains('{') && !rest.contains('\\') && parts.iter().all(|p| !p.is_empty() && *p != "." && *p != "..")
+}
+
+/// `{storage}` in a template, as `root`. Left as it is without one: no such folder exists, so it's
+/// never read as a place with no saves in it (the caller asks for access first).
+fn fill_storage(t: &str, root: Option<&Path>) -> String {
+    match (t.strip_prefix("{storage}"), root) {
+        (Some(rest), Some(r)) => format!("{}{rest}", r.to_string_lossy().trim_end_matches('/')),
+        _ => t.to_string(),
+    }
+}
+
 /// A template on this PC.
 pub fn resolve(template: &str, install: &Path) -> PathBuf {
-    let t = crate::profile::fill(template, install, None);
+    let t = fill_storage(template, storage().as_deref());
+    let t = crate::profile::fill(&t, install, None);
     PathBuf::from(if cfg!(windows) { t.replace('/', "\\") } else { t })
 }
 
@@ -159,6 +210,8 @@ pub fn templatize_for(p: &Path, g: &Installed) -> String {
 pub fn templatize(p: &Path, install: &Path) -> String {
     // `{data}` before `{install}`: it's inside it, and the narrower name is the one the game uses.
     let bases: Vec<(&str, Option<PathBuf>)> = vec![
+        // Android only: a game's folder in the phone's shared storage.
+        ("{storage}", storage()),
         ("{data}", Some(crate::profile::data_dir(install))),
         ("{install}", Some(install.to_path_buf())),
         ("{local}", dirs::data_local_dir()),
@@ -187,14 +240,25 @@ const BIN_SAVE_MAX: u64 = 16 * 1024 * 1024;
 /// A folder with programs in it (a runtime a game downloads on its first start, like Java or
 /// Python, or its own tools): never a save place, even when the game writes small files there.
 pub fn holds_programs(dir: &Path) -> bool {
+    programs_in(dir).unwrap_or(false)
+}
+
+/// Whether `dir` has programs in it, or None when it holds too much to look through (a home
+/// folder, a drive). holds_programs takes that as no; a folder the player picks doesn't.
+fn programs_in(dir: &Path) -> Option<bool> {
+    programs_within(dir, 4000)
+}
+
+/// programs_in, looking at no more than `most` entries.
+fn programs_within(dir: &Path, most: usize) -> Option<bool> {
     const PROGRAMS: [&str; 7] = [".exe", ".dll", ".so", ".dylib", ".jar", ".jmod", ".pyd"];
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
     let mut seen = 0usize;
     while let Some((d, depth)) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
             seen += 1;
-            if seen > 4000 {
-                return false;
+            if seen > most {
+                return None;
             }
             let Ok(t) = e.file_type() else { continue };
             let n = e.file_name().to_string_lossy().to_lowercase();
@@ -203,12 +267,38 @@ pub fn holds_programs(dir: &Path) -> bool {
                     stack.push((e.path(), depth + 1));
                 }
             } else if PROGRAMS.iter().any(|x| n.ends_with(x)) || n.contains(".so.") || crate::proton::elf_arch(&e.path()).is_some() {
-                return true;
+                return Some(true);
             }
         }
     }
-    false
+    Some(false)
 }
+
+/// Why a folder the player picks can't stand in for the named save folder, or None when it can.
+/// Backups, cloud uploads and restore's clearing would take everything in it for saves, so not
+/// the game's folder or one around it, a home folder, a drive, one with programs, or one too big
+/// to look through.
+pub fn override_refused(dir: &Path, game: &Path, home: Option<&Path>) -> Option<&'static str> {
+    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let game = game.canonicalize().unwrap_or_else(|_| game.to_path_buf());
+    // A home folder or a drive holds the game's folder too: said as too big, which it is.
+    let is_home = home.and_then(|h| h.canonicalize().ok()).is_some_and(|h| h == dir);
+    if is_home || dir.parent().is_none() {
+        return Some(OVERRIDE_TOO_BIG);
+    }
+    if game.starts_with(&dir) {
+        return Some(OVERRIDE_GAME_FOLDER);
+    }
+    match programs_in(&dir) {
+        Some(false) => None,
+        Some(true) => Some(OVERRIDE_GAME_FOLDER),
+        None => Some(OVERRIDE_TOO_BIG),
+    }
+}
+
+/// Fixed texts, so the window can translate them.
+pub(crate) const OVERRIDE_GAME_FOLDER: &str = "That's the game's own folder, or it holds programs. Pick the folder its saves are in.";
+pub(crate) const OVERRIDE_TOO_BIG: &str = "That folder holds far too much to be a save folder, like your home folder or a whole drive. Pick the folder its saves are in.";
 
 fn is_save_file(name: &str, size: u64) -> bool {
     let n = name.to_lowercase();
@@ -375,7 +465,11 @@ pub fn look(spots: &[Spot], g: &Installed) -> (Vec<Entry>, Vec<usize>) {
         } else if p.is_dir() {
             // The game's own folder: only what the release didn't put there.
             let rel_of_install = s.template.starts_with("{install}");
-            let skip = if rel_of_install && lower(&p) == lower(&g.path) { &release } else { &none };
+            // "{install}/" is the same folder as "{install}", so its release files aren't saves either.
+            let place = lower(&p);
+            let install = lower(&g.path);
+            let is_install = place.trim_end_matches(['/', '\\']) == install.trim_end_matches(['/', '\\']);
+            let skip = if rel_of_install && is_install { &release } else { &none };
             if !walk(&p, &mut found, skip, SPOT_MAX, WALK_SECS, false) {
                 too_big.push(i);
                 found.clear();
@@ -469,7 +563,18 @@ pub fn use_chosen_device(ui: &serde_json::Value) {
     *CHOSEN_DEVICE.lock().unwrap_or_else(|e| e.into_inner()) = name;
 }
 
+/// Android: the phone's own name ("samsung SM-S921B"), told by Android once the window starts.
+static PHONE_NAME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub fn set_phone_name(name: &str) {
+    *PHONE_NAME.lock().unwrap_or_else(|e| e.into_inner()) = name.trim().chars().take(DEVICE_NAME_MAX).collect();
+}
+
 pub fn system_device_name() -> String {
+    if cfg!(target_os = "android") {
+        let n = PHONE_NAME.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        return if n.is_empty() { "Android".into() } else { n };
+    }
     std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "This PC".into())
 }
 
@@ -709,6 +814,11 @@ pub struct State {
     /// next start makes the copy and sends it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub after_play: bool,
+    /// The sign-in this note was read under (see `state`): a note read under one sign-in is never
+    /// written under another, so work that ends after a switch can't stamp the old account's
+    /// cloud news on the new one. None for a note made in code: it's written under the sign-in now.
+    #[serde(skip)]
+    pub(crate) read_under: Option<String>,
 }
 
 /// Why a game's saves didn't reach the cloud. `kind` is one of: offline, full, paused,
@@ -729,6 +839,34 @@ impl State {
         self.synced_device = device.to_string();
         self.conflict = None;
         self.problem = None;
+    }
+
+    /// Another account (or nobody signed in): nothing the note says about the cloud holds for it
+    /// (what was synced, the queue, a conflict, a problem). What this PC knows about its own
+    /// saves stays, so changes to them are still noticed.
+    pub fn forget_cloud(&mut self) {
+        self.synced_hash.clear();
+        self.pending = None;
+        self.synced_at = 0;
+        self.synced_made = 0;
+        self.synced_device.clear();
+        self.conflict = None;
+        self.problem = None;
+    }
+
+    fn knows_cloud(&self) -> bool {
+        let synced = !self.synced_hash.is_empty() || self.synced_at != 0 || self.synced_made != 0 || !self.synced_device.is_empty();
+        synced || self.pending.is_some() || self.conflict.is_some() || self.problem.is_some()
+    }
+
+    fn take_cloud_from(&mut self, other: &State) {
+        self.synced_hash = other.synced_hash.clone();
+        self.pending = other.pending.clone();
+        self.synced_at = other.synced_at;
+        self.synced_made = other.synced_made;
+        self.synced_device = other.synced_device.clone();
+        self.conflict = other.conflict.clone();
+        self.problem = other.problem.clone();
     }
 
     /// The newest copy on this PC isn't the one in the cloud: it's queued, or it goes up after
@@ -774,19 +912,104 @@ fn state_file(app_dir: &Path, id: &str) -> PathBuf {
     app_dir.join("saves").join(id).join("state.json")
 }
 
-pub fn state(app_dir: &Path, id: &str) -> State {
-    let read = |p: PathBuf| fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok());
-    // One from before the notes moved, beside the copies in the player's folder.
-    let beside = || chosen_root().and_then(|r| read(r.join(id).join("state.json")));
-    read(state_file(app_dir, id)).or_else(beside).unwrap_or_default()
+/// The key in state.json naming the sign-in its cloud fields belong to. Same name and form as the
+/// Google Drive draft (PR #228) uses, "<provider>:<account id>", so the two read each other's notes.
+const SCOPE_KEY: &str = "cloud_scope";
+
+/// The sign-in a note's cloud fields are written under now. Read from account.json without
+/// opening the sealed token, so it costs no trip to Windows' Credential Manager.
+fn scope_now(app_dir: &Path) -> String {
+    format!("recompstore:{}", crate::cloud::account_uid(app_dir))
 }
 
-pub fn set_state(app_dir: &Path, id: &str, s: &State) {
+/// A scope with no account id after the colon is nobody's: nothing in the cloud belongs to it.
+fn owned(scope: &str) -> bool {
+    scope.split_once(':').is_some_and(|(_, who)| !who.is_empty())
+}
+
+/// The note as written, with the scope it was written under (None: from before notes had one).
+fn read_note(app_dir: &Path, id: &str) -> Option<(State, Option<String>)> {
+    let read = |p: PathBuf| fs::read(p).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    // One from before the notes moved, beside the copies in the player's folder.
+    let beside = || chosen_root().and_then(|r| read(r.join(id).join("state.json")));
+    let value = read(state_file(app_dir, id)).or_else(beside)?;
+    let scope = value.get(SCOPE_KEY).and_then(|v| v.as_str()).map(String::from);
+    let state = serde_json::from_value(value).unwrap_or_default();
+    Some((state, scope))
+}
+
+fn write_note(app_dir: &Path, id: &str, s: &State, scope: &str) {
     let f = state_file(app_dir, id);
     if let Some(d) = f.parent() {
         let _ = fs::create_dir_all(d);
     }
-    let _ = fs::write(f, serde_json::to_vec_pretty(s).unwrap_or_default());
+    let mut value = serde_json::to_value(s).unwrap_or_default();
+    value[SCOPE_KEY] = scope.into();
+    let _ = fs::write(f, serde_json::to_vec_pretty(&value).unwrap_or_default());
+}
+
+/// What this PC knows about a game's saves, for whoever is signed in now. The cloud fields only
+/// count for the account they were written under: after a switch (or signed out) the game has
+/// nothing synced, nothing queued, no conflict and no problem, so another account's upload is
+/// never sent and its sync point never decides a restore. The account's own notes come back if
+/// it signs in again before the other one syncs this game.
+///
+/// A note from before notes had an account belongs to the account signed in when this version
+/// first reads it: an account switch was rare, and dropping every player's queue and sync point
+/// at the update would turn their next sync into a "which save?" question. Read with nobody
+/// signed in, it belongs to no account, since who wrote it can't be known.
+pub fn state(app_dir: &Path, id: &str) -> State {
+    let now = scope_now(app_dir);
+    let Some((mut s, written)) = read_note(app_dir, id) else {
+        return State { read_under: Some(now), ..Default::default() };
+    };
+    s.read_under = Some(now.clone());
+    let Some(written) = written else {
+        if !owned(&now) {
+            s.forget_cloud();
+        }
+        write_note(app_dir, id, &s, &now);
+        return s;
+    };
+    if written != now || !owned(&now) {
+        s.forget_cloud();
+    }
+    s
+}
+
+pub fn set_state(app_dir: &Path, id: &str, s: &State) {
+    write_state(app_dir, id, s, false);
+}
+
+/// After the saves here were replaced (a restore, a shared save): the copy queued to go up is
+/// superseded, whichever account it was queued for, so signing in to it again doesn't send it.
+fn set_state_saves_replaced(app_dir: &Path, id: &str, s: &State) {
+    write_state(app_dir, id, s, true);
+}
+
+fn write_state(app_dir: &Path, id: &str, s: &State, saves_replaced: bool) {
+    let now = scope_now(app_dir);
+    if s.read_under.as_ref().is_some_and(|r| *r != now) {
+        crate::trail::note(format!("Saves: {id}'s sync note wasn't kept, the account changed meanwhile"));
+        return;
+    }
+    // A note that says nothing about the cloud (signed out, or an account that hasn't synced this
+    // game) keeps what the file says for the account it belongs to: playing signed out, or a
+    // look from another account, doesn't cost that account its sync point.
+    let mut keep = s.clone();
+    let mut scope = now.clone();
+    if !s.knows_cloud() {
+        if let Some((written, Some(owner))) = read_note(app_dir, id) {
+            if owner != now && owned(&owner) {
+                keep.take_cloud_from(&written);
+                if saves_replaced {
+                    keep.pending = None;
+                }
+                scope = owner;
+            }
+        }
+    }
+    write_note(app_dir, id, &keep, &scope);
 }
 
 /// Copies go where they belong now: from the launcher's own folder (where they were kept before
@@ -938,6 +1161,14 @@ fn moved_places(copy: &[String], now: &[Spot]) -> Option<Vec<Spot>> {
     same_kind.then(|| now.to_vec())
 }
 
+/// Said when a save file can't be written where the game reads it. The folder and the system's
+/// reason go on the line under it: "Read-only file system (os error 30)" alone named neither.
+pub const SAVE_NOT_WRITTEN: &str = "The save couldn't be written to its folder.";
+
+fn not_written(path: &Path, e: io::Error) -> Error {
+    Error::Msg(format!("{SAVE_NOT_WRITTEN}\n{}: {e}", path.display()))
+}
+
 /// Puts a copy's files back where the game reads them, on this PC. Saves that are there now and
 /// aren't in the copy are taken away, so the game sees exactly what was copied; what was there is
 /// kept as a copy first, so this can be undone.
@@ -978,9 +1209,9 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // kept, and never in the game's own folder as a whole, where other files live too.
     if kept {
         // Where extra saves can go: places the game's developer, the catalog or the player named
-        // (never the game's whole folder), and places outside the game's folder. Not a place that
-        // was only a guess inside the game's folder, or one that holds programs: those can be part
-        // of the game (a runtime it downloaded).
+        // (never the game's whole folder), and places outside the game's folder. Not a place inside
+        // the game's folder that only the copy names (older launchers guessed those), or one that
+        // holds programs: those can be part of the game (a runtime it downloaded).
         let named = |t: &str| spots_now.iter().any(|s| s.template == t && matches!(s.from, "developer" | "catalog" | "player"));
         let may_clear: Vec<bool> = same
             .iter()
@@ -1034,12 +1265,15 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
             root.join(rel)
         };
         if let Some(d) = dest.parent() {
-            fs::create_dir_all(d)?;
+            fs::create_dir_all(d).map_err(|why| not_written(d, why))?;
         }
         if crate::inputs::excluded(g, &dest) { continue; }
         let tmp = dest.with_extension("rl-part");
-        io::copy(&mut e, &mut fs::File::create(&tmp)?)?;
-        fs::rename(&tmp, &dest)?;
+        let mut out = fs::File::create(&tmp).map_err(|why| not_written(&dest, why))?;
+        io::copy(&mut e, &mut out).map_err(|why| not_written(&dest, why))?;
+        // Closed before the rename: Windows won't rename a file that's still open.
+        drop(out);
+        fs::rename(&tmp, &dest).map_err(|why| not_written(&dest, why))?;
         n += 1;
     }
     let mut st = state(app_dir, id);
@@ -1047,8 +1281,24 @@ pub fn restore(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g:
     // A successful restore replaces the save that was queued for upload. Keep its archive in
     // local history, but do not let a retry send it over the player's restored selection.
     st.pending = None;
-    set_state(app_dir, id, &st);
+    set_state_saves_replaced(app_dir, id, &st);
     Ok(n)
+}
+
+/// Said when the saves here changed after they were checked, so a cloud save wasn't put over them.
+pub const CHANGED_SINCE_CHECK: &str = "Your saves on this PC changed while the cloud save was downloading, so they weren't replaced. Sync again to choose which one to keep.";
+
+/// `restore`, but only over the saves that were checked: `checked` is their set's checksum as
+/// `current` gave it. A game opened outside the launcher can save while a cloud save downloads,
+/// and that newer save would be replaced without the player being asked. A save made in the
+/// milliseconds between this check and `restore`'s own backup isn't seen: accepted, as that
+/// backup still keeps what was there.
+pub fn restore_if_unchanged(app_dir: &Path, id: &str, zip_file: &Path, spots_now: &[Spot], g: &Installed, checked: &str) -> Result<usize, Error> {
+    let (_, _, now, _) = current(spots_now, g);
+    if now != checked {
+        return Err(Error::Msg(CHANGED_SINCE_CHECK.into()));
+    }
+    restore(app_dir, id, zip_file, spots_now, g)
 }
 
 pub fn manifest(zip_file: &Path) -> Option<Manifest> {
@@ -1285,7 +1535,7 @@ pub fn share_save(app_dir: &Path, id: &str, spot: &Spot, g: &Installed, source: 
 
     let mut s = state(app_dir, id);
     s.pending = None;
-    set_state(app_dir, id, &s);
+    set_state_saves_replaced(app_dir, id, &s);
     Ok(())
 }
 
@@ -1408,6 +1658,17 @@ mod tests {
         let s = vec![Spot { template: "{install}".into(), from: "player" }];
         let got: Vec<String> = collect(&s, &g).into_iter().map(|e| e.rel).collect();
         assert_eq!(got, vec!["slot1.sav"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_game_folder_written_with_a_slash_still_skips_release_files() {
+        let d = tmp("install-slash");
+        fs::write(d.join("level.dat"), b"release").unwrap();
+        fs::write(d.join("slot.sav"), b"save").unwrap();
+        let g = Installed { files: vec![PathBuf::from("level.dat")], ..game(&d) };
+        let s = vec![Spot { template: "{install}/".into(), from: "developer" }];
+        assert_eq!(files_inside(&s, &g), vec![PathBuf::from("slot.sav")]);
         let _ = fs::remove_dir_all(&d);
     }
 
@@ -1545,6 +1806,104 @@ mod tests {
         g.save_place = Some("{install}/mine".into());
         let s = spots(&[], &[], &g);
         assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/mine", "player")]);
+    }
+
+    #[test]
+    fn the_override_replaces_the_developers_folder_when_the_player_sets_up() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/real", "player")]);
+    }
+
+    #[test]
+    fn the_override_replaces_recomplaunchers_folder_when_the_player_sets_up() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&[], &["{local}/Test/saves".into()], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/real", "player")]);
+    }
+
+    #[test]
+    fn easy_setup_ignores_a_left_over_override() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), false);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
+    }
+
+    #[test]
+    fn the_override_is_not_used_over_several_named_folders() {
+        let g = game(Path::new("/games/test"));
+        let named = spots(&["{install}/one".into(), "{install}/two".into()], &[], &g);
+        let s = with_override(named, Some("{install}/real"), true);
+        assert_eq!(s.len(), 2);
+    }
+
+    #[test]
+    fn an_override_can_be_a_plain_save_folder() {
+        let d = tmp("override-plain");
+        fs::create_dir_all(d.join("game")).unwrap();
+        fs::create_dir_all(d.join("saves")).unwrap();
+        fs::write(d.join("saves/slot.sav"), "save").unwrap();
+        assert_eq!(override_refused(&d.join("saves"), &d.join("game"), None), None);
+    }
+
+    #[test]
+    fn an_override_is_not_the_games_own_folder() {
+        let d = tmp("override-game");
+        assert_eq!(override_refused(&d, &d, None), Some(OVERRIDE_GAME_FOLDER));
+    }
+
+    #[test]
+    fn an_override_is_not_a_folder_around_the_game() {
+        let d = tmp("override-around");
+        fs::create_dir_all(d.join("lib/game")).unwrap();
+        assert_eq!(override_refused(&d.join("lib"), &d.join("lib/game"), None), Some(OVERRIDE_GAME_FOLDER));
+    }
+
+    #[test]
+    fn an_override_is_not_the_home_folder() {
+        let d = tmp("override-home");
+        fs::create_dir_all(d.join("home")).unwrap();
+        assert_eq!(override_refused(&d.join("home"), &d.join("game"), Some(&d.join("home"))), Some(OVERRIDE_TOO_BIG));
+    }
+
+    #[test]
+    fn an_override_is_not_a_whole_drive() {
+        let root = Path::new(if cfg!(windows) { "C:\\" } else { "/" });
+        assert_eq!(override_refused(root, Path::new("/nowhere/game"), None), Some(OVERRIDE_TOO_BIG));
+    }
+
+    #[test]
+    fn a_folder_too_big_to_look_through_is_not_said_to_be_free_of_programs() {
+        // A small limit, not 4000 files: writing that many slows the tests that time a restart.
+        let d = tmp("override-big");
+        for i in 0..4 {
+            fs::write(d.join(format!("{i}.txt")), "").unwrap();
+        }
+        assert_eq!(programs_within(&d, 3), None);
+    }
+
+    #[test]
+    fn an_override_is_not_a_folder_with_programs() {
+        let d = tmp("override-programs");
+        fs::write(d.join("tool.dll"), "").unwrap();
+        assert_eq!(override_refused(&d, Path::new("/nowhere/game"), None), Some(OVERRIDE_GAME_FOLDER));
+    }
+
+    #[test]
+    fn the_override_is_not_used_when_nobody_named_a_folder() {
+        assert!(!can_override(&[Spot { template: "{install}/mine".into(), from: "player" }], true));
+    }
+
+    #[test]
+    fn an_old_pick_does_not_come_back_without_an_override() {
+        let mut g = game(Path::new("/games/test"));
+        g.save_place = Some("{install}/mine".into());
+        let named = spots(&["{install}/save".into()], &[], &g);
+        let s = with_override(named, None, true);
+        assert_eq!(s.iter().map(|x| (x.template.as_str(), x.from)).collect::<Vec<_>>(), vec![("{install}/save", "developer")]);
     }
 
     #[test]
@@ -1804,6 +2163,7 @@ mod tests {
         assert!(queued.when > chosen.when);
         let queued_path = dir_of(&app, "g", &g).join(&queued.name);
         let queued_bytes = fs::read(&queued_path).unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
         set_state(&app, "g", &State { last_hash: queued.hash.clone(), synced_hash: "previous cloud".into(), pending: Some(queued.name.clone()), ..Default::default() });
         set_state(&app, "other", &State { pending: Some("123.zip".into()), ..Default::default() });
 
@@ -1823,6 +2183,42 @@ mod tests {
         fs::remove_dir_all(d).unwrap();
     }
 
+    // Account A queues the newest copy; the older one is restored with `who` signed in (None:
+    // nobody); then A signs in again and looks at what's queued.
+    fn restored_while_away(name: &str, who: Option<&str>) -> Option<String> {
+        let d = tmp(name);
+        let app = d.join("app");
+        let inst = d.join("inst");
+        fs::create_dir_all(&inst).unwrap();
+        let g = game(&inst);
+        let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
+        fs::write(inst.join("slot.sav"), "older save").unwrap();
+        let older = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        fs::write(inst.join("slot.sav"), "newer save queued for A").unwrap();
+        let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
+        set_state(&app, "g", &State { last_hash: queued.hash, synced_hash: "a-cloud".into(), pending: Some(queued.name), ..Default::default() });
+        match who {
+            Some(uid) => crate::cloud::sign_in_for_tests(&app, uid),
+            None => crate::cloud::sign_out_for_tests(&app),
+        }
+        restore(&app, "g", &dir_of(&app, "g", &g).join(&older.name), &spots, &g).unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
+        let pending = state(&app, "g").pending;
+        fs::remove_dir_all(d).unwrap();
+        pending
+    }
+
+    #[test]
+    fn restoring_signed_out_cancels_the_accounts_queued_upload() {
+        assert_eq!(restored_while_away("restore-signed-out", None), None);
+    }
+
+    #[test]
+    fn restoring_as_another_account_cancels_the_first_accounts_queued_upload() {
+        assert_eq!(restored_while_away("restore-as-b", Some("B")), None);
+    }
+
     #[test]
     fn a_failed_restore_keeps_the_pending_upload() {
         let d = tmp("restore-pending-error");
@@ -1833,6 +2229,7 @@ mod tests {
         let g = game(&inst);
         let spots = vec![Spot { template: "{install}/slot.sav".into(), from: "developer" }];
         let queued = backup(&app, "g", &spots, &g).unwrap().unwrap();
+        crate::cloud::sign_in_for_tests(&app, "A");
         set_state(&app, "g", &State { last_hash: queued.hash, pending: Some(queued.name.clone()), ..Default::default() });
         let invalid = d.join("broken.zip");
         fs::write(&invalid, b"not a save archive").unwrap();
@@ -1946,6 +2343,46 @@ mod tests {
         assert_eq!(fs::read(from.join("g/123.zip")).unwrap(), b"original backup");
         assert!(fs::symlink_metadata(to.join("g")).unwrap().file_type().is_symlink());
         fs::remove_dir_all(d).unwrap();
+    }
+
+    // A copy of the saves holding `text`, as a cloud save would bring it; the save is put back to
+    // "one" afterwards.
+    fn copy_holding(app: &Path, g: &Installed, s: &[Spot], save: &Path, text: &str) -> PathBuf {
+        fs::write(save, text).unwrap();
+        let copy = backup(app, "g", s, g).unwrap().unwrap();
+        fs::write(save, "one").unwrap();
+        dir_of(app, "g", g).join(copy.name)
+    }
+
+    #[test]
+    fn restore_if_unchanged_leaves_a_save_made_after_the_check() {
+        let d = tmp("restore-changed-after-check");
+        let (g, s, app) = game_with_a_save(&d);
+        let save = d.join("lib/Game/save/slot.sav");
+        let cloud = copy_holding(&app, &g, &s, &save, "cloud");
+        let checked = current(&s, &g).2;
+        // The game, opened outside the launcher, saves while the cloud save downloads.
+        fs::write(&save, "newer").unwrap();
+
+        let err = restore_if_unchanged(&app, "g", &cloud, &s, &g, &checked).unwrap_err();
+
+        assert_eq!(err.to_string(), CHANGED_SINCE_CHECK);
+        assert_eq!(fs::read_to_string(&save).unwrap(), "newer");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn restore_if_unchanged_puts_the_copy_over_the_checked_save() {
+        let d = tmp("restore-unchanged-since-check");
+        let (g, s, app) = game_with_a_save(&d);
+        let save = d.join("lib/Game/save/slot.sav");
+        let cloud = copy_holding(&app, &g, &s, &save, "cloud");
+        let checked = current(&s, &g).2;
+
+        assert_eq!(restore_if_unchanged(&app, "g", &cloud, &s, &g, &checked).unwrap(), 1);
+
+        assert_eq!(fs::read_to_string(&save).unwrap(), "cloud");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -2085,6 +2522,49 @@ mod tests {
         assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
         assert_eq!(fs::read_to_string(g.path.join("new/progress.sav")).unwrap(), "progress");
         assert!(!g.path.join("old").exists());
+    }
+
+    /// A copy of `{install}/sub/saves`, whose folder can't be made anymore: `sub` is a file now,
+    /// which stops it the way a read-only drive does.
+    fn copy_into_unwritable_folder(d: &Path) -> (Installed, PathBuf, Vec<Spot>) {
+        let g = game(&d.join("game"));
+        fs::create_dir_all(g.path.join("sub/saves")).unwrap();
+        fs::write(g.path.join("sub/saves/progress.sav"), "progress").unwrap();
+        let place = spots(&["{install}/sub/saves".into()], &[], &g);
+        let copy = backup(&d.join("app"), "g", &place, &g).unwrap().unwrap();
+        fs::remove_dir_all(g.path.join("sub")).unwrap();
+        fs::write(g.path.join("sub"), "not a folder").unwrap();
+        let archive = dir_of(&d.join("app"), "g", &g).join(copy.name);
+        (g, archive, place)
+    }
+
+    #[test]
+    fn restore_that_cant_write_says_so_first() {
+        let d = tmp("restore-unwritable-first");
+        let (g, archive, place) = copy_into_unwritable_folder(&d);
+        let why = restore(&d.join("app"), "g", &archive, &place, &g).unwrap_err().to_string();
+        assert_eq!(why.lines().next(), Some(SAVE_NOT_WRITTEN));
+    }
+
+    #[test]
+    fn restore_that_cant_write_names_the_folder() {
+        let d = tmp("restore-unwritable-folder");
+        let (g, archive, place) = copy_into_unwritable_folder(&d);
+        let why = restore(&d.join("app"), "g", &archive, &place, &g).unwrap_err().to_string();
+        let second = why.lines().nth(1).unwrap_or_default();
+        assert!(second.starts_with(&g.path.display().to_string()), "{why}");
+        assert!(second.contains("saves"), "{why}");
+    }
+
+    #[test]
+    fn restore_puts_a_copy_of_the_developers_folder_into_the_override() {
+        let d = tmp("restore-override");
+        let (g, archive) = copy_from_old_folder(&d);
+        let named = spots(&["{install}/old".into()], &[], &g);
+        let now = with_override(named, Some("{install}/real"), true);
+
+        assert_eq!(restore(&d.join("app"), "g", &archive, &now, &g).unwrap(), 1);
+        assert_eq!(fs::read_to_string(g.path.join("real/progress.sav")).unwrap(), "progress");
     }
 
     #[test]
@@ -2270,5 +2750,196 @@ mod sync_state_tests {
     fn a_state_file_from_before_reads_with_the_new_fields_empty() {
         let s: State = serde_json::from_str(r#"{"last_hash":"a","synced_hash":"a","pending":null}"#).unwrap();
         assert_eq!((s.synced_at, s.conflict.is_none(), s.problem.is_none()), (0, true, true));
+    }
+}
+
+#[cfg(test)]
+mod account_scope_tests {
+    use super::{set_state, state, state_file, State};
+    use crate::cloud::{sign_in_for_tests as sign_in, sign_out_for_tests as sign_out};
+    use std::path::PathBuf;
+
+    struct AppDir(PathBuf);
+
+    impl AppDir {
+        fn new(name: &str) -> Self {
+            let d = std::env::temp_dir().join(format!("rl-saves-scope-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            Self(d)
+        }
+    }
+
+    impl Drop for AppDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // What account A left behind: a copy queued, a sync point, and where it was made.
+    fn synced_under_a(app: &std::path::Path) {
+        sign_in(app, "A");
+        let mut s = State { last_hash: "local".into(), pending: Some("200.zip".into()), ..Default::default() };
+        s.mark_synced("a-cloud", 100, "Desk-PC");
+        set_state(app, "g", &s);
+    }
+
+    #[test]
+    fn a_copy_queued_under_one_account_is_not_queued_for_the_next() {
+        let d = AppDir::new("queue");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        assert_eq!(state(&d.0, "g").pending, None);
+    }
+
+    #[test]
+    fn after_switching_accounts_nothing_shows_as_synced() {
+        let d = AppDir::new("status");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.synced_at, s.synced_device.as_str()), ("", 0, ""));
+    }
+
+    #[test]
+    fn after_switching_accounts_this_pcs_own_save_is_still_known() {
+        let d = AppDir::new("local");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        assert_eq!(state(&d.0, "g").last_hash, "local");
+    }
+
+    #[test]
+    fn signed_out_nothing_shows_as_synced() {
+        let d = AppDir::new("signed-out");
+        synced_under_a(&d.0);
+        sign_out(&d.0);
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.pending.as_deref()), ("", None));
+    }
+
+    #[test]
+    fn switching_back_finds_the_first_accounts_notes_when_the_other_did_not_sync() {
+        let d = AppDir::new("back");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        let mut looked = state(&d.0, "g");
+        looked.after_play = true;
+        set_state(&d.0, "g", &looked);
+        sign_in(&d.0, "A");
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("200.zip"));
+    }
+
+    #[test]
+    fn switching_back_finds_nothing_once_the_other_account_synced() {
+        let d = AppDir::new("replaced");
+        synced_under_a(&d.0);
+        sign_in(&d.0, "B");
+        let mut s = state(&d.0, "g");
+        s.mark_synced("b-cloud", 300, "Laptop");
+        set_state(&d.0, "g", &s);
+        sign_in(&d.0, "A");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.pending.as_deref()), ("", None));
+    }
+
+    #[test]
+    fn playing_signed_out_keeps_the_accounts_sync_point() {
+        let d = AppDir::new("offline-play");
+        synced_under_a(&d.0);
+        sign_out(&d.0);
+        let mut s = state(&d.0, "g");
+        s.last_hash = "played signed out".into();
+        set_state(&d.0, "g", &s);
+        sign_in(&d.0, "A");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.last_hash.as_str()), ("a-cloud", "played signed out"));
+    }
+
+    #[test]
+    fn an_account_signed_in_without_an_id_keeps_its_queue() {
+        let d = AppDir::new("no-id");
+        sign_in(&d.0, "");
+        set_state(&d.0, "g", &State { pending: Some("200.zip".into()), ..Default::default() });
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("200.zip"));
+    }
+
+    #[test]
+    fn an_account_signed_in_without_an_id_is_not_nobody() {
+        let d = AppDir::new("no-id-vs-nobody");
+        sign_in(&d.0, "");
+        set_state(&d.0, "g", &State { pending: Some("200.zip".into()), ..Default::default() });
+        sign_out(&d.0);
+        assert_eq!(state(&d.0, "g").pending, None);
+    }
+
+    #[test]
+    fn a_note_read_before_a_switch_is_not_written_after_it() {
+        let d = AppDir::new("late-write");
+        synced_under_a(&d.0);
+        let mut s = state(&d.0, "g");
+        sign_in(&d.0, "B");
+        s.mark_synced("a-cloud-newer", 400, "Desk-PC");
+        set_state(&d.0, "g", &s);
+        assert_eq!(state(&d.0, "g").synced_hash, "");
+    }
+
+    fn old_note(app: &std::path::Path) {
+        let f = state_file(app, "g");
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(f, br#"{"last_hash":"local","synced_hash":"old-cloud","pending":"100.zip"}"#).unwrap();
+    }
+
+    #[test]
+    fn a_note_from_before_accounts_belongs_to_the_account_signed_in() {
+        let d = AppDir::new("old-signed-in");
+        old_note(&d.0);
+        sign_in(&d.0, "A");
+        assert_eq!(state(&d.0, "g").pending.as_deref(), Some("100.zip"));
+    }
+
+    #[test]
+    fn a_note_from_before_accounts_stays_with_that_account_after_a_switch() {
+        let d = AppDir::new("old-then-switch");
+        old_note(&d.0);
+        sign_in(&d.0, "A");
+        let _ = state(&d.0, "g");
+        sign_in(&d.0, "B");
+        assert_eq!(state(&d.0, "g").pending, None);
+    }
+
+    #[test]
+    fn a_note_from_before_accounts_read_signed_out_belongs_to_nobody() {
+        let d = AppDir::new("old-signed-out");
+        old_note(&d.0);
+        let _ = state(&d.0, "g");
+        sign_in(&d.0, "B");
+        let s = state(&d.0, "g");
+        assert_eq!((s.synced_hash.as_str(), s.pending.as_deref(), s.last_hash.as_str()), ("", None, "local"));
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+
+    #[test]
+    fn a_phone_save_place_is_filled_with_the_shared_storage_folder() {
+        let root = Path::new("/storage/emulated/0");
+        assert_eq!(fill_storage("{storage}/srb2kart", Some(root)), "/storage/emulated/0/srb2kart");
+    }
+
+    #[test]
+    fn without_all_files_access_the_place_stays_unfilled() {
+        assert_eq!(fill_storage("{storage}/srb2kart", None), "{storage}/srb2kart");
+    }
+
+    #[test]
+    fn only_places_inside_shared_storage_are_taken() {
+        assert!(storage_place_ok("{storage}/srb2kart"));
+        assert!(storage_place_ok("{storage}/Games/X/*.sav"));
+        for bad in ["{storage}/../etc", "/data/data/com.x", "{storage}/Android/data/com.x", "{storage}/android/OBB/x", "{storage}/", "{storage}/a//b", "{storage}/a/{install}", "{local}/x"] {
+            assert!(!storage_place_ok(bad), "{bad}");
+        }
     }
 }

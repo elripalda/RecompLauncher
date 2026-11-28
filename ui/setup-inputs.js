@@ -20,8 +20,8 @@ function mediaState(m, state) {
 }
 function namedInputRows(su) {
   const rows = (su.inputs || []).filter((r) => r.active);
-  if (su.kind) rows.unshift({ id: 'game', legacy: true, label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: [] });
-  if (su.update) rows.push({ id: 'legacy-update', legacy: true, label: su.update, role: 'update', optional: su.update_optional, path: su.update_copy, file: su.update_file, folder: su.update_folder, extensions: [] });
+  // The game's main file (the copy): the big box. Its update, discs and keys are the rows after it.
+  if (su.kind) rows.unshift({ id: 'game', legacy: true, label: su.needs, role: 'game', path: su.copy, file: su.kind !== 'folder', folder: su.kind === 'folder' || su.kind === 'iso_or_folder', extensions: su.copy_extensions || [] });
   return rows;
 }
 // Fetches DLSS for a setup that wants it and hasn't got it yet: once per setup window, and again
@@ -36,16 +36,6 @@ async function runtimeFetch(id, ns, redraw) {
   catch (e) { ns.dlss = { failed: true }; }
   finally { off(); redraw(); }
 }
-// A build the player already has, anywhere (Use a Build You Already Have): its folder picked, and
-// used in place of building it again. True when it's set.
-async function useOwnBuild(id) {
-  const p = await pickFile({ title: t('The folder your build is in'), directory: true });
-  if (!p) return false;
-  await invoke('setup_use_build', { id, folder: typeof p === 'string' ? p : p.path });
-  S.setup[id] = await invoke('game_setup', { id });
-  await refreshState();
-  return true;
-}
 async function namedInputsAction(id, act, input, ns) {
   if (ns.busy) return;
   if (act === 'toggle-optional') { ns.extras = !ns.extras; return; }
@@ -55,8 +45,6 @@ async function namedInputsAction(id, act, input, ns) {
   try {
     const su = S.setup[id], row = namedInputRows(su).find((r) => r.id === input);
     if (act === 'run') return 'run';
-    if (act === 'prebuilt') { await invoke('setup_use_build', { id }); S.setup[id] = await invoke('game_setup', { id }); await refreshState(); return 'ready'; }
-    if (act === 'ownbuild') return (await useOwnBuild(id)) ? 'ready' : undefined;
     if (act === 'dlss-off' || act === 'dlss-on') {
       await invoke('dlss_set', { id, input, on: act === 'dlss-on' });
     } else if (act === 'dlss-retry') {
@@ -64,15 +52,15 @@ async function namedInputsAction(id, act, input, ns) {
     } else if (act === 'remove-confirm') {
       await invoke('setup_key_remove', { id, input }); ns.confirm = '';
     } else if (act === 'clear') {
-      await invoke('setup_input_set', { id, input, path: null });
+      await invoke('setup_input_set', { id, input, path: null, pending: true });
     } else if (row && (act === 'file' || act === 'folder')) {
       const options = { title: row.label, directory: act === 'folder', multiple: false };
       if (!options.directory && row.extensions?.length) options.filters = [{ name: row.label, extensions: row.extensions }];
       const picked = await pickFile(options);
       if (!picked) return;
       const path = typeof picked === 'string' ? picked : picked.path;
-      // Only the single-copy rows go to the old commands; a profile's own input may be named "game" too.
-      await invoke(!row.legacy ? 'setup_input_set' : row.id === 'game' ? 'set_game_copy' : 'set_update_copy', { id, input, path });
+      // Picked in Easy Setup's window: it waits there until a setup with it works.
+      await invoke(row.legacy ? 'set_game_copy' : 'setup_input_set', { id, input, path, pending: true });
     }
     S.setup[id] = await invoke('game_setup', { id });
     await refreshState();

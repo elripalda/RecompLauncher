@@ -79,6 +79,16 @@ fn changes() -> &'static [Change] {
     C.get_or_init(|| if cfg!(any(test, target_os = "linux")) { changes_from(&|k| std::env::var(k).ok()) } else { vec![] })
 }
 
+/// A variable as the programs the launcher starts get it: the PC's own value, without the
+/// launcher's AppImage folders in it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn for_games(k: &str) -> Option<OsString> {
+    match changes().iter().find(|(name, _)| *name == k) {
+        Some((_, v)) => v.clone(),
+        None => std::env::var_os(k),
+    }
+}
+
 pub fn clean_std(c: &mut std::process::Command) {
     for (k, v) in changes() {
         match v {
@@ -162,7 +172,12 @@ pub fn prepare_start(data: Option<std::path::PathBuf>) {
     if let Ok(exe) = std::env::current_exe() {
         use std::os::unix::process::CommandExt;
         // Only returns when it couldn't start again; then it carries on as it is.
-        let _ = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
+        let mut again = std::process::Command::new(exe);
+        again.args(std::env::args_os().skip(1));
+        // Test control's variables left the environment at the start (test_control::take_from_env);
+        // this is still the start the tester asked for, so it keeps test control.
+        crate::test_control::for_own_restart(&mut again);
+        let _ = again.exec();
     }
 }
 
