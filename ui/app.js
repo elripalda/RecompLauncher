@@ -4929,13 +4929,15 @@ function stepLeft(s, now = Date.now()) {
   return tf('{time} left', { time: took(Math.max(1, Math.round((secs * (1 - s.pct)) / moved))) });
 }
 // A setup event merged into its step, desktop and Big Picture alike. `from`: where and when the
-// time left counts from, started again when the pct goes back or the step's text changes (Getting
-// the extras can run several phases, each from 0). `moved`: when its pct last moved.
+// time left counts from, started again when the pct goes back (Getting the extras can run several
+// phases, each from 0). Not on a new text: a build prints one with every progress line, and the time
+// left would never show. `moved`: when it last showed anything new, pct or text, for STEP_QUIET.
 function stepEvent(prev, ev, now = Date.now()) {
   const pct = ev.pct || 0;
-  const again = !prev || !prev.from || pct < (prev.pct || 0) || (ev.text != null && ev.text !== prev.text);
+  const again = !prev || !prev.from || pct < (prev.pct || 0);
   const from = again ? { at: now, pct } : prev.from;
-  const moved = again || pct !== prev.pct ? now : prev.moved || from.at;
+  const said = ev.text != null && ev.text !== prev?.text;
+  const moved = again || said || pct !== prev.pct ? now : prev.moved || from.at;
   return Object.assign({}, prev, ev, { from, moved });
 }
 // (0.91) Each download's speed over its last minute and a half; its newest point gives the time left on Downloads.

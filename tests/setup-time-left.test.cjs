@@ -68,14 +68,21 @@ test('0 → 1, then 0 → 0.5: the second run is timed on its own', () => {
   assert.equal(c.stepLeft(s, 10 * MIN + 30000), '30 sec left');
 });
 
-test('a new phase (its text changes) is timed on its own too', () => {
+test('a build that prints a new text with every progress line keeps one estimate', () => {
   const c = estimate();
-  let s = c.stepEvent(undefined, { pct: 0, text: 'Downloading' }, 0);
-  s = c.stepEvent(s, { pct: 0.5, text: 'Downloading' }, 10000);
-  s = c.stepEvent(s, { pct: 0.5, text: 'Compiling' }, 10000);
-  s = c.stepEvent(s, { pct: 0.6, text: 'Compiling' }, 110000);
-  // 0.1 in 100 s: 0.4 left is about 7 minutes, not the minute the fast download would say.
-  assert.equal(c.stepLeft(s, 110000), '7 min left');
+  let s = c.stepEvent(undefined, { pct: 0, text: 'Compiling a.c' }, 0);
+  for (let i = 1; i <= 3; i++) s = c.stepEvent(s, { pct: i / 10, text: `Compiling ${'abc'[i - 1]}${i}.c` }, i * 10000);
+  assert.deepEqual({ ...s.from }, { at: 0, pct: 0 });
+  // 0.3 in 30 s: 0.7 left is 70 seconds.
+  assert.equal(c.stepLeft(s, 30000), '1 min left');
+});
+
+test('a new text with the same pct still counts as news for taking longer than expected', () => {
+  const c = estimate();
+  let s = c.stepEvent(undefined, { pct: 0.25, text: 'Compiling a.c' }, 0);
+  s = c.stepEvent(s, { pct: 0.25, text: 'Linking' }, 2 * MIN);
+  assert.notEqual(c.stepLeft(s, 3 * MIN), 'Taking longer than expected');
+  assert.equal(c.stepLeft(s, 4 * MIN), 'Taking longer than expected');
 });
 
 test('2 minutes with no progress: taking longer than expected, and the time left once it moves', () => {
