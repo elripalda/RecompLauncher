@@ -704,7 +704,7 @@ fn untar(file: &Path, to: &Path, k: &str) -> Result<(), Error> {
     let f = io::BufReader::new(fs::File::open(file)?);
     let read: Box<dyn io::Read> = match k {
         // Several xz streams one after another (parallel compressors write them) are one file.
-        "tar.xz" => Box::new(xz2::read::XzDecoder::new_multi_decoder(f)),
+        "tar.xz" => Box::new(liblzma::read::XzDecoder::new_multi_decoder(f)),
         "tar.zst" => Box::new(zstd::stream::read::Decoder::with_buffer(f)?),
         _ => Box::new(flate2::read::GzDecoder::new(f)),
     };
@@ -2315,9 +2315,29 @@ mod tests {
     fn tar_xz_unpacks() {
         let d = tmp("txz");
         let tpath = d.join("Game-Linux.tar.xz");
-        let mut xz = xz2::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
+        let mut xz = liblzma::write::XzEncoder::new(fs::File::create(&tpath).unwrap(), 1);
         tarball_into(&mut xz);
         xz.finish().unwrap();
+        let staged = stage(&tpath, &d.join("st")).unwrap();
+        assert_eq!(staged.files, paths(&["run.sh"]));
+        assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");
+    }
+
+    /// Parallel xz compressors write several streams one after another: all of them are read.
+    #[test]
+    fn a_tar_xz_in_several_streams_unpacks_whole() {
+        let d = tmp("txzm");
+        let mut tarball = vec![];
+        tarball_into(&mut tarball);
+        let (first, rest) = tarball.split_at(512);
+        let mut bytes = vec![];
+        for part in [first, rest] {
+            let mut xz = liblzma::write::XzEncoder::new(vec![], 1);
+            io::Write::write_all(&mut xz, part).unwrap();
+            bytes.extend(xz.finish().unwrap());
+        }
+        let tpath = d.join("Game-Linux.tar.xz");
+        fs::write(&tpath, bytes).unwrap();
         let staged = stage(&tpath, &d.join("st")).unwrap();
         assert_eq!(staged.files, paths(&["run.sh"]));
         assert_eq!(fs::read(staged.root.join("run.sh")).unwrap(), b"#!/bin/sh\n");

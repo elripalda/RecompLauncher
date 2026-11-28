@@ -577,6 +577,45 @@ pub(crate) mod tests {
         assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
     }
 
+    /// The same game as `game_image`, made by mksquashfs with extended attributes on every entry
+    /// (an SELinux label, the way any build on Fedora, Bazzite or Silverblue comes out), plus a
+    /// device of each kind, a pipe and a socket. So every entry is SquashFS's extended kind
+    /// (inode types 8 to 14). Built with:
+    ///   mksquashfs root xattrs.squashfs -comp gzip -all-root -mkfs-time 0 -all-time 0
+    ///     -xattrs-exclude '^security\.' -xattrs-add 'security.selinux=system_u:object_r:user_home_t:s0'
+    ///     -p 'dev d 755 0 0' -p 'dev/null c 666 0 0 1 3' -p 'dev/loop b 660 0 0 7 0'
+    ///     -p 'dev/fifo i 644 0 0 f' -p 'dev/sock i 644 0 0 s'
+    /// with `user.note` also set on usr and usr/data.bin.
+    #[cfg(unix)]
+    fn xattrs_game_image() -> Vec<u8> {
+        let mut bytes = image(None, Compressor::Gzip)[..128].to_vec();
+        bytes.extend(include_bytes!("../testdata/xattrs.squashfs"));
+        bytes
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_appimage_with_extended_attributes_unpacks_without_them() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new();
+        let image = dir.0.join("Game-x86_64.AppImage");
+        fs::write(&image, xattrs_game_image()).unwrap();
+        assert_eq!(manifest(&image).unwrap(), br#"{"format":1}"#);
+        let to = dir.0.join("game");
+        unpack(&image, &to).unwrap();
+        assert_eq!(fs::read(to.join("usr/data.bin")).unwrap(), b"data");
+        assert_eq!(fs::read(to.join("usr/bin/game")).unwrap(), b"#!/bin/sh\necho game\n");
+        assert_eq!(fs::metadata(to.join("usr/bin/game")).unwrap().permissions().mode() & 0o7777, 0o755);
+        assert_eq!(fs::read_link(to.join("AppRun")).unwrap(), Path::new("usr/bin/game"));
+        assert_eq!(fs::read(to.join("recomplauncher.json")).unwrap(), br#"{"format":1}"#);
+        // Extended links still may not leave the folder.
+        assert!(fs::symlink_metadata(to.join("absolute")).is_err());
+        assert!(fs::symlink_metadata(to.join("usr/escape")).is_err());
+        // Devices, pipes and sockets aren't a game's files; their folder is all that comes out.
+        assert!(to.join("dev").is_dir());
+        assert_eq!(fs::read_dir(to.join("dev")).unwrap().count(), 0);
+    }
+
     /// The same game as `game_image`, packed with DwarFS the way "runs anywhere" AppImages are.
     #[cfg(unix)]
     pub(crate) fn dwarfs_game_image() -> Vec<u8> {
