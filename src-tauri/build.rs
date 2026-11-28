@@ -100,12 +100,12 @@ fn unrar_src() -> Option<std::path::PathBuf> {
     })
 }
 
-/// The data the program carries (the shipped game profiles, each language's text), stored
+/// The data the program carries (each language's text), stored
 /// compressed: a smaller program.
 fn pack() {
     use std::io::Write;
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let mut files = vec![("boot/boot-profiles.json".to_string(), "boot-profiles.json.z".to_string())];
+    let mut files = vec![];
     for e in std::fs::read_dir("../ui/i18n").unwrap().flatten() {
         let n = e.file_name().to_string_lossy().to_string();
         if n.ends_with(".json") {

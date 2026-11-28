@@ -284,7 +284,7 @@ pub struct Item {
 
 #[derive(Serialize)]
 pub struct Report {
-    /// Where the launcher's profile for it comes from: "folder", "catalog", "built-in" or "none".
+    /// Where the launcher's profile for it comes from: "appimage", "folder", "catalog" or "none".
     source: &'static str,
     file: String,
     has_file: bool,
@@ -399,13 +399,13 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     // What's actually used: embedded metadata, the folder file, then catalog/built-in.
     let cat = crate::cached_catalog(&st);
     let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
-    let used = profile::find(&dir, &g.repo, &entry);
-    let source = match (&prof, &used) {
-        (Some(p), Some(_)) if p.format == 1 => if embedded.is_some() { "appimage" } else { "folder" },
-        (_, Some(_)) if entry.get("launcher_from").and_then(Value::as_str) == Some("repo") => "repo",
-        (_, Some(_)) if entry.get("launcher").is_some() => "catalog",
-        (_, Some(_)) => "built-in",
-        _ => "none",
+    let used = profile::find_for(&g, &entry);
+    // Where it comes from is find's own answer (profile::Origin); the catalog's copy of the
+    // release's file and our profiles both come from recomplauncher.com.
+    let source = match used.as_ref().map(|p| p.origin) {
+        Some(profile::Origin::Folder) => if embedded.is_some() { "appimage" } else { "folder" },
+        Some(profile::Origin::None) | None => "none",
+        Some(_) => "catalog",
     };
     let mut level = 0u8;
     if let Some(p) = prof.as_ref() {
@@ -1120,7 +1120,7 @@ mod tests {
     #[test]
     fn every_field_a_developer_writes_is_in_the_schema() {
         // Read from profile.rs itself, so a new field can't be added without one or the other.
-        const INTERNAL: [&str; 5] = ["input_paths", "skipped_inputs", "windows_build", "from_boot", "slider_vals"];
+        const INTERNAL: [&str; 7] = ["input_paths", "skipped_inputs", "windows_build", "from_boot", "origin", "ours_parts", "slider_vals"];
         // A Windows checkout has CRLF line endings.
         let src = include_str!("profile.rs").replace("\r\n", "\n");
         let body = &src[src.find("pub struct Profile {").unwrap() + "pub struct Profile {".len()..];

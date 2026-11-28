@@ -35,8 +35,10 @@ pub mod info;
 pub mod inputs;
 pub mod ingame;
 pub mod install;
+pub mod launch_options;
 pub mod launchbox;
 pub mod library;
+pub mod one_road;
 pub mod library_convert;
 pub mod logs_zip;
 pub mod looks;
@@ -409,10 +411,6 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     let cat = getting_ready(catalog::catalog(&st.http, &st.dir, false), &cancel).await?.data;
     let entry = catalog::app(&cat, id).ok_or_else(|| Error::Msg("This recomp isn't listed anymore.".into()))?.clone();
     let repo = str_of(&entry, "repo").to_string();
-    // A Forgejo project's own setup file, so Easy Setup is ready when the download is in.
-    if catalog::is_forgejo(&repo) {
-        catalog::repo_profile(&st.http, &st.dir, &repo, false).await;
-    }
     // Its project is down and the list says so: the release from the RecompLauncher backup (each
     // file checked against its SHA-256). When the backup can't help, its own releases as usual.
     let backup_ok = catalog::backup_on(&entry);
@@ -772,7 +770,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
     }
 
     // The settings the player picked on the game's page, put back after the update's files.
-    let kept = prev.as_ref().and_then(|p| profile::find(&p.path, &p.repo, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
+    let kept = prev.as_ref().and_then(|p| profile::find_for(p, &entry).map(|prof| prof.kept(&p.path))).unwrap_or_default();
 
     // Unpacked beside the game's folder first: a full drive or a bad download stops here, with the
     // game untouched.
@@ -848,7 +846,7 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         }
     }
     if !kept.is_empty() {
-        if let Some(prof) = profile::find(&target, &repo, &entry) {
+        if let Some(prof) = profile::find(&target, &tag_got, &entry) {
             prof.restore(&target, &kept);
         }
     }
@@ -951,6 +949,10 @@ async fn do_install(app: &AppHandle, st: &App, id: &str, dir: Option<PathBuf>, t
         installer_setup: String::new(),
         installer_tag: String::new(),
         boot_hash: prev.as_ref().map(|p| p.boot_hash.clone()).unwrap_or_default(),
+        one_road: prev.as_ref().map(|p| p.one_road.clone()).unwrap_or_default(),
+        // A new release: the copies kept for the old one don't apply (kept again from the catalog).
+        release_file: None,
+        ours_file: None,
         unpacked: prev.as_ref().map(|p| p.unpacked).unwrap_or(false),
         from_appimage: prev.as_ref().map(|p| p.from_appimage.clone()).unwrap_or_default(),
         input_checks: prev.as_ref().map(|p| p.input_checks.clone()).unwrap_or_default(),
@@ -2036,13 +2038,8 @@ fn support_in(dir: &Path) -> Option<Value> {
 /// Each Launcher Support feature a recomplauncher.json sets up itself.
 fn profile_covers(p: &profile::Profile) -> Value {
     let game = p.game.as_ref();
-    // The player's copy asked for through named inputs (no `game` block) is Easy Setup too: a
-    // required input of role game or disc that isn't a shared key. The site counts it the same way
-    // (rs_sdk_easy), so the card agrees with the catalog.
-    let copy_input = p.inputs.iter().any(|i| !i.optional && i.shared.is_empty() && (i.role == "game" || i.role == "disc"));
-    // A `game` block alone sets nothing up: Easy Setup (Profile::easy_setup) also needs a program
-    // to start, so without one the box would tick what Install doesn't offer.
-    let easy_setup = (p.start.is_some() && game.is_some()) || copy_input;
+    // The one rule (Profile::easy_setup), so the box agrees with Install and with the catalog.
+    let easy_setup = p.easy_setup();
     json!({
         "easy_setup": easy_setup,
         "settings": !p.settings.is_empty(),
@@ -2233,8 +2230,8 @@ fn copies_for(cat: &Value, found: &[roms::RomFile], dirs: &HashMap<String, PathB
         r
     };
     for a in cat.get("apps").and_then(Value::as_array).into_iter().flatten() {
-        let (Some(id), repo) = (a.get("id").and_then(Value::as_str), a.get("repo").and_then(Value::as_str).unwrap_or("")) else { continue };
-        let Some(need) = profile::find(dirs.get(id).unwrap_or(&none), repo, a).and_then(|p| p.main_copy()) else { continue };
+        let Some(id) = a.get("id").and_then(Value::as_str) else { continue };
+        let Some(need) = profile::find(dirs.get(id).unwrap_or(&none), "", a).and_then(|p| p.main_copy()) else { continue };
         // A check that can't tell games apart (default.xex, which every game of its console has,
         // or just "a disc image"): matched by name only, unless the catalog lists its disc IDs.
         let want: Vec<String> = need.check.ids.iter().map(|i| roms::id_key(i)).filter(|i| i.len() >= 3).chain(roms::copy_ids(a)).collect();
@@ -2538,7 +2535,12 @@ fn direct_start(st: &App, id: &str, g: &Installed) -> Option<(PathBuf, Vec<Strin
     if !exe.is_file() {
         return None;
     }
-    args.extend(join_paths(split_args(&g.args)));
+    // A shortcut can only carry arguments: variables in the launch options need the launcher.
+    let player = launch_options::parse(&g.args).ok()?;
+    if !player.env.is_empty() {
+        return None;
+    }
+    args.extend(player.args);
     Some((exe, args))
 }
 
@@ -3355,9 +3357,10 @@ fn start_game_with_monitor_context(
         let wine = !cfg!(windows) && exe.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
         games::add_args(&mut args, &pk.game, paths, wine);
     }
-    if !clean {
-        args.extend(join_paths(split_args(&g.args)));
-    }
+    // The player's launch options: their arguments go last, their variables are set after everyone
+    // else's below, so what they typed wins.
+    let player = if clean { launch_options::Options::default() } else { launch_options::parse(&g.args).map_err(|_| Error::Msg(launch_options::UNREADABLE.into()))? };
+    args.extend(player.args.iter().cloned());
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -3547,6 +3550,13 @@ fn start_game_with_monitor_context(
     // A program in an unpacked AppImage: what its runtime would have set (APPDIR, OWD, ...).
     #[cfg(target_os = "linux")]
     appimage_env(&mut cmd, &exe, &g.path);
+    if !player.env.is_empty() {
+        let names: Vec<&str> = player.env.iter().map(|(k, _)| k.as_str()).collect();
+        trail::note(format!("Play {id}: variables from its launch options: {}", names.join(", ")));
+    }
+    for (k, v) in &player.env {
+        cmd.env(k, v);
+    }
     // Recomp Achievements (test accounts): the game's channel, named in RL_SESSION.
     let mut ach_id = full_id.clone();
     let ach_session = {
@@ -3875,7 +3885,7 @@ fn start_game_with_monitor_context(
 // ---------- setting a recomp up ----------
 
 /// Launch options as typed: words, with "quoted words" kept together.
-fn split_args(s: &str) -> Vec<String> {
+pub(crate) fn split_args(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
     let (mut quoted, mut any) = (false, false);
@@ -3906,7 +3916,7 @@ fn split_args(s: &str) -> Vec<String> {
 /// A path with spaces typed without quotes (`D:\Games\CTR Nitro-Fueled\boot.bin`) comes out of
 /// split_args in pieces: put them back together when together they're a file or folder that's there
 /// and the first piece alone isn't.
-fn join_paths(args: Vec<String>) -> Vec<String> {
+pub(crate) fn join_paths(args: Vec<String>) -> Vec<String> {
     let looks_path = |s: &str| {
         let p = s.rsplit_once('=').map(|(_, v)| v).filter(|_| s.starts_with('-')).unwrap_or(s);
         let b = p.as_bytes();
@@ -5110,16 +5120,18 @@ pub(crate) fn player_sets_up(st: &App, id: &str) -> bool {
 #[tauri::command(async)]
 fn easy_setup(st: State<'_, App>) -> Vec<String> {
     let cat = cached_catalog(&st);
-    let dirs: HashMap<String, PathBuf> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.path.clone())).collect();
-    let none = PathBuf::new();
+    // An installed game is asked about the release it has; one that isn't, about the one it'd get.
+    let installed: HashMap<String, Installed> = st.lib.lock().unwrap().installed.values().map(|g| (g.id.clone(), g.clone())).collect();
     cat.get("apps")
         .and_then(Value::as_array)
         .map(|a| {
             a.iter()
                 .filter_map(|x| {
                     let id = x.get("id")?.as_str()?;
-                    let repo = x.get("repo").and_then(Value::as_str).unwrap_or("");
-                    let p = profile::find(dirs.get(id).unwrap_or(&none), repo, x)?;
+                    let p = match installed.get(id) {
+                        Some(g) => profile::find_for(g, x)?,
+                        None => profile::find(Path::new(""), "", x)?,
+                    };
                     p.easy_setup().then(|| id.to_string())
                 })
                 .collect()
@@ -5137,6 +5149,7 @@ fn set_game_options(st: State<'_, App>, id: String, args: Option<String>, auto_u
             return Err(Error::Msg("Untracked installations don't get automatic updates. Choose a project first.".into()));
         }
         if let Some(a) = args {
+            launch_options::parse(&a).map_err(Error::Msg)?;
             g.args = a.trim().to_string();
         }
         if let Some(a) = auto_update {
@@ -5447,7 +5460,7 @@ const MINE_FIELDS: &[&str] = &["name", "game", "origin", "blurb", "cover", "hero
 /// game, origin, cover, hero, logo), once its releases have a version for this PC. Returns
 /// { id, known, name }.
 #[tauri::command]
-async fn add_github(app: AppHandle, st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
+async fn add_github(_app: AppHandle, st: State<'_, App>, link: String, info: Option<Value>) -> Res<Value> {
     let repo = repo_of_link(&st, &link).await?;
     let cat = catalog::catalog(&st.http, &st.dir, false).await?.data;
     let same = |a: &Value| str_of(a, "repo").eq_ignore_ascii_case(&repo);
@@ -5500,10 +5513,6 @@ async fn add_github(app: AppHandle, st: State<'_, App>, link: String, info: Opti
         list.retain(|e| str_of(e, "id") != id);
         list.push(entry.clone());
         catalog::save_mine(&st.dir, &list)?;
-    }
-    // A Forgejo project's own setup file, read now so Easy Setup shows for it straight away.
-    if fj && catalog::repo_profile(&st.http, &st.dir, &repo, true).await {
-        let _ = app.emit("profiles-fresh", ());
     }
     Ok(json!({"id": id, "known": false, "name": str_of(&entry, "name")}))
 }
@@ -5710,7 +5719,7 @@ fn recomp_games(st: State<'_, App>) -> std::collections::BTreeMap<String, GameSe
 fn profile_of(st: &App, id: &str, g: &Installed) -> Option<profile::Profile> {
     let cat = cached_catalog(st);
     let entry = catalog::app(&cat, id).cloned().unwrap_or(Value::Null);
-    profile::find(&g.path, &g.repo, &entry).map(|mut p| {
+    profile::find_for(g, &entry).map(|mut p| {
         p.windows_build = Some(is_windows_build(g));
         // Optional inputs this launcher can't use (newer shared types, DLSS without an RTX card).
         inputs::prepare(&mut p, dlss::applies(&st.dir));
@@ -7916,12 +7925,68 @@ fn back_online(app: &AppHandle) {
 /// The list for the window. Without `force`, the copy on disk comes back at once (the window never
 /// waits on the network for it) and, when it's more than six hours old, a new one is asked for in
 /// the background and sent as "catalog-fresh". `force`: the player pressed Refresh.
+/// Games set up with an older profile of ours that the catalog no longer keeps become the player's
+/// own, once each (one_road.rs). Only an entry that says the profile is ours counts, so a catalog
+/// from before `launcher_from` moves nothing.
+fn move_to_one_road(st: &App, cat: &Value) {
+    let mut changed = false;
+    // While the catalog is at an install's own release, its copies of that release's file (and of
+    // our profile pinned to it) are kept with the install, for when a newer release is out.
+    {
+        let mut l = st.lib.lock().unwrap();
+        for g in l.installed.values_mut() {
+            let Some(entry) = catalog::app(cat, &g.id) else { continue };
+            if let Some((release, ours)) = profile::copies_to_keep(g, entry) {
+                g.release_file = release;
+                g.ours_file = ours;
+                changed = true;
+            }
+        }
+    }
+    let ids: Vec<String> = {
+        let l = st.lib.lock().unwrap();
+        l.installed.values().filter(|g| g.one_road.is_empty() && !g.local && !g.player_sets_up()).map(|g| g.id.clone()).collect()
+    };
+    for id in ids {
+        let Some(entry) = catalog::app(cat, &id).filter(|e| one_road::ours_to_move(e)) else { continue };
+        let Some(g) = st.lib.lock().unwrap().installed.get(&id).cloned() else { continue };
+        let Some(p) = profile::find_for(&g, entry) else { continue };
+        let copy = inputs::main_path(&p, &g);
+        let outcome = one_road::plan(&g, &p, copy.as_deref(), is_windows_build(&g));
+        let mut l = st.lib.lock().unwrap();
+        let Some(g) = l.installed.get_mut(&id) else { continue };
+        match outcome {
+            Ok(m) => {
+                if let Some(exe) = m.exe {
+                    g.exe = Some(exe);
+                }
+                g.args = m.args;
+                if m.save_place.is_some() {
+                    g.save_place = m.save_place;
+                }
+                g.mode = library::SetupMode::Own;
+                g.boot_hash.clear();
+                g.one_road = "moved".into();
+                trail::note(format!("One road {id}: moved to Set Up by You"));
+            }
+            Err(why) => {
+                trail::note(format!("One road {id}: left as it was ({why})"));
+                g.one_road = format!("again: {why}");
+            }
+        }
+        changed = true;
+    }
+    if changed {
+        st.save();
+    }
+}
+
 #[tauri::command]
 async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<catalog::Fetched> {
     if !force {
         if let Some((mut f, stale)) = catalog::catalog_now(&st.dir) {
             merged_mine(&app, &st, &mut f.data);
-            refresh_repo_profiles(&app, &st, &f.data, false);
+            move_to_one_road(&st, &f.data);
             if stale {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -7941,35 +8006,11 @@ async fn get_catalog(app: AppHandle, st: State<'_, App>, force: bool) -> Res<cat
     // not (one question, and the player's own doing).
     let mut f = if force { net::now(catalog::catalog(&st.http, &st.dir, true)).await? } else { catalog::catalog(&st.http, &st.dir, false).await? };
     merged_mine(&app, &st, &mut f.data);
-    refresh_repo_profiles(&app, &st, &f.data, force);
+    move_to_one_road(&st, &f.data);
     if !f.offline {
         note_new_apps(&app, &st, &f.data);
     }
     Ok(f)
-}
-
-/// Forgejo projects' own recomplauncher.json, read in the background when it isn't on disk yet or
-/// is old (`force`: the player pressed Refresh). The window hears when one came or changed
-/// ("profiles-fresh"), so Easy Setup shows for it.
-fn refresh_repo_profiles(app: &AppHandle, st: &App, cat: &Value, force: bool) {
-    let due = catalog::repo_profiles_due(&st.dir, cat, force);
-    if due.is_empty() {
-        return;
-    }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let st = app.state::<App>();
-        let mut changed = false;
-        for repo in due {
-            if catalog::repo_profile(&st.http, &st.dir, &repo, true).await {
-                trail::note(format!("Setup file for {repo} read from its project"));
-                changed = true;
-            }
-        }
-        if changed {
-            let _ = app.emit("profiles-fresh", ());
-        }
-    });
 }
 
 /// merge_mine, with the list sent to the window without the entries moved over, and the window
@@ -11046,7 +11087,7 @@ pub fn run() {
             save_settings, set_start_at_login, list_monitors, prepare_tv_mode, leave_tv_mode, open_url, libraries, move_game, game_sizes, game_size, backups, backup_now, restore_backup, pc_check, set_ui_scale, update_retry, ge_proton_install, proton_now, repo_readme, install_vcredist, scan_roms, rom_matches, copy_files, support_local,
             desktop_shortcut, refresh_shortcut_art, open_app_control, fs_paste, portable_info, make_portable, add_to_steam, launcher_to_steam, steam_sync::steam_sync_now, steam_sync::steam_sync_state, steam_sync::steam_remove_all, recent_log, screenshots, open_shots, overlay_action, overlay_state, is_handheld, skip_backup, set_cover, art::art_source, art::art_open, art::art_save, art::art_search, art::art_for, launchbox::launchbox_find, launchbox::launchbox_search, launchbox::launchbox_pictures, all_screenshots, delete_screenshot,
             copy_screenshot, show_screenshot, controllers, pads_window_off, pad_right_stick, prefetch_images, versions, build_check, news, game_info, mods_state, mods_online,
-            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, boot::boot_builtin, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
+            mod_install, mod_remove, open_mods, send_report, beta_feedback, logs_zip::export_logs, game_programs, start_with_programs, run_program, game_root, update_launcher, resume_game, game_setup, set_game_copy, free_up_space, set_update_copy, set_game_setting, set_game_slider, set_game_binding, reset_game_bindings, usage::report_preview, usage::profile_report, usage::my_reports, usage::report_reply, usage::review_delete,
             recomp_games, adopt::move_listing, update_info, set_proxy, umu_repair, dlss_fetch, dlss_set, dlss_state, dlss_remove, cloud::library_pull, cloud::library_push, cloud::playtime_push, cloud::playtime_pull, cloud::playtime_reset, cloud::spons_mine, cloud::spons_seen, cloud::home_layout, cloud::saves_open_backups, game_action, setup_copy, setup_cancel, setup_status, setup_begin, setup_end, setup_input_set, setup_key_remove, setup_inputs_run, easy_setup, set_game_options,
             set_prepare_opts,
             convert_plan,
@@ -11949,14 +11990,16 @@ mod tests {
         };
         let sms = gc("Super Mario Sunshine (USA).iso", b"GMSE01");
         let ps2 = { let p = d.join("Some PS2 Game.iso"); std::fs::write(&p, vec![0u8; 0x400]).unwrap(); roms::RomFile { path: p, system: "ps2".into(), title: "Some PS2 Game".into(), region: "US".into(), size: 0x400 } };
-        let cat = json!({ "apps": [{ "id": "dusklight", "name": "Dusklight", "game": "The Legend of Zelda: Twilight Princess", "origin": "gamecube", "repo": "TwilitRealm/dusklight" }] });
+        // The release's own file, as the catalog carries it (its disc IDs are what tells games apart).
+        let own = json!({ "format": 1, "game": { "kind": "iso", "label": "Your Twilight Princess disc image", "check": { "ids": ["GZ2E", "GZ2P", "GZ2J", "RZDE", "RZDP", "RZDJ"] } }, "start": { "program": ["dusklight.exe"], "args": ["--dvd", "{game}"] } });
+        let cat = json!({ "apps": [{ "id": "dusklight", "name": "Dusklight", "game": "The Legend of Zelda: Twilight Princess", "origin": "gamecube", "repo": "TwilitRealm/dusklight", "tag": "v1", "launcher": own, "launcher_from": "release" }] });
         let dirs = HashMap::new();
         assert!(copies_for(&cat, &[sms.clone(), ps2.clone()], &dirs).is_empty());
         // Its own disc, under any name, is.
         let tp = gc("disc1.iso", b"GZ2E01");
         assert_eq!(copies_for(&cat, &[sms, ps2, tp.clone()], &dirs).get("dusklight").map(|r| r.path.clone()), Some(tp.path.clone()));
         // And picking Sunshine for it is refused.
-        let need = profile::find(Path::new(""), "TwilitRealm/dusklight", &cat["apps"][0]).and_then(|p| p.main_copy()).unwrap();
+        let need = profile::find(Path::new(""), "", &cat["apps"][0]).and_then(|p| p.main_copy()).unwrap();
         assert!(profile::check_copy(&need, &d.join("Super Mario Sunshine (USA).iso")).unwrap_err().contains("GMSE01"));
         assert!(profile::check_copy(&need, &tp.path).is_ok());
         // Checks that can't tell games apart: a common file, or nothing but "a disc image".
@@ -12559,7 +12602,7 @@ mod tests {
         img[rec + 32] = name.len() as u8;
         img[rec + 33..rec + 33 + name.len()].copy_from_slice(name);
         std::fs::write(&iso, &img).unwrap();
-        let cat = json!({"apps": [{"id": "streetball", "name": "Streetball Revival", "game": "NBA Street Vol. 2", "repo": "luckvj/streetball-revival"}]});
+        let cat = json!({"apps": [{"id": "streetball", "name": "Streetball Revival", "game": "NBA Street Vol. 2", "repo": "luckvj/streetball-revival", "tag": "v1", "launcher_from": "release", "launcher": serde_json::from_str::<Value>(include_str!("../../docs/examples/streetball.json")).unwrap()}]});
         let found = vec![roms::RomFile { path: iso.clone(), system: "ps2".into(), title: "backup-07".into(), region: String::new(), size: img.len() as u64 }];
         let got = copies_for(&cat, &found, &HashMap::new());
         assert_eq!(got.get("streetball").map(|r| r.path.clone()), Some(iso));
