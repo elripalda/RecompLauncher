@@ -116,7 +116,7 @@ pub fn image_of(g: &Installed) -> Option<PathBuf> {
 }
 
 fn is_image(p: &Path) -> bool {
-    p.extension().is_some_and(|x| x.eq_ignore_ascii_case("appimage")) && p.is_file()
+    p.is_file() && crate::appimage::is_real_appimage(p)
 }
 
 /// A game's name from its AppImage's file name, for one that doesn't say its own: the words before
@@ -386,6 +386,89 @@ mod tests {
         assert!(!image.exists());
         assert_eq!(std::fs::read(d.join("lib/game/settings.ini")).unwrap(), b"player's");
         assert!(!d.join("lib/game").join(swap::FOLDER).exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    const STAND_IN: &[u8] = b"#!/bin/sh\nexec \"$(dirname \"$0\")/AppRun\" \"$@\"\n";
+
+    #[test]
+    fn a_script_named_like_an_appimage_isnt_the_games_image() {
+        let (d, _) = place("stand-in-image");
+        let game = d.join("lib/game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("AppRun"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(game.join("OldName.AppImage"), STAND_IN).unwrap();
+        assert!(!is_image(&game.join("OldName.AppImage")));
+        let mut g = Installed { path: game.clone(), exe: None, ..Default::default() };
+        assert_eq!(image_of(&g), None);
+        g.exe = Some("OldName.AppImage".into());
+        assert_eq!(image_of(&g), None);
+        // A real one beside it is still the game's image.
+        put_image(&game.join("Game.AppImage"));
+        assert!(is_image(&game.join("Game.AppImage")));
+        g.exe = None;
+        assert_eq!(image_of(&g), Some(game.join("Game.AppImage")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn play_with_no_program_leaves_a_script_named_like_an_appimage_alone() {
+        let (d, mut lib) = place("stand-in-play");
+        let game = d.join("lib/game");
+        std::fs::create_dir_all(game.join("usr/bin")).unwrap();
+        std::fs::write(game.join("AppRun"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(game.join("OldName.AppImage"), STAND_IN).unwrap();
+        let files = vec![PathBuf::from("AppRun"), PathBuf::from("OldName.AppImage")];
+        let g = Installed { id: "game".into(), name: "Game".into(), path: game.clone(), exe: None, files: files.clone(), sha256: "abc".into(), ..Default::default() };
+        lib.installed.insert(g.id.clone(), g);
+        let st = crate::tests::app_in(&d, lib);
+
+        let got = crate::in_plain_folder(&st, "game").unwrap();
+
+        assert_eq!(got.path, game);
+        assert_eq!(got.exe, None);
+        assert_eq!(got.files, files);
+        assert!(!got.unpacked);
+        assert_eq!(std::fs::read(game.join("OldName.AppImage")).unwrap(), STAND_IN);
+        assert!(!d.join("lib/.staging").exists(), "nothing was unpacked");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn play_with_no_program_still_unpacks_a_real_appimage_an_older_launcher_left() {
+        let (d, mut lib) = place("old-image-play");
+        let image = d.join("lib/game/Game-x86_64.AppImage");
+        put_image(&image);
+        let g = Installed { id: "game".into(), name: "Game".into(), path: d.join("lib/game"), exe: None, files: vec!["Game-x86_64.AppImage".into()], sha256: "abc".into(), ..Default::default() };
+        lib.installed.insert(g.id.clone(), g);
+        let st = crate::tests::app_in(&d, lib);
+
+        let got = crate::in_plain_folder(&st, "game").unwrap();
+
+        assert_eq!(got.path, d.join("lib/game"));
+        assert_eq!(got.exe, Some(PathBuf::from("AppRun")));
+        assert!(d.join("lib/game/usr/bin/game").is_file());
+        assert!(!image.exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_game_unpacked_before_plays_as_it_was() {
+        let (d, mut lib) = place("unpacked-play");
+        let game = d.join("lib/game");
+        std::fs::create_dir_all(game.join("usr/bin")).unwrap();
+        std::fs::write(game.join("AppRun"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(game.join("usr/bin/game"), b"\x7fELF game").unwrap();
+        let g = Installed { id: "game".into(), name: "Game".into(), path: game.clone(), exe: None, files: vec!["AppRun".into(), "usr/bin/game".into()], unpacked: true, ..Default::default() };
+        lib.installed.insert(g.id.clone(), g);
+        let st = crate::tests::app_in(&d, lib);
+        for exe in [Some(PathBuf::from("AppRun")), None] {
+            st.lib.lock().unwrap().installed.get_mut("game").unwrap().exe = exe.clone();
+            let got = crate::in_plain_folder(&st, "game").unwrap();
+            assert_eq!(got.path, game);
+            assert_eq!(got.exe, exe);
+            assert!(got.unpacked);
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 

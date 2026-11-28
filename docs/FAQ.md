@@ -58,6 +58,12 @@ You choose this in **Settings > Networking > Hide the Site's Name**:
 
 Yes. Windows shows that for newer apps it hasn't seen many times yet. The installer is code-signed, and each release lists its file's SHA-256 so you can check you have the real one. Click **More info**, then **Run anyway**.
 
+## How do I add launch options or environment variables to a game?
+
+On the game's **Manage** tab, under **Launch options**. Text you type there is added after everything else when the game starts, like `--fullscreen`. Put a setting with spaces in quotes.
+
+To set environment variables too, write them before `%command%`, the way Steam does: `PROTON_LOG=1 MY_GAME_DATA="D:\My Games\data" %command% --fullscreen`. Everything before `%command%` has to be `NAME=value`; everything after it is passed to the game. Names starting with `RECOMPLAUNCHER` are the launcher's own and can't be set. Desktop shortcuts can't carry variables, so a game with variables in its launch options starts through the launcher.
+
 ## A game crashes or looks wrong. Who do I tell?
 
 If it's the game itself, its developer. Every game page links to the developer's GitHub. If it's the launcher (installing, updating, saves, settings), tell me through **Settings > Beta** or [open an issue](https://github.com/elripalda/RecompLauncher/issues/new/choose).

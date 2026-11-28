@@ -5,7 +5,7 @@ plain HTML, CSS and JavaScript (`ui/`).
 
 ## What you need
 
-You need [Rust](https://rustup.rs) 1.85 or newer, Node.js 20 or newer and
+You need [Rust](https://rustup.rs) 1.90 or newer, Node.js 20 or newer and
 [CMake](https://cmake.org). CMake builds SDL 3, which reads controllers; it's compiled into the
 launcher, so there is no SDL library to ship or install. On Windows you also need Rust's default
 MSVC toolchain, with the Visual Studio C++ build tools it asks for. The Build Tools come with a

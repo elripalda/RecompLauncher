@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "予想より時間がかかっています",
  "Players": "プレイヤー",
  "On Disk": "ディスク使用量",
  "Not added yet": "まだ追加されていません",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "そのランチャーのリストにあるがこの PC にないゲーム {n} 本（あとでインストールできるようライブラリに入ります）",
  "{n} games ready to add": "追加できるゲーム {n} 本",
  "{n} games to check which recomp each is": "どのリコンパイル版か確認が必要なゲーム {n} 本",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "一部のゲームページに、提携ストアでの元のゲームの価格を表示する小さなカード。ここから購入するとランチャーの支援になります。",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "ホームのスポンサー枠と、一部のゲームページに提携ストアでの元のゲームの価格を表示するカード。利用するとランチャーの支援になります。",
  "A star on GitHub helps more players find RecompLauncher.": "GitHub でスターを付けると、より多くのプレイヤーが RecompLauncher を見つけやすくなります。",
  "Affiliate link": "アフィリエイトリンク",
  "Auto-Install": "自動インストール",
@@ -3228,7 +3229,8 @@
  "Re-entry": "再登場",
  "Same as last week": "先週と同じ",
  "See Price": "価格を見る",
- "Show where to buy the original game": "元のゲームを買える場所を表示",
+ "Show sponsored content": "スポンサーコンテンツを表示",
+ "Sponsored": "スポンサー",
  "Skip This Version": "このバージョンをスキップ",
  "Sorry It's Not There Yet": "まだ期待に届かずすみません",
  "Star on GitHub": "GitHub でスターを付ける",
@@ -3660,5 +3662,11 @@
  "Always": "常に",
  "Never": "しない",
  "Hide the Site's Name": "サイト名を隠す",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "ランチャーのサイトを名前でブロックするネットワーク向けです。名前を隠すため、ランチャーは Cloudflare と Google にサイトの鍵を問い合わせることがあります。自動では、通常の接続がブロックされたときだけ問い合わせます。"
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "ランチャーのサイトを名前でブロックするネットワーク向けです。名前を隠すため、ランチャーは Cloudflare と Google にサイトの鍵を問い合わせることがあります。自動では、通常の接続がブロックされたときだけ問い合わせます。",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "ゲームに環境変数も設定するには、Steam と同じように %command% の前に書きます: NAME=value %command% --option。",
+ "Put %command% in your launch options only once.": "起動オプションに %command% は一度だけ書いてください。",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% より前には、NAME=value のような変数しか書けません。",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "変数名に使えるのは英字、数字、_ だけで、数字で始めることはできません。",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER で始まる名前はランチャー専用のため、起動オプションでは設定できません。",
+ "This game's launch options can't be read. Change them on its Manage tab.": "このゲームの起動オプションを読み取れません。管理タブで変更してください。"
 }

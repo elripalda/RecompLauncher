@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Duurt langer dan verwacht",
  "Players": "Spelers",
  "On Disk": "Op schijf",
  "Not added yet": "Nog niet toegevoegd",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} games in de lijst ervan, maar niet op deze pc (ze komen in je Bibliotheek om later te installeren)",
  "{n} games ready to add": "{n} games klaar om toe te voegen",
  "{n} games to check which recomp each is": "{n} games waarvan nagegaan moet worden welke recomp het is",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Een kleine kaart op sommige gamepagina's met de prijs van de originele game bij een partnerwinkel. Kopen via die kaart steunt de launcher.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "De gesponsorde plek op Home en een kaart op sommige gamepagina's met de prijs van de originele game bij een partnerwinkel. Ze gebruiken steunt de launcher.",
  "A star on GitHub helps more players find RecompLauncher.": "Een ster op GitHub helpt meer spelers RecompLauncher te vinden.",
  "Affiliate link": "Affiliate-link",
  "Auto-Install": "Automatisch installeren",
@@ -3228,7 +3229,8 @@
  "Re-entry": "Terug in de lijst",
  "Same as last week": "Hetzelfde als vorige week",
  "See Price": "Prijs bekijken",
- "Show where to buy the original game": "Laten zien waar je de originele game kunt kopen",
+ "Show sponsored content": "Gesponsorde inhoud tonen",
+ "Sponsored": "Gesponsord",
  "Skip This Version": "Deze versie overslaan",
  "Sorry It's Not There Yet": "Sorry dat het nog niet goed zit",
  "Star on GitHub": "Ster geven op GitHub",
@@ -3660,5 +3662,11 @@
  "Always": "Altijd",
  "Never": "Nooit",
  "Hide the Site's Name": "Naam van de site verbergen",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Voor netwerken die de sites van de launcher op naam blokkeren. Om de naam te verbergen kan de launcher Cloudflare en Google om de sleutel van de site vragen. Automatisch doet dat alleen als de gewone verbinding wordt geblokkeerd."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Voor netwerken die de sites van de launcher op naam blokkeren. Om de naam te verbergen kan de launcher Cloudflare en Google om de sleutel van de site vragen. Automatisch doet dat alleen als de gewone verbinding wordt geblokkeerd.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Om ook variabelen voor de game in te stellen, zet je ze vóór %command%, net als in Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Zet %command% maar één keer in de startopties.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Vóór %command% kunnen startopties alleen variabelen instellen, zoals NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "De naam van een variabele mag alleen letters, cijfers en _ hebben en mag niet met een cijfer beginnen.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Namen die met RECOMPLAUNCHER beginnen zijn van de launcher, dus startopties kunnen ze niet instellen.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "De startopties van deze game kunnen niet worden gelezen. Pas ze aan op het tabblad Beheren."
 }

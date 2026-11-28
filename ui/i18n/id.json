@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Memakan waktu lebih lama dari perkiraan",
  "Players": "Pemain",
  "On Disk": "Di disk",
  "Not added yet": "Belum ditambahkan",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} game di daftarnya tapi tidak ada di PC ini (masuk ke Pustaka untuk dipasang nanti)",
  "{n} games ready to add": "{n} game siap ditambahkan",
  "{n} games to check which recomp each is": "{n} game yang perlu dicek recomp mana",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Kartu kecil di beberapa halaman game dengan harga game aslinya di toko mitra. Membeli lewat kartu ini mendukung launcher.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "Ruang bersponsor di Beranda, dan kartu di beberapa halaman game dengan harga game aslinya di toko mitra. Menggunakannya mendukung launcher.",
  "A star on GitHub helps more players find RecompLauncher.": "Bintang di GitHub membantu lebih banyak pemain menemukan RecompLauncher.",
  "Affiliate link": "Tautan afiliasi",
  "Auto-Install": "Pasang otomatis",
@@ -3228,7 +3229,8 @@
  "Re-entry": "Masuk lagi",
  "Same as last week": "Sama seperti minggu lalu",
  "See Price": "Lihat harga",
- "Show where to buy the original game": "Tampilkan tempat membeli game aslinya",
+ "Show sponsored content": "Tampilkan konten bersponsor",
+ "Sponsored": "Bersponsor",
  "Skip This Version": "Lewati versi ini",
  "Sorry It's Not There Yet": "Maaf, belum sesuai harapan",
  "Star on GitHub": "Beri bintang di GitHub",
@@ -3660,5 +3662,11 @@
  "Always": "Selalu",
  "Never": "Tidak pernah",
  "Hide the Site's Name": "Sembunyikan nama situs",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Untuk jaringan yang memblokir situs launcher berdasarkan namanya. Untuk menyembunyikan nama itu, launcher bisa meminta kunci situs ke Cloudflare dan Google. Otomatis hanya melakukannya saat cara biasa diblokir."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Untuk jaringan yang memblokir situs launcher berdasarkan namanya. Untuk menyembunyikan nama itu, launcher bisa meminta kunci situs ke Cloudflare dan Google. Otomatis hanya melakukannya saat cara biasa diblokir.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Untuk mengatur variabel bagi game juga, tulis sebelum %command%, seperti di Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Tulis %command% hanya sekali di opsi peluncuran.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Sebelum %command%, opsi peluncuran hanya bisa mengatur variabel, seperti NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Nama variabel hanya boleh berisi huruf, angka, dan _, dan tidak boleh diawali angka.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Nama yang diawali RECOMPLAUNCHER milik launcher, jadi opsi peluncuran tidak bisa mengaturnya.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Opsi peluncuran game ini tidak bisa dibaca. Ubah di tab Kelola-nya."
 }

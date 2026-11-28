@@ -698,7 +698,7 @@
   // views and clicks count as on the desktop (sponsWatch, api/spons.php).
   function tvHomeBanner(x) {
     const sp = x && x.sp;
-    if (!sp || !sp.id || !sp.img) return '';
+    if (!sp || !sp.id || !sp.img || sponsOff()) return '';
     const id = String(Number(sp.id) || 0);
     const img = /^https?:/i.test(sp.img) ? sp.img : SITE + sp.img;
     return `<section class="tv-sec tv-hban" data-sec="hbn:${id}"><button type="button" class="tv-spb" data-f data-key="hbn:${id}" data-tvact="spgo" data-id="${id}" data-sp="${id}" aria-label="${esc(sp.alt || '')}"><img src="${esc(media(img))}" alt="${esc(sp.alt || '')}" decoding="async"><span class="sp-tag">${esc(sp.house ? t('From us') : t('Sponsored'))}</span></button></section>`;
@@ -1501,6 +1501,8 @@
           ${droid && !touchHere() ? '' : `${head(t('Big Picture mode'))}
           ${droid ? `<button type="button" class="tv-item" data-f data-key="s:bpstyle" data-tvact="bpstyle" data-val="${esc(t('Full'))}"><span class="k">${esc(t('Big Picture style'))}<small>${esc(t('Phone is made for this screen. Full is the big-screen one tablets and PCs have.'))}</small></span><span class="tv-pill on">${esc(t('Full'))}</span></button>` : ''}
           <button type="button" class="tv-item" data-f data-key="s:leave" data-tvact="leave"><span class="k">${esc(t('Leave Big Picture mode'))}<small>${esc(droid ? t('The phone layout, for playing with your fingers') : t('Back to the desktop view, for mouse and keyboard'))}</small></span><span class="tv-pill on">${esc(t('Leave'))}</span></button>`}
+          ${head(t('Sponsored'))}
+          <button type="button" class="tv-item" data-f data-key="s:sponsored" data-tvact="sponsored"><span class="k">${esc(t('Show sponsored content'))}<small>${esc(t('The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.'))}</small></span><span class="switch" aria-checked="${!(S.settings.ui || {}).hide_buy}"></span></button>
           ${head(t('About'))}
           <button type="button" class="tv-item" data-f data-key="s:support" data-tvact="support">${HEART}<span class="k">${esc(t('Support RecompLauncher'))}<small>${esc(t('Help keep it running and growing, on Ko-fi'))}</small></span>${svg('chevR', 30)}</button>
           <button type="button" class="tv-item" data-f data-key="s:about" data-tvact="about"><span class="k">${esc(t('About RecompLauncher'))}<small>${esc(t('Who makes it, and where to find the Discord'))}</small></span>${svg('chevR', 30)}</button>
@@ -2445,6 +2447,7 @@
   function tsDraw() {
     const st = stage();
     if (!st || !TS.id) return;
+    if (TS.stage !== 'run') { clearInterval(TS.tick); TS.tick = 0; }
     const id = TS.id, a = byId(id) || { name: (S.library[id] || {}).name || id }, su = S.setup[id] || {};
     let el = $('.tv-setup:not(.out)', st);
     const prevKey = (focused() || {}).dataset?.key;
@@ -2459,10 +2462,10 @@
       // NVIDIA DLSS, when this game wants it: fetched with its progress in the row, as on the desktop.
       setTimeout(() => runtimeFetch(id, TS.named, () => { if (TS.id === id && TS.stage === 'steps') tsDraw(); }), 0);
     } else if (TS.stage === 'run') {
-      const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
+      const { order, sub } = tsLines();
       const names = { read: N_('Reading your copy'), verify: N_('Checking your copy'), extras: N_('Getting the extras'), setup: N_('Setting it up') };
       const s = TS.steps, cur = order.indexOf(TS.step);
-      const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+      if (!TS.tick) TS.tick = setInterval(tsTick, TS_TICK);
       const fill = (k, i) => (i < cur ? 100 : i === cur ? Math.round(((s[k] && s[k].pct) || 0) * 100) : 0);
       const weight = { read: 5, verify: TS.extras ? 70 : 80, extras: 15, setup: 10 };
       let tot = 0, have = 0;
@@ -2474,7 +2477,7 @@
       }
       el.dataset.step = TS.step + order.length;
       body = `${med(cur <= 0 ? 'is-in' : 'is-busy')}<div class="tt"><div class="pct">${esc(tf('{pct}%', { pct: Math.floor((have / tot) * 100) }))}</div><p>${esc(tf('Setting up {name}', { name: a.name }))}</p></div>
-        <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
+        <div class="track" style="grid-template-columns:repeat(${order.length},minmax(0,1fr))">${order.map((k, i) => `<div class="tk${i > cur ? ' w' : i === cur ? ' now' : ''}"><i><u style="width:${fill(k, i)}%"></u></i><b>${esc(t(names[k]))}</b><span>${esc(sub[k])}</span></div>`).join('')}</div>
         <div class="two" style="margin-top:20px"><button type="button" class="tv-btn" data-f data-key="ts:0" data-sheet="0"><span>${esc(t('Run in Background'))}</span></button><button type="button" class="tv-btn" data-f data-key="ts:1" data-sheet="1"><span>${esc(t('Cancel Setup'))}</span></button></div>`;
       items = [
         { run: () => {
@@ -2575,6 +2578,7 @@
         setupClosed(id);
         TS.id = null;
         TS.upd = false;
+        clearInterval(TS.tick); TS.tick = 0;
       }
     };
     // The same control again after a redraw; on a new step, its main button (Next or Set Up).
@@ -2584,6 +2588,25 @@
     const retry = TS.stage === 'error' ? $('[data-key="ts:0"]', el) : null;
     const f = same || main || retry || $('[data-sheet]', el);
     if (f) focus(f, true);
+  }
+  // The running setup's steps and the line under each, the running one with its time left.
+  function tsLines() {
+    const order = (TS.kept ? [] : ['read', 'verify']).concat(TS.extras ? ['extras'] : [], ['setup']);
+    const s = TS.steps;
+    const sub = { read: (s.read && s.read.text) || baseName(TS.path), verify: verifyLine(s.verify, t('Reading all of it')), extras: (s.extras && s.extras.text) || t('What the game needs from your copy'), setup: t('Settings, controller and your copy') };
+    const left = stepLeft(s[TS.step]);
+    if (left) sub[TS.step] += ` · ${left}`;
+    return { order, sub };
+  }
+  // As on the desktop (suTick): a quiet step sends no events, so its line is looked at again every
+  // TS_TICK while setup runs on this screen, and the check stops with the run or the sheet.
+  const TS_TICK = 10000;
+  function tsTick() {
+    const el = TV.on && TS.id && TS.stage === 'run' && $('.tv-setup:not(.out)', stage() || document);
+    if (!el) { clearInterval(TS.tick); TS.tick = 0; return; }
+    const { order, sub } = tsLines();
+    const line = $$('.tk span', el)[order.indexOf(TS.step)];
+    if (line) line.textContent = sub[TS.step];
   }
   // A button of the steps, pressed with A: the same actions as the desktop window's (ssAct).
   async function tsStep(id, act, input) {
@@ -2637,7 +2660,8 @@
       }
       TS.q.shift();
       TS.extras = ev.extras;
-      TS.steps[ev.step] = Object.assign({}, TS.steps[ev.step], ev);
+      // Its time left, as on the desktop (stepEvent and stepLeft, app.js).
+      TS.steps[ev.step] = stepEvent(TS.steps[ev.step], ev);
       if (ev.step === 'done') {
         TS.result = ev;
         const sid = TS.id;
@@ -3248,6 +3272,8 @@
       case 'monitor': sfx('open'); return tvMonitorSheet();
       // Asking for a review after a long session, as Settings > Reviews has it on the desktop.
       case 'reviewask': sfx('select'); await window.setReviewAsk(!window.reviewAskOn()); return draw(true);
+      // Show sponsored content, the same setting as the desktop's (stored the other way round).
+      case 'sponsored': sfx('select'); await saveUi({ hide_buy: !sponsOff() }); return draw(true);
       case 'lang': sfx('open'); return pickLang();
       case 'account':
         sfx('open');

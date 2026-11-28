@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Mất nhiều thời gian hơn dự kiến",
  "Players": "Người chơi",
  "On Disk": "Trên ổ đĩa",
  "Not added yet": "Chưa được thêm",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} game có trong danh sách của nó nhưng không có trên PC này (sẽ vào Thư viện để cài sau)",
  "{n} games ready to add": "{n} game sẵn sàng để thêm",
  "{n} games to check which recomp each is": "{n} game cần kiểm tra là bản recomp nào",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Một thẻ nhỏ trên một số trang game, cho thấy giá game gốc ở một cửa hàng đối tác. Mua qua thẻ này giúp ủng hộ launcher.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "Vị trí được tài trợ ở Trang chủ và một thẻ trên một số trang game, cho thấy giá game gốc ở một cửa hàng đối tác. Dùng chúng giúp ủng hộ launcher.",
  "A star on GitHub helps more players find RecompLauncher.": "Một ngôi sao trên GitHub giúp nhiều người chơi tìm thấy RecompLauncher hơn.",
  "Affiliate link": "Liên kết tiếp thị",
  "Auto-Install": "Tự động cài",
@@ -3228,7 +3229,7 @@
  "Re-entry": "Trở lại bảng",
  "Same as last week": "Giống tuần trước",
  "See Price": "Xem giá",
- "Show where to buy the original game": "Hiện nơi mua game gốc",
+ "Show sponsored content": "Hiện nội dung được tài trợ",
  "Skip This Version": "Bỏ qua phiên bản này",
  "Sorry It's Not There Yet": "Rất tiếc vì nó chưa được như ý",
  "Star on GitHub": "Gắn sao trên GitHub",
@@ -3781,5 +3782,11 @@
  "Always": "Luôn luôn",
  "Never": "Không bao giờ",
  "Hide the Site's Name": "Ẩn tên trang web",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Dành cho mạng chặn các trang của launcher theo tên. Để ẩn tên, launcher có thể hỏi Cloudflare và Google khóa của trang. Tự động chỉ làm vậy khi cách kết nối thông thường bị chặn."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Dành cho mạng chặn các trang của launcher theo tên. Để ẩn tên, launcher có thể hỏi Cloudflare và Google khóa của trang. Tự động chỉ làm vậy khi cách kết nối thông thường bị chặn.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Để đặt thêm biến cho trò chơi, hãy viết chúng trước %command%, giống như Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Chỉ đặt %command% một lần trong tùy chọn khởi chạy.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Trước %command%, tùy chọn khởi chạy chỉ có thể đặt biến, như NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Tên biến chỉ được có chữ cái, chữ số và _, và không được bắt đầu bằng chữ số.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Các tên bắt đầu bằng RECOMPLAUNCHER thuộc về trình khởi chạy, nên tùy chọn khởi chạy không thể đặt chúng.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Không đọc được tùy chọn khởi chạy của trò chơi này. Hãy sửa chúng ở thẻ Quản lý."
 }

@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "예상보다 오래 걸리고 있습니다",
  "Players": "플레이어",
  "On Disk": "디스크 사용량",
  "Not added yet": "아직 추가되지 않음",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "그 런처의 목록에는 있지만 이 PC에는 없는 게임 {n}개(나중에 설치하도록 라이브러리에 들어갑니다)",
  "{n} games ready to add": "추가할 준비가 된 게임 {n}개",
  "{n} games to check which recomp each is": "어떤 리컴프인지 확인할 게임 {n}개",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "일부 게임 페이지에 제휴 스토어의 원작 게임 가격을 보여 주는 작은 카드입니다. 이 카드로 구매하면 런처를 후원하게 됩니다.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "홈의 스폰서 자리와, 일부 게임 페이지에 제휴 스토어의 원작 게임 가격을 보여 주는 카드입니다. 이용하면 런처를 후원하게 됩니다.",
  "A star on GitHub helps more players find RecompLauncher.": "GitHub에서 별을 주면 더 많은 플레이어가 RecompLauncher를 찾을 수 있습니다.",
  "Affiliate link": "제휴 링크",
  "Auto-Install": "자동 설치",
@@ -3228,7 +3229,8 @@
  "Re-entry": "재진입",
  "Same as last week": "지난주와 같음",
  "See Price": "가격 보기",
- "Show where to buy the original game": "원작 게임 구매처 보기",
+ "Show sponsored content": "스폰서 콘텐츠 표시",
+ "Sponsored": "스폰서",
  "Skip This Version": "이 버전 건너뛰기",
  "Sorry It's Not There Yet": "아직 부족해서 죄송해요",
  "Star on GitHub": "GitHub에서 별 주기",
@@ -3660,5 +3662,11 @@
  "Always": "항상",
  "Never": "사용 안 함",
  "Hide the Site's Name": "사이트 이름 숨기기",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "런처의 사이트를 이름으로 차단하는 네트워크를 위한 설정입니다. 이름을 숨기기 위해 런처가 Cloudflare와 Google에 사이트의 키를 요청할 수 있습니다. 자동은 일반 연결이 차단되었을 때만 요청합니다."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "런처의 사이트를 이름으로 차단하는 네트워크를 위한 설정입니다. 이름을 숨기기 위해 런처가 Cloudflare와 Google에 사이트의 키를 요청할 수 있습니다. 자동은 일반 연결이 차단되었을 때만 요청합니다.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "게임에 변수도 설정하려면 Steam처럼 %command% 앞에 쓰세요: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "실행 옵션에 %command%는 한 번만 쓰세요.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% 앞에는 NAME=value 같은 변수만 쓸 수 있습니다.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "변수 이름에는 문자, 숫자, _만 쓸 수 있으며 숫자로 시작할 수 없습니다.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER로 시작하는 이름은 런처 전용이라 실행 옵션에서 설정할 수 없습니다.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "이 게임의 실행 옵션을 읽을 수 없습니다. 관리 탭에서 바꾸세요."
 }

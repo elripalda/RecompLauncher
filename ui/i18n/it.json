@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Ci sta mettendo più del previsto",
  "Players": "Giocatori",
  "On Disk": "Su disco",
  "Not added yet": "Non ancora aggiunti",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} giochi nel suo elenco ma non su questo PC (vanno nella tua Libreria per installarli più tardi)",
  "{n} games ready to add": "{n} giochi pronti da aggiungere",
  "{n} games to check which recomp each is": "{n} giochi di cui verificare quale recomp siano",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Una piccola scheda su alcune pagine dei giochi con il prezzo del gioco originale in un negozio partner. Acquistare da lì sostiene il launcher.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "Lo spazio sponsorizzato nella Home e una scheda su alcune pagine dei giochi con il prezzo del gioco originale in un negozio partner. Usarli sostiene il launcher.",
  "A star on GitHub helps more players find RecompLauncher.": "Una stella su GitHub aiuta più giocatori a trovare RecompLauncher.",
  "Affiliate link": "Link di affiliazione",
  "Auto-Install": "Installazione automatica",
@@ -3228,7 +3229,8 @@
  "Re-entry": "Rientro",
  "Same as last week": "Come la settimana scorsa",
  "See Price": "Vedi prezzo",
- "Show where to buy the original game": "Mostra dove comprare il gioco originale",
+ "Show sponsored content": "Mostra contenuti sponsorizzati",
+ "Sponsored": "Sponsorizzato",
  "Skip This Version": "Salta questa versione",
  "Sorry It's Not There Yet": "Ci spiace che non sia ancora all'altezza",
  "Star on GitHub": "Metti una stella su GitHub",
@@ -3660,5 +3662,11 @@
  "Always": "Sempre",
  "Never": "Mai",
  "Hide the Site's Name": "Nascondi il nome del sito",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Per le reti che bloccano i siti del launcher in base al nome. Per nasconderlo, il launcher può chiedere a Cloudflare e Google la chiave del sito. Automatico lo fa solo quando la connessione normale è bloccata."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Per le reti che bloccano i siti del launcher in base al nome. Per nasconderlo, il launcher può chiedere a Cloudflare e Google la chiave del sito. Automatico lo fa solo quando la connessione normale è bloccata.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Per impostare anche delle variabili per il gioco, scrivile prima di %command%, come su Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Metti %command% una sola volta nelle opzioni di avvio.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Prima di %command%, le opzioni di avvio possono solo impostare variabili, come NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Il nome di una variabile può contenere solo lettere, cifre e _, e non può iniziare con una cifra.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "I nomi che iniziano con RECOMPLAUNCHER sono del launcher, quindi le opzioni di avvio non possono impostarli.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Non si riescono a leggere le opzioni di avvio di questo gioco. Cambiale nella sua scheda Gestisci."
 }

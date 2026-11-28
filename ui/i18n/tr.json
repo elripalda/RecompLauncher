@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Beklenenden uzun sürüyor",
  "Players": "Oyuncular",
  "On Disk": "Diskte",
  "Not added yet": "Henüz eklenmedi",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "Listesinde olup bu bilgisayarda olmayan {n} oyun (daha sonra yüklemek için Kitaplığınıza eklenir)",
  "{n} games ready to add": "Eklenmeye hazır {n} oyun",
  "{n} games to check which recomp each is": "Hangi recomp olduğu kontrol edilecek {n} oyun",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Bazı oyun sayfalarında, orijinal oyunun bir iş ortağı mağazasındaki fiyatını gösteren küçük bir kart. Buradan satın almak başlatıcıyı destekler.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "Ana sayfadaki sponsorlu alan ve bazı oyun sayfalarında orijinal oyunun bir iş ortağı mağazasındaki fiyatını gösteren kart. Bunları kullanmak başlatıcıyı destekler.",
  "A star on GitHub helps more players find RecompLauncher.": "GitHub'da bir yıldız, RecompLauncher'ı daha çok oyuncunun bulmasına yardımcı olur.",
  "Affiliate link": "Ortaklık bağlantısı",
  "Auto-Install": "Otomatik kurulum",
@@ -3228,7 +3229,8 @@
  "Re-entry": "Yeniden giriş",
  "Same as last week": "Geçen haftayla aynı",
  "See Price": "Fiyatı gör",
- "Show where to buy the original game": "Orijinal oyunun nereden alınacağını göster",
+ "Show sponsored content": "Sponsorlu içeriği göster",
+ "Sponsored": "Sponsorlu",
  "Skip This Version": "Bu sürümü atla",
  "Sorry It's Not There Yet": "Henüz istediğiniz gibi olmadığı için üzgünüz",
  "Star on GitHub": "GitHub'da yıldız ver",
@@ -3660,5 +3662,11 @@
  "Always": "Her zaman",
  "Never": "Asla",
  "Hide the Site's Name": "Sitenin adını gizle",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Launcher'ın sitelerini adına göre engelleyen ağlar için. Adı gizlemek için launcher, sitenin anahtarını Cloudflare ve Google'a sorabilir. Otomatik, bunu yalnızca normal bağlantı engellendiğinde yapar."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Launcher'ın sitelerini adına göre engelleyen ağlar için. Adı gizlemek için launcher, sitenin anahtarını Cloudflare ve Google'a sorabilir. Otomatik, bunu yalnızca normal bağlantı engellendiğinde yapar.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Oyun için değişken de ayarlamak isterseniz, Steam'deki gibi %command% öncesine yazın: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Başlatma seçeneklerine %command% yalnızca bir kez yazın.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% öncesinde başlatma seçenekleri yalnızca NAME=value gibi değişkenler ayarlayabilir.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Bir değişkenin adı yalnızca harf, rakam ve _ içerebilir ve rakamla başlayamaz.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "RECOMPLAUNCHER ile başlayan adlar başlatıcıya aittir, bu yüzden başlatma seçenekleri bunları ayarlayamaz.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Bu oyunun başlatma seçenekleri okunamıyor. Yönet sekmesinden değiştirin."
 }

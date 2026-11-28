@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Trwa to dłużej, niż przewidywano",
  "Players": "Gracze",
  "On Disk": "Na dysku",
  "Not added yet": "Jeszcze nie dodano",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} gra na jego liście, ale nie na tym komputerze (trafi do Twojej Biblioteki, by zainstalować ją później)|{n} gry na jego liście, ale nie na tym komputerze (trafią do Twojej Biblioteki, by zainstalować je później)|{n} gier na jego liście, ale nie na tym komputerze (trafią do Twojej Biblioteki, by zainstalować je później)",
  "{n} games ready to add": "{n} gra gotowa do dodania|{n} gry gotowe do dodania|{n} gier gotowych do dodania",
  "{n} games to check which recomp each is": "{n} gra do sprawdzenia, który to port|{n} gry do sprawdzenia, które to porty|{n} gier do sprawdzenia, które to porty",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Mała karta na niektórych stronach gier z ceną oryginalnej gry w sklepie partnera. Zakup przez nią wspiera launcher.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "Miejsce sponsorowane na stronie głównej i karta na niektórych stronach gier z ceną oryginalnej gry w sklepie partnera. Korzystanie z nich wspiera launcher.",
  "A star on GitHub helps more players find RecompLauncher.": "Gwiazdka na GitHubie pomaga większej liczbie graczy znaleźć RecompLauncher.",
  "Affiliate link": "Link partnerski",
  "Auto-Install": "Automatyczna instalacja",
@@ -3228,7 +3229,8 @@
  "Re-entry": "Powrót",
  "Same as last week": "Tak jak w zeszłym tygodniu",
  "See Price": "Zobacz cenę",
- "Show where to buy the original game": "Pokazuj, gdzie kupić oryginalną grę",
+ "Show sponsored content": "Pokazuj treści sponsorowane",
+ "Sponsored": "Sponsorowane",
  "Skip This Version": "Pomiń tę wersję",
  "Sorry It's Not There Yet": "Przykro nam, że to jeszcze nie to",
  "Star on GitHub": "Daj gwiazdkę na GitHubie",
@@ -3660,5 +3662,11 @@
  "Always": "Zawsze",
  "Never": "Nigdy",
  "Hide the Site's Name": "Ukrywaj nazwę strony",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Dla sieci, które blokują strony launchera po nazwie. Aby ukryć nazwę, launcher może poprosić Cloudflare i Google o klucz strony. Automatycznie robi to tylko wtedy, gdy zwykłe połączenie jest zablokowane."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Dla sieci, które blokują strony launchera po nazwie. Aby ukryć nazwę, launcher może poprosić Cloudflare i Google o klucz strony. Automatycznie robi to tylko wtedy, gdy zwykłe połączenie jest zablokowane.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Aby ustawić też zmienne dla gry, wpisz je przed %command%, jak w Steamie: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Wpisz %command% w opcjach uruchamiania tylko raz.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "Przed %command% opcje uruchamiania mogą tylko ustawiać zmienne, np. NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Nazwa zmiennej może zawierać tylko litery, cyfry i _ i nie może zaczynać się od cyfry.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Nazwy zaczynające się od RECOMPLAUNCHER należą do launchera, więc opcje uruchamiania nie mogą ich ustawiać.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Nie można odczytać opcji uruchamiania tej gry. Zmień je na karcie Zarządzaj."
 }

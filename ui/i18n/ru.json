@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Занимает больше времени, чем ожидалось",
  "Players": "Игроки",
  "On Disk": "На диске",
  "Not added yet": "Пока не добавлены",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} игра в его списке, но не на этом компьютере (попадёт в библиотеку, чтобы установить её позже)|{n} игры в его списке, но не на этом компьютере (попадут в библиотеку, чтобы установить их позже)|{n} игр в его списке, но не на этом компьютере (попадут в библиотеку, чтобы установить их позже)",
  "{n} games ready to add": "{n} игра готова к добавлению|{n} игры готовы к добавлению|{n} игр готовы к добавлению",
  "{n} games to check which recomp each is": "{n} игра, для которой нужно проверить, какая это рекомпиляция|{n} игры, для которых нужно проверить, какие это рекомпиляции|{n} игр, для которых нужно проверить, какие это рекомпиляции",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "Небольшая карточка на некоторых страницах игр с ценой оригинальной игры в магазине-партнёре. Покупка через неё поддерживает лаунчер.",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "Спонсорское место на главной и карточка на некоторых страницах игр с ценой оригинальной игры в магазине-партнёре. Пользуясь ими, вы поддерживаете лаунчер.",
  "A star on GitHub helps more players find RecompLauncher.": "Звезда на GitHub помогает большему числу игроков найти RecompLauncher.",
  "Affiliate link": "Партнёрская ссылка",
  "Auto-Install": "Автоустановка",
@@ -3228,7 +3229,8 @@
  "Re-entry": "Возвращение",
  "Same as last week": "Как на прошлой неделе",
  "See Price": "Узнать цену",
- "Show where to buy the original game": "Показывать, где купить оригинальную игру",
+ "Show sponsored content": "Показывать спонсорский контент",
+ "Sponsored": "Спонсорское",
  "Skip This Version": "Пропустить эту версию",
  "Sorry It's Not There Yet": "Жаль, что пока не то",
  "Star on GitHub": "Поставить звезду на GitHub",
@@ -3660,5 +3662,11 @@
  "Always": "Всегда",
  "Never": "Никогда",
  "Hide the Site's Name": "Скрывать имя сайта",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Для сетей, которые блокируют сайты лаунчера по имени. Чтобы скрыть имя, лаунчер может запросить ключ сайта у Cloudflare и Google. В режиме «Автоматически» это происходит, только если обычное подключение заблокировано."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Для сетей, которые блокируют сайты лаунчера по имени. Чтобы скрыть имя, лаунчер может запросить ключ сайта у Cloudflare и Google. В режиме «Автоматически» это происходит, только если обычное подключение заблокировано.",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "Чтобы задать игре ещё и переменные, напишите их перед %command%, как в Steam: NAME=value %command% --option.",
+ "Put %command% in your launch options only once.": "Укажите %command% в параметрах запуска только один раз.",
+ "Before %command%, launch options can only set variables, like NAME=value.": "До %command% параметры запуска могут только задавать переменные, например NAME=value.",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "Имя переменной может содержать только буквы, цифры и _ и не может начинаться с цифры.",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "Имена, начинающиеся с RECOMPLAUNCHER, принадлежат лаунчеру, поэтому параметры запуска не могут их задавать.",
+ "This game's launch options can't be read. Change them on its Manage tab.": "Не удаётся прочитать параметры запуска этой игры. Измените их на вкладке «Управление»."
 }

@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "ใช้เวลานานกว่าที่คาดไว้",
  "Players": "ผู้เล่น",
  "On Disk": "บนดิสก์",
  "Not added yet": "ยังไม่ได้เพิ่ม",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} เกมที่อยู่ในรายการของมันแต่ไม่มีในพีซีเครื่องนี้ (จะไปอยู่ในคลังเพื่อติดตั้งทีหลัง)",
  "{n} games ready to add": "{n} เกมพร้อมเพิ่ม",
  "{n} games to check which recomp each is": "{n} เกมที่ต้องตรวจว่าเป็น Recomp ตัวไหน",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "การ์ดเล็กๆ ในบางหน้าเกม แสดงราคาเกมต้นฉบับที่ร้านพาร์ตเนอร์ การซื้อผ่านการ์ดนี้ช่วยสนับสนุนตัวเปิดเกม",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "พื้นที่ผู้สนับสนุนในหน้าแรก และการ์ดในบางหน้าเกมที่แสดงราคาเกมต้นฉบับที่ร้านพาร์ตเนอร์ การใช้สิ่งเหล่านี้ช่วยสนับสนุนตัวเปิดเกม",
  "A star on GitHub helps more players find RecompLauncher.": "ดาวบน GitHub ช่วยให้ผู้เล่นค้นพบ RecompLauncher มากขึ้น",
  "Affiliate link": "ลิงก์พันธมิตร",
  "Auto-Install": "ติดตั้งอัตโนมัติ",
@@ -3228,7 +3229,8 @@
  "Re-entry": "กลับเข้ามาใหม่",
  "Same as last week": "เท่ากับสัปดาห์ก่อน",
  "See Price": "ดูราคา",
- "Show where to buy the original game": "แสดงที่ซื้อเกมต้นฉบับ",
+ "Show sponsored content": "แสดงเนื้อหาที่ได้รับการสนับสนุน",
+ "Sponsored": "ได้รับการสนับสนุน",
  "Skip This Version": "ข้ามเวอร์ชันนี้",
  "Sorry It's Not There Yet": "ขอโทษที่ยังไม่ถูกใจ",
  "Star on GitHub": "ให้ดาวบน GitHub",
@@ -3660,5 +3662,11 @@
  "Always": "ทุกครั้ง",
  "Never": "ไม่เลย",
  "Hide the Site's Name": "ซ่อนชื่อเว็บไซต์",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "สำหรับเครือข่ายที่บล็อกเว็บไซต์ของลันเชอร์ด้วยชื่อ เพื่อซ่อนชื่อ ลันเชอร์อาจขอคีย์ของเว็บไซต์จาก Cloudflare และ Google โหมดอัตโนมัติจะทำเช่นนี้เฉพาะเมื่อการเชื่อมต่อแบบปกติถูกบล็อก"
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "สำหรับเครือข่ายที่บล็อกเว็บไซต์ของลันเชอร์ด้วยชื่อ เพื่อซ่อนชื่อ ลันเชอร์อาจขอคีย์ของเว็บไซต์จาก Cloudflare และ Google โหมดอัตโนมัติจะทำเช่นนี้เฉพาะเมื่อการเชื่อมต่อแบบปกติถูกบล็อก",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "หากต้องการตั้งค่าตัวแปรให้เกมด้วย ให้เขียนไว้ก่อน %command% แบบเดียวกับ Steam: NAME=value %command% --option",
+ "Put %command% in your launch options only once.": "ใส่ %command% ในตัวเลือกการเปิดเกมเพียงครั้งเดียว",
+ "Before %command%, launch options can only set variables, like NAME=value.": "ก่อน %command% ตัวเลือกการเปิดเกมตั้งค่าได้แค่ตัวแปร เช่น NAME=value",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "ชื่อตัวแปรมีได้แค่ตัวอักษร ตัวเลข และ _ และขึ้นต้นด้วยตัวเลขไม่ได้",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "ชื่อที่ขึ้นต้นด้วย RECOMPLAUNCHER เป็นของตัวเปิดเกมเอง ตัวเลือกการเปิดเกมจึงตั้งค่าไม่ได้",
+ "This game's launch options can't be read. Change them on its Manage tab.": "อ่านตัวเลือกการเปิดเกมของเกมนี้ไม่ได้ แก้ไขได้ที่แท็บจัดการของเกม"
 }

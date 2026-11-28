@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "所需時間比預期長",
  "Players": "玩家",
  "On Disk": "磁碟占用",
  "Not added yet": "尚未加入",
@@ -3210,7 +3211,7 @@
  "{n} games in its list but not on this PC (they go in your Library to install later)": "{n} 款遊戲在它的清單中，但不在這台電腦上（會放進收藏庫，稍後再安裝）",
  "{n} games ready to add": "{n} 款遊戲可以新增",
  "{n} games to check which recomp each is": "{n} 款遊戲需要確認各是哪個重新編譯版本",
- "A small card on some game pages with the price of the original game at a partner store. Buying through it supports the launcher.": "部分遊戲頁面上的小卡片，顯示原版遊戲在合作商店的價格。透過它購買可以支持啟動器。",
+ "The sponsored spot on Home, and a card on some game pages with the price of the original game at a partner store. Using them supports the launcher.": "首頁上的贊助位，以及部分遊戲頁面上顯示原版遊戲在合作商店價格的卡片。使用它們可以支持啟動器。",
  "A star on GitHub helps more players find RecompLauncher.": "在 GitHub 上給顆星，能幫更多玩家發現 RecompLauncher。",
  "Affiliate link": "聯盟行銷連結",
  "Auto-Install": "自動安裝",
@@ -3228,7 +3229,8 @@
  "Re-entry": "重新上榜",
  "Same as last week": "與上週相同",
  "See Price": "查看價格",
- "Show where to buy the original game": "顯示在哪裡購買原版遊戲",
+ "Show sponsored content": "顯示贊助內容",
+ "Sponsored": "贊助",
  "Skip This Version": "略過此版本",
  "Sorry It's Not There Yet": "抱歉，還不夠好",
  "Star on GitHub": "在 GitHub 上給星",
@@ -3660,5 +3662,11 @@
  "Always": "一律",
  "Never": "從不",
  "Hide the Site's Name": "隱藏網站名稱",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "適用於依名稱封鎖啟動器網站的網路。為了隱藏名稱，啟動器可能會向 Cloudflare 和 Google 查詢網站的金鑰。自動模式只會在一般連線被封鎖時這麼做。"
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "適用於依名稱封鎖啟動器網站的網路。為了隱藏名稱，啟動器可能會向 Cloudflare 和 Google 查詢網站的金鑰。自動模式只會在一般連線被封鎖時這麼做。",
+ "To set variables for the game too, write them before %command%, like Steam: NAME=value %command% --option.": "如需同時為遊戲設定變數，請像 Steam 一樣寫在 %command% 前面：NAME=value %command% --option。",
+ "Put %command% in your launch options only once.": "啟動選項中只能寫一次 %command%。",
+ "Before %command%, launch options can only set variables, like NAME=value.": "%command% 前面只能設定變數，例如 NAME=value。",
+ "A variable's name can only have letters, digits and _, and can't start with a digit.": "變數名稱只能包含字母、數字和 _，且不能以數字開頭。",
+ "Names starting with RECOMPLAUNCHER are the launcher's own, so launch options can't set them.": "以 RECOMPLAUNCHER 開頭的名稱屬於啟動器本身，啟動選項不能設定。",
+ "This game's launch options can't be read. Change them on its Manage tab.": "無法讀取此遊戲的啟動選項。請在其「管理」分頁中修改。"
 }
