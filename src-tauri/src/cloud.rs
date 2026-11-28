@@ -2289,9 +2289,9 @@ mod account_tests {
         let dir = AccountDir::new();
         sign_in_for_tests(&dir.0, "a");
         keep_peek("peek-switch", "", &account_uid(&dir.0), &other_pcs_save());
-        // Someone else signs in on this PC; neither has synced this game here.
+        // Someone else signs in on this PC; neither has synced this game here. The list is still
+        // kept (sign-in clears it too), but the account doesn't match.
         sign_in_for_tests(&dir.0, "b");
-        forget_peeks();
         assert!(badge_list(&dir.0, "peek-switch").is_none());
     }
 
