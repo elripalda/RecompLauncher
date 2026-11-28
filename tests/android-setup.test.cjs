@@ -31,7 +31,7 @@ test('On Android no game is set up by the launcher: the game asks for its own co
   // Nothing to check before playing either: no copy to insert, and none of the PC's parts.
   assert.deepEqual(Array.from(c.readyRows(easy)), []);
   // The core has no profile for any game there, so nothing offers Easy Setup or Game Settings.
-  assert.match(profile, /pub fn find\(game_dir: &Path, repo: &str, entry: &Value\) -> Option<Profile> \{[^}]*if cfg!\(target_os = "android"\) \{\s*return None;/);
+  assert.match(profile, /pub fn find\(game_dir: &Path, tag: &str, entry: &Value\) -> Option<Profile> \{[^}]*if cfg!\(target_os = "android"\) \{\s*return None;/);
 });
 
 test('On a PC Easy Setup games are still set up by the launcher', () => {

@@ -1,0 +1,16 @@
+{
+  "about": "Easy Setup, one rule for RecompLauncher (Profile::easy_setup) and recomplauncher.com (rs_sdk_easy): a recomplauncher.json gives Easy Setup when it starts a program and takes the player's copy, as the game block or as a required input of role game or disc (no role means game) that isn't a shared key. Both test suites run every case here; change the rule only together with this file.",
+  "cases": [
+    { "name": "start and a game block", "easy": true, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "game": { "kind": "iso", "label": "Your disc" } } },
+    { "name": "a game block, no start", "easy": false, "profile": { "format": 1, "game": { "kind": "iso", "label": "Your disc" } } },
+    { "name": "start alone", "easy": false, "profile": { "format": 1, "start": { "program": ["Game.exe"] } } },
+    { "name": "start and a required disc input", "easy": true, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "disc1", "label": "Disc 1", "role": "disc", "formats": [{ "type": "file" }] }] } },
+    { "name": "start and a required input with no role (a game)", "easy": true, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "game", "label": "Your game", "formats": [{ "type": "file" }] }] } },
+    { "name": "a required game input, no start", "easy": false, "profile": { "format": 1, "inputs": [{ "id": "game", "label": "Your game", "role": "game", "formats": [{ "type": "file" }] }] } },
+    { "name": "start and only an optional game input", "easy": false, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "game", "label": "Your game", "role": "game", "optional": true, "formats": [{ "type": "file" }] }] } },
+    { "name": "start and only a shared key", "easy": false, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "keys", "label": "Keys", "role": "key", "shared": "switch.prod-keys" }] } },
+    { "name": "start and a shared input marked as a game", "easy": false, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "g", "label": "Game", "role": "game", "shared": "switch.title-keys", "formats": [{ "type": "file" }] }] } },
+    { "name": "start, a shared key and a required game input", "easy": true, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "keys", "label": "Keys", "role": "key", "shared": "switch.prod-keys" }, { "id": "game", "label": "Your game", "role": "game", "formats": [{ "type": "file" }] }] } },
+    { "name": "start and only an update input", "easy": false, "profile": { "format": 1, "start": { "program": ["Game.exe"] }, "inputs": [{ "id": "update", "label": "Update", "role": "update", "formats": [{ "type": "file" }] }] } }
+  ]
+}
