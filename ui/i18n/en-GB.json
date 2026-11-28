@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Taking longer than expected",
  "1 more game has no saves yet. Play it once and its saves show up here.": "1 more game has no saves yet. Play it once and its saves show up here.",
  "A copy of its saves as they are right now": "A copy of its saves as they are right now",
  "A picture for the cover": "A picture for the cover",
@@ -373,6 +374,5 @@
  "{name} is already in the Catalog. Here it is.": "{name} is already in the Catalogue. Here it is.",
  "{name} is in the Catalog now. Your copy moved over to it.": "{name} is in the Catalogue now. Your copy moved over to it.",
  "Optional. If you use LaunchBox, Customize can use the box art, logos, backgrounds and descriptions it already saved for your games.": "Optional. If you use LaunchBox, Customise can use the box art, logos, backgrounds and descriptions it already saved for your games.",
- "Saved. Customize can use your LaunchBox pictures now.": "Saved. Customise can use your LaunchBox pictures now.",
- "Taking longer than expected": "Taking longer than expected"
+ "Saved. Customize can use your LaunchBox pictures now.": "Saved. Customise can use your LaunchBox pictures now."
 }

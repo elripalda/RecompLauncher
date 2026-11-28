@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "يستغرق وقتًا أطول من المتوقع",
  "Players": "اللاعبون",
  "On Disk": "على القرص",
  "Not added yet": "لم تُضف بعد",
@@ -3450,6 +3451,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "تبقى في مكتبتك ضمن «غير مثبتة». أنت تختار ما إذا كان مجلدها سيحذف أيضًا.",
  "Its files stay, and it stays in your Library under Not Installed": "تبقى ملفاتها، وتبقى في مكتبتك ضمن «غير مثبتة»",
  "Without it, its folder stays where it is: {path}": "بدونه، يبقى مجلدها في مكانه: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "تم إلغاء تثبيت {name}. يبقى مجلدها في {path}.",
- "Taking longer than expected": "يستغرق وقتًا أطول من المتوقع"
+ "{name} is uninstalled. Its folder stays in {path}.": "تم إلغاء تثبيت {name}. يبقى مجلدها في {path}."
 }

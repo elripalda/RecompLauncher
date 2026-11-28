@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "予想より時間がかかっています",
  "Players": "プレイヤー",
  "On Disk": "ディスク使用量",
  "Not added yet": "まだ追加されていません",
@@ -3450,6 +3451,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "ライブラリの「未インストール」に残ります。フォルダーも削除するかどうかを選べます。",
  "Its files stay, and it stays in your Library under Not Installed": "ファイルは残り、ライブラリの「未インストール」にも残ります",
  "Without it, its folder stays where it is: {path}": "実行しない場合、フォルダーは今の場所のままです：{path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} をアンインストールしました。フォルダーは {path} に残っています。",
- "Taking longer than expected": "予想より時間がかかっています"
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} をアンインストールしました。フォルダーは {path} に残っています。"
 }

@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "所需时间比预期长",
  "Players": "玩家",
  "On Disk": "磁盘占用",
  "Not added yet": "尚未添加",
@@ -3450,6 +3451,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "它会留在游戏库的“未安装”中。你可以选择是否同时删除其文件夹。",
  "Its files stay, and it stays in your Library under Not Installed": "文件保留，它也会留在游戏库的“未安装”中",
  "Without it, its folder stays where it is: {path}": "不运行的话，它的文件夹保留在原处：{path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} 已卸载。它的文件夹仍在 {path}。",
- "Taking longer than expected": "所需时间比预期长"
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} 已卸载。它的文件夹仍在 {path}。"
 }

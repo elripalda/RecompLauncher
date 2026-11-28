@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Está tardando más de lo esperado",
  "Cloud Saves": "Partidas en la nube",
  "Game Settings": "Ajustes del juego",
  "Verified Copies": "Copias verificadas",
@@ -3439,6 +3440,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Se queda en tu biblioteca, en No instalados. Tú decides si también se borra su carpeta.",
  "Its files stay, and it stays in your Library under Not Installed": "Sus archivos se quedan, y el juego sigue en tu biblioteca, en No instalados",
  "Without it, its folder stays where it is: {path}": "Si no, su carpeta se queda donde está: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} desinstalado. Su carpeta se queda en {path}.",
- "Taking longer than expected": "Está tardando más de lo esperado"
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} desinstalado. Su carpeta se queda en {path}."
 }

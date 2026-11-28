@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Duurt langer dan verwacht",
  "Players": "Spelers",
  "On Disk": "Op schijf",
  "Not added yet": "Nog niet toegevoegd",
@@ -3450,6 +3451,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Hij blijft in je bibliotheek onder Niet geïnstalleerd. Je kiest zelf of de map ook weg mag.",
  "Its files stay, and it stays in your Library under Not Installed": "Zijn bestanden blijven, en hij blijft in je bibliotheek onder Niet geïnstalleerd",
  "Without it, its folder stays where it is: {path}": "Zonder dat blijft de map waar hij is: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} is verwijderd. De map blijft in {path}.",
- "Taking longer than expected": "Duurt langer dan verwacht"
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} is verwijderd. De map blijft in {path}."
 }

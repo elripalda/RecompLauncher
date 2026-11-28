@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Ça prend plus de temps que prévu",
  "1 more game has no saves yet. Play it once and its saves show up here.": "1 autre jeu n'a pas encore de sauvegardes. Lancez-le une fois et ses sauvegardes apparaîtront ici.",
  "A copy of its saves as they are right now": "Une copie de ses sauvegardes telles qu'elles sont maintenant",
  "A picture for the cover": "Une image pour la jaquette",
@@ -1436,6 +1437,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Il reste dans votre bibliothèque, dans Non installés. Vous choisissez si son dossier est supprimé aussi.",
  "Its files stay, and it stays in your Library under Not Installed": "Ses fichiers restent, et il reste dans votre bibliothèque, dans Non installés",
  "Without it, its folder stays where it is: {path}": "Sinon, son dossier reste où il est : {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} est désinstallé. Son dossier reste dans {path}.",
- "Taking longer than expected": "Ça prend plus de temps que prévu"
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} est désinstallé. Son dossier reste dans {path}."
 }

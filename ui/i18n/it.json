@@ -1,4 +1,5 @@
 {
+ "Taking longer than expected": "Ci sta mettendo più del previsto",
  "Players": "Giocatori",
  "On Disk": "Su disco",
  "Not added yet": "Non ancora aggiunti",
@@ -3450,6 +3451,5 @@
  "It stays in your Library under Not Installed. You choose whether its folder goes too.": "Resta nella tua libreria, in Non installati. Scegli tu se eliminare anche la sua cartella.",
  "Its files stay, and it stays in your Library under Not Installed": "I suoi file restano, e il gioco resta nella tua libreria, in Non installati",
  "Without it, its folder stays where it is: {path}": "Altrimenti la sua cartella resta dov'è: {path}",
- "{name} is uninstalled. Its folder stays in {path}.": "{name} è stato disinstallato. La sua cartella resta in {path}.",
- "Taking longer than expected": "Ci sta mettendo più del previsto"
+ "{name} is uninstalled. Its folder stays in {path}.": "{name} è stato disinstallato. La sua cartella resta in {path}."
 }
