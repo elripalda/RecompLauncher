@@ -136,7 +136,9 @@ async fn call(app: &AppHandle, method: &str, a: &str, query: &[(&str, &str)], bo
     let mut q: Vec<(&str, &str)> = vec![("a", a)];
     q.extend_from_slice(query);
     let req = if method == "GET" { st.http.get(API) } else { st.http.post(API).json(&body.unwrap_or(Value::Null)) };
-    let r = req.query(&q).header("X-RL-Token", token).timeout(Duration::from_secs(15)).send().await.map_err(|e| Error::Msg(format!("ach.php: {e}")))?;
+    let req = req.query(&q).header("X-RL-Token", token).timeout(Duration::from_secs(15));
+    // recompstore.com, with its name hidden when the network blocks it by name (ech.rs).
+    let r = crate::ech::send(req).await.map_err(|e| Error::Msg(format!("ach.php: {e}")))?;
     let code = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if code == 403 && !matches!(a, "status" | "apply") {
@@ -2177,7 +2179,7 @@ pub async fn ach_games(app: AppHandle) -> Res<Value> {
         req = req.header("X-RL-Token", t);
     }
     let file = cache_file(&st.dir, "games");
-    match req.send().await {
+    match crate::ech::send(req).await {
         Ok(r) if r.status().is_success() => {
             let v: Value = r.json().await.unwrap_or(Value::Null);
             let games = v.get("games").cloned().unwrap_or(Value::Null);
@@ -2215,7 +2217,7 @@ pub async fn ach_game_web(app: AppHandle, game: String) -> Res<Value> {
         req = req.header("X-RL-Token", t);
     }
     let file = cache_file(&st.dir, &format!("game-{safe}"));
-    match req.send().await {
+    match crate::ech::send(req).await {
         Ok(r) if r.status().is_success() => {
             let v: Value = r.json().await.unwrap_or(Value::Null);
             let _ = std::fs::create_dir_all(st.dir.join("achievements"));
