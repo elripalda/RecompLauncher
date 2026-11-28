@@ -4331,7 +4331,7 @@ function suLines() {
   const sub = {
     read: st.read && st.read.text ? st.read.text : baseName(SU.path),
     verify: verifyLine(st.verify, t('Reading all of it, to make sure it\'s complete')),
-    extras: (st.extras && st.extras.text) || t('What the game needs from your copy'),
+    extras: (st.extras && t(st.extras.text)) || t('What the game needs from your copy'),
     setup: t('Its settings, your controller and where your copy is'),
   };
   const left = stepLeft(st[SU.step]);
@@ -5628,6 +5628,7 @@ function pageSettings() {
     default:
       body = group(t('About'), `<p style="margin:0 0 8px">RecompLauncher ${esc(verName(S.version))} · ${OS_NAME[S.os]} ${esc(S.arch)}</p>
         <p class="muted" style="margin:0">${esc(t('RecompLauncher has no game files and never downloads any. Every recomp comes from its developer\'s own GitHub, and you set it up with your own copy of the game.'))}</p>`, `<button type="button" class="btn sm" data-act="about">${esc(t('More about it'))}</button>`)
+        + starBanner()
         + group(t('Support'), row(t('Support RecompLauncher'), t('Help keep it running and growing, on Ko-fi'), `<button type="button" class="btn" data-act="url" data-url="${KOFI}">${HEART}${esc(t('Support Us'))}</button>`))
         + (discordUrl() ? group(t('Community'), row(t('Discord'), t('News, help with a game, and a place to send your logs.'), `<button type="button" class="btn" data-act="url" data-url="${esc(discordUrl())}">${DISCORD}${esc(t('Join the Discord'))}</button>`)) : '')
         + group(t('Troubleshoot'), row(t('Export Logs'), t('Saves the launcher\'s and your games\' logs in one zip on your desktop, to attach wherever you ask for help.'), `<button type="button" class="btn" data-act="export-logs">${esc(t('Export Logs'))}</button>`))
@@ -5840,6 +5841,7 @@ function paintTheme() {
 function renderSide() {
   const v = S.view, ui = S.settings.ui || {};
   applySide();
+  paintStarCta();
   for (const b of $$('.side .nav[data-go]')) b.classList.toggle('on', b.dataset.go === (v === 'game' ? (pins().includes(S.arg) ? '' : S.from) : v));
   // Downloading or building now, or else how many game updates are ready, as a badge. The
   // launcher's own update isn't counted: it has its own pill in the title bar.
@@ -10093,6 +10095,8 @@ async function act(el, e) {
     case 'found-fix': return fixFound(id);
     case 'copies': return copiesModal(id);
     case 'tv': return window.enterTV && window.enterTV();
+    case 'star': return starModal();
+    case 'star-hide': return starHide();
     case 'vcredist': return installVcredist();
     case 'report': S.reportGame = id; return setSection('report');
     case 'portable-open': return invoke('open_folder', { id: null, path: (S.portableInfo || {}).data }).catch(fail);
@@ -10750,6 +10754,12 @@ async function enjoyAsk(why) {
     const k = x.dataset.x, box = $('.modal', m);
     if (k === 'up') {
       saveUi({ enjoy_done: 'up' }, true).catch(() => {});
+      // Already went to star it (the sidebar or Settings): thanks, without asking again.
+      if ((S.settings.ui || {}).star_done) {
+        box.innerHTML = `<h2>${esc(t('Thank You for Supporting the Project'))}</h2><p>${esc(t('Glad you like it, and thanks for the star on GitHub.'))}</p>
+        <div class="acts"><button type="button" class="btn main" data-x="no">${esc(t('Close'))}</button></div>`;
+        return;
+      }
       box.innerHTML = `<h2>${esc(t('Thank You for Supporting the Project'))}</h2><p>${esc(t('A star on GitHub helps more players find RecompLauncher.'))}</p>
         <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Maybe Later'))}</button><button type="button" class="btn main" data-x="star">${esc(t('Star on GitHub'))}</button></div>`;
       return;
@@ -10760,13 +10770,62 @@ async function enjoyAsk(why) {
         <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Close'))}</button><button type="button" class="btn main" data-x="tell">${esc(t('Tell Us'))}</button></div>`;
       return;
     }
-    if (k === 'star') { invoke('open_url', { url: 'https://github.com/elripalda/RecompLauncher' }).catch(fail); return close(); }
+    if (k === 'star') { starOpen(); return close(); }
     if (k === 'tell') { close(); S.setTab = 'beta'; return go('settings'); }
     return close();
   });
 }
 // The launcher open a good while without a game ending: asked then instead (still only once).
 setInterval(() => { if (Date.now() - ENJOY.at > 25 * 60e3 && document.hasFocus()) enjoyAsk('open'); }, 60e3);
+
+// ---------- Star on GitHub ----------
+// A button at the bottom of the sidebar and a banner in Settings > About open a window asking for
+// a star. The sidebar's goes once the player has gone to star it, or closed it with its ×.
+const GH_REPO = 'https://github.com/elripalda/RecompLauncher';
+// GitHub's own star (Octicons star-fill) and the GitHub mark, as on GitHub's Star button.
+const STAR_SVG = (n) => `<svg width="${n}" height="${n}" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>`;
+const GH_SVG = (n) => `<svg width="${n}" height="${n}" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.23-.6-.8-1.23-.79-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>`;
+function starDone() {
+  const ui = S.settings.ui || {};
+  return !!(ui.star_done || ui.star_hide);
+}
+function paintStarCta() {
+  const box = $('#star-cta');
+  if (!box) return;
+  const show = !!S.settings.setup_done && !starDone();
+  box.hidden = !show;
+  if (!show || box.firstChild) return;
+  const label = t('Star on GitHub'), hide = t('Hide');
+  const x = `<button type="button" class="sc-x lbl" data-act="star-hide" aria-label="${esc(hide)}" title="${esc(hide)}"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7m0-7-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>`;
+  box.innerHTML = `<button type="button" class="sc-main" data-act="star" title="${esc(label)}"><span class="sc-gh">${GH_SVG(18)}</span><span class="lbl">${esc(label)}</span><span class="lbl sc-st">${STAR_SVG(15)}</span></button>${x}`;
+}
+async function starHide() {
+  await saveUi({ star_hide: Math.floor(Date.now() / 1000) }, true).catch(() => {});
+  paintStarCta();
+  toast(t('You can still star it from Settings → About.'));
+}
+// Opens the project on GitHub. Going there counts as starred: the sidebar's button goes.
+function starOpen() {
+  invoke('open_url', { url: GH_REPO }).catch(fail);
+  saveUi({ star_done: Math.floor(Date.now() / 1000) }, true).then(paintStarCta).catch(() => {});
+}
+// Most players have never starred anything: the window shows where GitHub's Star button is.
+function starModal() {
+  const why = t('RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.');
+  const html = `<div class="star-m"><h2>${esc(t('Star RecompLauncher on GitHub'))}</h2><p>${esc(why)}</p>
+    <ol class="star-steps"><li><span>1</span>${esc(t('Star on GitHub opens the project\'s page in your browser.'))}</li><li><span>2</span>${esc(t('Sign in to GitHub, then press Star at the top right.'))}</li></ol>
+    <div class="star-fake" aria-hidden="true"><span class="sf-repo">${GH_SVG(16)}<b>elripalda</b> / RecompLauncher</span><span class="sf-btn">${STAR_SVG(14)}Star</span></div>
+    <div class="acts grid2"><button type="button" class="btn" data-x="no">${esc(t('Maybe Later'))}</button><button type="button" class="btn star-go" data-x="yes">${STAR_SVG(18)}${esc(t('Star on GitHub'))}</button></div></div>`;
+  modal(html, (x, close) => {
+    if (x.dataset.x !== 'yes') return;
+    starOpen();
+    close();
+    toast(t('Thanks! Press Star at the top right.'));
+  }, t('Star RecompLauncher on GitHub'));
+}
+function starBanner() {
+  return `<div class="star-banner"><span class="star-badge">${GH_SVG(26)}</span><div class="k"><b>${esc(t('Enjoying RecompLauncher?'))}</b><span>${esc(t('A star on GitHub helps more players find RecompLauncher.'))}</span></div><button type="button" class="btn star-go" data-act="star">${STAR_SVG(17)}${esc(t('Star on GitHub'))}</button></div>`;
+}
 
 // A recomp's own installer or first-time setup, opened by its first Play.
 // Its own setup finished, but the game it made wasn't found: the player points at it.

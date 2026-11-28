@@ -722,6 +722,24 @@ mod tests {
         assert_eq!(snapshot(&elsewhere), BTreeMap::from([(PathBuf::from("big.pak"), "the player's moved data".to_string())]));
     }
 
+    /// A Nix AppImage's link out of the game's folder, in the old release and the new: the link is
+    /// replaced, and what the old one pointed at is never touched.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_out_of_the_folder_is_replaced_as_a_link() {
+        let d = tmp("outside-link");
+        let (game, staged, store) = (d.join("game"), d.join("staging"), d.join("nix/store"));
+        put(&store.join("old-game/bin/game"), "not the game's to remove");
+        fs::create_dir_all(&game).unwrap();
+        fs::create_dir_all(&staged).unwrap();
+        std::os::unix::fs::symlink(store.join("old-game/bin/game"), game.join("entrypoint")).unwrap();
+        std::os::unix::fs::symlink("/nix/store/new-game/bin/game", staged.join("entrypoint")).unwrap();
+        let files = [PathBuf::from("entrypoint")];
+        put_in_place(&game, &staged, &files, "new", &[], &files).unwrap().finish();
+        assert_eq!(fs::read_link(game.join("entrypoint")).unwrap(), Path::new("/nix/store/new-game/bin/game"));
+        assert_eq!(fs::read_to_string(store.join("old-game/bin/game")).unwrap(), "not the game's to remove");
+    }
+
     #[test]
     fn an_update_still_counts_after_the_library_is_saved_and_loaded_again() {
         let d = tmp("record-round-trip");

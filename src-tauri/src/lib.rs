@@ -4814,11 +4814,32 @@ mod win_job {
     /// Whether a process is still in the job: one the step started and left running, after the
     /// step itself ended.
     pub fn has_processes(job: &Job) -> bool {
+        accounting(job).is_some_and(|info| info.ActiveProcesses > 0)
+    }
+
+    /// The CPU time every process in the job has used so far, ended ones too (in 100 ns ticks): when
+    /// it grows, what the step left running is still working.
+    pub fn cpu_time(job: &Job) -> u64 {
+        let Some(info) = accounting(job) else { return 0 };
+        let total = info.TotalUserTime.saturating_add(info.TotalKernelTime);
+        u64::try_from(total).unwrap_or(0)
+    }
+
+    /// Ends every process in the job, those whose parent has already ended too (which
+    /// `taskkill /T` can't find).
+    pub fn end_all(job: &Job) {
+        use windows::Win32::System::JobObjects::TerminateJobObject;
+        unsafe {
+            let _ = TerminateJobObject(job.0, 1);
+        }
+    }
+
+    fn accounting(job: &Job) -> Option<windows::Win32::System::JobObjects::JOBOBJECT_BASIC_ACCOUNTING_INFORMATION> {
         use windows::Win32::System::JobObjects::{JobObjectBasicAccountingInformation, QueryInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION};
         let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
         let size = std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32;
         let asked = unsafe { QueryInformationJobObject(Some(job.0), JobObjectBasicAccountingInformation, &mut info as *mut _ as *mut std::ffi::c_void, size, None) };
-        asked.is_ok() && info.ActiveProcesses > 0
+        asked.ok().map(|_| info)
     }
 
     /// None when Windows won't make the job: the process then runs as it did before, outside one.
@@ -4877,6 +4898,21 @@ mod win_job {
 
 /// How long a setup step may print nothing before it's given up on.
 const SILENT_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// How long what a setup step handed its build to may go without printing anything or using the
+/// CPU, while the step's `done` files are still missing, before it's taken as stuck.
+const HANDOFF_IDLE_FOR: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// How often the CPU time of what a setup step left running is read (Linux reads every process's
+/// /proc entry for it).
+const CPU_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The step's own program ended well and left a build running, which then ended (or went idle)
+/// without leaving the step's `done` files.
+const HANDOFF_UNFINISHED: &str = "Its setup step's program finished, but the files it was building never appeared.";
+
+/// What the setup shows while the step's own program has ended and what it handed off to builds.
+const STILL_BUILDING: &str = "Still building…";
 
 /// How many of its last lines a setup step that failed shows the player: enough for a reason that
 /// runs over a few lines (an install hint, the top of a stack trace), never the whole output.
@@ -4937,10 +4973,39 @@ fn without_codes(line: &str) -> String {
 /// on lines of their own. The UI translates the first line and shows the rest as it was printed.
 fn step_failed(code: &str, said: &str) -> String {
     let head = format!("Its setup step stopped with code {code}.");
+    with_said(&head, said)
+}
+
+/// The launcher's line, then what the step printed last on lines of their own (when it did).
+fn with_said(head: &str, said: &str) -> String {
     if said.is_empty() {
-        return head;
+        return head.to_string();
     }
     format!("{head}\n{said}")
+}
+
+/// A setup step's `done` files as they were before it started: when each was last written, or
+/// None when it wasn't there.
+struct DoneBefore(Vec<(PathBuf, Option<std::time::SystemTime>)>);
+
+impl DoneBefore {
+    fn note(pr: &profile::Prepare, install: &Path) -> Self {
+        let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        DoneBefore(pr.done_paths(install).into_iter().map(|p| (p.clone(), written(&p))).collect())
+    }
+
+    /// Whether this run finished the build: every `done` file there and written since it started
+    /// (the last build's files don't count: they're there before an update's build has begun), or
+    /// all there and the step said it was already built (`progress 1`). None: the step lists none.
+    fn finished(&self, already_built: bool) -> Option<bool> {
+        if self.0.is_empty() {
+            return None;
+        }
+        let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        let all_there = self.0.iter().all(|(p, _)| p.exists());
+        let all_new = self.0.iter().all(|(p, before)| written(p).is_some_and(|w| before.is_none_or(|b| w != b)));
+        Some(all_new || (all_there && already_built))
+    }
 }
 
 /// Start a program that may have only just been written (unpacked with the game). On Linux,
@@ -4969,10 +5034,86 @@ fn group_has_processes(group: u32) -> bool {
     unsafe { kill(-group, 0) == 0 }
 }
 
+/// Ends every process in the setup step's group, those whose parent has already ended too.
+#[cfg(unix)]
+fn end_group(group: u32) {
+    extern "C" {
+        fn kill(pid: std::ffi::c_int, sig: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    const SIGKILL: std::ffi::c_int = 9;
+    let Ok(group) = std::ffi::c_int::try_from(group) else { return };
+    unsafe {
+        kill(-group, SIGKILL);
+    }
+}
+
+/// The CPU time the processes in a group use now, in clock ticks: when it grows, what the setup
+/// step left running is still working. Linux reads it from /proc.
+#[cfg(target_os = "linux")]
+fn group_cpu_time(group: u32) -> u64 {
+    let Ok(dir) = std::fs::read_dir("/proc") else { return 0 };
+    let mut total = 0u64;
+    for e in dir.flatten() {
+        let Ok(stat) = std::fs::read_to_string(e.path().join("stat")) else { continue };
+        total += stat_cpu_in_group(&stat, group).unwrap_or(0);
+    }
+    total
+}
+
+/// A /proc/<pid>/stat line's CPU time (utime + stime), when the process is in the group. The
+/// program's name, in brackets, can hold spaces: the fields are counted after its last ')'.
+#[cfg(any(target_os = "linux", test))]
+fn stat_cpu_in_group(stat: &str, group: u32) -> Option<u64> {
+    let (_, rest) = stat.rsplit_once(')')?;
+    let fields: Vec<&str> = rest.split_whitespace().collect();
+    // After the name: state, ppid, pgrp, ... utime is the 14th field of the line, stime the 15th.
+    if fields.get(2)?.parse::<u32>().ok()? != group {
+        return None;
+    }
+    let user: u64 = fields.get(11)?.parse().ok()?;
+    let system: u64 = fields.get(12)?.parse().ok()?;
+    Some(user + system)
+}
+
+/// The same on a Mac, which has no /proc: what `ps` says for the group, in hundredths of a second.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn group_cpu_time(group: u32) -> u64 {
+    let Ok(out) = std::process::Command::new("ps").args(["-A", "-o", "pgid=", "-o", "time="]).output() else { return 0 };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut total = 0u64;
+    for line in text.lines() {
+        let mut w = line.split_whitespace();
+        let in_group = w.next().and_then(|g| g.parse::<u32>().ok()) == Some(group);
+        if !in_group {
+            continue;
+        }
+        total += w.next().map(ps_hundredths).unwrap_or(0);
+    }
+    total
+}
+
+/// A time as `ps` writes it ("1-02:03:04", "2:03.45", "0:00.03"), in hundredths of a second.
+#[cfg(any(all(unix, not(target_os = "linux")), test))]
+fn ps_hundredths(time: &str) -> u64 {
+    let (days, clock) = time.split_once('-').unwrap_or(("0", time));
+    let mut secs = 0f64;
+    for part in clock.split(':') {
+        secs = secs * 60.0 + part.parse::<f64>().unwrap_or(0.0);
+    }
+    let days: f64 = days.parse().unwrap_or(0.0);
+    ((days * 86400.0 + secs) * 100.0).round() as u64
+}
+
 /// Runs the recomp's setup step. `writing` is called once the step has started, when it can
 /// write over the last build; a step that can't start (its program missing, no room, no Proton)
 /// never calls it. `out` gets every line it prints (the full log the player can open or send).
 fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn(), out: Option<&std::fs::File>) -> Result<(), String> {
+    run_prepare_idle(pr, install, copy, extra, report, stopped, writing, out, HANDOFF_IDLE_FOR)
+}
+
+/// `run_prepare`, with how long a build it handed off to may sit idle (tests give it seconds).
+#[allow(clippy::too_many_arguments)]
+fn run_prepare_idle(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra: &[String], report: &dyn Fn(f32, String), stopped: &dyn Fn() -> bool, writing: &dyn Fn(), out: Option<&std::fs::File>, idle_for: std::time::Duration) -> Result<(), String> {
     use std::io::{BufRead, Write};
     let exe = pr.program_in(install).ok_or("Its setup program is missing. Reinstall the game.")?;
     // On Linux an AppImage is never run, its setup step included: Play unpacks the game first.
@@ -5031,6 +5172,8 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     // The launcher killed or crashing (no Exit to stop it): on Linux the step goes with it.
     #[cfg(target_os = "linux")]
     die_with_launcher(&mut c);
+    // The last build's `done` files as they are now: only ones written again count as this run's.
+    let done_before = DoneBefore::note(pr, install);
     let mut child = spawn_just_written(&mut c).map_err(|e| if is_blocked(&e) { "Windows Security stopped its setup program.".to_string() } else { format!("Couldn't run its setup program: {e}") })?;
     // Started: from here it can write over the last build. (Not before: a step Windows Security
     // blocked never ran.)
@@ -5064,6 +5207,8 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
     let mut too_long = false;
     // When it last printed anything: a step that goes quiet for SILENT_FOR has stopped working.
     let mut heard = Instant::now();
+    // How far its last progress line said it was, kept on the bar while a hand-off builds.
+    let pct_said = std::cell::Cell::new(0.0f32);
     let read = |said: &mut LastSaid, too_long: &mut bool, heard: &mut Instant| {
         while let Ok(l) = rx.try_recv() {
             *heard = Instant::now();
@@ -5074,6 +5219,7 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             let mut w = l.splitn(3, ' ');
             if w.next() == Some("progress") {
                 let pct = w.next().and_then(|x| x.parse::<f32>().ok()).unwrap_or(0.0).clamp(0.0, 1.0);
+                pct_said.set(pct);
                 report(pct, w.next().unwrap_or("").trim().to_string());
             } else if !l.trim().is_empty() {
                 said.push(&l);
@@ -5081,16 +5227,75 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
             }
         }
     };
+    // Whether a process the step started is still running (in its job or group), and the CPU time
+    // all of them have used.
+    let pid = child.id();
+    #[cfg(unix)]
+    let left_running = || group_has_processes(pid);
+    #[cfg(windows)]
+    let left_running = || job.as_ref().is_some_and(win_job::has_processes);
+    #[cfg(unix)]
+    let cpu_time = || group_cpu_time(pid);
+    #[cfg(windows)]
+    let cpu_time = || job.as_ref().map(win_job::cpu_time).unwrap_or(0);
+    // Whatever the step started, ended: its job on Windows (which reaches processes whose parent
+    // has already ended), its group elsewhere, and the step itself when it still runs.
+    let end_step = |child: &mut std::process::Child| {
+        #[cfg(windows)]
+        if let Some(j) = job.as_ref() {
+            win_job::end_all(j);
+        }
+        #[cfg(unix)]
+        end_group(pid);
+        kill_process_tree(child);
+    };
+    // Set once the step's own program has ended well but left its build running (handed off to
+    // another program) with its `done` files not written yet: the setup waits for them.
+    let mut handoff: Option<Handoff> = None;
+    // Whether this run has built it: its `done` files written again, or it said it was already built.
+    let built = || done_before.finished(pct_said.get() >= 1.0);
     loop {
         read(&mut said, &mut too_long, &mut heard);
-        if let Ok(Some(s)) = child.try_wait() {
-            // What the step started and left running (a build it handed off to) goes on with the
-            // temp folder it was given, so the folder stays until the next setup run.
-            #[cfg(unix)]
-            let left_running = group_has_processes(child.id());
-            #[cfg(windows)]
-            let left_running = job.as_ref().is_some_and(win_job::has_processes);
-            if left_running {
+        if let Some(h) = handoff.as_mut() {
+            if built() == Some(true) {
+                // Built. Anything still running (a helper that stays) keeps its temp folder.
+                if left_running() {
+                    temp.leave();
+                }
+                return Ok(());
+            }
+            let gone = !left_running();
+            h.look(&cpu_time, heard);
+            let idle = h.idle_for() > idle_for;
+            // Its last program ended right after writing the last of them.
+            if gone && built() == Some(true) {
+                return Ok(());
+            }
+            if gone || idle {
+                if idle {
+                    end_step(&mut child);
+                }
+                // The last of what it printed, which can arrive just after it closed.
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                read(&mut said, &mut too_long, &mut heard);
+                let said = said.text();
+                trail::note(format!("Setup step's hand-off ended without its done files ({}); it said last: {}", if idle { "idle" } else { "gone" }, said.replace('\n', " | ")));
+                return Err(with_said(HANDOFF_UNFINISHED, &said));
+            }
+            h.show(&said, pct_said.get(), report);
+        } else if let Ok(Some(s)) = child.try_wait() {
+            let left = left_running();
+            // A step that hands its build off (starts the builder and ends) is waited for, until its
+            // `done` files are written again. A step with no `done` list can't be told finished: it's done
+            // when its program is, as before.
+            if s.success() && left && built() == Some(false) {
+                trail::note("Setup step's program ended and left its build running: waiting for its done files.");
+                handoff = Some(Handoff::new(cpu_time()));
+                continue;
+            }
+            // What the step started and left running (a helper) goes on with the temp folder it
+            // was given, so the folder stays until the next setup run.
+            if left {
                 temp.leave();
             }
             if s.success() {
@@ -5110,10 +5315,61 @@ fn run_prepare(pr: &profile::Prepare, install: &Path, copy: Option<&Path>, extra
         // No time limit: a full build on a Steam Deck can take hours. Only a step that has printed
         // nothing for SILENT_FOR is given up on, and Cancel stops it any time.
         if stopped() || heard.elapsed() > SILENT_FOR {
-            kill_process_tree(&mut child);
+            end_step(&mut child);
             return Err(if stopped() { "Stopped.".into() } else { "Its setup step stopped answering: it printed nothing for an hour.".into() });
         }
         std::thread::sleep(std::time::Duration::from_millis(60));
+    }
+}
+
+/// A setup step's build, handed off to a program the step started before it ended: whether it's
+/// still working (printing, or using the CPU), and what the setup shows meanwhile.
+struct Handoff {
+    cpu: u64,
+    /// When the CPU time last grew (or the wait started).
+    busy: Instant,
+    /// When the CPU time was last read.
+    looked: Instant,
+    /// When it last printed anything.
+    heard: Instant,
+    /// The line the setup shows now, so it's sent only when it changes.
+    shown: Option<String>,
+}
+
+impl Handoff {
+    fn new(cpu: u64) -> Self {
+        let now = Instant::now();
+        Handoff { cpu, busy: now, looked: now, heard: now, shown: None }
+    }
+
+    /// Notes what it did since: printed (`heard`), or used more CPU time (read every CPU_EVERY).
+    fn look(&mut self, cpu_time: &dyn Fn() -> u64, heard: Instant) {
+        self.heard = self.heard.max(heard);
+        if self.looked.elapsed() < CPU_EVERY {
+            return;
+        }
+        self.looked = Instant::now();
+        let cpu = cpu_time();
+        if cpu > self.cpu {
+            self.busy = self.looked;
+        }
+        self.cpu = cpu;
+    }
+
+    /// How long it has done nothing: no line printed, no CPU time used.
+    fn idle_for(&self) -> std::time::Duration {
+        self.busy.max(self.heard).elapsed()
+    }
+
+    /// "Still building…", with the last line it printed under it, kept at the step's last %.
+    fn show(&mut self, said: &LastSaid, pct: f32, report: &dyn Fn(f32, String)) {
+        let last = said.0.back().map(String::as_str).unwrap_or("");
+        let text = with_said(STILL_BUILDING, last);
+        if self.shown.as_deref() == Some(text.as_str()) {
+            return;
+        }
+        report(pct, text.clone());
+        self.shown = Some(text);
     }
 }
 
@@ -6169,7 +6425,7 @@ async fn free_up_space(st: State<'_, App>, id: String) -> Res<u64> {
     let others: Vec<Installed> = st.lib.lock().unwrap().installed.values().cloned().collect();
     let spare = spare_copy(&g, &p, &others).ok_or_else(|| Error::Msg("This game still needs your files, so they stay.".into()))?;
     let all: Vec<PathBuf> = std::iter::once(spare.path.clone()).chain(spare.more.iter().cloned()).collect();
-    let size: u64 = all.iter().map(|f| if f.is_dir() { manage::dir_size(f) } else { std::fs::metadata(f).map(|m| m.len()).unwrap_or(0) }).sum();
+    let size: u64 = all.iter().map(|f| manage::size_of(f)).sum();
     let mut gone = vec![];
     for f in &all {
         let path = f.clone();
@@ -11159,6 +11415,27 @@ mod tests {
     }
 
 
+    /// Uninstalling a Nix AppImage's game: its links into a store outside the folder go as links,
+    /// and nothing they point at is ever deleted.
+    #[cfg(unix)]
+    #[test]
+    fn uninstalling_never_deletes_what_a_link_out_of_the_folder_points_at() {
+        let d = std::env::temp_dir().join(format!("rl-uninstall-outside-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let (game, store) = (d.join("game"), d.join("nix/store/0000-rl-test-game"));
+        std::fs::create_dir_all(store.join("bin")).unwrap();
+        std::fs::write(store.join("bin/game"), "the store's").unwrap();
+        std::fs::create_dir_all(game.join("nix")).unwrap();
+        std::os::unix::fs::symlink(store.join("bin/game"), game.join("entrypoint")).unwrap();
+        std::os::unix::fs::symlink(&store, game.join("nix/store")).unwrap();
+        std::os::unix::fs::symlink("/nix/store/0000-rl-test-gone/bin/game", game.join("dangling")).unwrap();
+        let left = super::remove_game_folder(&game);
+        assert!(left.is_empty(), "{left:?}");
+        assert!(std::fs::symlink_metadata(&game).is_err());
+        assert_eq!(std::fs::read_to_string(store.join("bin/game")).unwrap(), "the store's");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     // Longshot's case: built, its dump freed (Free Up Space), and its setup step names the dump.
     fn freed_game() -> (crate::profile::Profile, crate::library::Installed) {
         let p: crate::profile::Profile = serde_json::from_value(serde_json::json!({
@@ -12941,6 +13218,146 @@ mod prepare_env_tests {
         let gone = !dir.join(setup_temp::FOLDER).exists();
         let _ = std::fs::remove_dir_all(&dir);
         assert!(gone);
+    }
+
+    fn fresh_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rl-handoff-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A step that hands its build to a program it starts without waiting, then ends at once, with
+    /// `built.txt` as its `done` file. `win`: the program and its arguments for `start /b`; `sh`:
+    /// the shell commands run in the background.
+    fn hands_off(dir: &Path, win: &str, sh: &str) -> profile::Prepare {
+        hands_off_saying(dir, "handing off", win, sh)
+    }
+
+    /// The same, with the step printing `line` before it ends.
+    fn hands_off_saying(dir: &Path, line: &str, win: &str, sh: &str) -> profile::Prepare {
+        #[cfg(windows)]
+        let mut pr = step_named(dir, "handoff.bat", &format!("@echo off\r\necho {line}\r\nstart \"\" /b {win}\r\nexit /b 0\r\n"));
+        #[cfg(not(windows))]
+        let mut pr = step_named(dir, "handoff.sh", &format!("#!/bin/sh\necho \"{line}\"\n( {sh} ) &\nexit 0\n"));
+        let _ = (win, sh);
+        pr.done = vec![dir.join("built.txt").to_string_lossy().to_string()];
+        pr
+    }
+
+    /// The step run with a hand-off that may sit idle for `idle` (seconds, not the real minutes).
+    fn run_waiting(dir: &Path, pr: &profile::Prepare, idle: u64, stopped: &dyn Fn() -> bool, report: &dyn Fn(f32, String)) -> Result<(), String> {
+        run_prepare_idle(pr, dir, None, &[], report, stopped, &|| {}, None, std::time::Duration::from_secs(idle))
+    }
+
+    #[test]
+    fn a_build_handed_off_is_waited_for_until_its_done_file_appears() {
+        let dir = fresh_dir("wait");
+        let pr = hands_off(&dir, "cmd /c \"ping -n 3 127.0.0.1 >nul & echo built>built.txt\"", "sleep 2; echo built > built.txt");
+        let shown = std::cell::RefCell::new(Vec::<String>::new());
+        let began = Instant::now();
+        let res = run_waiting(&dir, &pr, 30, &|| false, &|_, t| shown.borrow_mut().push(t));
+        let took = began.elapsed();
+        let built = dir.join("built.txt").is_file();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
+        assert!(built, "returned once the file was there");
+        assert!(took >= std::time::Duration::from_millis(1500), "waited for it: {took:?}");
+        assert!(shown.borrow().iter().any(|t| t.starts_with(STILL_BUILDING)), "showed it was still building: {:?}", shown.borrow());
+    }
+
+    #[test]
+    fn a_hand_off_that_ends_without_its_done_file_is_an_error() {
+        let dir = fresh_dir("unbuilt");
+        let pr = hands_off(&dir, "cmd /c \"ping -n 2 127.0.0.1 >nul & echo almost there\"", "sleep 1; echo almost there");
+        let res = run_waiting(&dir, &pr, 30, &|| false, &|_, _| {});
+        let temp_gone = !dir.join(setup_temp::FOLDER).exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        let e = res.unwrap_err();
+        assert_eq!(e.lines().next(), Some(HANDOFF_UNFINISHED));
+        assert!(e.contains("almost there"), "with what it printed last: {e}");
+        assert!(temp_gone, "nothing left running: its temp folder goes");
+    }
+
+    #[test]
+    fn a_step_that_says_it_is_already_built_returns_at_once_while_its_helper_idles() {
+        let dir = fresh_dir("helper");
+        let pr = hands_off_saying(&dir, "progress 1 Already built", "cmd /c \"ping -n 8 127.0.0.1 >nul\"", "sleep 8");
+        std::fs::write(dir.join("built.txt"), b"built").unwrap();
+        let began = Instant::now();
+        let res = run_waiting(&dir, &pr, 30, &|| false, &|_, _| {});
+        let took = began.elapsed();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
+        assert!(took < std::time::Duration::from_secs(4), "didn't wait for the helper: {took:?}");
+    }
+
+    #[test]
+    fn the_last_builds_done_file_does_not_count_for_a_hand_off() {
+        let dir = fresh_dir("rebuild");
+        let pr = hands_off(&dir, "cmd /c \"ping -n 3 127.0.0.1 >nul & echo again>built.txt\"", "sleep 2; echo again > built.txt");
+        std::fs::write(dir.join("built.txt"), b"last build").unwrap();
+        let began = Instant::now();
+        let res = run_waiting(&dir, &pr, 30, &|| false, &|_, _| {});
+        let took = began.elapsed();
+        let now = std::fs::read_to_string(dir.join("built.txt")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
+        assert!(took >= std::time::Duration::from_millis(1500), "waited for it to be written again: {took:?}");
+        assert_eq!(now.trim(), "again");
+    }
+
+    #[test]
+    fn cancel_while_waiting_ends_the_build_it_handed_off_to() {
+        let dir = fresh_dir("cancel");
+        let pr = hands_off(&dir, "cmd /c \"ping -n 4 127.0.0.1 >nul & echo alive>alive.txt\"", "sleep 3; echo alive > alive.txt");
+        let began = Instant::now();
+        let res = run_waiting(&dir, &pr, 30, &|| began.elapsed() > std::time::Duration::from_secs(1), &|_, _| {});
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let alive = dir.join("alive.txt").exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Err("Stopped.".to_string()));
+        assert!(!alive, "the helper was ended with it");
+    }
+
+    #[test]
+    fn a_hand_off_idle_past_its_window_is_ended_and_an_error() {
+        let dir = fresh_dir("idle");
+        let pr = hands_off(&dir, "cmd /c \"ping -n 12 127.0.0.1 >nul & echo alive>alive.txt\"", "sleep 10; echo alive > alive.txt");
+        let began = Instant::now();
+        let res = run_waiting(&dir, &pr, 3, &|| false, &|_, _| {});
+        let took = began.elapsed();
+        std::thread::sleep(std::time::Duration::from_secs(9));
+        let alive = dir.join("alive.txt").exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res.unwrap_err().lines().next(), Some(HANDOFF_UNFINISHED));
+        assert!(took < std::time::Duration::from_secs(8), "given up on once idle: {took:?}");
+        assert!(!alive, "the idle helper was ended");
+    }
+
+    #[test]
+    fn a_hand_off_that_only_uses_the_cpu_is_still_working() {
+        let dir = fresh_dir("busy");
+        let win = "powershell -NoProfile -Command \"$e=(Get-Date).AddSeconds(7); while((Get-Date) -lt $e){}; Set-Content built.txt built\"";
+        let sh = "e=$(( $(date +%s) + 7 )); while [ $(date +%s) -lt $e ]; do :; done; echo built > built.txt";
+        let pr = hands_off(&dir, win, sh);
+        let res = run_waiting(&dir, &pr, 4, &|| false, &|_, _| {});
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(res, Ok(()));
+    }
+
+    #[test]
+    fn a_proc_stat_line_gives_its_cpu_time_when_in_the_group() {
+        let stat = "4242 (my (odd) prog) S 1 4200 4200 0 -1 4194304 100 0 0 0 30 12 0 0 20 0 1 0 100 0 0";
+        assert_eq!(stat_cpu_in_group(stat, 4200), Some(42));
+        assert_eq!(stat_cpu_in_group(stat, 4201), None);
+    }
+
+    #[test]
+    fn a_ps_time_is_read_as_hundredths() {
+        assert_eq!(ps_hundredths("0:00.03"), 3);
+        assert_eq!(ps_hundredths("2:03.45"), 12345);
+        assert_eq!(ps_hundredths("1-00:00:01"), 8640100);
     }
 
     /// A setup step that writes down what it was given: its temp folder (and whether it was

@@ -59,7 +59,8 @@ fn pick_setup(dir: &Path) -> Option<PathBuf> {
         for d in &level {
             for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
                 let p = e.path();
-                if p.is_dir() {
+                // A link to a folder isn't gone into: it can lead anywhere (a Wine prefix's z: is /).
+                if e.file_type().is_ok_and(|t| t.is_dir()) {
                     next.push(p);
                 } else if !install::mac_metadata(&p) && p.extension().map(|x| x.eq_ignore_ascii_case("exe") || x.eq_ignore_ascii_case("msi")).unwrap_or(false) {
                     found.push((p.clone(), e.metadata().map(|m| m.len()).unwrap_or(0)));
@@ -254,7 +255,8 @@ fn programs(root: &Path, names: &[&str], guess: Option<&Path>) -> Vec<String> {
         for d in &level {
             for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
                 let p = e.path();
-                if p.is_dir() {
+                // A link to a folder isn't gone into: it can lead anywhere (a Wine prefix's z: is /).
+                if e.file_type().is_ok_and(|t| t.is_dir()) {
                     next.push(p);
                 } else if !install::mac_metadata(&p) && p.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false) {
                     let rel = p.strip_prefix(root).map(Path::to_path_buf).unwrap_or_default();

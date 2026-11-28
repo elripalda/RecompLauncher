@@ -220,8 +220,12 @@ from that folder: see [Your AppImage has to run unpacked](#your-appimage-has-to-
   do. Anything else your `AppRun` sets up, it doesn't get: set it in `start.env`, or link your
   program with an rpath of `$ORIGIN/lib`. Naming the AppImage is safer: name a program inside it
   only when that program runs on its own, and developer tools warn when you do.
-- Links inside your AppImage are kept when they stay inside it. A link to an absolute path or out
-  of the AppImage (`../../`) is left out, and the launcher's log names it.
+- Links inside your AppImage are kept as links, with their targets exactly as you packed them,
+  the way `unsquashfs` and `--appimage-extract` keep them. That includes a link to an absolute path
+  or out of the AppImage (`../../`), for example a Nix-built AppImage's `entrypoint` into the
+  `/nix/store` its `AppRun` mounts. The launcher's log names them. A link like that only works if
+  your `AppRun` brings along what it points at. Unpacking never writes through a link, and
+  uninstalling, moving, updating or sizing the game takes the link itself, never what it points at.
 - If your AppImage won't unpack (an old type-1 image, or a damaged one), the launcher installs your
   release's tarball instead, when it has one. Without one,
   the install stops and tells the player why. It never falls back to running the AppImage.
@@ -877,6 +881,19 @@ settings are written. It runs again whenever the player changes their copy.
   echo "Install them, then press Set Up again: https://example.com/dkb-recomp#linux"
   exit 1
   ```
+- **A step may hand off.** Your step can start the build in another program and exit with 0
+  before that program is done, like a setup window that starts its builder and closes. When
+  something the step started still runs and the files of `done` haven't all been written again
+  on this run (the last build's files, still there before an update's build, don't count), the
+  launcher keeps waiting, with "Still building…" and the last line printed under the step, for as
+  long as what's left prints a line or uses the CPU at least once every 10 minutes. The game is
+  set up once every file of `done` is written again, even if a helper of yours keeps running. A
+  step that finds the game already built and prints `progress 1 Already built` isn't waited for.
+  If what it started ends, or does nothing for 10 minutes, first, the player sees "Its setup
+  step's program finished, but the files it was building never appeared." with the last lines it
+  printed. Cancel ends everything the step started. Without `done` the launcher can't tell when
+  the build is over, so the step counts as finished as soon as its own program exits: list `done`
+  if you hand off.
 - Write what you make to `{data}` (pass it in `args`, or read `RECOMPLAUNCHER_DATA`), and have your
   own launcher use the same place when it's given that path, so both stay in step.
 - It gets `RECOMPLAUNCHER=1`, `RECOMPLAUNCHER_VERSION` and `RECOMPLAUNCHER_DATA`, like the game.
@@ -890,8 +907,9 @@ settings are written. It runs again whenever the player changes their copy.
   }
   ```
 - `TMPDIR`, `TEMP` and `TMP` point to `{install}/.recomplauncher-tmp`, a folder the launcher makes
-  empty for each run, on the game's drive, and takes away when the step ends, however it ends. Put
-  only scratch files there. The game itself, when Play starts it, gets the system's own temp folder.
+  empty for each run, on the game's drive, and takes away when the step ends, however it ends
+  (when something it started still runs, the folder stays for it until the next run). Put only
+  scratch files there. The game itself, when Play starts it, gets the system's own temp folder.
 - The step starts only with at least 1 GB free on the game's drive; otherwise the player is asked
   to free some up first.
 - On Linux and the Steam Deck, a Windows program (`.exe`, `.bat`) runs through the same Proton the

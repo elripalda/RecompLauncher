@@ -1602,5 +1602,14 @@
  "Always": "Toujours",
  "Never": "Jamais",
  "Hide the Site's Name": "Masquer le nom du site",
- "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Pour les réseaux qui bloquent les sites du launcher par leur nom. Pour masquer le nom, le launcher peut demander la clé du site à Cloudflare et Google. Automatique ne le fait que si la connexion habituelle est bloquée."
+ "For networks that block the launcher's sites by name. To hide the name, the launcher can ask Cloudflare and Google for the site's key. Automatic does that only when the usual way is blocked.": "Pour les réseaux qui bloquent les sites du launcher par leur nom. Pour masquer le nom, le launcher peut demander la clé du site à Cloudflare et Google. Automatique ne le fait que si la connexion habituelle est bloquée.",
+ "Enjoying RecompLauncher?": "Tu aimes RecompLauncher ?",
+ "You can still star it from Settings → About.": "Tu peux toujours lui mettre une étoile depuis Paramètres → À propos.",
+ "Star RecompLauncher on GitHub": "Mettre une étoile à RecompLauncher sur GitHub",
+ "RecompLauncher is free and made in the open. A star takes a second and helps more players find it, and shows the developers that their recomps matter.": "RecompLauncher est gratuit et développé en open source. Une étoile prend une seconde, aide plus de joueurs à le trouver et montre aux développeurs que leurs recomps comptent.",
+ "Star on GitHub opens the project's page in your browser.": "Mettre une étoile sur GitHub ouvre la page du projet dans ton navigateur.",
+ "Sign in to GitHub, then press Star at the top right.": "Connecte-toi à GitHub, puis appuie sur Star en haut à droite.",
+ "Thanks! Press Star at the top right.": "Merci ! Appuie sur Star en haut à droite.",
+ "Or star it later from your PC.": "Ou mets-lui une étoile plus tard depuis ton PC.",
+ "Glad you like it, and thanks for the star on GitHub.": "Content que ça te plaise, et merci pour l'étoile sur GitHub."
 }
