@@ -284,7 +284,8 @@ pub struct Item {
 
 #[derive(Serialize)]
 pub struct Report {
-    /// Where the launcher's profile for it comes from: "appimage", "folder", "catalog" or "none".
+    /// Where the launcher's profile for it comes from: "appimage", "folder", "release" (the
+    /// catalog's copy of the release's own file), "ours" (our profile for the game) or "none".
     source: &'static str,
     file: String,
     has_file: bool,
@@ -400,12 +401,13 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
     let cat = crate::cached_catalog(&st);
     let entry = catalog::app(&cat, &id).cloned().unwrap_or(Value::Null);
     let used = profile::find_for(&g, &entry);
-    // Where it comes from is find's own answer (profile::Origin); the catalog's copy of the
-    // release's file and our profiles both come from recomplauncher.com.
+    // Where it comes from is find's own answer (profile::Origin): the catalog's copy of the
+    // release's own file, or our profile (turned on for the game, or an older one).
     let source = match used.as_ref().map(|p| p.origin) {
         Some(profile::Origin::Folder) => if embedded.is_some() { "appimage" } else { "folder" },
+        Some(profile::Origin::Release) => "release",
+        Some(profile::Origin::Ours | profile::Origin::Store | profile::Origin::Boot) => "ours",
         Some(profile::Origin::None) | None => "none",
-        Some(_) => "catalog",
     };
     let mut level = 0u8;
     if let Some(p) = prof.as_ref() {
@@ -422,7 +424,7 @@ pub fn dev_check(st: State<'_, App>, id: String) -> Res<Report> {
         ));
     } else if let Some(p) = used.as_ref() {
         items.push(warn(
-            if source == "catalog" { "Using the file from recomplauncher.com" } else { "Using the file built into the launcher" },
+            if source == "release" { "Using your release's file, as recomplauncher.com read it" } else { "Using RecompLauncher's profile for this game" },
             "A recomplauncher.json in your release takes its place.",
         ));
         level = check_profile(p, &dir, &g, &mut items);
